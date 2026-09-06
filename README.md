@@ -108,16 +108,16 @@ project-titan/
 Project Titan follows a strict, step-by-step implementation discipline to prevent unvalidated configuration sprawl.
 
 ``` marp
-Phase 0: Host OS & Ingress Baseline
-  └── Phase 1: Control Plane & Throttling
-        └── Phase 2: Isolated Agent Execution
-              └── Phase 3: OKF Memory & SilverBullet Integration
-                    └── Phase 4: System Hardening & Validation
-                          └── Phase 5: Benchmarking & Optimization
+Phase 0: Base Config
+  └── Phase 1: Control Plane
+        └── Phase 2: Hermes Agent
+              └── Phase 3: Memory Mgmt
+                    └── Phase 4: Security
+                          └── Phase 5: Benchmarking
 
 ```
 
-### Phase 0: Host OS Ingress & Hardware Baseline
+### Phase 0: Base Config (Host OS & Ingress Baseline)
 
   * Execute package pinning (`apt-mark hold`) across hardware drivers and runtime toolkits on DGX OS.
   * Configure local directory layouts under `/data/titan/memories` and seed environment schemas.
@@ -131,7 +131,7 @@ Phase 0: Host OS & Ingress Baseline
   * Enforce hardware-aware request queuing (`max_parallel_requests: 1`) and initialize virtual proxy keys (`HERMES_LITELLM_KEY`).
   * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; dynamic model and key mutations persist across process restarts; all direct access routes to raw inference and database ports are bound strictly to localhost loopback.
 
-### Phase 2: Agent Plane (Isolated Hermes Deployment)
+### Phase 2: Hermes Agent (Isolated Agent Execution)
 
   * Deploy the unprivileged Hermes Agent sandbox container (`titan-hermes`) built via `docker/hermes/Dockerfile` with dropped capabilities (`no-new-privileges:true`) and non-root execution (UID 1000).
   * Enforce outbound internet egress on `titan-internal` while strictly eliminating the host Docker socket (`/var/run/docker.sock`) and isolating the control plane database (`titan-litellm-db`).
@@ -139,7 +139,7 @@ Phase 0: Host OS & Ingress Baseline
   * Expose the Hermes interaction console, skills manager, and reasoning interface via Caddy reverse proxy at `hermes.titan.local`.
   * *Exit Criteria:* Hermes processing loops execute and log traces inside LiteLLM while running entirely in a non-root environment; interactive web console and sandboxed tool execution in `/workspace` are fully operational.
 
-### Phase 3: Memory Plane (Flat-File OKF & PKM Interface)
+### Phase 3: Memory Mgmt (Flat-File OKF & PKM Interface)
 
   * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/memories` on GX10, `./data/memories` on macOS) using unified permission access keys (`1000:1000`).
   * Deploy the SilverBullet visual inspection workspace container mounting the same storage directory, accessible via Caddy at `memory.titan.local`.
@@ -148,14 +148,14 @@ Phase 0: Host OS & Ingress Baseline
   * Enforce hardware-adaptive context windows: safe 4,096 tokens on 16GB macOS workstations and 32,768 tokens on ASUS Ascent GX10 appliances.
   * *Exit Criteria:* Bi-directional persistence and synchronization verified—content modifications applied inside SilverBullet propagate to active agent reasoning streams; memory purity audit asserts strictly human-auditable flat-file Markdown.
 
-### Phase 4: System Hardening & Operational Readiness
+### Phase 4: Security (Hardening & Operational Readiness)
 
   * Configure automated cron scheduling for hourly host-side snapshots or localized Git tracking across the memory mount.
   * Enforce absolute network separation to guarantee the hardware appliance is unreachable from enterprise or corporate nodes.
   * Execute recovery test validations: simulate a runaway agent processing thread, apply immediate key revocation via `emergency-stop.sh`, and verify graceful degradation without impacting host states.
   * *Exit Criteria:* Deterministic cluster reconstruction from bare config parameters via `docker compose down && docker compose up -d` with complete retention of memory trees.
 
-### Phase 5: Benchmarking, Optimization & Observability
+### Phase 5: Benchmarking (Evaluation, Optimization & Observability)
 
   * Benchmark Ollama vs. vLLM vs. SGLang on native ARM64 / DGX OS to evaluate prefill speed and KV-cache memory pressure.
   * Measure context scaling performance across 4k, 8k, 16k, 32k, and 64k token windows.
