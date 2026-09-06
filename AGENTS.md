@@ -49,20 +49,31 @@ The walkthrough document must record:
 ### Step 6: Pull Request & Issue Closure
 To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instantly readable without line truncation:
 1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
-2. **Front-Load the Ticket Number in Commits**:
+2. **Front-Load the Ticket Number & Add Co-Authorship**:
+   Include the `Co-authored-by` trailer so GitHub automatically displays Antigravity as a co-author and contributor:
    ```bash
-   git commit -m "[#<issue_number>] <type>(<plane>): <concise description>"
+   git commit -m "[#<issue_number>] <type>(<plane>): <concise description>
+
+   Co-authored-by: Google Antigravity <antigravity@google.com>"
    ```
-   *(Example: `git commit -m "[#2] feat(control): deploy ollama & litellm gateway"`)*
-3. Push the branch and create a Pull Request with the same front-loaded title:
+   *(Example: `git commit -m "[#2] feat(control): deploy ollama & litellm gateway\n\nCo-authored-by: Google Antigravity <antigravity@google.com>"`)*
+3. **Push & Open PR with Agent Attribution Banner**:
+   Prepend the standard agent header to all PR descriptions and issue comments:
    ```bash
    git push -u origin task/<issue_number>-<short-description>
-   gh pr create --title "[#<issue_number>] <type>(<plane>): <concise description>" --body "Closes #<issue_number>.\n\n### Summary of Changes\n..."
+   gh pr create --title "[#<issue_number>] <type>(<plane>): <concise description>" \
+     --body "> 🤖 **Automated Agent Report** — *Google Antigravity Pair Programmer*
+   > **Ticket**: #<issue_number>
+
+   Closes #<issue_number>.
+
+   ### Summary of Changes
+   ..."
    ```
 4. **Merge Strategy (Squash and Merge)**:
    - Always merge PRs using **Squash and Merge** so all branch commits compress into a single, clean commit on `main`.
    - Result on `main`: `[#2] feat(control): deploy ollama & litellm gateway (#8)`
-   - The Git graph remains a clean, linear vertical line with zero merge bubbles.
+   - The Git graph remains a clean, linear vertical line with zero merge bubbles and co-authorship preserved.
 
 ---
 
