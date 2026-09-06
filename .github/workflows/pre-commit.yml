@@ -1,0 +1,61 @@
+name: Pre-Commit & Security Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-and-lint:
+    name: Security & Architecture Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Secret & Environment File Protection
+        run: |
+          echo "Checking for prohibited .env or secret files..."
+          FORBIDDEN=$(git ls-files | grep -E '(\.env$|\.key$|\.pem$)' | grep -v '\.env\.example$' || true)
+          if [ -n "${FORBIDDEN}" ]; then
+            echo "::error::Prohibited secret file found in repository tracking: ${FORBIDDEN}"
+            exit 1
+          fi
+          echo "No sensitive files found in git tree."
+
+      - name: Verify Memory Plane Purity
+        run: |
+          echo "Ensuring no live memory notes are committed..."
+          LIVE_MEMORIES=$(git ls-files data/memories/ | grep -v 'data/memories/\.gitkeep$' || true)
+          if [ -n "${LIVE_MEMORIES}" ]; then
+            echo "::error::Live memory files found in repository tracking: ${LIVE_MEMORIES}"
+            echo "The memory plane is reserved for human-auditable runtime OKF notes and must be git-ignored."
+            exit 1
+          fi
+          echo "Memory plane is clean."
+
+      - name: Shell Script Syntax Validation
+        run: |
+          echo "Validating bash syntax on all scripts..."
+          for script in scripts/*.sh; do
+            if [ -f "$script" ]; then
+              bash -n "$script"
+              echo "✓ $script passed syntax check"
+            fi
+          done
+
+      - name: Docker Compose Topology Validation
+        run: |
+          echo "Validating docker-compose.yml configuration..."
+          cp .env.example .env
+          docker compose config -q
+          echo "✓ docker-compose.yml passed topology validation"
