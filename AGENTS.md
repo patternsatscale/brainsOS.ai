@@ -18,10 +18,11 @@ When assigned an issue (e.g., "Work on issue #2"):
 
 ### Step 2: Branching Policy
 Never develop or commit directly on the `main` branch.
-1. Create and switch to an isolated task branch:
+1. Create and switch to a concise, ticket-referenced branch:
    ```bash
-   git checkout -b task/issue-<issue_number>-<short-description>
+   git checkout -b task/<issue_number>-<short-description>
    ```
+   *(Example: `git checkout -b task/2-control-plane`)*
 
 ### Step 3: Planning & Architectural Alignment
 For non-trivial tasks, draft or update the implementation plan to map directly to the acceptance criteria checkboxes.
@@ -46,16 +47,22 @@ The walkthrough document must record:
 4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
 
 ### Step 6: Pull Request & Issue Closure
+To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instantly readable without line truncation:
 1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
-2. Commit with conventional commit messages referencing the ticket:
+2. **Front-Load the Ticket Number in Commits**:
    ```bash
-   git commit -m "feat(plane): description (closes #<issue_number>)"
+   git commit -m "[#<issue_number>] <type>(<plane>): <concise description>"
    ```
-3. Push the branch and create a Pull Request:
+   *(Example: `git commit -m "[#2] feat(control): deploy ollama & litellm gateway"`)*
+3. Push the branch and create a Pull Request with the same front-loaded title:
    ```bash
-   git push -u origin task/issue-<issue_number>-<short-description>
-   gh pr create --title "feat: <title>" --body "Closes #<issue_number>.\n\n### Summary of Changes\n..."
+   git push -u origin task/<issue_number>-<short-description>
+   gh pr create --title "[#<issue_number>] <type>(<plane>): <concise description>" --body "Closes #<issue_number>.\n\n### Summary of Changes\n..."
    ```
+4. **Merge Strategy (Squash and Merge)**:
+   - Always merge PRs using **Squash and Merge** so all branch commits compress into a single, clean commit on `main`.
+   - Result on `main`: `[#2] feat(control): deploy ollama & litellm gateway (#8)`
+   - The Git graph remains a clean, linear vertical line with zero merge bubbles.
 
 ---
 
