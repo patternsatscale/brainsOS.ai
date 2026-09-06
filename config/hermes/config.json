@@ -2,7 +2,8 @@
   "agent": {
     "name": "hermes-titan",
     "version": "1.0.0",
-    "description": "Project Titan Autonomous Agent Instance"
+    "description": "Project Titan Autonomous Agent Instance",
+    "soul_path": "/app/config/SOUL.md"
   },
   "llm": {
     "provider": "openai_compatible",
@@ -32,12 +33,13 @@
   },
   "workspace": {
     "path": "/workspace",
-    "description": "Internal sandbox for runtime packages, tools, caches, and local databases"
+    "description": "Internal sandbox for runtime packages, tools, caches, and local databases",
+    "skills_path": "/workspace/skills"
   },
   "capabilities": {
     "shell_enabled": true,
     "browser_enabled": true,
-    "signal_enabled": true,
+    "python_enabled": true,
     "network_egress": true
   }
 }

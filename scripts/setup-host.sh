@@ -278,6 +278,14 @@ if [ "${PULL_MODEL}" = true ]; then
   ollama list
 fi
 
+# ------------------------------------------------------------------------------
+# 7. Hermes Sandbox Image Build
+# ------------------------------------------------------------------------------
+if [ -f "${REPO_ROOT}/scripts/setup-hermes.sh" ]; then
+  log_info "Invoking Hermes sandbox setup and image build..."
+  "${REPO_ROOT}/scripts/setup-hermes.sh"
+fi
+
 log_success "Project Titan host baseline setup complete!"
 echo ""
 echo "Next steps:"

@@ -77,13 +77,19 @@ services:
   # Strictly barred from host Docker socket; writes only OKF to /memories
   # ----------------------------------------------------------------------------
   hermes:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: docker/hermes/Dockerfile
+    image: titan-hermes:latest
     container_name: titan-hermes
     restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${HERMES_PORT:-8642}:8642"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "litellm:host-gateway"
     volumes:
       # PURE OKF Markdown memory mount only
       - ${TITAN_DATA_DIR:-./data/memories}:/memories
@@ -96,15 +102,12 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY}
-      - LITELLM_URL=http://host.docker.internal:${LITELLM_PORT:-4000}/v1
+      - LITELLM_URL=http://litellm:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/workspace
     networks:
       - titan-ingress
       - titan-internal
-    # Baseline server responding with config profile on :8642 for Phase 0 verification
-    command: >
-      sh -c "python3 -m http.server 8642 --directory /app/config"
 
 # ==============================================================================
 # Isolated Network Topology
