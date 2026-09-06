@@ -20,7 +20,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
           └───────────────────────┼───────────────────────┘  
                                   ▼  
                      [ Ingress Reverse Proxy ]  
-                     (Caddy / Traefik Gateway)  
+                     (titan-caddy Gateway)  
                                   │  
     ┌─────────────────────────────┼─────────────────────────────┐  
     │ :8642                       │ :4000                       │ :3000  
@@ -28,23 +28,30 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ┌──────────────┐          ┌──────────────┐              ┌──────────────┐  
 │ Hermes Agent │──(LLM)──►│   LiteLLM    │              │ SilverBullet │  
 │ (Ephemeral)  │          │   Control    │              │  Memory UI   │  
-└──────┬───────┘          └──────┬───────┘              └──────┬───────┘  
-       │ (Writes)                │ (Inference)                 │ (Reads/Writes)  
-       │                         ▼                             │  
-       │                  ┌──────────────┐                     │  
-       │                  │ Inference Eng│                     │  
-       │                  │ (vLLM/Ollama)│                     │  
-       │                  └──────────────┘                     │  
-       │                                                       │  
-       └─────────────────────────┬─────────────────────────────┘  
-                                 ▼  
-                     [ Host Storage Bind-Mount ]  
-                     /data/titan/memories (OKF)   
+└──────┬───────┘          └──────┬───┬───┘              └──────┬───────┘  
+       │ (Writes)                │   │ (Persistence)           │ (Reads/Writes)  
+       │             (Inference) │   ▼                         │  
+       │                         │ ┌──────────────────┐        │  
+       │                         │ │ titan-litellm-db │        │  
+       │                         │ │  (PostgreSQL 16) │        │  
+       │                         │ └────────┬─────────┘        │  
+       │                         ▼          │                  │  
+       │                  ┌──────────────┐  │                  │  
+       │                  │ Inference Eng│  │                  │  
+       │                  │ (vLLM/Ollama)│  │                  │  
+       │                  └──────────────┘  │                  │  
+       │                                    │                  │  
+       └─────────────────────────┬──────────┼──────────────────┘  
+                                 ▼          ▼  
+                      [ Host Storage Bind-Mounts ]  
+                      /data/titan/memories (OKF)   
+                      /data/titan/litellm_db (PostgreSQL)
 ```
 
 ### Core Architecture Rules
 
   * **Zero Direct Connect:** The agent layer has no network visibility or access keys for raw local inference engines or external APIs. It connects strictly to the LiteLLM proxy gateway.
+  * **Control Plane Database Isolation:** LiteLLM is backed by a dedicated PostgreSQL container (`titan-litellm-db`) isolated on `titan-litellm-net`. Hermes has zero database credentials, zero network route, and zero storage volume visibility to this database.
   * **Decoupled Memory Plane:** Runtimes are ephemeral and disposable. Long-term knowledge is preserved in human-readable, flat-file Markdown using the Open Knowledge Format (OKF) on a persistent host mount.
   * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
   * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM severs inference streams instantly, stopping rogue agent loops without impacting host system states.
@@ -65,20 +72,21 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ``` text
 project-titan/  
 ├── README.md                 # System vision and development roadmap
-├── docker-compose.yml        # Declarative service topology and isolated networks
-├── .env.example              # Environment variables template (UID/GID, pathing)
+├── docker-compose.yml        # Declarative service topology and isolated networks (cluster: titan)
+├── .env.example              # Environment variables template (UID/GID, pathing, DB secrets)
 ├── config/  
 │   ├── caddy/  
 │   │   └── Caddyfile         # Reverse proxy virtual hosts mapping *.titan.local
 │   ├── litellm/  
-│   │   └── config.yaml       # Rate-limiting, model aliases, and concurrency rules
+│   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
 │   └── hermes/  
 │       └── config.json       # Agent execution profiles and OKF settings
 ├── data/  
-│   └── memories/             # Live host volume storage for OKF Markdown files (git-ignored)
+│   ├── memories/             # Live host volume storage for OKF Markdown files (git-ignored)
+│   └── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
 └── scripts/  
-    ├── setup-host.sh         # Idempotent baseline script for package locks, Ollama, and LiteLLM
-    ├── start-control-plane.sh# Service manager for host Ollama inference and LiteLLM gateway
+    ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, Prisma, and DB
+    ├── start-control-plane.sh# Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
     ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager
     └── emergency-stop.sh     # Key revocation script for immediate loop intervention
 
@@ -109,9 +117,9 @@ Phase 0: Host OS & Ingress Baseline
 ### Phase 1: Control Plane (Inference & LiteLLM Gateway)
 
   * Provision native local inference runtimes (Ollama/vLLM) on the host system to maximize hardware acceleration (Metal on macOS, CUDA on GB10 / DGX OS) bound strictly to loopback (`127.0.0.1:11434`).
-  * Deploy native LiteLLM proxy gateway on the host (`:4000`) between the hardware inference engine and containerized consumers (`host.docker.internal:4000`).
+  * Deploy native LiteLLM proxy gateway on the host (`:4000`) backed by a dedicated, isolated PostgreSQL service (`titan-litellm-db`) with `store_model_in_db: true` for dynamic model and key persistence.
   * Enforce hardware-aware request queuing (`max_parallel_requests: 1`) and initialize virtual proxy keys (`HERMES_LITELLM_KEY`).
-  * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; all direct access routes to raw inference ports are firewalled/bound to localhost loopback.
+  * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; dynamic model and key mutations persist across process restarts; all direct access routes to raw inference and database ports are bound strictly to localhost loopback.
 
 ### Phase 2: Agent Plane (Isolated Hermes Deployment)
 

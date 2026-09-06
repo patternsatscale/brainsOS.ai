@@ -14,6 +14,8 @@ data/control_plane/*
 *.tar.gz
 
 # Local Volume Mounts & Caches
+data/litellm_db/
+data/postgres/
 ollama_data/
 .cache/
 tmp/

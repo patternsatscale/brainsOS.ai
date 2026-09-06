@@ -2,7 +2,7 @@
 # Project Titan: Service Topology & Network Plane Separation
 # ==============================================================================
 
-name: project-titan
+name: titan
 
 services:
   # ----------------------------------------------------------------------------
@@ -26,6 +26,31 @@ services:
       - titan-ingress
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
+
+  # ----------------------------------------------------------------------------
+  # Control Plane Persistence: LiteLLM Dedicated PostgreSQL Database
+  # Decoupled dynamic persistence for models, virtual keys, and rate limits
+  # Strictly isolated on titan-litellm-net; unreachable by Hermes agent
+  # ----------------------------------------------------------------------------
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: titan-litellm-db
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${LITELLM_DB_NAME:-litellm}
+      POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-titan_litellm_secret_change_me}
+    volumes:
+      - ${LITELLM_DB_DATA_DIR:-./data/litellm_db}:/var/lib/postgresql/data
+    networks:
+      - titan-litellm-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # ----------------------------------------------------------------------------
   # Memory Plane: SilverBullet PKM UI
@@ -94,6 +119,11 @@ networks:
   # and routing to LiteLLM via host.docker.internal
   titan-internal:
     name: titan-internal
+    driver: bridge
+
+  # LiteLLM control plane database network: isolated from agent plane
+  titan-litellm-net:
+    name: titan-litellm-net
     driver: bridge
 
 # ==============================================================================

@@ -126,15 +126,15 @@ if [ -n "${UV_BIN}" ] && [ -x "${UV_BIN}" ]; then
     log_info "Creating .venv virtual environment..."
     "${UV_BIN}" venv .venv
   fi
-  log_info "Ensuring 'litellm[proxy]' is installed in .venv..."
-  "${UV_BIN}" pip install --python .venv/bin/python "litellm[proxy]" >/dev/null 2>&1
+  log_info "Ensuring 'litellm[proxy]' and 'prisma' are installed in .venv..."
+  "${UV_BIN}" pip install --python .venv/bin/python "litellm[proxy]" "prisma" >/dev/null 2>&1
 else
   log_info "Using system python3 to manage LiteLLM virtualenv..."
   if [ ! -d ".venv" ]; then
     python3 -m venv .venv
   fi
   .venv/bin/pip install --upgrade pip >/dev/null 2>&1 || true
-  .venv/bin/pip install "litellm[proxy]" >/dev/null 2>&1
+  .venv/bin/pip install "litellm[proxy]" "prisma" >/dev/null 2>&1
 fi
 
 if [ -x ".venv/bin/litellm" ]; then
@@ -142,6 +142,14 @@ if [ -x ".venv/bin/litellm" ]; then
 else
   log_error "Failed to verify LiteLLM binary in .venv/bin/litellm"
   exit 1
+fi
+
+# Pre-generate Prisma client Python bindings for LiteLLM database operations
+LITELLM_SCHEMA=$(find .venv -name "schema.prisma" 2>/dev/null | head -n 1)
+if [ -n "${LITELLM_SCHEMA}" ] && [ -f "${LITELLM_SCHEMA}" ]; then
+  log_info "Pre-generating Prisma client bindings from ${LITELLM_SCHEMA}..."
+  PATH="${REPO_ROOT}/.venv/bin:${PATH}" .venv/bin/prisma generate --schema "${LITELLM_SCHEMA}" >/dev/null 2>&1 || true
+  log_success "Prisma client bindings pre-generated."
 fi
 
 # ------------------------------------------------------------------------------
@@ -157,6 +165,9 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 log_success "Docker and Docker Compose verified."
+
+log_info "Ensuring PostgreSQL 16 Alpine container is cached..."
+docker pull postgres:16-alpine >/dev/null 2>&1 || log_warn "Failed to pre-pull postgres:16-alpine (will pull during launch)."
 
 # ------------------------------------------------------------------------------
 # 4. Environment Template Verification
@@ -204,6 +215,28 @@ mkdir -p "${TARGET_MEMORIES_DIR}/rules"
 mkdir -p "${TARGET_MEMORIES_DIR}/logs"
 mkdir -p "${REPO_ROOT}/data/backups"
 mkdir -p "${REPO_ROOT}/data/control_plane"
+
+# LiteLLM Dedicated Control Plane Database Storage (isolated from memories)
+DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/litellm_db")
+DB_DATA_DIR="${DB_DATA_DIR:-./data/litellm_db}"
+
+if [[ "$DB_DATA_DIR" != /* ]]; then
+  TARGET_DB_DIR="${REPO_ROOT}/${DB_DATA_DIR#./}"
+else
+  TARGET_DB_DIR="${DB_DATA_DIR}"
+fi
+
+log_info "Target LiteLLM PostgreSQL directory: ${TARGET_DB_DIR}"
+
+if [[ "$TARGET_DB_DIR" == /data/titan/* ]]; then
+  log_info "Creating production database path with sudo: ${TARGET_DB_DIR}..."
+  sudo mkdir -p "${TARGET_DB_DIR}"
+  sudo chown -R 999:999 "${TARGET_DB_DIR}"
+  sudo chmod -R 700 "${TARGET_DB_DIR}"
+else
+  mkdir -p "${TARGET_DB_DIR}"
+  chmod -R 700 "${TARGET_DB_DIR}" || true
+fi
 
 log_success "Storage layout and OKF directory scaffolding initialized."
 

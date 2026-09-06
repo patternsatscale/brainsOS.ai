@@ -125,3 +125,9 @@ Agents must never violate the following zero-trust operational boundaries:
 
 ### Rule 5: Secret Protection
 - Never commit `.env` or sensitive API keys to Git. Keep all configuration templated in `.env.example`.
+
+### Rule 6: Control Plane Database Isolation
+- The dedicated PostgreSQL persistence store (`titan-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
+- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`titan-litellm-net`), or storage volume mounts to the database.
+- The database port is bound strictly to `127.0.0.1:${LITELLM_DB_PORT:-5432}` on the host for LiteLLM's use only.
+- Strict isolation is enforced in `.github/workflows/pre-commit.yml` on every commit and PR.
