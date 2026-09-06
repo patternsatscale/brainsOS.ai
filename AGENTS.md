@@ -49,7 +49,7 @@ Before finalizing a ticket or opening a PR, the agent **must** review whether th
 - **Rules & Guardrails**: If operational rules, agent procedures, or workflows changed, update [AGENTS.md](file:///Users/pats/Development/project_titan/AGENTS.md).
 - Documentation must never drift from the live codebase; all doc updates must be included within the ticket's branch and PR.
 
-### Step 6: Walkthrough Documentation in `/docs`
+### Step 6: Walkthrough Documentation & Mandatory Pre-Commit Review Gate
 Every ticket completion **must** include a dedicated walkthrough document placed in the `docs/` directory using the naming convention:
 ```text
 docs/YYYY-MM-DD-ticket<issue_number>.md
@@ -62,7 +62,15 @@ The walkthrough document must record:
 3. **Automated & Manual Test Logs**: Exact terminal commands and outputs validating functionality.
 4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
 
-### Step 7: Pull Request & Issue Closure
+> [!IMPORTANT]
+> **Internal Pre-Commit Review Gate**:
+> The agent must **NEVER** commit, push, or open a Pull Request without explicit human review and approval.
+> - After generating the walkthrough document and validating all changes, the agent **must STOP and present the walkthrough summary to the user**.
+> - The human developer conducts an internal review of the proposed changes, test logs, and diff.
+> - Only upon receiving explicit approval ("Approved", "Proceed with commit/PR", etc.) may the agent proceed to Step 7.
+
+### Step 7: Post-Approval Commit, Push & Pull Request
+Only after the human reviewer explicitly approves the walkthrough in Step 6:
 To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instantly readable without line truncation:
 1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
 2. **Front-Load the Ticket Number & Add Co-Authorship**:
@@ -139,3 +147,9 @@ Agents must never violate the following zero-trust operational boundaries:
 - The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`titan-litellm-net`), or storage volume mounts to the database.
 - The database port is bound strictly to `127.0.0.1:${LITELLM_DB_PORT:-5432}` on the host for LiteLLM's use only.
 - Strict isolation is enforced in `.github/workflows/pre-commit.yml` on every commit and PR.
+
+### Rule 7: Information Compartmentalization in Agent Context
+- Persona documents (`SOUL.md`), agent prompts, and runtime configurations provided to the agent plane (`hermes`) must observe strict need-to-know principles.
+- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `titan-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
+- The agent must be instructed exclusively on its assigned interfaces (e.g. its OpenAI-compatible completions endpoint `http://litellm:4000/v1`), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
+
