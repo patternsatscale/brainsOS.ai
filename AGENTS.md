@@ -32,8 +32,21 @@ Before submitting work or opening a PR, the agent **must** run the verification 
 2. Docker Compose configuration: `docker compose config`
 3. Any service-specific validations (e.g. Caddy validate, API tests).
 
-### Step 5: Pull Request & Issue Closure
-1. Stage only relevant, non-secret files.
+### Step 5: Walkthrough Documentation in `/docs`
+Every ticket completion **must** include a dedicated walkthrough document placed in the `docs/` directory using the naming convention:
+```text
+docs/YYYY-MM-DD-ticket<issue_number>.md
+```
+*(Example: `docs/2026-09-06-ticket1.md`)*
+
+The walkthrough document must record:
+1. **Summary of Changes**: Exact files created, modified, or deleted.
+2. **Acceptance Criteria Verification**: Evidence that all checkboxes in the ticket are satisfied.
+3. **Automated & Manual Test Logs**: Exact terminal commands and outputs validating functionality.
+4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
+
+### Step 6: Pull Request & Issue Closure
+1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
 2. Commit with conventional commit messages referencing the ticket:
    ```bash
    git commit -m "feat(plane): description (closes #<issue_number>)"
@@ -46,7 +59,17 @@ Before submitting work or opening a PR, the agent **must** run the verification 
 
 ---
 
-## 2. Inviolable Architectural Guardrails
+## 2. Scope Containment & Backlog Discipline
+
+To maintain high velocity and avoid hallucinated drift, agents must observe strict scope boundaries:
+
+1. **Atomic Scoping**: An issue should define **one single verifiable deliverable**. If a task requires more than 3-4 separate system modifications, it should be broken down into sub-tickets.
+2. **Zero Scope Creep**: If an agent discovers a tangential bug, an unhandled edge case, or a potential enhancement during execution:
+   - **DO NOT** expand the current branch or ticket to fix it.
+   - **File a new GitHub Issue** labeled as `type:bug` or `type:task` and place it in the Backlog.
+   - Complete the original ticket strictly against its published Acceptance Criteria.
+
+## 3. Inviolable Architectural Guardrails
 
 Agents must never violate the following zero-trust operational boundaries:
 
