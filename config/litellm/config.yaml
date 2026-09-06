@@ -34,5 +34,9 @@ litellm_settings:
   request_timeout: 300
 
 general_settings:
-  # Master key used by Hermes agent runtime to authenticate with LiteLLM control plane
-  master_key: os.environ/HERMES_LITELLM_KEY
+  # Master key for administrative control, dynamic model addition, and virtual key provisioning
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # Dedicated PostgreSQL control plane database connection
+  database_url: os.environ/DATABASE_URL
+  # Dynamic persistence: stores model definitions in database across restarts
+  store_model_in_db: true

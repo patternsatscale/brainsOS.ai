@@ -36,6 +36,20 @@ mkdir -p "${PID_DIR}"
 OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"
 LITELLM_PID_FILE="${PID_DIR}/litellm.pid"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
+LITELLM_DB_PORT="${LITELLM_DB_PORT:-5432}"
+LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
+HERMES_LITELLM_KEY="${HERMES_LITELLM_KEY:-}"
+DATABASE_URL="${DATABASE_URL:-}"
+
+# Ensure .venv/bin is in PATH for prisma and litellm
+export PATH="${REPO_ROOT}/.venv/bin:${PATH}"
+export DATABASE_URL="${DATABASE_URL}"
+
+# Helper to check if database port is listening
+check_db_ready() {
+  (echo > /dev/tcp/127.0.0.1/"${LITELLM_DB_PORT}") >/dev/null 2>&1 || \
+    (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "${LITELLM_DB_PORT}" >/dev/null 2>&1)
+}
 
 # ------------------------------------------------------------------------------
 # Action: Stop
@@ -48,9 +62,37 @@ stop_services() {
     if kill -0 "${PID}" 2>/dev/null; then
       log_info "Stopping LiteLLM (PID: ${PID})..."
       kill "${PID}" || true
+      for i in {1..20}; do
+        if ! kill -0 "${PID}" 2>/dev/null; then
+          break
+        fi
+        sleep 0.5
+      done
+      if kill -0 "${PID}" 2>/dev/null; then
+        kill -9 "${PID}" 2>/dev/null || true
+      fi
     fi
     rm -f "${LITELLM_PID_FILE}"
     log_success "LiteLLM stopped."
+  fi
+
+  # Fallback: terminate any residual process on LITELLM_PORT
+  if command -v lsof >/dev/null 2>&1; then
+    PORT_PIDS=$(lsof -ti :"${LITELLM_PORT}" 2>/dev/null || true)
+    if [ -n "${PORT_PIDS}" ]; then
+      log_info "Stopping residual process on port ${LITELLM_PORT} (PID: ${PORT_PIDS})..."
+      for p in ${PORT_PIDS}; do
+        kill "${p}" 2>/dev/null || true
+      done
+      sleep 1
+      REMAINING=$(lsof -ti :"${LITELLM_PORT}" 2>/dev/null || true)
+      if [ -n "${REMAINING}" ]; then
+        for p in ${REMAINING}; do
+          kill -9 "${p}" 2>/dev/null || true
+        done
+      fi
+      log_success "Port ${LITELLM_PORT} freed."
+    fi
   fi
 
   if [ -f "${OLLAMA_PID_FILE}" ]; then
@@ -58,6 +100,15 @@ stop_services() {
     if kill -0 "${PID}" 2>/dev/null; then
       log_info "Stopping host Ollama (PID: ${PID})..."
       kill "${PID}" || true
+      for i in {1..20}; do
+        if ! kill -0 "${PID}" 2>/dev/null; then
+          break
+        fi
+        sleep 0.5
+      done
+      if kill -0 "${PID}" 2>/dev/null; then
+        kill -9 "${PID}" 2>/dev/null || true
+      fi
     fi
     rm -f "${OLLAMA_PID_FILE}"
     log_success "Host Ollama stopped."
@@ -75,6 +126,13 @@ status_services() {
     log_success "Ollama: RUNNING on http://127.0.0.1:11434"
   else
     log_warn "Ollama: NOT RUNNING on http://127.0.0.1:11434"
+  fi
+
+  # Database status
+  if check_db_ready; then
+    log_success "Database (PostgreSQL): RUNNING on 127.0.0.1:${LITELLM_DB_PORT}"
+  else
+    log_warn "Database (PostgreSQL): NOT RUNNING on 127.0.0.1:${LITELLM_DB_PORT}"
   fi
 
   # LiteLLM status
@@ -117,7 +175,30 @@ start_services() {
     log_success "Host Ollama started (PID: ${OLLAMA_PID})."
   fi
 
-  # 2. Start LiteLLM if not already responding
+  # 2. Verify or start dedicated LiteLLM PostgreSQL database container
+  if check_db_ready; then
+    log_info "LiteLLM PostgreSQL database is already responding on 127.0.0.1:${LITELLM_DB_PORT}."
+  else
+    log_info "Starting dedicated LiteLLM PostgreSQL database (titan-litellm-db)..."
+    docker compose up -d litellm-db
+    
+    DB_READY=false
+    for i in {1..30}; do
+      if check_db_ready; then
+        DB_READY=true
+        break
+      fi
+      sleep 1
+    done
+
+    if [ "${DB_READY}" != true ]; then
+      log_error "Failed to start LiteLLM PostgreSQL database on 127.0.0.1:${LITELLM_DB_PORT}."
+      exit 1
+    fi
+    log_success "LiteLLM PostgreSQL database started and responding."
+  fi
+
+  # 3. Start LiteLLM if not already responding
   if curl -s "http://127.0.0.1:${LITELLM_PORT}/health" >/dev/null 2>&1; then
     log_info "LiteLLM is already running on http://127.0.0.1:${LITELLM_PORT}."
   else
@@ -127,6 +208,7 @@ start_services() {
     fi
 
     log_info "Starting LiteLLM proxy gateway on port ${LITELLM_PORT}..."
+    DATABASE_URL="${DATABASE_URL}" \
     .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \
@@ -138,7 +220,7 @@ start_services() {
 
     # Wait for LiteLLM
     READY=false
-    for i in {1..30}; do
+    for i in {1..60}; do
       if curl -s "http://127.0.0.1:${LITELLM_PORT}/health" >/dev/null 2>&1; then
         READY=true
         break
@@ -152,6 +234,27 @@ start_services() {
       exit 1
     fi
     log_success "LiteLLM gateway started (PID: ${LITELLM_PID})."
+  fi
+
+  # 4. Provision Hermes virtual key in database if not already provisioned
+  if [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
+    KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+      -X POST "http://127.0.0.1:${LITELLM_PORT}/key/info" \
+      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+      -H "Content-Type: application/json" \
+      -d "{\"key\": \"${HERMES_LITELLM_KEY}\"}" || echo "000")
+
+    if [ "${KEY_CHECK}" != "200" ]; then
+      log_info "Registering Hermes virtual key in database..."
+      curl -s -o /dev/null \
+        -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\"}" || true
+      log_success "Hermes virtual key initialized in database."
+    else
+      log_info "Hermes virtual key is already registered in database."
+    fi
   fi
 
   status_services
