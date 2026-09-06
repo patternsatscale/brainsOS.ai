@@ -102,6 +102,14 @@ To maintain high velocity and avoid hallucinated drift, agents must observe stri
    - **DO NOT** expand the current branch or ticket to fix it.
    - **File a new GitHub Issue** labeled as `type:bug` or `type:task` and place it in the Backlog.
    - Complete the original ticket strictly against its published Acceptance Criteria.
+3. **Automated QA & Regression Backlog Promotion**: When delivering core architectural components, security boundaries, or infrastructure tickets, agents frequently validate critical guarantees through manual verification, ad-hoc shell commands, or isolation inspections:
+   - **DO NOT** inflate the current deliverable's scope by building an entire automated regression harness or test suite unless the ticket explicitly calls for it.
+   - **DO** file a new GitHub Issue for the Backlog labeled as `type:task`, `type:security`, or `type:infra` (e.g., `[Phase X] Automated CI/CD Regression Test Suite & Security Boundary QA`).
+   - **Required QA Ticket Content**:
+     - **Context & Originating Tickets**: Reference previous tickets where boundaries and behaviors were established.
+     - **Consolidated Test Cases**: Explicit checkboxes detailing functional and security assertions (e.g., container DNS isolation, hardware concurrency limits, unauthorized key rejection, dynamic model/key persistence across restarts, memory purity, file permission masks).
+     - **Automation Commands**: Proposed test harness invocation (e.g., `./scripts/run-regression-tests.sh` or pytest) to be integrated into CI/CD.
+   - This ensures automated testing and CI/CD hardening remain auditable, comprehensive, and prioritized without stalling atomic feature delivery.
 
 ## 3. Inviolable Architectural Guardrails
 
