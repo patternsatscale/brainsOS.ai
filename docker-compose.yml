@@ -1,0 +1,153 @@
+# ==============================================================================
+# Project Titan: Service Topology & Network Plane Separation
+# ==============================================================================
+
+name: project-titan
+
+services:
+  # ----------------------------------------------------------------------------
+  # Ingress Plane: Caddy Reverse Proxy
+  # Routes *.titan.local to internal services and handles streaming SSE
+  # ----------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: titan-caddy
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - titan-ingress
+    environment:
+      - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
+
+  # ----------------------------------------------------------------------------
+  # Control Plane: LiteLLM Gateway
+  # Rate limiting, hardware serialization (max_parallel_requests=1), and key auth
+  # ----------------------------------------------------------------------------
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.61.16
+    container_name: titan-litellm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./config/litellm/config.yaml:/app/config.yaml:ro
+    command:
+      - "--config"
+      - "/app/config.yaml"
+      - "--port"
+      - "4000"
+      - "--num_workers"
+      - "1"
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    networks:
+      - titan-ingress
+      - titan-internal
+      - titan-inference
+    depends_on:
+      - ollama
+
+  # ----------------------------------------------------------------------------
+  # Inference Plane: Ollama Engine
+  # Isolated backend with zero direct exposure to Hermes or external ingress
+  # ----------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: titan-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - titan-inference
+
+  # ----------------------------------------------------------------------------
+  # Memory Plane: SilverBullet PKM UI
+  # Human-in-the-loop interactive browser UI inspecting pure OKF Markdown files
+  # ----------------------------------------------------------------------------
+  silverbullet:
+    image: zefhemel/silverbullet:latest
+    container_name: titan-silverbullet
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SILVERBULLET_PORT:-3000}:3000"
+    volumes:
+      # Mounts the pure OKF markdown directory
+      - ${TITAN_DATA_DIR:-./data/memories}:/space
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    networks:
+      - titan-ingress
+
+  # ----------------------------------------------------------------------------
+  # Agent Plane: Hermes Agent Sandbox
+  # Ephemeral sandbox runtime: full command, browser, and tooling flexibility
+  # Strictly barred from host Docker socket; writes only OKF to /memories
+  # ----------------------------------------------------------------------------
+  hermes:
+    image: python:3.11-slim
+    container_name: titan-hermes
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HERMES_PORT:-8642}:8642"
+    volumes:
+      # PURE OKF Markdown memory mount only
+      - ${TITAN_DATA_DIR:-./data/memories}:/memories
+      # Read-only configuration
+      - ./config/hermes:/app/config:ro
+      # Internal sandbox state for packages, tools, caches, and local databases
+      - hermes_runtime_state:/workspace
+    working_dir: /workspace
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY}
+      - LITELLM_URL=http://litellm:4000/v1
+      - MEMORY_DIR=/memories
+      - WORKSPACE_DIR=/workspace
+    networks:
+      - titan-ingress
+      - titan-internal
+    # Baseline server responding with config profile on :8642 for Phase 0 verification
+    command: >
+      sh -c "python3 -m http.server 8642 --directory /app/config"
+
+# ==============================================================================
+# Isolated Network Topology
+# ==============================================================================
+networks:
+  # Ingress network: connects Caddy to service ports
+  titan-ingress:
+    name: titan-ingress
+    driver: bridge
+
+  # Agent internal network: allows agent WAN egress (web browsing, Signal)
+  # and routing to LiteLLM, but completely isolates Ollama
+  titan-internal:
+    name: titan-internal
+    driver: bridge
+
+  # Inference plane: STRICTLY internal network connecting LiteLLM to Ollama
+  titan-inference:
+    name: titan-inference
+    driver: bridge
+    internal: true
+
+# ==============================================================================
+# Persistent Named Volumes
+# ==============================================================================
+volumes:
+  caddy_data:
+    name: titan_caddy_data
+  caddy_config:
+    name: titan_caddy_config
+  ollama_models:
+    name: titan_ollama_models
+  hermes_runtime_state:
+    name: titan_hermes_runtime_state

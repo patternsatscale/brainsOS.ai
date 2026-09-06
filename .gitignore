@@ -1,0 +1,27 @@
+# Environment & Secrets
+.env
+*.env
+!.env.example
+
+# Live Agent Memories (Keep folder structure, ignore live notes)
+data/memories/*
+!data/memories/.gitkeep
+
+# Snapshots and Backups
+data/backups/
+*.tar.gz
+
+# Local Volume Mounts & Caches
+ollama_data/
+.cache/
+tmp/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/

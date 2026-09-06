@@ -1,0 +1,85 @@
+{
+	# Disable automatic HTTPS for private local domains (.local / .localhost)
+	auto_https off
+	admin off
+}
+
+# ==============================================================================
+# Agent Plane Gateway
+# ==============================================================================
+http://hermes.{$TITAN_DOMAIN:titan.local}, http://hermes.localhost {
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy hermes:8642 {
+		# Flush immediately for streaming responses / SSE
+		flush_interval -1
+	}
+}
+
+# ==============================================================================
+# Control Plane Gateway (LiteLLM)
+# ==============================================================================
+http://proxy.{$TITAN_DOMAIN:titan.local}, http://proxy.localhost {
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy litellm:4000 {
+		flush_interval -1
+	}
+}
+
+# ==============================================================================
+# Memory Plane Gateway (SilverBullet PKM)
+# ==============================================================================
+http://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost {
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy silverbullet:3000
+}
+
+# ==============================================================================
+# Ingress Default / Healthcheck Landing Page
+# ==============================================================================
+:80 {
+	respond <<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Project Titan Appliance Gateway</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 40px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; max-width: 650px; margin: 0 auto; }
+    h1 { color: #58a6ff; font-size: 24px; margin-top: 0; }
+    p { line-height: 1.5; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 12px 0; padding: 12px; background: #21262d; border-radius: 6px; }
+    a { color: #58a6ff; text-decoration: none; font-weight: bold; }
+    a:hover { text-decoration: underline; }
+    .tag { display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #388bfd33; color: #58a6ff; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Project Titan Gateway</h1>
+    <p>Isolated Autonomous Agent Appliance running on DGX OS / ARM64.</p>
+    <ul>
+      <li><a href="http://hermes.titan.local">hermes.titan.local</a><span class="tag">Agent Plane</span><br><small>Hermes Agent Web UI & Interaction Console</small></li>
+      <li><a href="http://proxy.titan.local">proxy.titan.local</a><span class="tag">Control Plane</span><br><small>LiteLLM Proxy, Virtual Keys & Rate Limits</small></li>
+      <li><a href="http://memory.titan.local">memory.titan.local</a><span class="tag">Memory Plane</span><br><small>SilverBullet PKM & Open Knowledge Format (OKF)</small></li>
+    </ul>
+  </div>
+</body>
+</html>
+HTML 200 {
+		close
+	}
+}
