@@ -80,16 +80,21 @@ project-titan/
 │   ├── litellm/  
 │   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
 │   └── hermes/  
-│       └── config.json       # Agent execution profiles and OKF settings
+│       ├── config.json       # Agent execution profiles, skills path, and OKF settings
+│       └── SOUL.md           # Agent persona and behavioral directives
+├── docker/
+│   └── hermes/
+│       ├── Dockerfile        # Unprivileged multi-arch agent container definition
+│       └── server.py         # Lightweight Hermes web console and sandboxed runner
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files (git-ignored)
 │   └── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
 └── scripts/  
-    ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, Prisma, and DB
+    ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
+    ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
     ├── start-control-plane.sh# Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
     ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager
     └── emergency-stop.sh     # Key revocation script for immediate loop intervention
-
 ```
 
 -----
@@ -123,10 +128,11 @@ Phase 0: Host OS & Ingress Baseline
 
 ### Phase 2: Agent Plane (Isolated Hermes Deployment)
 
-  * Deploy the Hermes Agent runtime within an isolated container mapping dropped Linux system capabilities.
-  * Bind outbound agent model configurations exclusively to the internal LiteLLM proxy destination using virtual authentication headers.
-  * Map the web interface to the proxy layer for external view resolution via `hermes.titan.local`.
-  * *Exit Criteria:* Agent processing loops execute and log traces inside LiteLLM while running entirely in a non-root environment.
+  * Deploy the unprivileged Hermes Agent sandbox container (`titan-hermes`) built via `docker/hermes/Dockerfile` with dropped capabilities (`no-new-privileges:true`) and non-root execution (UID 1000).
+  * Enforce outbound internet egress on `titan-internal` while strictly eliminating the host Docker socket (`/var/run/docker.sock`) and isolating the control plane database (`titan-litellm-db`).
+  * Route outbound agent queries strictly to `http://litellm:4000/v1` authenticated via `HERMES_LITELLM_KEY`.
+  * Expose the Hermes interaction console, skills manager, and reasoning interface via Caddy reverse proxy at `hermes.titan.local`.
+  * *Exit Criteria:* Hermes processing loops execute and log traces inside LiteLLM while running entirely in a non-root environment; interactive web console and sandboxed tool execution in `/workspace` are fully operational.
 
 ### Phase 3: Memory Plane (Flat-File OKF & PKM Interface)
 
