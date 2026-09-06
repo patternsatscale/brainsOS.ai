@@ -8,7 +8,7 @@ model_list:
   - model_name: titan-core
     litellm_params:
       model: ollama_chat/gemma2:2b
-      api_base: http://ollama:11434
+      api_base: http://127.0.0.1:11434
       # Hardware serialization: Protects unified LPDDR5x memory bus on GB10 / Apple Silicon
       max_parallel_requests: 1
       timeout: 300
@@ -17,14 +17,14 @@ model_list:
   - model_name: gemma2:2b
     litellm_params:
       model: ollama_chat/gemma2:2b
-      api_base: http://ollama:11434
+      api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
 
   - model_name: llama3.2:3b
     litellm_params:
       model: ollama_chat/llama3.2:3b
-      api_base: http://ollama:11434
+      api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
 
@@ -34,5 +34,5 @@ litellm_settings:
   request_timeout: 300
 
 general_settings:
-  # Reads master key from environment for key administration & kill switch
-  master_key: os.environ/LITELLM_MASTER_KEY
+  # Master key used by Hermes agent runtime to authenticate with LiteLLM control plane
+  master_key: os.environ/HERMES_LITELLM_KEY

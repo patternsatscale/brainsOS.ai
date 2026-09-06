@@ -16,6 +16,8 @@ services:
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
       - "${CADDY_HTTPS_PORT:-443}:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -24,47 +26,6 @@ services:
       - titan-ingress
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
-
-  # ----------------------------------------------------------------------------
-  # Control Plane: LiteLLM Gateway
-  # Rate limiting, hardware serialization (max_parallel_requests=1), and key auth
-  # ----------------------------------------------------------------------------
-  litellm:
-    image: ghcr.io/berriai/litellm:main-v1.61.16
-    container_name: titan-litellm
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
-    volumes:
-      - ./config/litellm/config.yaml:/app/config.yaml:ro
-    command:
-      - "--config"
-      - "/app/config.yaml"
-      - "--port"
-      - "4000"
-      - "--num_workers"
-      - "1"
-    environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
-    networks:
-      - titan-ingress
-      - titan-internal
-      - titan-inference
-    depends_on:
-      - ollama
-
-  # ----------------------------------------------------------------------------
-  # Inference Plane: Ollama Engine
-  # Isolated backend with zero direct exposure to Hermes or external ingress
-  # ----------------------------------------------------------------------------
-  ollama:
-    image: ollama/ollama:latest
-    container_name: titan-ollama
-    restart: unless-stopped
-    volumes:
-      - ollama_models:/root/.ollama
-    networks:
-      - titan-inference
 
   # ----------------------------------------------------------------------------
   # Memory Plane: SilverBullet PKM UI
@@ -96,6 +57,8 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${HERMES_PORT:-8642}:8642"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # PURE OKF Markdown memory mount only
       - ${TITAN_DATA_DIR:-./data/memories}:/memories
@@ -108,7 +71,7 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY}
-      - LITELLM_URL=http://litellm:4000/v1
+      - LITELLM_URL=http://host.docker.internal:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/workspace
     networks:
@@ -128,16 +91,10 @@ networks:
     driver: bridge
 
   # Agent internal network: allows agent WAN egress (web browsing, Signal)
-  # and routing to LiteLLM, but completely isolates Ollama
+  # and routing to LiteLLM via host.docker.internal
   titan-internal:
     name: titan-internal
     driver: bridge
-
-  # Inference plane: STRICTLY internal network connecting LiteLLM to Ollama
-  titan-inference:
-    name: titan-inference
-    driver: bridge
-    internal: true
 
 # ==============================================================================
 # Persistent Named Volumes
@@ -147,7 +104,5 @@ volumes:
     name: titan_caddy_data
   caddy_config:
     name: titan_caddy_config
-  ollama_models:
-    name: titan_ollama_models
   hermes_runtime_state:
     name: titan_hermes_runtime_state

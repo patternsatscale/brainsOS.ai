@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Project Titan: Idempotent Host Baseline Setup Script
-# Configures host dependencies, permissions, memory directories, and model seeding
+# Configures host dependencies, native inference (Ollama), LiteLLM control plane,
+# memory storage directories, and model seeding across macOS and Ubuntu/DGX OS.
 # ==============================================================================
 
 set -euo pipefail
@@ -43,10 +44,10 @@ log_info "Detected OS: ${OS} (${ARCH})"
 if [[ "${OS}" == "Linux" ]]; then
   if [ -f /etc/os-release ]; then
     . /etc/os-release
-    log_info "Linux Distribution: ${NAME} ${VERSION_ID}"
+    log_info "Linux Distribution: ${NAME:-Linux} ${VERSION_ID:-}"
   fi
 
-  # DGX OS / Ubuntu Hardware Package Pinning
+  # DGX OS / Ubuntu Hardware Package Pinning on ASUS GX10
   if command -v apt-mark >/dev/null 2>&1; then
     log_info "Enforcing package holds on NVIDIA drivers and container toolkits..."
     for pkg in linux-nvidia-hwe-24.04 nvidia-container-toolkit; do
@@ -58,12 +59,93 @@ if [[ "${OS}" == "Linux" ]]; then
       fi
     done
   fi
+
+  # Native Ollama installation on Linux (Ubuntu / DGX OS)
+  if ! command -v ollama >/dev/null 2>&1; then
+    log_info "Installing native Ollama on Linux host..."
+    curl -fsSL https://ollama.com/install.sh | sh
+    log_success "Ollama installed on Linux."
+  else
+    log_info "Ollama is already installed on host."
+  fi
+
 elif [[ "${OS}" == "Darwin" ]]; then
-  log_info "Running on macOS (Apple Silicon). Skipping Linux-specific apt holds."
+  log_info "Running on macOS (${ARCH}). Skipping Linux-specific apt holds."
+
+  # Native Ollama installation on macOS
+  if ! command -v ollama >/dev/null 2>&1; then
+    log_info "Ollama not found. Checking Homebrew..."
+    if command -v brew >/dev/null 2>&1; then
+      log_info "Installing Ollama via Homebrew..."
+      brew install ollama
+      log_success "Ollama installed via Homebrew."
+    else
+      log_error "Homebrew is not installed. Please install Ollama from https://ollama.com or install Homebrew."
+      exit 1
+    fi
+  else
+    log_info "Ollama is already installed on macOS host."
+  fi
+fi
+
+# Verify Ollama is available
+if ! command -v ollama >/dev/null 2>&1; then
+  log_error "Ollama could not be located in PATH."
+  exit 1
+fi
+log_success "Ollama verified: $(ollama --version 2>/dev/null || echo 'installed')"
+
+# ------------------------------------------------------------------------------
+# 2. Python Environment & LiteLLM Gateway Setup
+# ------------------------------------------------------------------------------
+cd "${REPO_ROOT}"
+
+# Locate or install `uv` for ultra-fast, reproducible python virtual environment
+UV_BIN=""
+if command -v uv >/dev/null 2>&1; then
+  UV_BIN="$(command -v uv)"
+elif [ -x "${HOME}/.local/bin/uv" ]; then
+  UV_BIN="${HOME}/.local/bin/uv"
+elif [ -x "/usr/local/bin/uv" ]; then
+  UV_BIN="/usr/local/bin/uv"
+elif [ -x "/opt/homebrew/bin/uv" ]; then
+  UV_BIN="/opt/homebrew/bin/uv"
+fi
+
+if [ -z "${UV_BIN}" ]; then
+  log_info "Installing uv for Python environment management..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  if [ -x "${HOME}/.local/bin/uv" ]; then
+    UV_BIN="${HOME}/.local/bin/uv"
+  fi
+fi
+
+if [ -n "${UV_BIN}" ] && [ -x "${UV_BIN}" ]; then
+  log_info "Using uv (${UV_BIN}) to manage LiteLLM virtualenv..."
+  if [ ! -d ".venv" ]; then
+    log_info "Creating .venv virtual environment..."
+    "${UV_BIN}" venv .venv
+  fi
+  log_info "Ensuring 'litellm[proxy]' is installed in .venv..."
+  "${UV_BIN}" pip install --python .venv/bin/python "litellm[proxy]" >/dev/null 2>&1
+else
+  log_info "Using system python3 to manage LiteLLM virtualenv..."
+  if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+  fi
+  .venv/bin/pip install --upgrade pip >/dev/null 2>&1 || true
+  .venv/bin/pip install "litellm[proxy]" >/dev/null 2>&1
+fi
+
+if [ -x ".venv/bin/litellm" ]; then
+  log_success "LiteLLM control plane gateway installed in .venv."
+else
+  log_error "Failed to verify LiteLLM binary in .venv/bin/litellm"
+  exit 1
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Docker & Docker Compose Verification
+# 3. Docker & Docker Compose Verification
 # ------------------------------------------------------------------------------
 if ! command -v docker >/dev/null 2>&1; then
   log_error "Docker is not installed or not in PATH. Please install Docker first."
@@ -77,9 +159,8 @@ fi
 log_success "Docker and Docker Compose verified."
 
 # ------------------------------------------------------------------------------
-# 3. Environment Template Verification
+# 4. Environment Template Verification
 # ------------------------------------------------------------------------------
-cd "${REPO_ROOT}"
 if [ ! -f .env ]; then
   if [ -f .env.example ]; then
     log_info "Creating .env from .env.example..."
@@ -94,13 +175,11 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Storage Directories & Permissions Setup
+# 5. Storage Directories & Permissions Setup
 # ------------------------------------------------------------------------------
-# Read TITAN_DATA_DIR from .env if present, fallback to ./data/memories
 DATA_DIR=$(grep -E '^TITAN_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/memories")
 DATA_DIR="${DATA_DIR:-./data/memories}"
 
-# If path is relative, resolve from REPO_ROOT
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
 else
@@ -124,42 +203,52 @@ mkdir -p "${TARGET_MEMORIES_DIR}/knowledge"
 mkdir -p "${TARGET_MEMORIES_DIR}/rules"
 mkdir -p "${TARGET_MEMORIES_DIR}/logs"
 mkdir -p "${REPO_ROOT}/data/backups"
+mkdir -p "${REPO_ROOT}/data/control_plane"
 
 log_success "Storage layout and OKF directory scaffolding initialized."
 
 # ------------------------------------------------------------------------------
-# 5. Optional Model Seeding
+# 6. Native Model Seeding
 # ------------------------------------------------------------------------------
 if [ "${PULL_MODEL}" = true ]; then
   MODEL_NAME=$(grep -E '^INFERENCE_MODEL=' .env 2>/dev/null | cut -d '=' -f2- || echo "gemma2:2b")
   MODEL_NAME="${MODEL_NAME:-gemma2:2b}"
-  log_info "Pulling initial model '${MODEL_NAME}' into Ollama..."
-  
-  # Ensure Ollama service is running
-  docker compose up -d ollama
-  log_info "Waiting for Ollama to become ready..."
-  
-  READY=false
-  for i in {1..30}; do
-    if docker compose exec -T ollama ollama list >/dev/null 2>&1; then
-      READY=true
-      break
+  log_info "Checking native Ollama daemon status for model seeding..."
+
+  # Ensure Ollama daemon is running on 127.0.0.1:11434
+  if ! curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
+    log_info "Starting host Ollama daemon in background..."
+    OLLAMA_HOST="127.0.0.1:11434" ollama serve >"${REPO_ROOT}/data/control_plane/ollama.log" 2>&1 &
+    OLLAMA_PID=$!
+    echo "${OLLAMA_PID}" > "${REPO_ROOT}/data/control_plane/ollama.pid"
+    
+    # Wait for Ollama daemon to respond
+    READY=false
+    for i in {1..30}; do
+      if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
+        READY=true
+        break
+      fi
+      sleep 1
+    done
+
+    if [ "$READY" != true ]; then
+      log_error "Timed out waiting for host Ollama service to become ready on 127.0.0.1:11434."
+      exit 1
     fi
-    sleep 1
-  done
-  
-  if [ "$READY" = true ]; then
-    docker compose exec -T ollama ollama pull "${MODEL_NAME}"
-    log_success "Successfully pulled model: ${MODEL_NAME}"
-  else
-    log_error "Timed out waiting for Ollama service."
   fi
+
+  log_info "Pulling initial model '${MODEL_NAME}' natively into host Ollama..."
+  ollama pull "${MODEL_NAME}"
+  log_success "Successfully seeded model: ${MODEL_NAME}"
+  log_info "Current local models:"
+  ollama list
 fi
 
 log_success "Project Titan host baseline setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Review .env and set your preferred keys and domain."
-echo "  2. Start the appliance: docker compose up -d"
-echo "  3. Check logs: docker compose logs -f"
+echo "  1. Start host control plane: ./scripts/start-control-plane.sh"
+echo "  2. Start container appliance: docker compose up -d"
+echo "  3. Check status: curl http://127.0.0.1:4000/health"
 echo ""

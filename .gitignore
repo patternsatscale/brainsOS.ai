@@ -9,6 +9,8 @@ data/memories/*
 
 # Snapshots and Backups
 data/backups/
+data/control_plane/*
+!data/control_plane/.gitkeep
 *.tar.gz
 
 # Local Volume Mounts & Caches

@@ -77,7 +77,8 @@ project-titan/
 ├── data/  
 │   └── memories/             # Live host volume storage for OKF Markdown files (git-ignored)
 └── scripts/  
-    ├── setup-host.sh         # Idempotent baseline script for package locks and permissions
+    ├── setup-host.sh         # Idempotent baseline script for package locks, Ollama, and LiteLLM
+    ├── start-control-plane.sh# Service manager for host Ollama inference and LiteLLM gateway
     ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager
     └── emergency-stop.sh     # Key revocation script for immediate loop intervention
 
@@ -85,7 +86,7 @@ project-titan/
 
 -----
 
-## 4\. Phased Engineering Roadmap
+## 4. Phased Engineering Roadmap
 
 Project Titan follows a strict, step-by-step implementation discipline to prevent unvalidated configuration sprawl.
 
@@ -107,10 +108,10 @@ Phase 0: Host OS & Ingress Baseline
 
 ### Phase 1: Control Plane (Inference & LiteLLM Gateway)
 
-  * Provision local inference runtimes (vLLM or Ollama) matched to ARM64 architectural structures.
-  * Deploy LiteLLM proxy container between the local hardware engine and consumer targets.
-  * Enforce hardware-aware request queuing and initialize virtual proxy keys.
-  * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; all direct access routes to raw inference ports are firewalled.
+  * Provision native local inference runtimes (Ollama/vLLM) on the host system to maximize hardware acceleration (Metal on macOS, CUDA on GB10 / DGX OS) bound strictly to loopback (`127.0.0.1:11434`).
+  * Deploy native LiteLLM proxy gateway on the host (`:4000`) between the hardware inference engine and containerized consumers (`host.docker.internal:4000`).
+  * Enforce hardware-aware request queuing (`max_parallel_requests: 1`) and initialize virtual proxy keys (`HERMES_LITELLM_KEY`).
+  * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; all direct access routes to raw inference ports are firewalled/bound to localhost loopback.
 
 ### Phase 2: Agent Plane (Isolated Hermes Deployment)
 
