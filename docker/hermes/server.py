@@ -17,7 +17,18 @@ import subprocess
 import socketserver
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+
+# Project Titan OKF Memory Plugin
+try:
+    from hermes_okf import HermesOKF
+except ImportError:
+    try:
+        sys.path.append("/app")
+        from hermes_okf import HermesOKF
+    except ImportError:
+        HermesOKF = None
 
 PORT = int(os.environ.get("HERMES_PORT", 8642))
 CONFIG_PATH = os.environ.get("CONFIG_PATH", "/app/config/config.json")
@@ -30,6 +41,14 @@ HERMES_LITELLM_KEY = os.environ.get("HERMES_LITELLM_KEY", "")
 
 # Ensure skills directory exists
 os.makedirs(SKILLS_DIR, exist_ok=True)
+okf_skill_dest = os.path.join(SKILLS_DIR, "hermes_okf.py")
+if not os.path.exists(okf_skill_dest) and os.path.exists("/app/hermes_okf.py"):
+    try:
+        import shutil
+        shutil.copyfile("/app/hermes_okf.py", okf_skill_dest)
+        os.chmod(okf_skill_dest, 0o755)
+    except Exception:
+        pass
 
 
 def load_config():
@@ -333,18 +352,18 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       </div>
 
       <div class="card">
-        <h2>Storage Planes</h2>
+        <h2>Storage & Memory Planes</h2>
         <div class="status-item">
           <span class="status-label">Memory Plane:</span>
-          <span class="status-val ok">/memories (Pure OKF)</span>
+          <span class="status-val ok" id="memPlaneStatus">/memories (Pure OKF)</span>
         </div>
         <div class="status-item">
-          <span class="status-label">Tool Workspace:</span>
-          <span class="status-val">/workspace</span>
+          <span class="status-label">Context Window:</span>
+          <span class="status-val" id="ctxWindowStatus">Loading...</span>
         </div>
         <div class="status-item">
-          <span class="status-label">Skills Registry:</span>
-          <span class="status-val" id="skillsCount">0 Skills</span>
+          <span class="status-label">Notes Indexed:</span>
+          <span class="status-val" id="memNotesCount">0 Notes</span>
         </div>
       </div>
     </div>
@@ -415,11 +434,36 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     <!-- TAB: MEMORIES -->
     <div id="tab-memories" class="tab-content">
       <div class="card">
-        <h2>Open Knowledge Format (OKF) Memories Explorer</h2>
-        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">
-          Inspecting human-auditable flat-file markdown notes in <code>/memories</code>.
-        </p>
-        <div id="memoryTree" style="font-size: 13px;">Loading memory notes...</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h2>Open Knowledge Format (OKF) Memories Explorer</h2>
+            <small style="color: var(--text-muted);">Decoupled flat-file knowledge base shared live with SilverBullet PKM.</small>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <a href="http://memory.titan.local" target="_blank" class="auth-btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+              <span>🌐 Open SilverBullet UI</span>
+            </a>
+            <button class="auth-btn" onclick="loadMemories()">Refresh</button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+          <input type="text" id="memorySearchInput" placeholder="Search knowledge, rules, or logs..." style="flex: 1;" onkeydown="if(event.key==='Enter') searchMemories()">
+          <button class="primary-btn" onclick="searchMemories()">Search</button>
+          <button class="auth-btn" onclick="filterMemories('all')">All</button>
+          <button class="auth-btn" onclick="filterMemories('knowledge')">Knowledge</button>
+          <button class="auth-btn" onclick="filterMemories('rules')">Rules</button>
+          <button class="auth-btn" onclick="filterMemories('logs')">Logs</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 14px; min-height: 350px;">
+          <div id="memoryList" style="background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 10px; max-height: 480px; overflow-y: auto;">
+            Loading memory notes...
+          </div>
+          <div id="memoryViewer" style="background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 14px; max-height: 480px; overflow-y: auto;">
+            <div style="color: var(--text-muted); font-size: 13px;">Select a note on the left to inspect its OKF frontmatter and content.</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -487,6 +531,105 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       if (tabId === 'memories') loadMemories();
     }
 
+    let cachedNotes = [];
+    let activeFilter = 'all';
+
+    async function loadMemories() {
+      const listEl = document.getElementById('memoryList');
+      try {
+        const res = await fetch('/api/memories');
+        const data = await res.json();
+        cachedNotes = data.notes || [];
+        document.getElementById('memNotesCount').textContent = `${cachedNotes.length} Notes`;
+        renderNotesList();
+      } catch (e) {
+        listEl.innerHTML = '<div style="color: var(--danger); font-size: 12px;">Failed loading memories: ' + e.message + '</div>';
+      }
+    }
+
+    function filterMemories(category) {
+      activeFilter = category;
+      renderNotesList();
+    }
+
+    function renderNotesList(notesToRender) {
+      const listEl = document.getElementById('memoryList');
+      const notes = notesToRender || cachedNotes;
+      let filtered = notes;
+      if (!notesToRender && activeFilter !== 'all') {
+        filtered = notes.filter(n => n.type === activeFilter || n.path.startsWith(activeFilter + '/'));
+      }
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">No notes found in this category.</div>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      filtered.forEach(note => {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding: 8px 10px; border-bottom: 1px solid #21262d; cursor: pointer; border-radius: 4px;';
+        item.onmouseover = () => item.style.background = '#161b22';
+        item.onmouseout = () => item.style.background = 'transparent';
+        item.onclick = () => viewNote(note.path);
+
+        const typeBadge = `<span style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #388bfd26; color: var(--accent);">${note.type || 'note'}</span>`;
+        item.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 13px; color: #f0f6fc;">${note.title || note.path}</strong>
+            ${typeBadge}
+          </div>
+          <small style="color: var(--text-muted); font-size: 11px; display: block;">${note.path}</small>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    async function viewNote(path) {
+      const viewer = document.getElementById('memoryViewer');
+      viewer.innerHTML = '<div style="color: var(--text-muted); font-size: 12px;">Loading note...</div>';
+      try {
+        const res = await fetch('/api/memories/note?path=' + encodeURIComponent(path));
+        const data = await res.json();
+        if (data.error) {
+          viewer.innerHTML = '<div style="color: var(--danger); font-size: 12px;">' + data.error + '</div>';
+          return;
+        }
+
+        const tagsHtml = (data.tags || []).map(t => `<span class="badge" style="font-size: 10px;">${t}</span>`).join(' ');
+        viewer.innerHTML = `
+          <div style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="font-size: 16px; color: #f0f6fc;">${data.title}</h3>
+              <span class="badge" style="background:#23863626; color:var(--success); border-color:#2386364d;">OKF Verified</span>
+            </div>
+            <div style="margin-top: 6px; font-size: 11px; color: var(--text-muted);">
+              Path: <code>${data.path}</code> | Type: <code>${data.type}</code> | Active: <code>${data.active}</code>
+            </div>
+            <div style="margin-top: 6px;">${tagsHtml}</div>
+          </div>
+          <pre style="white-space: pre-wrap; font-family: inherit; font-size: 13px; color: #c9d1d9; background: transparent; border: none; padding: 0;">${data.body}</pre>
+        `;
+      } catch (e) {
+        viewer.innerHTML = '<div style="color: var(--danger); font-size: 12px;">Error reading note: ' + e.message + '</div>';
+      }
+    }
+
+    async function searchMemories() {
+      const q = document.getElementById('memorySearchInput').value.trim();
+      if (!q) {
+        renderNotesList();
+        return;
+      }
+      try {
+        const res = await fetch('/api/memories/search?q=' + encodeURIComponent(q));
+        const data = await res.json();
+        renderNotesList(data.results || []);
+      } catch (e) {
+        alert('Search failed: ' + e.message);
+      }
+    }
+
     async function loadStatus() {
       try {
         const res = await fetch('/api/status');
@@ -494,6 +637,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         document.getElementById('secUser').textContent = `UID ${data.uid} (${data.is_root ? 'ROOT' : 'non-root unprivileged'})`;
         document.getElementById('secSocket').textContent = data.docker_socket_present ? 'PRESENT (INSECURE)' : 'Absent (Secure)';
         document.getElementById('llmUrl').textContent = data.litellm_url;
+        document.getElementById('ctxWindowStatus').textContent = `${data.context_window.toLocaleString()} tokens (${data.context_window >= 16384 ? 'GX10 Scale' : 'macOS Safe'})`;
+        document.getElementById('memNotesCount').textContent = `${data.memory_notes_count || 0} Notes`;
       } catch (e) {
         console.error('Failed to load status:', e);
       }
@@ -660,16 +805,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       }
     }
 
-    async function loadMemories() {
-      const el = document.getElementById('memoryTree');
-      try {
-        const res = await fetch('/api/memories');
-        const data = await res.json();
-        el.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-      } catch (e) {
-        el.textContent = 'Failed to load memories: ' + e.message;
-      }
-    }
+    // Memories functions moved above loadStatus
 
     loadStatus();
   </script>
@@ -737,6 +873,10 @@ class HermesHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/status":
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            is_pure, violations = okf_inst.validate_purity() if okf_inst else (True, [])
+            notes_count = len(okf_inst.list_notes()) if okf_inst else 0
+            ctx_tokens = int(os.environ.get("INFERENCE_NUM_CTX", 4096))
             self.send_json(200, {
                 "uid": os.getuid(),
                 "gid": os.getgid(),
@@ -744,7 +884,11 @@ class HermesHandler(http.server.BaseHTTPRequestHandler):
                 "docker_socket_present": os.path.exists("/var/run/docker.sock"),
                 "memory_dir": MEMORY_DIR,
                 "workspace_dir": WORKSPACE_DIR,
-                "litellm_url": LITELLM_URL
+                "litellm_url": LITELLM_URL,
+                "context_window": ctx_tokens,
+                "memory_notes_count": notes_count,
+                "memory_is_pure": is_pure,
+                "memory_violations": violations
             })
             return
 
@@ -787,12 +931,67 @@ class HermesHandler(http.server.BaseHTTPRequestHandler):
             self.send_json(200, {"skills": skills})
             return
 
-        if self.path == "/api/memories":
-            tree = {}
-            for root, dirs, files in os.walk(MEMORY_DIR):
-                rel = os.path.relpath(root, MEMORY_DIR)
-                tree[rel] = [f for f in files if f.endswith(".md")]
-            self.send_json(200, {"memories": tree})
+        if self.path.startswith("/api/memories/note?"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            note_path = qs.get("path", [""])[0]
+            if not note_path:
+                self.send_json(400, {"error": "Missing note path parameter"})
+                return
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            if not okf_inst:
+                self.send_json(500, {"error": "OKF plugin not loaded"})
+                return
+            try:
+                note = okf_inst.read_note(note_path)
+                self.send_json(200, {
+                    "path": note.rel_path,
+                    "title": note.title,
+                    "type": note.note_type,
+                    "tags": note.tags,
+                    "active": note.active,
+                    "priority": note.priority,
+                    "body": note.body,
+                    "metadata": note.metadata
+                })
+            except Exception as e:
+                self.send_json(404, {"error": str(e)})
+            return
+
+        if self.path.startswith("/api/memories/search?"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            query = qs.get("q", [""])[0]
+            cat = qs.get("category", [None])[0]
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            if not okf_inst:
+                self.send_json(500, {"error": "OKF plugin not loaded"})
+                return
+            results = okf_inst.search(query, cat)
+            self.send_json(200, {"results": results})
+            return
+
+        if self.path == "/api/memories/purity":
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            if not okf_inst:
+                self.send_json(200, {"is_pure": True, "violations": []})
+                return
+            is_pure, violations = okf_inst.validate_purity()
+            self.send_json(200, {"is_pure": is_pure, "violations": violations})
+            return
+
+        if self.path == "/api/memories" or self.path.startswith("/api/memories?"):
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            if okf_inst:
+                notes = okf_inst.list_notes()
+                is_pure, violations = okf_inst.validate_purity()
+                self.send_json(200, {"notes": notes, "is_pure": is_pure, "count": len(notes)})
+            else:
+                tree = {}
+                for root, dirs, files in os.walk(MEMORY_DIR):
+                    rel = os.path.relpath(root, MEMORY_DIR)
+                    tree[rel] = [f for f in files if f.endswith(".md")]
+                self.send_json(200, {"memories": tree})
             return
 
         self.send_json(404, {"error": "Not Found"})
@@ -811,6 +1010,24 @@ class HermesHandler(http.server.BaseHTTPRequestHandler):
             model = req_data.get("model", "titan-core")
             messages = req_data.get("messages", [{"role": "user", "content": prompt}])
             key = self.get_auth_key()
+
+            # Dynamically inject active rules and working memory via OKF plugin
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            if okf_inst:
+                active_rules = okf_inst.get_active_rules_context()
+                working_mem = okf_inst.get_working_memory_context()
+                additions = []
+                if working_mem:
+                    additions.append(working_mem)
+                if active_rules:
+                    additions.append(active_rules)
+
+                if additions:
+                    context_block = "\n".join(additions)
+                    if messages and messages[0].get("role") == "system":
+                        messages[0]["content"] += "\n" + context_block
+                    else:
+                        messages.insert(0, {"role": "system", "content": f"You are Hermes Titan, operating within Project Titan.\n{context_block}"})
 
             litellm_endpoint = f"{LITELLM_URL.rstrip('/')}/chat/completions"
             payload = json.dumps({
@@ -835,6 +1052,27 @@ class HermesHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json(e.code, {"error": f"LiteLLM error: {err_content}"})
             except Exception as e:
                 self.send_json(502, {"error": f"Failed to connect to LiteLLM at {litellm_endpoint}: {str(e)}"})
+            return
+
+        if self.path == "/api/memories/note":
+            rel_path = req_data.get("path", "").strip()
+            content = req_data.get("content", "")
+            title = req_data.get("title", "")
+            tags = req_data.get("tags", [])
+            active = req_data.get("active", True)
+            priority = req_data.get("priority", "normal")
+            if not rel_path:
+                self.send_json(400, {"error": "Missing note path"})
+                return
+            okf_inst = HermesOKF(MEMORY_DIR) if HermesOKF else None
+            if not okf_inst:
+                self.send_json(500, {"error": "OKF plugin not loaded"})
+                return
+            try:
+                note = okf_inst.write_note(rel_path, content, title=title, tags=tags, active=active, priority=priority)
+                self.send_json(200, {"status": "ok", "saved": note.rel_path, "title": note.title})
+            except Exception as e:
+                self.send_json(400, {"error": str(e)})
             return
 
         if self.path == "/api/skills":

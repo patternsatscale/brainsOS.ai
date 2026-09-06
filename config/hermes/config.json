@@ -11,11 +11,26 @@
     "model": "titan-core",
     "api_key_env": "HERMES_LITELLM_KEY",
     "temperature": 0.2,
-    "max_tokens": 4096
+    "max_tokens": 4096,
+    "context_window_env": "INFERENCE_NUM_CTX"
   },
   "memory": {
     "format": "OKF",
     "storage_path": "/memories",
+    "plugin": {
+      "name": "hermes-okf",
+      "enabled": true,
+      "rule_injection": {
+        "enabled": true,
+        "require_active_tag": false
+      },
+      "retrieval": {
+        "on_demand_only": true,
+        "knowledge_injection": false,
+        "logs_injection": false
+      },
+      "enforce_purity": true
+    },
     "rules": {
       "format_only": "markdown",
       "disallowed_content": [

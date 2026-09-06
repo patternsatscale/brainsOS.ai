@@ -12,6 +12,7 @@ model_list:
       # Hardware serialization: Protects unified LPDDR5x memory bus on GB10 / Apple Silicon
       max_parallel_requests: 1
       timeout: 300
+      num_ctx: os.environ/INFERENCE_NUM_CTX
 
   # Direct Model Name Aliases
   - model_name: gemma2:2b
@@ -20,6 +21,7 @@ model_list:
       api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
+      num_ctx: os.environ/INFERENCE_NUM_CTX
 
   - model_name: llama3.2:3b
     litellm_params:
@@ -27,6 +29,7 @@ model_list:
       api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
+      num_ctx: os.environ/INFERENCE_NUM_CTX
 
 litellm_settings:
   drop_params: true

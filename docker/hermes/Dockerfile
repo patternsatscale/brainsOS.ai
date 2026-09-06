@@ -20,9 +20,14 @@ RUN groupadd -g 1000 hermes && \
     mkdir -p /workspace /app /memories && \
     chown -R hermes:hermes /workspace /app /memories
 
-# Copy agent server application
+# Copy agent server application and OKF memory plugin
 COPY docker/hermes/server.py /app/server.py
-RUN chmod +x /app/server.py && chown hermes:hermes /app/server.py
+COPY docker/hermes/hermes_okf.py /app/hermes_okf.py
+RUN chmod +x /app/server.py /app/hermes_okf.py && \
+    chown hermes:hermes /app/server.py /app/hermes_okf.py && \
+    mkdir -p /workspace/skills && \
+    cp /app/hermes_okf.py /workspace/skills/hermes_okf.py && \
+    chown -R hermes:hermes /workspace
 
 # Switch to unprivileged user
 USER hermes

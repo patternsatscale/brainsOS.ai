@@ -40,10 +40,12 @@ LITELLM_DB_PORT="${LITELLM_DB_PORT:-5432}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 HERMES_LITELLM_KEY="${HERMES_LITELLM_KEY:-}"
 DATABASE_URL="${DATABASE_URL:-}"
+INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX:-4096}"
 
 # Ensure .venv/bin is in PATH for prisma and litellm
 export PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 export DATABASE_URL="${DATABASE_URL}"
+export INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX}"
 
 # Helper to check if database port is listening
 check_db_ready() {
