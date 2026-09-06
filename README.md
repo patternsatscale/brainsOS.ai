@@ -79,19 +79,23 @@ project-titan/
 │   │   └── Caddyfile         # Reverse proxy virtual hosts mapping *.titan.local
 │   ├── litellm/  
 │   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
-│   └── hermes/  
-│       ├── config.json       # Agent execution profiles, skills path, and OKF settings
-│       └── SOUL.md           # Agent persona and behavioral directives
+│   ├── hermes/  
+│   │   ├── config.json       # Agent execution profiles, skills path, and OKF settings
+│   │   └── SOUL.md           # Agent persona and behavioral directives
+│   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── docker/
 │   └── hermes/
 │       ├── Dockerfile        # Unprivileged multi-arch agent container definition
-│       └── server.py         # Lightweight Hermes web console and sandboxed runner
+│       ├── hermes_okf.py     # Standalone OKF memory manager, rule injector & CLI skill runner
+│       └── server.py         # Lightweight Hermes web console, OKF explorer & sandboxed runner
 ├── data/  
-│   ├── memories/             # Live host volume storage for OKF Markdown files (git-ignored)
+│   ├── memories/             # Live host volume storage for OKF Markdown files
 │   └── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
 └── scripts/  
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
+    ├── setup-memories.sh     # Idempotent provisioning & scaffolding manager for memory plane
+    ├── verify-memories.sh    # Automated verification harness for SilverBullet & OKF sync
     ├── start-control-plane.sh# Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
     ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager
     └── emergency-stop.sh     # Key revocation script for immediate loop intervention
@@ -109,6 +113,7 @@ Phase 0: Host OS & Ingress Baseline
         └── Phase 2: Isolated Agent Execution
               └── Phase 3: OKF Memory & SilverBullet Integration
                     └── Phase 4: System Hardening & Validation
+                          └── Phase 5: Benchmarking & Optimization
 
 ```
 
@@ -136,10 +141,12 @@ Phase 0: Host OS & Ingress Baseline
 
 ### Phase 3: Memory Plane (Flat-File OKF & PKM Interface)
 
-  * Establish host storage mappings to `/data/titan/memories` using unified permission access keys (`1000:1000`).
-  * Deploy the SilverBullet visual inspection workspace container mounting the same storage directory.
-  * Initialize the `hermes-okf` plugin structure to track knowledge maps, rulesets, and logs as standard markdown documents.
-  * *Exit Criteria:* Bi-directional persistence is verified—content modifications applied inside SilverBullet propagate to active agent reasoning streams.
+  * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/memories` on GX10, `./data/memories` on macOS) using unified permission access keys (`1000:1000`).
+  * Deploy the SilverBullet visual inspection workspace container mounting the same storage directory, accessible via Caddy at `memory.titan.local`.
+  * Deploy the `hermes-okf` plugin and CLI tool (`docker/hermes/hermes_okf.py`) to manage `/memories/knowledge`, `/memories/rules`, and `/memories/logs`.
+  * Implement budget-aware dynamic rule injection and working memory scratchpad loading into Hermes reasoning loops.
+  * Enforce hardware-adaptive context windows: safe 4,096 tokens on 16GB macOS workstations and 32,768 tokens on ASUS Ascent GX10 appliances.
+  * *Exit Criteria:* Bi-directional persistence and synchronization verified—content modifications applied inside SilverBullet propagate to active agent reasoning streams; memory purity audit asserts strictly human-auditable flat-file Markdown.
 
 ### Phase 4: System Hardening & Operational Readiness
 
@@ -147,3 +154,11 @@ Phase 0: Host OS & Ingress Baseline
   * Enforce absolute network separation to guarantee the hardware appliance is unreachable from enterprise or corporate nodes.
   * Execute recovery test validations: simulate a runaway agent processing thread, apply immediate key revocation via `emergency-stop.sh`, and verify graceful degradation without impacting host states.
   * *Exit Criteria:* Deterministic cluster reconstruction from bare config parameters via `docker compose down && docker compose up -d` with complete retention of memory trees.
+
+### Phase 5: Benchmarking, Optimization & Observability
+
+  * Benchmark Ollama vs. vLLM vs. SGLang on native ARM64 / DGX OS to evaluate prefill speed and KV-cache memory pressure.
+  * Measure context scaling performance across 4k, 8k, 16k, 32k, and 64k token windows.
+  * Integrate LLM tracing and observability (Langfuse) into LiteLLM control plane gateway.
+  * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies.
+

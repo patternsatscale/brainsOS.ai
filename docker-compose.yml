@@ -60,6 +60,9 @@ services:
     image: zefhemel/silverbullet:latest
     container_name: titan-silverbullet
     restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    security_opt:
+      - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${SILVERBULLET_PORT:-3000}:3000"
     volumes:
@@ -68,6 +71,8 @@ services:
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - SB_HOSTNAME=0.0.0.0
+      - SB_PORT=3000
     networks:
       - titan-ingress
 
@@ -105,6 +110,7 @@ services:
       - LITELLM_URL=http://litellm:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/workspace
+      - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-4096}
     networks:
       - titan-ingress
       - titan-internal

@@ -88,6 +88,28 @@ elif [[ "${OS}" == "Darwin" ]]; then
   fi
 fi
 
+# ------------------------------------------------------------------------------
+# 1B. Hardware-Adaptive Context Window Detection (macOS vs ASUS GX10)
+# ------------------------------------------------------------------------------
+IS_GX10=false
+if [[ "${OS}" == "Linux" ]]; then
+  if grep -qi "dgx" /etc/os-release 2>/dev/null || [ -d "/data/titan" ]; then
+    IS_GX10=true
+  fi
+  TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo "0")
+  if [ "${TOTAL_MEM_KB}" -gt 30000000 ]; then
+    IS_GX10=true
+  fi
+fi
+
+if [ "${IS_GX10}" = true ]; then
+  log_info "Detected production ASUS Ascent GX10 (GB10 / ~273 GB/s unified memory). Scaling context to 32k tokens."
+  DETECTED_CTX=32768
+else
+  log_info "Workstation profile: macOS (Apple Silicon). Pinned to safe 4k context window (protects 16GB RAM)."
+  DETECTED_CTX=4096
+fi
+
 # Verify Ollama is available
 if ! command -v ollama >/dev/null 2>&1; then
   log_error "Ollama could not be located in PATH."
@@ -185,9 +207,22 @@ else
   log_info ".env file already exists."
 fi
 
+# Ensure INFERENCE_NUM_CTX is populated in .env
+if [ -f .env ] && ! grep -q '^INFERENCE_NUM_CTX=' .env; then
+  echo "" >> .env
+  echo "# Inference Context Window (Tokens) - Hardware Adaptive" >> .env
+  echo "INFERENCE_NUM_CTX=${DETECTED_CTX}" >> .env
+  log_success "Appended INFERENCE_NUM_CTX=${DETECTED_CTX} to .env"
+fi
+
 # ------------------------------------------------------------------------------
 # 5. Storage Directories & Permissions Setup
 # ------------------------------------------------------------------------------
+if [ -f "${REPO_ROOT}/scripts/setup-memories.sh" ]; then
+  log_info "Invoking Memory Plane setup and OKF scaffolding..."
+  "${REPO_ROOT}/scripts/setup-memories.sh"
+fi
+
 DATA_DIR=$(grep -E '^TITAN_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/memories")
 DATA_DIR="${DATA_DIR:-./data/memories}"
 
@@ -197,22 +232,6 @@ else
   TARGET_MEMORIES_DIR="${DATA_DIR}"
 fi
 
-log_info "Target OKF memories directory: ${TARGET_MEMORIES_DIR}"
-
-if [[ "$TARGET_MEMORIES_DIR" == /data/titan/* ]]; then
-  log_info "Creating production system path with sudo: ${TARGET_MEMORIES_DIR}..."
-  sudo mkdir -p "${TARGET_MEMORIES_DIR}"
-  sudo chown -R 1000:1000 "${TARGET_MEMORIES_DIR}"
-  sudo chmod -R 775 "${TARGET_MEMORIES_DIR}"
-else
-  mkdir -p "${TARGET_MEMORIES_DIR}"
-  chmod -R 775 "${TARGET_MEMORIES_DIR}" || true
-fi
-
-# Ensure subdirectories for OKF organization exist
-mkdir -p "${TARGET_MEMORIES_DIR}/knowledge"
-mkdir -p "${TARGET_MEMORIES_DIR}/rules"
-mkdir -p "${TARGET_MEMORIES_DIR}/logs"
 mkdir -p "${REPO_ROOT}/data/backups"
 mkdir -p "${REPO_ROOT}/data/control_plane"
 

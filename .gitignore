@@ -3,14 +3,16 @@
 *.env
 !.env.example
 
-# Live Agent Memories (Keep folder structure, ignore live notes)
+# Explicitly ensure config templates are tracked
+!config/memories/**
+
+# Live Agent Memories (Keep root gitkeep, live notes remain git-ignored)
 data/memories/*
 !data/memories/.gitkeep
 
-# Snapshots and Backups
+# Snapshots, Runtime State & Backups
 data/backups/
-data/control_plane/*
-!data/control_plane/.gitkeep
+data/control_plane/
 *.tar.gz
 
 # Local Volume Mounts & Caches
@@ -31,4 +33,4 @@ Thumbs.db
 
 # Logs
 *.log
-logs/
+/logs/
