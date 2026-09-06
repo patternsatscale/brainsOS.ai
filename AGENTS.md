@@ -2,6 +2,16 @@
 
 This document establishes the mandatory protocol for AI agents (and human developers) contributing to **Project Titan**. Adherence to these rules ensures architectural boundaries remain uncompromised and development remains disciplined and auditable.
 
+## 0. Target Architecture & Hardware Context
+
+- **Production Target**: **ASUS Ascent GX10** appliance (NVIDIA GB10 chip, ARM64, unified LPDDR5x memory bus ~273 GB/s, running DGX OS / Ubuntu 24.04).
+- **Development Workstation**: **macOS (Apple Silicon)** providing native ARM64 container parity.
+- **Portability Rules**:
+  - All Docker images must run natively on ARM64 without emulation.
+  - Storage paths are parameterized via `.env`: `./data/memories` for local macOS development, `/data/titan/memories` on the production GX10.
+  - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup-host.sh`).
+- **Architectural Reference**: Agents must consult [README.md](file:///Users/pats/Development/project_titan/README.md) for full plane topology and system specifications.
+
 ---
 
 ## 1. The Ticket-Driven Workflow

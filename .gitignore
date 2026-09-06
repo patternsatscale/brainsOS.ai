@@ -15,6 +15,9 @@ data/backups/
 ollama_data/
 .cache/
 tmp/
+.venv/
+venv/
+__pycache__/
 
 # OS & Editor
 .DS_Store
