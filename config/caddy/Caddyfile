@@ -28,7 +28,7 @@ http://proxy.{$TITAN_DOMAIN:titan.local}, http://proxy.localhost {
 		output stdout
 		format console
 	}
-	reverse_proxy litellm:4000 {
+	reverse_proxy host.docker.internal:4000 {
 		flush_interval -1
 	}
 }
@@ -70,7 +70,7 @@ http://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost {
 <body>
   <div class="card">
     <h1>Project Titan Gateway</h1>
-    <p>Isolated Autonomous Agent Appliance running on DGX OS / ARM64.</p>
+    <p>Isolated Autonomous Agent Appliance.</p>
     <ul>
       <li><a href="http://hermes.titan.local">hermes.titan.local</a><span class="tag">Agent Plane</span><br><small>Hermes Agent Web UI & Interaction Console</small></li>
       <li><a href="http://proxy.titan.local">proxy.titan.local</a><span class="tag">Control Plane</span><br><small>LiteLLM Proxy, Virtual Keys & Rate Limits</small></li>

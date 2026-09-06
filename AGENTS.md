@@ -2,6 +2,16 @@
 
 This document establishes the mandatory protocol for AI agents (and human developers) contributing to **Project Titan**. Adherence to these rules ensures architectural boundaries remain uncompromised and development remains disciplined and auditable.
 
+## 0. Target Architecture & Hardware Context
+
+- **Production Target**: **ASUS Ascent GX10** appliance (NVIDIA GB10 chip, ARM64, unified LPDDR5x memory bus ~273 GB/s, running DGX OS / Ubuntu 24.04).
+- **Development Workstation**: **macOS (Apple Silicon)** providing native ARM64 container parity.
+- **Portability Rules**:
+  - All Docker images must run natively on ARM64 without emulation.
+  - Storage paths are parameterized via `.env`: `./data/memories` for local macOS development, `/data/titan/memories` on the production GX10.
+  - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup-host.sh`).
+- **Architectural Reference**: Agents must consult [README.md](file:///Users/pats/Development/project_titan/README.md) for full plane topology and system specifications.
+
 ---
 
 ## 1. The Ticket-Driven Workflow
@@ -33,7 +43,13 @@ Before submitting work or opening a PR, the agent **must** run the verification 
 2. Docker Compose configuration: `docker compose config`
 3. Any service-specific validations (e.g. Caddy validate, API tests).
 
-### Step 5: Walkthrough Documentation in `/docs`
+### Step 5: Architecture & Documentation Alignment (`README.md` & `AGENTS.md`)
+Before finalizing a ticket or opening a PR, the agent **must** review whether the changes introduce any architectural shifts, new services, port updates, or revised security boundaries:
+- **Topology & Runtimes**: If containers, host processes, ports, or environment parameters changed, update [README.md](file:///Users/pats/Development/project_titan/README.md).
+- **Rules & Guardrails**: If operational rules, agent procedures, or workflows changed, update [AGENTS.md](file:///Users/pats/Development/project_titan/AGENTS.md).
+- Documentation must never drift from the live codebase; all doc updates must be included within the ticket's branch and PR.
+
+### Step 6: Walkthrough Documentation in `/docs`
 Every ticket completion **must** include a dedicated walkthrough document placed in the `docs/` directory using the naming convention:
 ```text
 docs/YYYY-MM-DD-ticket<issue_number>.md
@@ -46,7 +62,7 @@ The walkthrough document must record:
 3. **Automated & Manual Test Logs**: Exact terminal commands and outputs validating functionality.
 4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
 
-### Step 6: Pull Request & Issue Closure
+### Step 7: Pull Request & Issue Closure
 To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instantly readable without line truncation:
 1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
 2. **Front-Load the Ticket Number & Add Co-Authorship**:
@@ -97,8 +113,8 @@ Agents must never violate the following zero-trust operational boundaries:
 - All internal runtime packages, tools, caches, and local databases used by the agent must reside exclusively within the container's internal filesystem/volume (`/workspace`).
 
 ### Rule 2: Inference Boundary
-- Raw inference engines (`ollama:11434` or vLLM) must remain isolated on `titan-inference` (`internal: true`).
-- The agent plane (`hermes`) must **never** be routed directly to Ollama. All LLM completions must route strictly through the LiteLLM control plane gateway (`litellm:4000`).
+- Raw inference engines (`ollama:11434` or vLLM) run natively on the host system, bound strictly to loopback (`127.0.0.1:11434`), and are completely unreachable from external networks.
+- The agent plane (`hermes`) running inside Docker must **never** be routed directly to Ollama. All LLM completions must route strictly through the host LiteLLM control plane gateway (`http://host.docker.internal:4000/v1`).
 
 ### Rule 3: Hardware Serialization
 - To protect the unified LPDDR5x memory bus on the GB10 chip and Apple Silicon from bandwidth thrashing, LiteLLM must enforce serialized request scheduling via `max_parallel_requests: 1` (or `2` max).
