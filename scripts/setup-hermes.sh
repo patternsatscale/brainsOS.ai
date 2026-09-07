@@ -55,11 +55,19 @@ fi
 log_success "Docker daemon verified."
 
 # ------------------------------------------------------------------------------
-# 2. Memory Plane & Scaffolding Permissions
+# 2. Memory & Workspace Plane Scaffolding & Permissions
 # ------------------------------------------------------------------------------
 MEMORIES_DIR="${TITAN_DATA_DIR:-${REPO_ROOT}/data/memories}"
 mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
 log_success "Memory plane directories verified at ${MEMORIES_DIR}."
+
+WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
+mkdir -p "${WORKSPACE_DIR}"
+chmod 775 "${WORKSPACE_DIR}" || true
+if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
+  touch "${REPO_ROOT}/data/workspace/.gitkeep"
+fi
+log_success "Workspace host storage verified at ${WORKSPACE_DIR}."
 
 # ------------------------------------------------------------------------------
 # 3. Build Unprivileged Hermes Sandbox Image
