@@ -37,11 +37,12 @@ Never develop or commit directly on the `main` branch.
 ### Step 3: Planning & Architectural Alignment
 For non-trivial tasks, draft or update the implementation plan to map directly to the acceptance criteria checkboxes.
 
-### Step 4: Verification Checklist
+### Step 4: Verification Checklist & Script-First Execution
 Before submitting work or opening a PR, the agent **must** run the verification steps detailed in the ticket.
-1. Shell syntax & linting: `bash -n scripts/*.sh`
-2. Docker Compose configuration: `docker compose config`
-3. Any service-specific validations (e.g. Caddy validate, API tests).
+- **Script-First Validation**: Always test via repository scripts (`./scripts/verify-*.sh`, `./scripts/setup-*.sh`, `./scripts/backup.sh`) rather than one-off manual Docker or terminal commands.
+- Shell syntax & linting: `bash -n scripts/*.sh`
+- Docker Compose configuration: `docker compose config`
+- Any service-specific validations (e.g. Caddy validate, API tests).
 
 ### Step 5: Architecture & Documentation Alignment (`README.md` & `AGENTS.md`)
 Before finalizing a ticket or opening a PR, the agent **must** review whether the changes introduce any architectural shifts, new services, port updates, or revised security boundaries:
@@ -152,4 +153,11 @@ Agents must never violate the following zero-trust operational boundaries:
 - Persona documents (`SOUL.md`), agent prompts, and runtime configurations provided to the agent plane (`hermes`) must observe strict need-to-know principles.
 - **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `titan-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
 - The agent must be instructed exclusively on its assigned interfaces (e.g. its OpenAI-compatible completions endpoint `http://litellm:4000/v1`), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
+
+### Rule 8: Script-Driven Discipline (Zero Ad-Hoc Container/Host Patching)
+- **Zero Ad-Hoc Fixes**: AI agents and developers must **never** "fix" system issues, container states, volumes, networks, or file permissions using direct, one-off ad-hoc terminal commands (e.g. manual `docker exec`, `docker cp`, ad-hoc container restarts, manual host `chown`/`chmod` overrides) that leave no reproducible trace in the repository.
+- **Codify in `scripts/*.sh`**: Every operational action—setup, directory scaffolding, permissions enforcement, build automation, backup/restore, emergency interventions, and health verifications—must be codified as an idempotent shell script within the `scripts/` directory.
+- **Test the Scripts, Not One-Offs**: When debugging or verifying functionality, agents must execute the scripts themselves (e.g. `./scripts/setup-hermes.sh`, `./scripts/verify-hermes.sh`, `./scripts/backup.sh`). If a behavior needs adjustment, update the underlying script, Dockerfile, or configuration file, and re-run the script to validate the fix.
+- **The GX10 Reproducibility Guarantee**: Anyone cloning the repository onto a fresh host (macOS development workstation or production ASUS Ascent GX10 appliance) must be able to achieve a 100% identical, functional state solely by executing the documented scripts in `scripts/`. If a step requires manual human intervention or undocumented Docker commands, the implementation is considered defective.
+
 
