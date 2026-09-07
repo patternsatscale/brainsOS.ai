@@ -175,3 +175,36 @@ Phase 0: Base Config
   * Integrate LLM tracing and observability (Langfuse) into LiteLLM control plane gateway.
   * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies.
 
+---
+
+## Lab work: Hermes Multi-Agent Demonstrations & Hardening
+
+Real-world agent operational testing across multi-tenancy, calibration, safety circuit breakers, and adversarial resilience.
+
+### Shared Tenancy Foundation
+- **Sprint 0 (#28)**: Shared multi-tenancy foundation (`football-dan` & `cindy-pawford`), memory/workspace partitioning, policy-plane behavioral budgets, append-only action log with agent versioning, out-of-band halt script, and canary seeding.
+
+### Epic A: Football Dan (Probabilistic Reasoning & Financial Invariants)
+- **FD-1 (#29)**: Read-only Telegram researcher, strict OKF provenance schema enforcement, frozen KPI baseline, benign injection marker suite.
+- **FD-2 (#30)**: Calibrated advice with mandatory stated probability, automated weekly resolution job against real-world game outcomes, Brier score computation.
+- **FD-3 (#31)**: Memory plane under localized Git versioning, volatility-aware retrieval, automated staleness sweep, duplicate detection/deletion, contributor reliability scoring.
+- **FD-4 (#32)**: Isolated paper wagering ledger with reserve-then-commit semantics, hard financial invariants, open positions as committed capital, programmatic invariant fuzzing harness.
+- **FD-5 (#33)**: Irreversible-action classification, external gate outside agent runtime, Telegram approval flow with timeout-to-deny, bypass attempt alerting.
+- **FD-6 (#34)**: Whisper STT ingress with mandatory transcript retention in action log, Kokoro TTS response path with post-transcription text guardrails.
+- **FD-7 (#35)**: Automated season report export from action log & KPI harness, memory archival to cold storage, clean tenant teardown & Season 2 carry-forward review.
+
+### Epic B: Cindy Pawford (Staged Publishing & Autonomous Breakers)
+- **CW-1 (#36)**: Content generation restricted strictly to staging storage prefix, scoped least-privilege credentials (`PutObject`), bucket versioning/rollback tooling, operator promotion CLI.
+- **CW-2 (#37)**: Automated promotion guarded by deterministic circuit breakers (out-of-prefix writes, rate ceilings, diff anomalies, policy modification attempts) with graduated response (freeze -> suspend -> halt).
+- **CW-3 (#38)**: Untrusted web page ingestion via tool-less reader sandbox (`TN-1.8`), comic/image generation into staging, indirect prompt injection test suite.
+- **CW-4 (#39)**: Semantic safety circuit breakers: embedding drift baseline, real-person assertion detector, content policy classifier, calibrated false-positive arming gate.
+- **CW-5 (#40)**: Self-hosted social arena (Mastodon), labeled agent identity, bidirectional cross-agent injection testing, memory pollution defense with provenance tracking.
+- **CW-6 (#41)**: Explicit numerical traffic objective, strict tactic allowlist with breaker trip on violation, reward-hacking observation harness capturing agent rationalizations verbatim.
+
+### Cross-Cutting Security & Telemetry
+- **X-1 (#42)**: Outbound policy inspection at LiteLLM scanning consultation payloads for seeded tenant canary tokens (`TN-6`).
+- **X-2 (#43)**: Isolated sandbox CloudTrail -> EventBridge -> SNS canary alerting infrastructure.
+- **X-3 (#44)**: Adversarial "nosy neighbour" agent harness attempting cross-tenant penetration of memory, workspace, tools, and credentials.
+- **X-4 (#45)**: Appliance power draw and thermal telemetry correlation logging against Heating Degree Days (HDD).
+
+
