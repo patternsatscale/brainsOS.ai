@@ -13,6 +13,8 @@ data/memories/*
 # Snapshots, Runtime State & Backups
 data/backups/
 data/control_plane/
+data/workspace/*
+!data/workspace/.gitkeep
 *.tar.gz
 
 # Local Volume Mounts & Caches

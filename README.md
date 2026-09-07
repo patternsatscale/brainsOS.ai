@@ -42,10 +42,11 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
        │                  └──────────────┘  │                  │  
        │                                    │                  │  
        └─────────────────────────┬──────────┼──────────────────┘  
-                                 ▼          ▼  
-                      [ Host Storage Bind-Mounts ]  
-                      /data/titan/memories (OKF)   
-                      /data/titan/litellm_db (PostgreSQL)
+                                  ▼          ▼  
+                       [ Host Storage Bind-Mounts ]  
+                       /data/titan/memories (OKF)   
+                       /data/titan/litellm_db (PostgreSQL)
+                       /data/titan/workspace (Agent State & Tools)
 ```
 
 ### Core Architecture Rules
@@ -53,21 +54,29 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
   * **Zero Direct Connect:** The agent layer has no network visibility or access keys for raw local inference engines or external APIs. It connects strictly to the LiteLLM proxy gateway.
   * **Control Plane Database Isolation:** LiteLLM is backed by a dedicated PostgreSQL container (`titan-litellm-db`) isolated on `titan-litellm-net`. Hermes has zero database credentials, zero network route, and zero storage volume visibility to this database.
   * **Decoupled Memory Plane:** Runtimes are ephemeral and disposable. Long-term knowledge is preserved in human-readable, flat-file Markdown using the Open Knowledge Format (OKF) on a persistent host mount.
+  * **Unified Persistent Storage & Cloud Backup:** All persistent state across the appliance lives under a single host data root (`./data` in development, or `/data/titan` on production GX10):
+    * `memories/`: Human-auditable OKF Markdown notes, knowledge base, and rules.
+    * `litellm_db/`: LiteLLM PostgreSQL persistence (dynamic models, virtual keys, audit logs).
+    * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches.
+    This layout allows a single cloud backup agent (e.g. Google Drive, rclone, restic) pointing to the root data folder to protect 100% of the appliance's state.
   * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
   * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM severs inference streams instantly, stopping rogue agent loops without impacting host system states.
 
 -----
 
-## 2\. Security & Operational Baselines
+## 2. Security & Operational Baselines
 
   * **Identity Pinning:** All container applications run bound to uniform user configurations (`PUID=1000`, `PGID=1000`) to guarantee write access and eliminate file ownership collisions across shared storage volumes.
   * **Host Sandboxing:** The agent container runtime completely drops elevated Linux capabilities (`cap_drop: [ALL]`, only retaining minimal network hooks) and strictly blocks exposure of the host Docker socket (`/var/run/docker.sock`).
-  * **Hardware Serialization:** To safely manage model execution on the GB10 chip without thrashing the unified LPDDR5x memory bus (\~273 GB/s peak bandwidth), LiteLLM serializes request scheduling via `max_parallel_requests: 1` or `2`.
+  * **Hardware Serialization:** To safely manage model execution on the GB10 chip without thrashing the unified LPDDR5x memory bus (~273 GB/s peak bandwidth), LiteLLM serializes request scheduling via `max_parallel_requests: 1` or `2`.
   * **Host OS Protection:** Core NVIDIA stack dependencies (`linux-nvidia-hwe-24.04`, `nvidia-container-toolkit`) are held explicitly using `apt-mark hold` to isolate baseline configurations from breaking up-stream package modifications.
+  * **Storage Path Conventions:**
+    * **Development (macOS & standard clones):** Uses relative paths inside the repository root (`./data/memories`, `./data/workspace`, `./data/litellm_db`).
+    * **Production Appliance (ASUS Ascent GX10):** Can optionally bind to dedicated NVMe mount paths (`/data/titan/memories`, `/data/titan/workspace`, `/data/titan/litellm_db`) configured via `.env`.
 
 -----
 
-## 3\. Repository Directory Structure
+## 3. Repository Directory Structure
 
 ``` text
 project-titan/  
@@ -90,14 +99,18 @@ project-titan/
 │       └── server.py         # Lightweight Hermes web console, OKF explorer & sandboxed runner
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files
-│   └── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
+│   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
+│   ├── workspace/            # Persistent Hermes agent tools, caches, and Signal state (git-ignored)
+│   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
 └── scripts/  
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
     ├── setup-memories.sh     # Idempotent provisioning & scaffolding manager for memory plane
+    ├── verify-hermes.sh      # Automated verification harness for Hermes workspace persistence
     ├── verify-memories.sh    # Automated verification harness for SilverBullet & OKF sync
     ├── start-control-plane.sh# Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
-    ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager
+    ├── backup.sh             # Full appliance data plane backup and restore manager
+    ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager for memories
     └── emergency-stop.sh     # Key revocation script for immediate loop intervention
 ```
 

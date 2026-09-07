@@ -257,7 +257,33 @@ else
   chmod -R 700 "${TARGET_DB_DIR}" || true
 fi
 
-log_success "Storage layout and OKF directory scaffolding initialized."
+# Hermes Agent Runtime Workspace Storage (tools, caches, packages, isolated from memories)
+WORKSPACE_DIR=$(grep -E '^TITAN_WORKSPACE_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/workspace")
+WORKSPACE_DIR="${WORKSPACE_DIR:-./data/workspace}"
+
+if [[ "$WORKSPACE_DIR" != /* ]]; then
+  TARGET_WORKSPACE_DIR="${REPO_ROOT}/${WORKSPACE_DIR#./}"
+else
+  TARGET_WORKSPACE_DIR="${WORKSPACE_DIR}"
+fi
+
+log_info "Target Hermes Agent workspace directory: ${TARGET_WORKSPACE_DIR}"
+
+if [[ "$TARGET_WORKSPACE_DIR" == /data/titan/* ]]; then
+  log_info "Creating production workspace path with sudo: ${TARGET_WORKSPACE_DIR}..."
+  sudo mkdir -p "${TARGET_WORKSPACE_DIR}"
+  sudo chown -R 1000:1000 "${TARGET_WORKSPACE_DIR}"
+  sudo chmod -R 775 "${TARGET_WORKSPACE_DIR}"
+else
+  mkdir -p "${TARGET_WORKSPACE_DIR}"
+  chmod -R 775 "${TARGET_WORKSPACE_DIR}" || true
+fi
+
+if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
+  touch "${REPO_ROOT}/data/workspace/.gitkeep"
+fi
+
+log_success "Storage layout (memories, database, workspace) initialized."
 
 # ------------------------------------------------------------------------------
 # 6. Native Model Seeding

@@ -100,8 +100,8 @@ services:
       - ${TITAN_DATA_DIR:-./data/memories}:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
-      # Internal sandbox state for packages, tools, caches, and local databases
-      - hermes_runtime_state:/workspace
+      # Internal sandbox state for packages, tools, caches, and local databases (Host Bind-Mount)
+      - ${TITAN_WORKSPACE_DIR:-./data/workspace}:/workspace
     working_dir: /workspace
     environment:
       - PUID=${PUID:-1000}
@@ -143,5 +143,3 @@ volumes:
     name: titan_caddy_data
   caddy_config:
     name: titan_caddy_config
-  hermes_runtime_state:
-    name: titan_hermes_runtime_state
