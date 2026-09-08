@@ -151,13 +151,104 @@ fi
 rm -f "${HOST_WORKSPACE}/test_marker.txt"
 
 # ------------------------------------------------------------------------------
-# 5. Skills Auto-Scaffolding
+# 5. Native hermes-okf Plugin & Tool Registry Verification
 # ------------------------------------------------------------------------------
-log_info "Step 5: Verifying skills auto-scaffolding in /workspace/skills..."
-if docker compose exec -T hermes test -f /workspace/skills/hermes_okf.py; then
-  log_success "Skills scaffolding verified: /workspace/skills/hermes_okf.py is present."
+log_info "Step 5: Verifying native 'hermes-okf' plugin and tool registry..."
+
+# 5A: Verify plugin package presence
+if docker compose exec -T hermes test -f /opt/hermes/plugins/hermes-okf/plugin.yaml; then
+  log_success "Native plugin package verified at /opt/hermes/plugins/hermes-okf."
 else
-  log_error "Expected /workspace/skills/hermes_okf.py to exist."
+  log_error "Plugin manifest /opt/hermes/plugins/hermes-okf/plugin.yaml is missing."
+  exit 1
+fi
+
+# 5B: Verify zero technical debt (legacy hermes_okf.py removed)
+if docker compose exec -T hermes test -f /opt/hermes/hermes_okf.py || [ -f "${HOST_WORKSPACE}/skills/hermes_okf.py" ]; then
+  log_error "Technical debt violation: legacy hermes_okf.py still detected in runtime."
+  exit 1
+fi
+log_success "Zero technical debt verified: legacy hermes_okf.py completely eradicated."
+
+# 5C: Verify native tool schemas in Hermes Tool Registry
+PLUGIN_CHECK=$(docker compose exec -T hermes python3 -c '
+import json, sys
+from hermes_cli.plugins import discover_plugins
+discover_plugins()
+from tools.registry import registry
+
+required_tools = ["read_okf_note", "write_okf_note", "synthesize_active_rules"]
+all_tools = set(registry.get_all_tool_names())
+missing = [t for t in required_tools if t not in all_tools]
+if missing:
+    print(f"MISSING: {missing}")
+    sys.exit(1)
+
+# Verify schemas exist
+for t in required_tools:
+    schema = registry.get_schema(t)
+    if not schema or "parameters" not in schema:
+        print(f"INVALID_SCHEMA: {t}")
+        sys.exit(1)
+
+print("OK")
+' 2>/dev/null || echo "FAILED")
+
+if [ "${PLUGIN_CHECK}" == "OK" ]; then
+  log_success "Native OKF tools verified registered in Hermes tool registry: read_okf_note, write_okf_note, synthesize_active_rules."
+else
+  log_error "Failed to verify native OKF tools in registry: ${PLUGIN_CHECK}"
+  exit 1
+fi
+
+# 5D: Verify tool execution via registry.dispatch
+DISPATCH_CHECK=$(docker compose exec -T hermes python3 -c '
+import json, sys
+from hermes_cli.plugins import discover_plugins
+discover_plugins()
+from tools.registry import registry
+
+# 1. Dispatch write_okf_note
+w_res = registry.dispatch("write_okf_note", {
+    "rel_path": "knowledge/plugin_dispatch_test.md",
+    "content": "# Native Plugin Dispatch Test\nValidated end-to-end tool execution via Hermes registry.",
+    "title": "Native Plugin Dispatch Test",
+    "tags": ["test", "dispatch"]
+})
+if isinstance(w_res, str):
+    w_data = json.loads(w_res)
+else:
+    w_data = w_res
+assert w_data.get("success") is True, f"Write failed: {w_res}"
+
+# 2. Dispatch read_okf_note
+r_res = registry.dispatch("read_okf_note", {"rel_path": "knowledge/plugin_dispatch_test.md"})
+if isinstance(r_res, str):
+    r_data = json.loads(r_res)
+else:
+    r_data = r_res
+assert r_data.get("success") is True, f"Read failed: {r_res}"
+assert r_data.get("title") == "Native Plugin Dispatch Test", f"Title mismatch: {r_data}"
+assert "Validated end-to-end" in r_data.get("body", ""), f"Body mismatch: {r_data}"
+
+# 3. Dispatch synthesize_active_rules
+s_res = registry.dispatch("synthesize_active_rules", {"max_chars": 1000})
+if isinstance(s_res, str):
+    s_data = json.loads(s_res)
+else:
+    s_data = s_res
+assert s_data.get("success") is True, f"Rules synthesis failed: {s_res}"
+
+print("DISPATCH_OK")
+' 2>/dev/null || echo "DISPATCH_FAILED")
+
+# Clean up test note
+rm -f "${HOST_MEMORIES}/knowledge/plugin_dispatch_test.md"
+
+if [ "${DISPATCH_CHECK}" == "DISPATCH_OK" ]; then
+  log_success "Native OKF tool dispatch verified via Hermes registry (write -> read -> synthesize)."
+else
+  log_error "Native OKF tool dispatch failed: ${DISPATCH_CHECK}"
   exit 1
 fi
 

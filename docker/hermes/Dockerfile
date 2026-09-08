@@ -6,9 +6,9 @@
 
 FROM nousresearch/hermes-agent:latest
 
-# Copy Titan OKF memory plugin into shared python path
-COPY docker/hermes/hermes_okf.py /opt/hermes/hermes_okf.py
-RUN chmod +x /opt/hermes/hermes_okf.py
+# Install native Titan OKF memory plugin
+COPY docker/hermes/plugins/hermes-okf /opt/hermes/plugins/hermes-okf
+RUN ln -sf /opt/hermes/plugins/hermes-okf /opt/hermes/plugins/memory/hermes-okf
 
 # Switch to /opt/data
 WORKDIR /opt/data

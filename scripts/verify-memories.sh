@@ -96,12 +96,19 @@ else
   exit 1
 fi
 
-log_info "Validating Hermes OKF plugin can read parsed OKF note..."
-HERMES_API_READ=$(docker compose exec -T hermes python3 /opt/hermes/hermes_okf.py read "${SYNC_FILE}" 2>/dev/null || echo "{}")
+log_info "Validating native hermes-okf read_okf_note tool dispatch..."
+HERMES_API_READ=$(docker compose exec -T hermes python3 -c '
+from hermes_cli.plugins import discover_plugins
+discover_plugins()
+from tools.registry import registry
+import json, sys
+res = registry.dispatch("read_okf_note", {"rel_path": sys.argv[1]})
+print(res if isinstance(res, str) else json.dumps(res))
+' "${SYNC_FILE}" 2>/dev/null || echo "{}")
 if echo "${HERMES_API_READ}" | grep -q "Bi-directional Sync Test Note"; then
-  log_success "Hermes OKF plugin successfully returned parsed note."
+  log_success "Native read_okf_note tool successfully returned parsed note."
 else
-  log_error "Hermes OKF plugin failed to parse note: ${HERMES_API_READ}"
+  log_error "Native read_okf_note tool failed to parse note: ${HERMES_API_READ}"
   rm -f "${SYNC_FULL_PATH}"
   exit 1
 fi
@@ -190,14 +197,21 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 5. Verify Active Rules Context Ingestion
+# 5. Verify Active Rules Context Ingestion via Native Plugin
 # ------------------------------------------------------------------------------
-log_info "Verifying active rules context synthesizer in Hermes..."
-RULES_SYNTH=$(docker compose exec -T hermes python3 /opt/hermes/hermes_okf.py rules 2>/dev/null || true)
+log_info "Verifying active rules context synthesizer via native hermes-okf..."
+RULES_SYNTH=$(docker compose exec -T hermes python3 -c '
+from hermes_cli.plugins import discover_plugins
+discover_plugins()
+from tools.registry import registry
+import json
+res = registry.dispatch("synthesize_active_rules", {})
+print(res if isinstance(res, str) else json.dumps(res))
+' 2>/dev/null || echo "{}")
 if echo "${RULES_SYNTH}" | grep -q "OPERATOR RULES"; then
-  log_success "Hermes OKF plugin successfully synthesized active operator rules."
+  log_success "Native synthesize_active_rules tool successfully synthesized active operator rules."
 else
-  log_warn "No active rules returned (check if rules/ folder has active notes)."
+  log_warn "No active rules returned (check if rules/ folder has active notes): ${RULES_SYNTH}"
 fi
 
 echo ""

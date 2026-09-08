@@ -95,7 +95,8 @@ project-titan/
 ├── docker/
 │   └── hermes/
 │       ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
-│       └── hermes_okf.py     # Standalone OKF memory manager, rule injector & CLI skill runner
+│       └── plugins/
+│           └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files
 │   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
@@ -158,7 +159,7 @@ Phase 0: Base Config
 
   * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/memories` on GX10, `./data/memories` on macOS) using unified permission access keys (`1000:1000`).
   * Deploy the SilverBullet visual inspection workspace container mounting the same storage directory, accessible via Caddy at `memory.titan.local`.
-  * Deploy the `hermes-okf` plugin and CLI tool (`docker/hermes/hermes_okf.py`) to manage `/memories/knowledge`, `/memories/rules`, and `/memories/logs`.
+  * Deploy the native `hermes-okf` plugin package (`docker/hermes/plugins/hermes-okf`) registering `read_okf_note`, `write_okf_note`, and `synthesize_active_rules` into Hermes Agent's tool registry.
   * Implement budget-aware dynamic rule injection and working memory scratchpad loading into Hermes reasoning loops.
   * Enforce hardware-adaptive context windows: safe 4,096 tokens on 16GB macOS workstations and 32,768 tokens on ASUS Ascent GX10 appliances.
   * *Exit Criteria:* Bi-directional persistence and synchronization verified—content modifications applied inside SilverBullet propagate to active agent reasoning streams; memory purity audit asserts strictly human-auditable flat-file Markdown.

@@ -1,39 +1,39 @@
-#!/usr/bin/env python3
-"""
-Project Titan - Hermes Open Knowledge Format (OKF) Memory Plugin
+"""Project Titan - Clean Native Open Knowledge Format (OKF) Engine.
+
 Manages human-auditable flat-file Markdown memories across:
 - /memories/knowledge/
 - /memories/rules/
 - /memories/logs/
 
-Features:
-- YAML frontmatter parsing and serialization (zero external dependencies)
-- Active rule synthesis and context injection respecting INFERENCE_NUM_CTX budgets
-- Working memory scratchpad integration
-- On-demand full-text search across knowledge and logs
-- Strict memory plane purity enforcement (blocks sqlite, binary files, caches)
-- Dual mode: importable Python module and CLI skill runner
+Enforces Inviolable Rule 1 (Memory Plane Purity):
+- Strictly flat Markdown (.md) files only.
+- Zero binary data, zero SQLite/embedded databases, zero cache directories.
+- Safe path resolution blocking directory traversal outside the memory root.
+
+Enforces Inviolable Rule 7 (Information Compartmentalization):
+- Zero leakage of host infrastructure or database internals in prompts or contexts.
 """
+
+from __future__ import annotations
 
 import os
 import re
-import sys
-import json
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def get_memory_dir() -> str:
+    """Return configured memory plane root directory."""
     return os.environ.get("MEMORY_DIR", "/memories")
 
 
 def get_context_window() -> int:
+    """Return model context budget from environment or fallback to 4096."""
     try:
         return int(os.environ.get("INFERENCE_NUM_CTX", 4096))
     except (ValueError, TypeError):
         return 4096
 
 
-# Forbidden extensions and patterns inside the memory plane
 FORBIDDEN_EXTENSIONS = {
     ".db", ".sqlite", ".sqlite3", ".pyc", ".pyo", ".so", ".bin",
     ".tar", ".gz", ".zip", ".lock", ".log", ".tmp", ".bak"
@@ -63,23 +63,21 @@ class OKFNote:
         self.note_type = note_type
         self.tags = tags or []
         self.active = active
-        self.priority = priority
+        self.priority = priority.lower() if priority else "normal"
         self.body = body.strip()
         self.metadata = metadata or {}
 
     @classmethod
-    def parse(cls, rel_path: str, raw_content: str) -> "OKFNote":
+    def parse(cls, rel_path: str, raw_content: str) -> OKFNote:
         """Parse raw markdown content and extract YAML frontmatter."""
-        frontmatter = {}
+        frontmatter: Dict[str, Any] = {}
         body = raw_content
 
-        # Match frontmatter delimited by ---
         match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)$", raw_content, re.DOTALL)
         if match:
             fm_text = match.group(1)
             body = match.group(2).strip()
 
-            # Lightweight YAML parser for flat/simple lists
             current_list_key = None
             for line in fm_text.splitlines():
                 line_str = line.strip()
@@ -109,7 +107,6 @@ class OKFNote:
 
         title = frontmatter.get("title", "")
         if not title:
-            # Try to infer title from first # Header
             header_match = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
             if header_match:
                 title = header_match.group(1).strip()
@@ -177,7 +174,6 @@ class HermesOKF:
         self.rules_dir = os.path.join(self.root_dir, "rules")
         self.logs_dir = os.path.join(self.root_dir, "logs")
 
-        # Ensure directory scaffolding exists
         for d in (self.knowledge_dir, self.rules_dir, self.logs_dir):
             os.makedirs(d, exist_ok=True)
 
@@ -200,7 +196,6 @@ class HermesOKF:
             return results
 
         for root, dirs, files in os.walk(target_dir):
-            # Exclude forbidden directories
             dirs[:] = [d for d in dirs if d not in FORBIDDEN_DIRECTORIES and not d.startswith(".")]
 
             for fname in sorted(files):
@@ -251,23 +246,20 @@ class HermesOKF:
         active: bool = True,
         priority: str = "normal",
     ) -> OKFNote:
-        """Atomically write an OKF note, strictly enforcing purity."""
+        """Atomically write an OKF note, strictly enforcing Rule 1 purity."""
         if not rel_path.endswith(".md"):
             raise ValueError(f"Memory purity violation: '{rel_path}' must end with .md extension.")
 
-        # Check for binary content
         if "\0" in content:
             raise ValueError("Memory purity violation: binary data cannot be written to memory plane.")
 
         target = self._resolve_safe_path(rel_path)
         os.makedirs(os.path.dirname(target), exist_ok=True)
 
-        # Infer category/type from path if not provided
         if not note_type:
-            first_part = rel_path.split(os.sep)[0]
+            first_part = rel_path.replace("\\", "/").split("/")[0]
             note_type = first_part if first_part in ("knowledge", "rules", "logs") else "knowledge"
 
-        # If content already has YAML frontmatter, preserve and merge
         if content.startswith("---"):
             note = OKFNote.parse(rel_path, content)
             if title:
@@ -289,13 +281,11 @@ class HermesOKF:
             )
             serialized = note.serialize()
 
-        # Atomic file write
         temp_target = target + ".tmp"
         with open(temp_target, "w", encoding="utf-8") as f:
             f.write(serialized)
         os.replace(temp_target, target)
 
-        # Uniform permissions (readable/writable by 1000:1000)
         try:
             os.chmod(target, 0o664)
         except OSError:
@@ -322,8 +312,6 @@ class HermesOKF:
                 match_in_body = q in note.body.lower()
 
                 if match_in_title or match_in_tags or match_in_body:
-                    # Extract snippet
-                    snippet = ""
                     if match_in_body:
                         idx = note.body.lower().find(q)
                         start = max(0, idx - 60)
@@ -347,12 +335,10 @@ class HermesOKF:
     def get_active_rules_context(self, max_chars: Optional[int] = None) -> str:
         """
         Synthesizes active operator rules from /memories/rules/*.md
-        into a concise, budgeted prompt section.
-        Adapts budget based on active INFERENCE_NUM_CTX.
+        into a prioritized, budgeted prompt section.
         """
         ctx_tokens = get_context_window()
         if max_chars is None:
-            # Scale budget: ~1,500 chars for 4k context, ~8,000 chars for 32k GX10
             max_chars = 8000 if ctx_tokens >= 16384 else 2000
 
         rules = []
@@ -372,7 +358,6 @@ class HermesOKF:
         if not rules:
             return ""
 
-        # Sort priority: high -> normal -> low
         priority_order = {"high": 0, "normal": 1, "low": 2}
         rules.sort(key=lambda r: priority_order.get(r.priority, 1))
 
@@ -390,10 +375,7 @@ class HermesOKF:
         return "".join(output_lines)
 
     def get_working_memory_context(self, max_chars: Optional[int] = None) -> str:
-        """
-        Loads the active working memory note (/memories/knowledge/working_memory.md)
-        if available and context budget permits.
-        """
+        """Loads the active working memory note if available."""
         ctx_tokens = get_context_window()
         if max_chars is None:
             max_chars = 4000 if ctx_tokens >= 16384 else 1200
@@ -411,7 +393,7 @@ class HermesOKF:
 
     def validate_purity(self) -> Tuple[bool, List[str]]:
         """
-        Scans /memories to enforce absolute memory plane purity.
+        Scans /memories to enforce absolute memory plane purity (Rule 1).
         Returns (is_pure, violations).
         """
         violations = []
@@ -434,82 +416,3 @@ class HermesOKF:
                     violations.append(f"Non-markdown file '{f}' in {rel_dir}")
 
         return (len(violations) == 0, violations)
-
-
-def main():
-    """CLI runner for testing and execution in Hermes sandbox terminal."""
-    if len(sys.argv) < 2:
-        print("Usage: hermes_okf.py <list|read|write|search|rules|working-memory|purity> [args...]")
-        sys.exit(1)
-
-    cmd = sys.argv[1].lower()
-    okf = HermesOKF()
-
-    if cmd == "list":
-        category = sys.argv[2] if len(sys.argv) > 2 else None
-        notes = okf.list_notes(category)
-        print(json.dumps(notes, indent=2))
-
-    elif cmd == "read":
-        if len(sys.argv) < 3:
-            print("Error: Specify relative note path (e.g. knowledge/architecture.md)")
-            sys.exit(1)
-        try:
-            note = okf.read_note(sys.argv[2])
-            print(f"Title: {note.title}")
-            print(f"Type: {note.note_type} | Priority: {note.priority} | Active: {note.active}")
-            print(f"Tags: {', '.join(note.tags)}")
-            print("-" * 60)
-            print(note.body)
-        except Exception as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-
-    elif cmd == "write":
-        if len(sys.argv) < 4:
-            print("Error: Usage: hermes_okf.py write <rel_path> <content> [title]")
-            sys.exit(1)
-        rel_path = sys.argv[2]
-        content = sys.argv[3]
-        title = sys.argv[4] if len(sys.argv) > 4 else ""
-        try:
-            saved = okf.write_note(rel_path, content, title=title)
-            print(f"Success: Note saved to {saved.rel_path} (Title: {saved.title})")
-        except Exception as e:
-            print(f"Error: {e}")
-            sys.exit(1)
-
-    elif cmd == "search":
-        if len(sys.argv) < 3:
-            print("Error: Usage: hermes_okf.py search <query> [category]")
-            sys.exit(1)
-        query = sys.argv[2]
-        cat = sys.argv[3] if len(sys.argv) > 3 else None
-        results = okf.search(query, cat)
-        print(json.dumps(results, indent=2))
-
-    elif cmd == "rules":
-        ctx = okf.get_active_rules_context()
-        print(ctx if ctx else "(No active rules)")
-
-    elif cmd == "working-memory":
-        wm = okf.get_working_memory_context()
-        print(wm if wm else "(Working memory empty or absent)")
-
-    elif cmd == "purity":
-        is_pure, violations = okf.validate_purity()
-        if is_pure:
-            print("OK: Memory plane is 100% pure (flat-file Markdown only).")
-        else:
-            print("VIOLATIONS DETECTED:")
-            for v in violations:
-                print(f" - {v}")
-            sys.exit(1)
-
-    else:
-        print(f"Unknown command: {cmd}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
