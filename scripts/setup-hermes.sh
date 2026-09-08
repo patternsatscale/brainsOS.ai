@@ -49,7 +49,14 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 if ! docker info >/dev/null 2>&1; then
-  log_error "Docker daemon is not running. Please start Docker."
+  CURRENT_USER="$(id -un 2>/dev/null || whoami)"
+  if command -v getent >/dev/null 2>&1 && getent group docker | grep -qw "${CURRENT_USER}"; then
+    if [ -z "${TITAN_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
+      export TITAN_DOCKER_REEXEC=1
+      exec sg docker -c "$0 $*"
+    fi
+  fi
+  log_error "Docker daemon is not running or accessible. Please ensure Docker is running and your user is in the 'docker' group."
   exit 1
 fi
 log_success "Docker daemon verified."

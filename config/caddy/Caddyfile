@@ -1,20 +1,19 @@
 {
-	# Disable automatic HTTPS for private local domains (.local / .localhost)
-	auto_https off
 	admin off
+	auto_https disable_redirects
 }
 
 # ==============================================================================
-# Agent Plane Gateway
+# Agent Plane Gateway (Hermes)
 # ==============================================================================
-http://hermes.{$TITAN_DOMAIN:titan.local}, http://hermes.localhost {
+http://hermes.{$TITAN_DOMAIN:titan.local}, https://hermes.{$TITAN_DOMAIN:titan.local}, http://hermes.localhost, https://hermes.localhost {
+	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
 	reverse_proxy hermes:8642 {
-		# Flush immediately for streaming responses / SSE
 		flush_interval -1
 	}
 }
@@ -22,7 +21,8 @@ http://hermes.{$TITAN_DOMAIN:titan.local}, http://hermes.localhost {
 # ==============================================================================
 # Control Plane Gateway (LiteLLM)
 # ==============================================================================
-http://proxy.{$TITAN_DOMAIN:titan.local}, http://proxy.localhost {
+http://proxy.{$TITAN_DOMAIN:titan.local}, https://proxy.{$TITAN_DOMAIN:titan.local}, http://proxy.localhost, https://proxy.localhost {
+	tls internal
 	encode gzip zstd
 	log {
 		output stdout
@@ -36,7 +36,8 @@ http://proxy.{$TITAN_DOMAIN:titan.local}, http://proxy.localhost {
 # ==============================================================================
 # Memory Plane Gateway (SilverBullet PKM)
 # ==============================================================================
-http://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost {
+http://memory.{$TITAN_DOMAIN:titan.local}, https://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost, https://memory.localhost {
+	tls internal
 	encode gzip zstd
 	log {
 		output stdout
@@ -46,40 +47,332 @@ http://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost {
 }
 
 # ==============================================================================
-# Ingress Default / Healthcheck Landing Page
+# Hardware Telemetry Gateway (NVIDIA DGX Dashboard)
 # ==============================================================================
-:80 {
-	respond <<HTML
+http://dgx.{$TITAN_DOMAIN:titan.local}, https://dgx.{$TITAN_DOMAIN:titan.local}, http://dgx.localhost, https://dgx.localhost {
+	tls internal
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy host.docker.internal:11001 {
+		flush_interval -1
+	}
+}
+
+# ==============================================================================
+# Ingress Default / Portal Landing Page (HTTP & HTTPS)
+# ==============================================================================
+http://localhost, https://localhost, :80, :443 {
+	tls internal
+	header Content-Type "text/html; charset=utf-8"
+	respond <<EOF
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Project Titan Appliance Gateway</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Titan - Appliance Control Center</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d1117; color: #c9d1d9; padding: 40px; }
-    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 24px; max-width: 650px; margin: 0 auto; }
-    h1 { color: #58a6ff; font-size: 24px; margin-top: 0; }
-    p { line-height: 1.5; }
-    ul { list-style: none; padding: 0; }
-    li { margin: 12px 0; padding: 12px; background: #21262d; border-radius: 6px; }
-    a { color: #58a6ff; text-decoration: none; font-weight: bold; }
-    a:hover { text-decoration: underline; }
-    .tag { display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #388bfd33; color: #58a6ff; margin-left: 8px; }
+    :root {
+      --bg: #090d13;
+      --card-bg: #121824;
+      --card-hover: #192233;
+      --border: #232f45;
+      --border-hover: #3b5075;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --nvidia-green: #76b900;
+      --titan-blue: #38bdf8;
+      --purple: #c084fc;
+      --amber: #fbbf24;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #172438 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px;
+    }
+    .container {
+      max-width: 960px;
+      width: 100%;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--titan-blue);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--nvidia-green);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--nvidia-green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    h1 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 36px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover {
+      background: var(--card-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .plane-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    .tag-hermes { background: rgba(56, 189, 248, 0.15); color: var(--titan-blue); border: 1px solid rgba(56, 189, 248, 0.3); }
+    .tag-memory { background: rgba(192, 132, 252, 0.15); color: var(--purple); border: 1px solid rgba(192, 132, 252, 0.3); }
+    .tag-control { background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); }
+    .tag-nvidia { background: rgba(118, 185, 0, 0.15); color: var(--nvidia-green); border: 1px solid rgba(118, 185, 0, 0.3); }
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--titan-blue);
+      font-weight: 600;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 14px;
+    }
+    .card-footer span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hosts-box {
+      background: rgba(18, 24, 36, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      font-size: 13px;
+    }
+    .hosts-header {
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .code-snippet {
+      background: #06090e;
+      border: 1px solid #1a2333;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #38bdf8;
+      overflow-x: auto;
+      white-space: nowrap;
+      user-select: all;
+    }
+    footer {
+      margin-top: 36px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Project Titan Gateway</h1>
-    <p>Isolated Autonomous Agent Appliance.</p>
-    <ul>
-      <li><a href="http://hermes.titan.local">hermes.titan.local</a><span class="tag">Agent Plane</span><br><small>Hermes Agent Web UI & Interaction Console</small></li>
-      <li><a href="http://proxy.titan.local">proxy.titan.local</a><span class="tag">Control Plane</span><br><small>LiteLLM Proxy, Virtual Keys & Rate Limits</small></li>
-      <li><a href="http://memory.titan.local">memory.titan.local</a><span class="tag">Memory Plane</span><br><small>SilverBullet PKM & Open Knowledge Format (OKF)</small></li>
-    </ul>
+  <div class="container">
+    <header>
+      <div class="badge-pill">
+        <div class="pulse-dot"></div>
+        ASUS Ascent GX10 Appliance Online
+      </div>
+      <h1>Project Titan Control Center</h1>
+      <p class="subtitle">Hardware-Accelerated Autonomous Agent Appliance & Ingress Portal</p>
+    </header>
+
+    <div class="grid">
+      <!-- Hermes Agent -->
+      <a href="http://hermes.localhost" class="card" data-subdomain="hermes">
+        <div>
+          <div class="card-header">
+            <span class="plane-tag tag-hermes">Agent Plane</span>
+            <span style="font-size: 11px; color: #64748b;">:8642</span>
+          </div>
+          <div class="card-title">Hermes Agent Console</div>
+          <p class="card-desc">Interactive terminal, tool execution engine, and unprivileged agent runtime container.</p>
+        </div>
+        <div class="card-footer">
+          <span class="primary-link">hermes.localhost &rarr;</span>
+          <span class="secondary-link" style="color: #64748b; font-size: 11px;">or hermes.titan.local</span>
+        </div>
+      </a>
+
+      <!-- Memory Plane -->
+      <a href="http://memory.localhost" class="card" data-subdomain="memory">
+        <div>
+          <div class="card-header">
+            <span class="plane-tag tag-memory">Memory Plane</span>
+            <span style="font-size: 11px; color: #64748b;">:3000</span>
+          </div>
+          <div class="card-title">SilverBullet PKM</div>
+          <p class="card-desc">Human-auditable Open Knowledge Format (OKF) markdown knowledge base, active rules, and live session logs.</p>
+        </div>
+        <div class="card-footer">
+          <span class="primary-link">memory.localhost &rarr;</span>
+          <span class="secondary-link" style="color: #64748b; font-size: 11px;">or memory.titan.local</span>
+        </div>
+      </a>
+
+      <!-- LiteLLM Control Plane -->
+      <a href="http://proxy.localhost/ui" class="card" data-subdomain="proxy" data-path="/ui">
+        <div>
+          <div class="card-header">
+            <span class="plane-tag tag-control">Control Plane</span>
+            <span style="font-size: 11px; color: #64748b;">:4000</span>
+          </div>
+          <div class="card-title">LiteLLM Gateway</div>
+          <p class="card-desc">Hardware serialization proxy (protects unified LPDDR5x bandwidth), virtual key auth, and database persistence.</p>
+        </div>
+        <div class="card-footer">
+          <span class="primary-link">proxy.localhost/ui &rarr;</span>
+          <span class="secondary-link" style="color: #64748b; font-size: 11px;">or proxy.titan.local/ui</span>
+        </div>
+      </a>
+
+      <!-- NVIDIA DGX Dashboard -->
+      <a href="http://dgx.localhost" class="card" data-subdomain="dgx">
+        <div>
+          <div class="card-header">
+            <span class="plane-tag tag-nvidia">Hardware Telemetry</span>
+            <span style="font-size: 11px; color: #64748b;">:11000</span>
+          </div>
+          <div class="card-title">NVIDIA DGX Dashboard</div>
+          <p class="card-desc">System thermals, GB10 unified memory bandwidth utilization, system metrics, and DGX OS telemetry.</p>
+        </div>
+        <div class="card-footer">
+          <span class="primary-link" style="color: var(--nvidia-green);">dgx.localhost &rarr;</span>
+          <span class="secondary-link" style="color: #64748b; font-size: 11px;">or dgx.titan.local</span>
+        </div>
+      </a>
+    </div>
+
+    <div class="hosts-box">
+      <div class="hosts-header">
+        <span>Custom Domain Resolution (*.titan.local)</span>
+      </div>
+      <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
+        All services are instantly accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.titan.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
+      </p>
+      <div class="code-snippet">echo "127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local" | sudo tee -a /etc/hosts</div>
+    </div>
+
+    <footer>
+      Project Titan Appliance &bull; DGX OS / Ubuntu 24.04 &bull; Caddy Ingress v2 &bull; NVIDIA GB10
+    </footer>
   </div>
+
+  <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        var hostname = window.location.hostname;
+        var protocol = window.location.protocol;
+        if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+          var isTitanLocal = hostname.indexOf("titan.local") !== -1;
+          var domain = isTitanLocal ? hostname : "{$TITAN_DOMAIN:titan.local}";
+          var cards = document.querySelectorAll("a.card[data-subdomain]");
+          for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            var sub = card.getAttribute("data-subdomain");
+            var path = card.getAttribute("data-path") || "";
+            card.href = protocol + "//" + sub + "." + domain + path;
+            var primary = card.querySelector(".primary-link");
+            var secondary = card.querySelector(".secondary-link");
+            if (primary) {
+              primary.innerHTML = sub + "." + domain + path + " &rarr;";
+            }
+            if (secondary) {
+              secondary.textContent = "or " + sub + ".localhost";
+            }
+          }
+        }
+      });
+    </script>
 </body>
 </html>
-HTML 200 {
-		close
-	}
+EOF 200
 }
+

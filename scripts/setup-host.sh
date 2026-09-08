@@ -35,11 +35,76 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 log_info "Initializing Project Titan host baseline from ${REPO_ROOT}..."
 
 # ------------------------------------------------------------------------------
+# 0. Host Hygiene & Security Prechecks
+# ------------------------------------------------------------------------------
+# 0A. Repository Directory Permission Hardening
+log_info "Securing repository permissions (chmod 750 ${REPO_ROOT})..."
+chmod 750 "${REPO_ROOT}"
+chmod 750 "${REPO_ROOT}/.git" 2>/dev/null || true
+
+# 0B. Docker Daemon & Group Membership Precheck
+if command -v docker >/dev/null 2>&1; then
+  if ! docker info >/dev/null 2>&1; then
+    CURRENT_USER="$(id -un 2>/dev/null || whoami)"
+    if command -v getent >/dev/null 2>&1 && getent group docker | grep -qw "${CURRENT_USER}"; then
+      if [ -z "${TITAN_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
+        export TITAN_DOCKER_REEXEC=1
+        log_info "Refreshing active group permissions for 'docker' via sg..."
+        exec sg docker -c "$0 $*"
+      fi
+    else
+      log_warn "Current user '${CURRENT_USER}' cannot communicate with Docker daemon."
+      log_warn "If you encounter permission issues, ensure your user is in the 'docker' group:"
+      log_warn "  sudo usermod -aG docker ${CURRENT_USER} && newgrp docker"
+    fi
+  fi
+fi
+
+# 0C. External LiteLLM & Port Conflict Precheck
+EXTERNAL_LITELLM="$(command -v litellm 2>/dev/null || true)"
+if [ -n "${EXTERNAL_LITELLM}" ] && [[ "${EXTERNAL_LITELLM}" != "${REPO_ROOT}/.venv/*" ]]; then
+  log_warn "Detected external LiteLLM binary at: ${EXTERNAL_LITELLM}"
+  log_warn "Project Titan encapsulates its control plane in ${REPO_ROOT}/.venv."
+  log_warn "Ensure external LiteLLM processes (e.g. from pipx) are not actively running."
+fi
+
+# Check for residual process on LiteLLM port (default 4000)
+CHECK_PORT="${LITELLM_PORT:-4000}"
+if (echo > /dev/tcp/127.0.0.1/"${CHECK_PORT}") >/dev/null 2>&1 || \
+   (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "${CHECK_PORT}" >/dev/null 2>&1); then
+  log_warn "Port ${CHECK_PORT} is already listening on localhost. Verify it is not occupied by an external service."
+fi
+
+# ------------------------------------------------------------------------------
 # 1. OS & Architecture Detection
+# ------------------------------------------------------------------------------
+# 1A. Hardware Profile & OS Detection (ASUS Ascent GX10 vs macOS Workstation)
 # ------------------------------------------------------------------------------
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 log_info "Detected OS: ${OS} (${ARCH})"
+
+is_gx10_hardware() {
+  if [[ "${OS}" != "Linux" ]]; then
+    return 1
+  fi
+  # Detect ASUS Ascent GX10 via DMI product/vendor or NVIDIA DGX service
+  if [ -f /sys/class/dmi/id/product_name ] && grep -qi "GX10" /sys/class/dmi/id/product_name 2>/dev/null; then
+    return 0
+  fi
+  if [ -f /sys/class/dmi/id/sys_vendor ] && grep -qi "ASUS" /sys/class/dmi/id/sys_vendor 2>/dev/null && grep -qi "GX10" /sys/class/dmi/id/board_name 2>/dev/null; then
+    return 0
+  fi
+  if [ -d "/opt/nvidia/dgx-dashboard-service" ] || uname -r | grep -qi "nvidia"; then
+    return 0
+  fi
+  return 1
+}
+
+IS_GX10=false
+if is_gx10_hardware; then
+  IS_GX10=true
+fi
 
 if [[ "${OS}" == "Linux" ]]; then
   if [ -f /etc/os-release ]; then
@@ -47,17 +112,22 @@ if [[ "${OS}" == "Linux" ]]; then
     log_info "Linux Distribution: ${NAME:-Linux} ${VERSION_ID:-}"
   fi
 
-  # DGX OS / Ubuntu Hardware Package Pinning on ASUS GX10
-  if command -v apt-mark >/dev/null 2>&1; then
-    log_info "Enforcing package holds on NVIDIA drivers and container toolkits..."
+  # DGX OS / Ubuntu Hardware Package Pinning (ASUS GX10 appliance only)
+  if [ "${IS_GX10}" = true ] && command -v apt-mark >/dev/null 2>&1; then
+    log_info "ASUS GX10 appliance hardware detected. Checking NVIDIA package holds..."
     for pkg in linux-nvidia-hwe-24.04 nvidia-container-toolkit; do
-      if dpkg -l "${pkg}" >/dev/null 2>&1; then
+      if apt-mark showhold 2>/dev/null | grep -qx "${pkg}"; then
+        log_success "Package ${pkg} is already pinned/held."
+      elif dpkg -l "${pkg}" >/dev/null 2>&1; then
+        log_info "Pinning package: ${pkg} via sudo apt-mark hold..."
         sudo apt-mark hold "${pkg}"
         log_success "Held package: ${pkg}"
       else
         log_warn "Package ${pkg} not yet installed; skipping hold."
       fi
     done
+  else
+    log_info "Non-GX10 Linux workstation detected. Skipping NVIDIA driver package holds."
   fi
 
   # Native Ollama installation on Linux (Ubuntu / DGX OS)
@@ -69,8 +139,15 @@ if [[ "${OS}" == "Linux" ]]; then
     log_info "Ollama is already installed on host."
   fi
 
+  # Ensure socat is installed on Linux (needed for DGX telemetry reverse proxy bridge)
+  if ! command -v socat >/dev/null 2>&1; then
+    log_info "Installing socat for hardware telemetry reverse proxy bridge..."
+    sudo apt-get update -y && sudo apt-get install -y socat
+    log_success "socat installed on Linux."
+  fi
+
 elif [[ "${OS}" == "Darwin" ]]; then
-  log_info "Running on macOS (${ARCH}). Skipping Linux-specific apt holds."
+  log_info "Running on macOS (${ARCH}). Skipping Linux/GX10-specific apt holds."
 
   # Native Ollama installation on macOS
   if ! command -v ollama >/dev/null 2>&1; then
@@ -86,27 +163,22 @@ elif [[ "${OS}" == "Darwin" ]]; then
   else
     log_info "Ollama is already installed on macOS host."
   fi
-fi
 
-# ------------------------------------------------------------------------------
-# 1B. Hardware-Adaptive Context Window Detection (macOS vs ASUS GX10)
-# ------------------------------------------------------------------------------
-IS_GX10=false
-if [[ "${OS}" == "Linux" ]]; then
-  if grep -qi "dgx" /etc/os-release 2>/dev/null || [ -d "/data/titan" ]; then
-    IS_GX10=true
-  fi
-  TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo "0")
-  if [ "${TOTAL_MEM_KB}" -gt 30000000 ]; then
-    IS_GX10=true
+  # Ensure socat is installed on macOS via Homebrew if available
+  if ! command -v socat >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
+    log_info "Installing socat via Homebrew..."
+    brew install socat || true
   fi
 fi
 
+# ------------------------------------------------------------------------------
+# 1B. Hardware-Adaptive Context Window Detection
+# ------------------------------------------------------------------------------
 if [ "${IS_GX10}" = true ]; then
   log_info "Detected production ASUS Ascent GX10 (GB10 / ~273 GB/s unified memory). Scaling context to 32k tokens."
   DETECTED_CTX=32768
 else
-  log_info "Workstation profile: macOS (Apple Silicon). Pinned to safe 4k context window (protects 16GB RAM)."
+  log_info "Workstation profile: macOS (Apple Silicon) or non-GX10 host. Pinned to safe 4k context window."
   DETECTED_CTX=4096
 fi
 
@@ -198,21 +270,31 @@ if [ ! -f .env ]; then
   if [ -f .env.example ]; then
     log_info "Creating .env from .env.example..."
     cp .env.example .env
-    log_success "Created .env configuration file."
+    chmod 600 .env
+    log_success "Created .env configuration file (secured with chmod 600)."
   else
     log_error ".env.example not found."
     exit 1
   fi
 else
-  log_info ".env file already exists."
+  chmod 600 .env
+  log_info ".env file already exists (enforced chmod 600)."
 fi
 
-# Ensure INFERENCE_NUM_CTX is populated in .env
-if [ -f .env ] && ! grep -q '^INFERENCE_NUM_CTX=' .env; then
-  echo "" >> .env
-  echo "# Inference Context Window (Tokens) - Hardware Adaptive" >> .env
-  echo "INFERENCE_NUM_CTX=${DETECTED_CTX}" >> .env
-  log_success "Appended INFERENCE_NUM_CTX=${DETECTED_CTX} to .env"
+# Ensure INFERENCE_NUM_CTX is adaptively set in .env
+if [ -f .env ]; then
+  if grep -q '^INFERENCE_NUM_CTX=' .env; then
+    CURRENT_CTX=$(grep -E '^INFERENCE_NUM_CTX=' .env | cut -d '=' -f2-)
+    if [ "${CURRENT_CTX}" != "${DETECTED_CTX}" ]; then
+      sed -i.bak "s/^INFERENCE_NUM_CTX=.*/INFERENCE_NUM_CTX=${DETECTED_CTX}/" .env && rm -f .env.bak
+      log_success "Updated INFERENCE_NUM_CTX=${DETECTED_CTX} in .env for detected hardware."
+    fi
+  else
+    echo "" >> .env
+    echo "# Inference Context Window (Tokens) - Hardware Adaptive" >> .env
+    echo "INFERENCE_NUM_CTX=${DETECTED_CTX}" >> .env
+    log_success "Appended INFERENCE_NUM_CTX=${DETECTED_CTX} to .env"
+  fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -254,7 +336,7 @@ if [[ "$TARGET_DB_DIR" == /data/titan/* ]]; then
   sudo chmod -R 700 "${TARGET_DB_DIR}"
 else
   mkdir -p "${TARGET_DB_DIR}"
-  chmod -R 700 "${TARGET_DB_DIR}" || true
+  chmod -R 700 "${TARGET_DB_DIR}" 2>/dev/null || true
 fi
 
 # Hermes Agent Runtime Workspace Storage (tools, caches, packages, isolated from memories)
@@ -273,10 +355,10 @@ if [[ "$TARGET_WORKSPACE_DIR" == /data/titan/* ]]; then
   log_info "Creating production workspace path with sudo: ${TARGET_WORKSPACE_DIR}..."
   sudo mkdir -p "${TARGET_WORKSPACE_DIR}"
   sudo chown -R 1000:1000 "${TARGET_WORKSPACE_DIR}"
-  sudo chmod -R 775 "${TARGET_WORKSPACE_DIR}"
+  sudo chmod 775 "${TARGET_WORKSPACE_DIR}"
 else
   mkdir -p "${TARGET_WORKSPACE_DIR}"
-  chmod -R 775 "${TARGET_WORKSPACE_DIR}" || true
+  chmod 775 "${TARGET_WORKSPACE_DIR}" || true
 fi
 
 if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
@@ -331,10 +413,109 @@ if [ -f "${REPO_ROOT}/scripts/setup-hermes.sh" ]; then
   "${REPO_ROOT}/scripts/setup-hermes.sh"
 fi
 
-log_success "Project Titan host baseline setup complete!"
+# ------------------------------------------------------------------------------
+# 8. Ingress, Container Stack & Endpoint Smoke Verification
+# ------------------------------------------------------------------------------
+log_info "Running baseline ingress and container stack verification..."
+
+# 8A. Validate Docker Compose topology
+log_info "Validating Docker Compose topology..."
+docker compose config --quiet
+log_success "Docker Compose configuration verified."
+
+# 8B. Validate Caddy Reverse Proxy syntax
+log_info "Validating Caddyfile syntax..."
+docker run --rm -v "${REPO_ROOT}/config/caddy/Caddyfile:/etc/caddy/Caddyfile" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1
+log_success "Caddyfile configuration validated."
+
+# 8C. Verify local domain resolution (.titan.local vs .localhost)
+log_info "Checking local domain resolution..."
+if getent hosts "hermes.titan.local" >/dev/null 2>&1; then
+  log_success "Domain hermes.titan.local resolves successfully."
+else
+  log_info "Notice: 'hermes.titan.local' is not yet configured in /etc/hosts."
+  log_info "To use *.titan.local custom domains, run:"
+  if [ "${IS_GX10}" = true ]; then
+    log_info "  echo '127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local' | sudo tee -a /etc/hosts"
+  else
+    log_info "  echo '127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local' | sudo tee -a /etc/hosts"
+  fi
+  log_info "Zero-config fallback: *.localhost domains (e.g. http://hermes.localhost) work automatically without /etc/hosts."
+fi
+
+# 8D. Launch appliance containers & verify live endpoints
+log_info "Ensuring appliance containers are started (docker compose up -d)..."
+docker compose up -d
+
+# 8E. Ensure host control plane services are running
+if [ -f "${REPO_ROOT}/scripts/start-control-plane.sh" ]; then
+  log_info "Ensuring host control plane services are running (start-control-plane.sh)..."
+  "${REPO_ROOT}/scripts/start-control-plane.sh" start
+fi
+
+# Wait briefly for containers to become ready
+log_info "Awaiting service readiness..."
+for i in {1..30}; do
+  if curl -s "http://127.0.0.1:80" >/dev/null 2>&1 && curl -s "http://127.0.0.1:8642/health" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+# Verify Ingress Landing Page
+if curl -s "http://127.0.0.1:80" | grep -q "Project Titan"; then
+  log_success "Ingress landing page verified on port 80 (http://localhost)."
+else
+  log_warn "Ingress landing page not responding as expected on port 80."
+fi
+
+# Verify Hermes Agent unprivileged API via Caddy reverse proxy
+if curl -s "http://hermes.localhost/health" | grep -q "hermes-titan"; then
+  log_success "Hermes unprivileged agent runtime verified via Caddy (http://hermes.localhost)."
+elif curl -s -H "Host: hermes.titan.local" "http://127.0.0.1/health" | grep -q "hermes-titan"; then
+  log_success "Hermes unprivileged agent runtime verified via Caddy (Host: hermes.titan.local)."
+else
+  log_warn "Hermes endpoint not yet responding via reverse proxy."
+fi
+
+# Verify SilverBullet PKM UI via Caddy reverse proxy
+if curl -s -I "http://memory.localhost/" 2>&1 | grep -qE "HTTP/(1.1|2) 200"; then
+  log_success "SilverBullet PKM verified via Caddy (http://memory.localhost)."
+elif curl -s -I -H "Host: memory.titan.local" "http://127.0.0.1/" 2>&1 | grep -qE "HTTP/(1.1|2) 200"; then
+  log_success "SilverBullet PKM verified via Caddy (Host: memory.titan.local)."
+else
+  log_warn "SilverBullet endpoint not yet responding via reverse proxy."
+fi
+
+# Verify LiteLLM Gateway & UI via Caddy reverse proxy
+if curl -s -o /dev/null -w "%{http_code}" "http://proxy.localhost/ui/" | grep -q "200"; then
+  log_success "LiteLLM Gateway & UI verified via Caddy (http://proxy.localhost/ui)."
+elif curl -s -o /dev/null -w "%{http_code}" -H "Host: proxy.titan.local" "http://127.0.0.1/ui/" | grep -q "200"; then
+  log_success "LiteLLM Gateway & UI verified via Caddy (Host: proxy.titan.local/ui)."
+else
+  log_warn "LiteLLM endpoint not yet responding via reverse proxy."
+fi
+
+# Verify DGX Dashboard via Caddy reverse proxy (ASUS GX10 appliance profile only)
+if [ "${IS_GX10}" = true ] && curl -s "http://127.0.0.1:11000" >/dev/null 2>&1; then
+  if curl -s -o /dev/null -w "%{http_code}" "http://dgx.localhost/" | grep -q "200"; then
+    log_success "NVIDIA DGX Dashboard verified via Caddy (http://dgx.localhost)."
+  elif curl -s -o /dev/null -w "%{http_code}" -H "Host: dgx.titan.local" "http://127.0.0.1/" | grep -q "200"; then
+    log_success "NVIDIA DGX Dashboard verified via Caddy (Host: dgx.titan.local)."
+  else
+    log_warn "DGX Dashboard endpoint not yet responding via reverse proxy."
+  fi
+fi
+
+log_success "Project Titan host baseline setup and verification complete!"
 echo ""
-echo "Next steps:"
-echo "  1. Start host control plane: ./scripts/start-control-plane.sh"
-echo "  2. Start container appliance: docker compose up -d"
-echo "  3. Check status: curl http://127.0.0.1:4000/health"
+echo "Appliance Endpoints:"
+echo "  - Ingress Gateway:   http://localhost (or https://localhost)"
+echo "  - Hermes Console:    http://hermes.localhost (or http://hermes.titan.local)"
+echo "  - Memory Plane PKM:  http://memory.localhost (or http://memory.titan.local)"
+echo "  - LiteLLM Admin UI:  http://proxy.localhost/ui (or http://proxy.titan.local/ui)"
+if [ "${IS_GX10}" = true ]; then
+  echo "  - DGX Dashboard:     http://dgx.localhost (or http://dgx.titan.local)"
+fi
+echo "  - LiteLLM Control:   ./scripts/start-control-plane.sh {start|stop|status}"
 echo ""

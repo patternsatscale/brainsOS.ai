@@ -104,6 +104,7 @@ project-titan/
 │   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
 └── scripts/  
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
+    ├── setup-network.sh      # Static IP & local appliance domain (/etc/hosts) setup script
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
     ├── setup-memories.sh     # Idempotent provisioning & scaffolding manager for memory plane
     ├── verify-hermes.sh      # Automated verification harness for Hermes workspace persistence
