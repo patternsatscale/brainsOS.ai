@@ -96,12 +96,12 @@ else
   exit 1
 fi
 
-log_info "Validating Hermes API can read parsed OKF note..."
-HERMES_API_READ=$(curl -s "http://127.0.0.1:${HERMES_PORT}/api/memories/note?path=${SYNC_FILE}" || echo "{}")
+log_info "Validating Hermes OKF plugin can read parsed OKF note..."
+HERMES_API_READ=$(docker compose exec -T hermes python3 /opt/hermes/hermes_okf.py read "${SYNC_FILE}" 2>/dev/null || echo "{}")
 if echo "${HERMES_API_READ}" | grep -q "Bi-directional Sync Test Note"; then
-  log_success "Hermes API successfully returned parsed note."
+  log_success "Hermes OKF plugin successfully returned parsed note."
 else
-  log_error "Hermes API failed to parse note: ${HERMES_API_READ}"
+  log_error "Hermes OKF plugin failed to parse note: ${HERMES_API_READ}"
   rm -f "${SYNC_FULL_PATH}"
   exit 1
 fi
@@ -193,7 +193,7 @@ fi
 # 5. Verify Active Rules Context Ingestion
 # ------------------------------------------------------------------------------
 log_info "Verifying active rules context synthesizer in Hermes..."
-RULES_SYNTH=$(docker compose exec -T hermes python3 /app/hermes_okf.py rules 2>/dev/null || true)
+RULES_SYNTH=$(docker compose exec -T hermes python3 /opt/hermes/hermes_okf.py rules 2>/dev/null || true)
 if echo "${RULES_SYNTH}" | grep -q "OPERATOR RULES"; then
   log_success "Hermes OKF plugin successfully synthesized active operator rules."
 else

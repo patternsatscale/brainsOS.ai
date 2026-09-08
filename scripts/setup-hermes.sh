@@ -69,20 +69,32 @@ mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/lo
 log_success "Memory plane directories verified at ${MEMORIES_DIR}."
 
 WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
-mkdir -p "${WORKSPACE_DIR}"
-chmod 775 "${WORKSPACE_DIR}" || true
+mkdir -p "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills"
+chmod 775 "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" || true
+
+if [ ! -f "${WORKSPACE_DIR}/config.yaml" ] && [ -f "${REPO_ROOT}/config/hermes/config.yaml" ]; then
+  cp "${REPO_ROOT}/config/hermes/config.yaml" "${WORKSPACE_DIR}/config.yaml"
+  log_info "Seeded default Hermes configuration at ${WORKSPACE_DIR}/config.yaml."
+fi
+
+if [ -f "${REPO_ROOT}/docker/hermes/hermes_okf.py" ]; then
+  cp "${REPO_ROOT}/docker/hermes/hermes_okf.py" "${WORKSPACE_DIR}/skills/hermes_okf.py"
+  chmod +x "${WORKSPACE_DIR}/skills/hermes_okf.py" || true
+fi
+
 if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
   touch "${REPO_ROOT}/data/workspace/.gitkeep"
 fi
 log_success "Workspace host storage verified at ${WORKSPACE_DIR}."
 
 # ------------------------------------------------------------------------------
-# 3. Build Unprivileged Hermes Sandbox Image
+# 3. Pull & Build Unprivileged Hermes Sandbox & Messaging Images
 # ------------------------------------------------------------------------------
+log_info "Ensuring companion services are present (signal-cli)..."
+docker compose pull signal-cli
+
 log_info "Building unprivileged Hermes Agent image (titan-hermes:latest)..."
-
 docker compose build hermes
-
 log_success "Hermes Agent container image built successfully."
 
 # ------------------------------------------------------------------------------
@@ -92,8 +104,7 @@ log_info "Verifying Hermes image configuration and security boundaries..."
 IMAGE_NAME=$(docker compose config --format json 2>/dev/null | grep -o '"image":"[^"]*hermes[^"]*"' | head -n 1 | cut -d'"' -f4 || echo "titan-hermes:latest")
 
 if docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
-  DEFAULT_USER=$(docker image inspect "${IMAGE_NAME}" --format '{{.Config.User}}')
-  log_success "Verified image '${IMAGE_NAME}' exists. Default container user: ${DEFAULT_USER:-root}."
+  log_success "Verified image '${IMAGE_NAME}' exists."
 fi
 
-log_success "Hermes runtime setup complete! Start service via: docker compose up -d hermes"
+log_success "Hermes runtime setup complete! Start services via: docker compose up -d"

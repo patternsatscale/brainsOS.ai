@@ -94,13 +94,13 @@ project-titan/
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── docker/
 │   └── hermes/
-│       ├── Dockerfile        # Unprivileged multi-arch agent container definition
-│       ├── hermes_okf.py     # Standalone OKF memory manager, rule injector & CLI skill runner
-│       └── server.py         # Lightweight Hermes web console, OKF explorer & sandboxed runner
+│       ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
+│       └── hermes_okf.py     # Standalone OKF memory manager, rule injector & CLI skill runner
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files
 │   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
-│   ├── workspace/            # Persistent Hermes agent tools, caches, and Signal state (git-ignored)
+│   ├── workspace/            # Persistent Hermes agent tools, caches, and Signal/Telegram state (git-ignored)
+│   │   └── signal/           # signal-cli identity keys and daemon registration state
 │   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
 └── scripts/  
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
@@ -145,13 +145,14 @@ Phase 0: Base Config
   * Enforce hardware-aware request queuing (`max_parallel_requests: 1`) and initialize virtual proxy keys (`HERMES_LITELLM_KEY`).
   * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; dynamic model and key mutations persist across process restarts; all direct access routes to raw inference and database ports are bound strictly to localhost loopback.
 
-### Phase 2: Hermes Agent (Isolated Agent Execution)
+### Phase 2: Hermes Agent (Upstream Runtime, Web Dashboard & Messaging Gateways)
 
-  * Deploy the unprivileged Hermes Agent sandbox container (`titan-hermes`) built via `docker/hermes/Dockerfile` with dropped capabilities (`no-new-privileges:true`) and non-root execution (UID 1000).
+  * Deploy the unprivileged upstream Nous Research Hermes Agent sandbox container (`titan-hermes`) built via `docker/hermes/Dockerfile` with dropped privileges (`no-new-privileges:true`, UID 1000) and native s6 supervision.
   * Enforce outbound internet egress on `titan-internal` while strictly eliminating the host Docker socket (`/var/run/docker.sock`) and isolating the control plane database (`titan-litellm-db`).
-  * Route outbound agent queries strictly to `http://litellm:4000/v1` authenticated via `HERMES_LITELLM_KEY`.
-  * Expose the Hermes interaction console, skills manager, and reasoning interface via Caddy reverse proxy at `hermes.titan.local`.
-  * *Exit Criteria:* Hermes processing loops execute and log traces inside LiteLLM while running entirely in a non-root environment; interactive web console and sandboxed tool execution in `/workspace` are fully operational.
+  * Route outbound agent queries strictly to `http://proxy.local:4000/v1` authenticated via virtual proxy key, isolating host infrastructure names from agent context (Rule 7).
+  * Deploy a companion `signal-cli` daemon service on `titan-internal` persisting registration state in `/workspace/signal`.
+  * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `hermes.titan.local` (port `9119`) and gateway API at `hermes-api.titan.local` (port `8642`).
+  * *Exit Criteria:* Hermes processing loops and dashboard are operational; Web Dashboard allows visual configuration of Signal and Telegram channels; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
 
 ### Phase 3: Memory Mgmt (Flat-File OKF & PKM Interface)
 

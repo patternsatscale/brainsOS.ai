@@ -1,0 +1,24 @@
+# ==============================================================================
+# Project Titan: Hermes Agent Configuration Template
+# Pre-configured for local-first zero-trust inference via LiteLLM control plane
+# ==============================================================================
+
+_config_version: 12
+
+model:
+  default: "titan-core"
+  provider: "custom"
+  base_url: "http://proxy.local:4000/v1"
+
+agent:
+  name: "hermes-titan"
+
+database:
+  journal_mode: "wal"
+
+runtime:
+  nofile_soft_limit: 4096
+
+terminal:
+  backend: "local"
+  timeout: 180

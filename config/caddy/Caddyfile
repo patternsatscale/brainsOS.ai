@@ -4,7 +4,7 @@
 }
 
 # ==============================================================================
-# Agent Plane Gateway (Hermes)
+# Agent Plane Gateway: Hermes Web Dashboard (Port 9119)
 # ==============================================================================
 http://hermes.{$TITAN_DOMAIN:titan.local}, https://hermes.{$TITAN_DOMAIN:titan.local}, http://hermes.localhost, https://hermes.localhost {
 	tls internal
@@ -13,10 +13,11 @@ http://hermes.{$TITAN_DOMAIN:titan.local}, https://hermes.{$TITAN_DOMAIN:titan.l
 		output stdout
 		format console
 	}
-	reverse_proxy hermes:8642 {
+	reverse_proxy hermes:9119 {
 		flush_interval -1
 	}
 }
+
 
 # ==============================================================================
 # Control Plane Gateway (LiteLLM)
