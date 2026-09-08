@@ -22,3 +22,7 @@ runtime:
 terminal:
   backend: "local"
   timeout: 180
+
+plugins:
+  enabled:
+    - hermes-okf

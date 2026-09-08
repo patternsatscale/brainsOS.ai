@@ -69,17 +69,18 @@ mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/lo
 log_success "Memory plane directories verified at ${MEMORIES_DIR}."
 
 WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
-mkdir -p "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills"
-chmod 775 "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" || true
+mkdir -p "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
+chmod 775 "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
 
-if [ ! -f "${WORKSPACE_DIR}/config.yaml" ] && [ -f "${REPO_ROOT}/config/hermes/config.yaml" ]; then
+if [ -f "${REPO_ROOT}/config/hermes/config.yaml" ]; then
   cp "${REPO_ROOT}/config/hermes/config.yaml" "${WORKSPACE_DIR}/config.yaml"
-  log_info "Seeded default Hermes configuration at ${WORKSPACE_DIR}/config.yaml."
+  log_info "Synced Hermes configuration at ${WORKSPACE_DIR}/config.yaml."
 fi
 
-if [ -f "${REPO_ROOT}/docker/hermes/hermes_okf.py" ]; then
-  cp "${REPO_ROOT}/docker/hermes/hermes_okf.py" "${WORKSPACE_DIR}/skills/hermes_okf.py"
-  chmod +x "${WORKSPACE_DIR}/skills/hermes_okf.py" || true
+# Clean up any legacy hermes_okf.py skill copies to maintain zero technical debt
+if [ -f "${WORKSPACE_DIR}/skills/hermes_okf.py" ]; then
+  rm -f "${WORKSPACE_DIR}/skills/hermes_okf.py"
+  log_info "Removed legacy skill copy at ${WORKSPACE_DIR}/skills/hermes_okf.py."
 fi
 
 if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
