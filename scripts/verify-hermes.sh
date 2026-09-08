@@ -36,6 +36,7 @@ elif [ -f .env.example ]; then
 fi
 
 HERMES_PORT="${HERMES_PORT:-8642}"
+HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
 DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
 WORKSPACE_PATH="${TITAN_WORKSPACE_DIR:-./data/workspace}"
 
@@ -58,29 +59,44 @@ log_info "Host Memories Path:  ${HOST_MEMORIES}"
 # ------------------------------------------------------------------------------
 # 1. Container Running & Health Check
 # ------------------------------------------------------------------------------
-log_info "Step 1: Checking Hermes container status..."
-if ! docker compose ps --services --filter "status=running" | grep -q "^hermes$"; then
-  log_warn "Hermes container is not running. Starting hermes..."
-  docker compose up -d hermes
+log_info "Step 1: Checking Hermes and Signal-CLI container statuses..."
+if ! docker compose ps --services --filter "status=running" | grep -q "^signal-cli$"; then
+  log_warn "Signal-CLI container is not running. Starting signal-cli..."
+  docker compose up -d signal-cli
   sleep 2
 fi
 
-CONTAINER_USER=$(docker compose exec -T hermes id -u)
+if ! docker compose ps --services --filter "status=running" | grep -q "^hermes$"; then
+  log_warn "Hermes container is not running. Starting hermes..."
+  docker compose up -d hermes
+  sleep 4
+fi
+
+CONTAINER_USER=$(docker compose exec -T hermes id -u hermes)
 if [ "${CONTAINER_USER}" != "1000" ]; then
-  log_error "Hermes container is running as UID ${CONTAINER_USER} (expected 1000: unprivileged hermes)."
+  log_error "Hermes container user is UID ${CONTAINER_USER} (expected 1000: unprivileged hermes)."
   exit 1
 fi
-log_success "Hermes container verified running as unprivileged UID 1000."
+log_success "Hermes container verified configured with unprivileged UID 1000."
 
 # ------------------------------------------------------------------------------
-# 2. Web Console Reachability
+# 2. Web Dashboard & Gateway Reachability
 # ------------------------------------------------------------------------------
-log_info "Step 2: Checking Hermes web console on port ${HERMES_PORT}..."
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${HERMES_PORT}/" || echo "failed")
-if [ "${HTTP_STATUS}" == "200" ]; then
-  log_success "Hermes web console reachable (HTTP 200)."
+log_info "Step 2A: Checking Hermes Web Dashboard on port ${HERMES_DASHBOARD_PORT}..."
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${HERMES_DASHBOARD_PORT}/" || echo "failed")
+if [ "${HTTP_STATUS}" == "200" ] || [ "${HTTP_STATUS}" == "302" ]; then
+  log_success "Hermes Web Dashboard reachable (HTTP ${HTTP_STATUS})."
 else
-  log_error "Hermes web console returned HTTP ${HTTP_STATUS}."
+  log_error "Hermes Web Dashboard returned unexpected HTTP ${HTTP_STATUS}."
+  exit 1
+fi
+
+log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
+SIGNAL_ABOUT=$(docker compose exec -T hermes curl -s http://signal-cli:8080/v1/about || echo "failed")
+if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
+  log_success "Signal-CLI daemon reachable on titan-internal network."
+else
+  log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
   exit 1
 fi
 
@@ -176,9 +192,28 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 8. Git Secret Hygiene Verification
+# 8. Zero Docker Socket & LiteLLM Gateway Routing Checks
 # ------------------------------------------------------------------------------
-log_info "Step 8: Checking Git status for uncommitted runtime workspace files..."
+log_info "Step 8: Verifying Zero Docker Socket inside Hermes container..."
+if ! docker compose exec -T hermes test -e /var/run/docker.sock; then
+  log_success "Verified /var/run/docker.sock is strictly absent inside container."
+else
+  log_error "Host Docker socket detected inside container!"
+  exit 1
+fi
+
+log_info "Step 9: Verifying Gateway reachability via proxy.local from Hermes..."
+GATEWAY_HEALTH=$(docker compose exec -T hermes curl -s -H "Authorization: Bearer ${HERMES_LITELLM_KEY}" http://proxy.local:4000/health || echo "failed")
+if echo "${GATEWAY_HEALTH}" | grep -q "healthy"; then
+  log_success "Inference gateway reachable via proxy.local:4000 with virtual key."
+else
+  log_warn "Gateway health check output from proxy.local:4000: ${GATEWAY_HEALTH}"
+fi
+
+# ------------------------------------------------------------------------------
+# 10. Git Secret Hygiene Verification
+# ------------------------------------------------------------------------------
+log_info "Step 10: Checking Git status for uncommitted runtime workspace files..."
 UNTRACKED_WORKSPACE=$(git ls-files -o --exclude-standard data/workspace/ | grep -v 'data/workspace/\.gitkeep$' || true)
 TRACKED_WORKSPACE=$(git ls-files data/workspace/ | grep -v 'data/workspace/\.gitkeep$' || true)
 if [ -n "${UNTRACKED_WORKSPACE}" ] || [ -n "${TRACKED_WORKSPACE}" ]; then

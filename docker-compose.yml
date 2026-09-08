@@ -77,8 +77,27 @@ services:
       - titan-ingress
 
   # ----------------------------------------------------------------------------
-  # Agent Plane: Hermes Agent Sandbox
-  # Ephemeral sandbox runtime: full command, browser, and tooling flexibility
+  # ----------------------------------------------------------------------------
+  # Messaging Plane: Signal CLI REST/JSON-RPC Daemon
+  # Dedicated unprivileged daemon on titan-internal for Signal messenger
+  # ----------------------------------------------------------------------------
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: titan-signal-cli
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    environment:
+      - MODE=json-rpc
+      - PORT=8080
+    volumes:
+      - ${TITAN_WORKSPACE_DIR:-./data/workspace}/signal:/home/.local/share/signal-cli
+    networks:
+      - titan-internal
+
+  # ----------------------------------------------------------------------------
+  # Agent Plane: Hermes Agent Sandbox & Web Dashboard
+  # Upstream Nous Research Hermes Agent: Web Dashboard & multi-channel gateways
   # Strictly barred from host Docker socket; writes only OKF to /memories
   # ----------------------------------------------------------------------------
   hermes:
@@ -92,8 +111,10 @@ services:
       - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${HERMES_PORT:-8642}:8642"
+      - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "proxy.local:host-gateway"
       - "litellm:host-gateway"
     volumes:
       # PURE OKF Markdown memory mount only
@@ -101,16 +122,35 @@ services:
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # Internal sandbox state for packages, tools, caches, and local databases (Host Bind-Mount)
+      - ${TITAN_WORKSPACE_DIR:-./data/workspace}:/opt/data
+      # Backward-compatibility workspace mount
       - ${TITAN_WORKSPACE_DIR:-./data/workspace}:/workspace
-    working_dir: /workspace
+    working_dir: /opt/data
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - HERMES_DASHBOARD=1
+      - HERMES_PORT=${HERMES_PORT:-8642}
+      - HERMES_DASHBOARD_PORT=${HERMES_DASHBOARD_PORT:-9119}
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
       - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY}
-      - LITELLM_URL=http://litellm:${LITELLM_PORT:-4000}/v1
+      - CUSTOM_API_KEY=${HERMES_LITELLM_KEY}
+      - OPENAI_API_KEY=${HERMES_LITELLM_KEY}
+      - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
+      - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
+      - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
-      - WORKSPACE_DIR=/workspace
+      - WORKSPACE_DIR=/opt/data
       - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-4096}
+      - SIGNAL_HTTP_URL=http://signal-cli:8080
+      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
+      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+    command: ["sleep", "infinity"]
+    depends_on:
+      - signal-cli
     networks:
       - titan-ingress
       - titan-internal
