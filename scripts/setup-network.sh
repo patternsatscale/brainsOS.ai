@@ -325,6 +325,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   echo "  Mapping IP:          ${SELECTED_HOSTS_IP}"
   echo "  Mapped Hostnames:    ${SELECTED_DOMAIN}"
   echo "                       hermes.${SELECTED_DOMAIN}"
+  echo "                       api.hermes.${SELECTED_DOMAIN}"
   echo "                       proxy.${SELECTED_DOMAIN}"
   echo "                       memory.${SELECTED_DOMAIN}"
   if is_gx10_hardware; then
@@ -371,9 +372,9 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   HOSTS_BLOCK_START="# --- BEGIN PROJECT TITAN DOMAINS ---"
   HOSTS_BLOCK_END="# --- END PROJECT TITAN DOMAINS ---"
   if is_gx10_hardware; then
-    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} dgx.${SELECTED_DOMAIN}"
+    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} dgx.${SELECTED_DOMAIN}"
   else
-    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN}"
+    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN}"
   fi
 
   # Strip any previous Titan block if present, then append clean block
@@ -540,6 +541,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   echo -e "Appliance domains registered in /etc/hosts:"
   echo -e "  - Ingress Portal:  http://${SELECTED_DOMAIN}"
   echo -e "  - Agent Plane:     http://hermes.${SELECTED_DOMAIN}"
+  echo -e "  - Agent API:       http://api.hermes.${SELECTED_DOMAIN}"
   echo -e "  - Control Plane:   http://proxy.${SELECTED_DOMAIN}"
   echo -e "  - Memory Plane:    http://memory.${SELECTED_DOMAIN}"
   if is_gx10_hardware; then

@@ -298,10 +298,8 @@ start_services() {
   # 4. Provision Hermes virtual key in database if not already provisioned
   if [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
     KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
-      -X POST "http://127.0.0.1:${LITELLM_PORT}/key/info" \
-      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-      -H "Content-Type: application/json" \
-      -d "{\"key\": \"${HERMES_LITELLM_KEY}\"}" || echo "000")
+      -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${HERMES_LITELLM_KEY}" \
+      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
 
     if [ "${KEY_CHECK}" != "200" ]; then
       log_info "Registering Hermes virtual key in database..."
@@ -309,7 +307,7 @@ start_services() {
         -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
         -H "Content-Type: application/json" \
-        -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\"}" || true
+        -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\", \"models\": []}" || true
       log_success "Hermes virtual key initialized in database."
     else
       log_info "Hermes virtual key is already registered in database."

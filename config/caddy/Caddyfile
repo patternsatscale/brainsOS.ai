@@ -18,6 +18,21 @@ http://hermes.{$TITAN_DOMAIN:titan.local}, https://hermes.{$TITAN_DOMAIN:titan.l
 	}
 }
 
+# ==============================================================================
+# Agent Plane API Gateway: Hermes OpenAI-Compatible API (Port 8642)
+# ==============================================================================
+http://api.hermes.{$TITAN_DOMAIN:titan.local}, https://api.hermes.{$TITAN_DOMAIN:titan.local}, http://api.hermes.localhost, https://api.hermes.localhost {
+	tls internal
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy hermes:8642 {
+		flush_interval -1
+	}
+}
+
 
 # ==============================================================================
 # Control Plane Gateway (LiteLLM)
