@@ -76,11 +76,150 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 
 -----
 
-## 3. Repository Directory Structure
+## 3. Quickstart & Getting Started (Linux / DGX OS & macOS)
+
+This guide provides the fastest path to bootstrap, run, and verify a complete Project Titan appliance on a standard Linux workstation (Ubuntu 24.04 LTS, DGX OS, or Debian-based distributions) or a macOS development environment.
+
+### Prerequisites
+
+| Component | Minimum Requirement | Recommended / Notes |
+|---|---|---|
+| **Operating System** | Ubuntu 24.04 LTS, DGX OS 6+ (ARM64), or macOS 14+ (Apple Silicon) | Debian 12+ x86_64 or ARM64 compatible |
+| **Container Engine** | Docker Engine 24.0+ & Docker Compose v2 (`docker compose`) | User must be in `docker` group (`sudo usermod -aG docker $USER`) |
+| **Host Tooling** | `bash` 4+, `curl`, `git`, `jq`, `python3` (3.10+), `python3-venv` | Handled automatically by `setup-host.sh` on Ubuntu/DGX OS |
+| **Hardware / Memory** | 16 GB RAM minimum | Unified LPDDR5x (GX10 GB10) or Apple Silicon Unified Memory |
+| **Inference Acceleration** | CPU fallback supported | NVIDIA CUDA 12+ & `nvidia-container-toolkit` for GPU acceleration |
+
+> [!IMPORTANT]
+> **Linux Docker Group Membership:** Ensure your non-root user can interact with the Docker daemon without `sudo`:
+> ```bash
+> sudo usermod -aG docker $USER && newgrp docker
+> ```
+
+---
+
+### Step-by-Step Quickstart
+
+#### 1. Clone the Repository & Configure Environment
+```bash
+git clone https://github.com/patternsatscale/project-titan.git
+cd project-titan
+
+# Copy baseline environment configuration
+cp .env.example .env
+```
+*Review `.env` parameters if needed:*
+- `TITAN_DATA_DIR`: Set to `./data/memories` (development) or `/data/titan/memories` (production GX10).
+- `TITAN_WORKSPACE_DIR`: Set to `./data/workspace` (development) or `/data/titan/workspace` (production GX10).
+- `PUID` and `PGID`: Set to `1000:1000` (default non-root user).
+
+#### 2. Run Idempotent Host Baseline Setup
+Execute the host setup script to audit system permissions, install host dependencies, initialize the native Ollama inference engine, configure Python virtual environments, and seed the default local model:
+```bash
+./scripts/setup-host.sh --pull-model
+```
+*Flags:*
+- `--pull-model`: Automatically pulls and seeds the baseline model (e.g. `qwen2.5:7b-instruct-q4_K_M` or `hermes3:8b`). Omit if seeding manually.
+
+#### 3. Initialize Memory Plane & Build Hermes Agent
+Provision the pure Open Knowledge Format (OKF) storage directories and build the unprivileged Hermes Agent sandbox:
+```bash
+# Provision flat-file OKF directory tree (knowledge/, rules/, logs/)
+./scripts/setup-memories.sh
+
+# Build unprivileged Hermes container image with native hermes-okf plugin
+./scripts/setup-hermes.sh
+```
+
+#### 4. Start Native Host Control Plane
+Launch the host-side inference runtime (`ollama` on `127.0.0.1:11434`), LiteLLM proxy gateway (`:4000`), and initialize dynamic PostgreSQL persistence:
+```bash
+./scripts/start-control-plane.sh start
+```
+*Verify control plane status:*
+```bash
+./scripts/start-control-plane.sh status
+```
+
+#### 5. Launch Appliance Container Cluster
+Start the containerized ingress gateway, database, PKM interface, messaging daemons, and Hermes agent sandbox via Docker Compose:
+```bash
+docker compose up -d
+```
+*Verify running containers:*
+```bash
+docker compose ps
+```
+
+#### 6. Configure Network & Local Domain Routing (`/etc/hosts`)
+Route appliance domains to loopback (or your Linux machine's LAN IP) using the automated network script:
+```bash
+# Register *.titan.local domains non-interactively in /etc/hosts
+sudo ./scripts/setup-network.sh --skip-ip -y
+```
+*Or manually append to `/etc/hosts`:*
+```text
+127.0.0.1 titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local
+```
+*(Note: If accessing this Linux appliance remotely from another machine on your LAN, replace `127.0.0.1` with the appliance's actual static LAN IP).*
+
+#### 7. Run Automated Verification Tests
+Validate complete end-to-end functionality, storage isolation, and agent persistence:
+```bash
+# Verify Hermes agent workspace persistence and LiteLLM mediation
+./scripts/verify-hermes.sh
+
+# Verify SilverBullet PKM UI and OKF memory plane synchronization
+./scripts/verify-memories.sh
+```
+
+---
+
+### Appliance Service Directory
+
+Once running, the following endpoints are accessible via your browser:
+
+| Endpoint | Ingress URL | Port | Default Credentials | Description |
+|---|---|---|---|---|
+| **Appliance Portal** | [http://titan.local](http://titan.local) | `80` / `443` | *None* | ASUS Ascent GX10 appliance dashboard & hub |
+| **Hermes Web Dashboard** | [http://hermes.titan.local](http://hermes.titan.local) | `9119` | `admin` / `titan_admin_secret` | Hermes agent UI, channel manager, and tool config |
+| **Hermes API Gateway** | [http://api.hermes.titan.local/v1](http://api.hermes.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
+| **SilverBullet PKM UI** | [http://memory.titan.local](http://memory.titan.local) | `3000` | *None* | Human-in-the-loop OKF memory & rules inspector |
+| **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing & audit proxy |
+
+---
+
+### Common Operations & Lifecycle Management
+
+```bash
+# Check service status across host and containers
+./scripts/start-control-plane.sh status
+docker compose ps
+
+# View container logs
+docker compose logs -f caddy
+docker compose logs -f hermes
+
+# Gracefully restart the full appliance
+docker compose restart
+./scripts/start-control-plane.sh restart
+
+# Gracefully shut down all services
+docker compose down
+./scripts/start-control-plane.sh stop
+
+# Emergency kill-switch (instantly revokes agent key and freezes loops)
+./scripts/emergency-stop.sh
+```
+
+-----
+
+## 4. Repository Directory Structure
 
 ``` text
 project-titan/  
-├── README.md                 # System vision and development roadmap
+├── README.md                 # System vision, architecture, and quickstart guide
+├── AGENTS.md                 # Agent operating discipline, tickets, and safety rules
 ├── docker-compose.yml        # Declarative service topology and isolated networks (cluster: titan)
 ├── .env.example              # Environment variables template (UID/GID, pathing, DB secrets)
 ├── config/  
@@ -89,7 +228,7 @@ project-titan/
 │   ├── litellm/  
 │   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
 │   ├── hermes/  
-│   │   ├── config.json       # Agent execution profiles, skills path, and OKF settings
+│   │   ├── config.yaml       # Upstream Hermes Agent config (providers, channels, plugins)
 │   │   └── SOUL.md           # Agent persona and behavioral directives
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── docker/
@@ -97,6 +236,9 @@ project-titan/
 │       ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
 │       └── plugins/
 │           └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
+├── docs/                     # Architectural tenets, specifications, and ticket walkthroughs
+│   ├── reference-architecture-tenets.md  # Core security tenets and controls (TN-1 to TN-9)
+│   └── YYYY-MM-DD-ticket*.md # Human-auditable ticket walkthroughs & test evidence
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files
 │   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
@@ -118,7 +260,7 @@ project-titan/
 
 -----
 
-## 4. Phased Engineering Roadmap
+## 5. Phased Engineering Roadmap
 
 Project Titan follows a strict, step-by-step implementation discipline to prevent unvalidated configuration sprawl.
 
@@ -180,7 +322,7 @@ Phase 0: Base Config
 
 ---
 
-## Lab work: Hermes Multi-Agent Demonstrations & Hardening
+## 6. Lab work: Hermes Multi-Agent Demonstrations & Hardening
 
 Real-world agent operational testing across multi-tenancy, calibration, safety circuit breakers, and adversarial resilience.
 
