@@ -37,6 +37,9 @@ fi
 
 HERMES_PORT="${HERMES_PORT:-8642}"
 HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
+API_SERVER_KEY="${API_SERVER_KEY:-}"
+TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
 WORKSPACE_PATH="${TITAN_WORKSPACE_DIR:-./data/workspace}"
 
@@ -97,6 +100,34 @@ if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
   log_success "Signal-CLI daemon reachable on titan-internal network."
 else
   log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
+  exit 1
+fi
+
+log_info "Step 2C: Checking Hermes OpenAI-compatible API platform on port ${HERMES_PORT}..."
+# 1. Unauthenticated rejection (HTTP 401)
+UNAUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${HERMES_PORT}/v1/models" || echo "failed")
+if [ "${UNAUTH_STATUS}" == "401" ]; then
+  log_success "Hermes API enforces authentication: unauthenticated request rejected with HTTP 401."
+else
+  log_error "Hermes API failed security check: expected HTTP 401 on unauthenticated /v1/models, got '${UNAUTH_STATUS}'."
+  exit 1
+fi
+
+# 2. Authenticated acceptance (HTTP 200)
+AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${API_SERVER_KEY}" "http://127.0.0.1:${HERMES_PORT}/v1/models" || echo "failed")
+if [ "${AUTH_STATUS}" == "200" ]; then
+  log_success "Hermes API authenticated successfully with API_SERVER_KEY (HTTP 200)."
+else
+  log_error "Hermes API authentication failed: expected HTTP 200 on authenticated /v1/models, got '${AUTH_STATUS}'."
+  exit 1
+fi
+
+log_info "Step 2D: Checking Caddy reverse proxy routing for api.hermes.${TITAN_DOMAIN}..."
+CADDY_API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: api.hermes.${TITAN_DOMAIN}" -H "Authorization: Bearer ${API_SERVER_KEY}" "http://127.0.0.1:${CADDY_HTTP_PORT}/v1/models" || echo "failed")
+if [ "${CADDY_API_STATUS}" == "200" ]; then
+  log_success "Caddy ingress routes to Hermes API at api.hermes.${TITAN_DOMAIN} (HTTP 200)."
+else
+  log_error "Caddy ingress failed for api.hermes.${TITAN_DOMAIN}: expected HTTP 200, got '${CADDY_API_STATUS}'."
   exit 1
 fi
 
@@ -271,7 +302,7 @@ if [ -x "${REPO_ROOT}/scripts/backup.sh" ]; then
   "${REPO_ROOT}/scripts/backup.sh"
   "${REPO_ROOT}/scripts/backup.sh" --list
   LATEST_BACKUP=$(find "${REPO_ROOT}/data/backups" -name "titan_data_*.tar.gz" -type f | sort | tail -n 1)
-  if [ -n "${LATEST_BACKUP}" ] && tar -tzf "${LATEST_BACKUP}" | grep -q "manifest.json"; then
+  if [ -n "${LATEST_BACKUP}" ] && (tar -tzf "${LATEST_BACKUP}" ./manifest.json >/dev/null 2>&1 || (tar -tzf "${LATEST_BACKUP}" 2>/dev/null || true) | grep -q "manifest.json"); then
     log_success "Full data backup created and validated with manifest: $(basename "${LATEST_BACKUP}")"
   else
     log_error "Latest backup missing or invalid manifest."

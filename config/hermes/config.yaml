@@ -10,8 +10,15 @@ model:
   provider: "custom"
   base_url: "http://proxy.local:4000/v1"
 
+providers:
+  custom:
+    name: "LiteLLM Proxy"
+    base_url: "http://proxy.local:4000/v1"
+    key_env: "OPENAI_API_KEY"
+    discover_models: true
+
 agent:
-  name: "hermes-titan"
+  name: "titan"
 
 database:
   journal_mode: "wal"
@@ -26,3 +33,11 @@ terminal:
 plugins:
   enabled:
     - hermes-okf
+
+platforms:
+  api_server:
+    enabled: true
+  signal:
+    enabled: false
+  telegram:
+    enabled: false

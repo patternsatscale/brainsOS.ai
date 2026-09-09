@@ -436,9 +436,9 @@ else
   log_info "Notice: 'hermes.titan.local' is not yet configured in /etc/hosts."
   log_info "To use *.titan.local custom domains, run:"
   if [ "${IS_GX10}" = true ]; then
-    log_info "  echo '127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local' | sudo tee -a /etc/hosts"
+    log_info "  echo '127.0.0.1 titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local' | sudo tee -a /etc/hosts"
   else
-    log_info "  echo '127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local' | sudo tee -a /etc/hosts"
+    log_info "  echo '127.0.0.1 titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local' | sudo tee -a /etc/hosts"
   fi
   log_info "Zero-config fallback: *.localhost domains (e.g. http://hermes.localhost) work automatically without /etc/hosts."
 fi
@@ -512,6 +512,7 @@ echo ""
 echo "Appliance Endpoints:"
 echo "  - Ingress Gateway:   http://localhost (or https://localhost)"
 echo "  - Hermes Console:    http://hermes.localhost (or http://hermes.titan.local)"
+echo "  - Hermes API:        http://api.hermes.localhost (or http://api.hermes.titan.local)"
 echo "  - Memory Plane PKM:  http://memory.localhost (or http://memory.titan.local)"
 echo "  - LiteLLM Admin UI:  http://proxy.localhost/ui (or http://proxy.titan.local/ui)"
 if [ "${IS_GX10}" = true ]; then
