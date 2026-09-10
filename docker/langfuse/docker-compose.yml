@@ -1,0 +1,65 @@
+# ==============================================================================
+# Project Titan: Standalone Observability Plane (Langfuse & Postgres)
+# Decoupled deployment harness for local development, production, or remote LAN workstation
+# ==============================================================================
+
+name: titan-langfuse
+
+services:
+  # ----------------------------------------------------------------------------
+  # Langfuse Web & API Server
+  # Ingests OpenTelemetry traces (/api/public/otel) and LiteLLM completions
+  # ----------------------------------------------------------------------------
+  langfuse-web:
+    image: langfuse/langfuse:2
+    container_name: titan-langfuse-web
+    restart: unless-stopped
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "${LANGFUSE_PORT:-3001}:3000"
+    environment:
+      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-titan_langfuse_nextauth_secret_must_be_set_32_chars}
+      - SALT=${SALT:-titan_langfuse_salt_secret_must_be_set}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
+      - TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-false}
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
+      - NODE_ENV=production
+    networks:
+      - langfuse-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ----------------------------------------------------------------------------
+  # Langfuse Dedicated Persistence: PostgreSQL Database
+  # Decoupled transactional database for Langfuse projects, keys, and traces
+  # ----------------------------------------------------------------------------
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: titan-langfuse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LANGFUSE_DB_NAME:-langfuse}
+      POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}
+    volumes:
+      - ${LANGFUSE_DB_DATA_DIR:-./data/langfuse_db}:/var/lib/postgresql/data
+    networks:
+      - langfuse-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_DB_USER:-langfuse} -d ${LANGFUSE_DB_NAME:-langfuse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  langfuse-net:
+    name: titan-langfuse-net
+    driver: bridge

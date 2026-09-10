@@ -41,3 +41,23 @@ platforms:
     enabled: false
   telegram:
     enabled: false
+
+monitoring:
+  install_id: "titan-hermes"
+  gateway_health_export:
+    enabled: true
+    metrics_enabled: true
+    diagnostic_events_enabled: true
+    warning_error_events_enabled: true
+    export_interval_seconds: 60
+    logs_export_interval_seconds: 5
+    resource_attributes:
+      service.name: "hermes-gateway"
+      deployment.environment.name: "production"
+  export:
+    otlp:
+      enabled: true
+      endpoint: "http://langfuse.titan.local:3001/api/public/otel/v1/traces"
+      headers_env:
+        Authorization: LANGFUSE_OTEL_AUTH
+

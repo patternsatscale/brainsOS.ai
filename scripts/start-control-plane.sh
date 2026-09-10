@@ -45,6 +45,14 @@ HERMES_LITELLM_KEY="${HERMES_LITELLM_KEY:-}"
 DATABASE_URL="${DATABASE_URL:-}"
 INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX:-4096}"
 
+# Observability Plane (Langfuse & OpenTelemetry)
+LANGFUSE_AUTO_START="${LANGFUSE_AUTO_START:-false}"
+LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
+LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.titan.local:${LANGFUSE_PORT}}"
+LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
+LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
+LANGFUSE_OTEL_AUTH="${LANGFUSE_OTEL_AUTH:-}"
+
 # Ensure .venv/bin is in PATH for prisma and litellm
 export PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 export DATABASE_URL="${DATABASE_URL}"
@@ -160,6 +168,12 @@ stop_services() {
     rm -f "${OLLAMA_PID_FILE}"
     log_success "Host Ollama stopped."
   fi
+
+  # Stop local Langfuse stack if LANGFUSE_AUTO_START is enabled or containers are active
+  if [[ "${LANGFUSE_AUTO_START}" =~ ^(true|1|yes)$ ]] || (command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'titan-langfuse'); then
+    log_info "Stopping local Langfuse container stack..."
+    "${REPO_ROOT}/scripts/setup-langfuse.sh" stop 2>/dev/null || true
+  fi
 }
 
 # ------------------------------------------------------------------------------
@@ -187,6 +201,18 @@ status_services() {
     log_success "LiteLLM: RUNNING on http://127.0.0.1:${LITELLM_PORT} (UI: /ui)"
   else
     log_warn "LiteLLM: NOT RUNNING on http://127.0.0.1:${LITELLM_PORT}"
+  fi
+
+  # Langfuse Observability status
+  LOCAL_LF_BODY=$(curl -s "http://localhost:${LANGFUSE_PORT}/api/public/health" 2>/dev/null || true)
+  REMOTE_LF_BODY=$(curl -s "${LANGFUSE_HOST}/api/public/health" 2>/dev/null || true)
+
+  if [ -n "${LOCAL_LF_BODY}" ] && echo "${LOCAL_LF_BODY}" | grep -q '"status":"OK"'; then
+    log_success "Langfuse: RUNNING locally on http://localhost:${LANGFUSE_PORT} (http://langfuse.titan.local:${LANGFUSE_PORT})"
+  elif [ -n "${REMOTE_LF_BODY}" ] && echo "${REMOTE_LF_BODY}" | grep -q '"status":"OK"'; then
+    log_success "Langfuse: RUNNING remotely at ${LANGFUSE_HOST}"
+  else
+    log_info "Langfuse: NOT RUNNING (LANGFUSE_AUTO_START=${LANGFUSE_AUTO_START})"
   fi
 
   # DGX Telemetry Bridge status (ASUS GX10 hardware profile only)
@@ -256,6 +282,36 @@ start_services() {
     log_success "LiteLLM PostgreSQL database started and responding."
   fi
 
+  # 2.5. Optional: Start Langfuse Observability Stack if LANGFUSE_AUTO_START is enabled
+  if [[ "${LANGFUSE_AUTO_START}" =~ ^(true|1|yes)$ ]]; then
+    if curl -s "http://localhost:${LANGFUSE_PORT}/api/public/health" 2>/dev/null | grep -q '"status":"OK"' || \
+       curl -s "http://localhost:3001/api/public/health" 2>/dev/null | grep -q '"status":"OK"'; then
+      log_info "Langfuse observability stack is already running."
+    else
+      log_info "LANGFUSE_AUTO_START=true: Launching Langfuse observability stack..."
+      "${REPO_ROOT}/scripts/setup-langfuse.sh" start
+    fi
+  fi
+
+  # Dynamic LiteLLM Observability Configuration
+  LITELLM_SUCCESS_CALLBACKS=""
+  LITELLM_FAILURE_CALLBACKS=""
+  OTEL_EXPORTER_OTLP_ENDPOINT=""
+  OTEL_EXPORTER_OTLP_HEADERS=""
+
+  if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && [ -n "${LANGFUSE_SECRET_KEY}" ]; then
+    LITELLM_SUCCESS_CALLBACKS='["langfuse", "otel"]'
+    LITELLM_FAILURE_CALLBACKS='["langfuse", "otel"]'
+    OTEL_EXPORTER_OTLP_ENDPOINT="${LANGFUSE_HOST}/api/public/otel"
+    if [ -z "${LANGFUSE_OTEL_AUTH}" ]; then
+      LANGFUSE_OTEL_AUTH="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)"
+    fi
+    OTEL_EXPORTER_OTLP_HEADERS="Authorization=${LANGFUSE_OTEL_AUTH}"
+    log_info "LiteLLM Observability: ENABLED (Langfuse & OTel -> ${LANGFUSE_HOST})"
+  else
+    log_info "LiteLLM Observability: STANDBY (LANGFUSE_PUBLIC_KEY unset)"
+  fi
+
   # 3. Start LiteLLM if not already responding
   if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
     log_info "LiteLLM is already running on http://127.0.0.1:${LITELLM_PORT}."
@@ -267,6 +323,13 @@ start_services() {
 
     log_info "Starting LiteLLM proxy gateway on port ${LITELLM_PORT}..."
     DATABASE_URL="${DATABASE_URL}" \
+    LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
+    LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
+    LANGFUSE_HOST="${LANGFUSE_HOST}" \
+    LITELLM_SUCCESS_CALLBACKS="${LITELLM_SUCCESS_CALLBACKS}" \
+    LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
+    OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
+    OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
     nohup setsid .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \

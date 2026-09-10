@@ -20,6 +20,8 @@ data/workspace/*
 # Local Volume Mounts & Caches
 data/litellm_db/
 data/postgres/
+docker/langfuse/data/
+docker/langfuse/.env
 ollama_data/
 .cache/
 tmp/

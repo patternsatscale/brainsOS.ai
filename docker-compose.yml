@@ -116,6 +116,7 @@ services:
       - "host.docker.internal:host-gateway"
       - "proxy.local:host-gateway"
       - "litellm:host-gateway"
+      - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # PURE OKF Markdown memory mount only
       - ${TITAN_DATA_DIR:-./data/memories}:/memories
@@ -151,6 +152,7 @@ services:
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+      - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
     command: ["sleep", "infinity"]
     depends_on:
       - signal-cli
