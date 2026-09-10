@@ -22,6 +22,21 @@
 
 ---
 
+## Redline note — pending review (2026-09-09)
+
+This pass adds four new controls and three threat entries, sourced from a "Closed-Loop Brain" / cognitive-isolation tenet draft and an agent-to-agent (A2A) federation draft written outside this document. Per the existing template discipline, **every addition below is marked 🔴 planned** — none is implemented, none gets a citable `file:line`, and nothing here is inferred to already be true of the working tree at `da882a8`.
+
+No new `TN-n` category was created. Both drafts were checked against Part 4 first and found to restate existing tenets applied to a narrower target (model/peer endpoints instead of tools and egress generally):
+
+- Registration/no-dynamic-discovery of model or peer endpoints → extends **TN-2** (Action Authorization) as `TN-2.13`.
+- Secrets must not sit in plaintext, only scoped-per-tool → extends **TN-2** as `TN-2.14` (a gap `TN-2.4` didn't name).
+- Cryptographic identity verification for cognitive delegation (mTLS / scoped JWTs) → extends **TN-6** (Egress Control) as `TN-6.7`.
+- A2A over typed contracts / brokered bus, no direct peer sockets → extends **TN-6** as `TN-6.8` (recommended), cross-referencing `TN-1.2`/`TN-1.3` for how peer output gets trust-tiered.
+
+This redline has not been through `TN-8.2` human review-before-commit or been assigned a tracked work item (`TN-8.1`). Do not treat it as baseline until both happen.
+
+---
+
 ## Migration note (v1 → v2)
 
 This revision renumbers the eight prose "Tenets" into nine `TN-n` control categories, shared with the enterprise reference-architecture document so both use one ID system.
@@ -167,8 +182,11 @@ The enterprise reference document's threat catalog runs through `T-35`. This pas
 | `T-41` | Unreviewed dependency or driver change | An unpinned base image, model runtime, or driver upgrades silently and introduces a breaking or malicious change | TN-8 |
 | `T-42` | Unauthenticated control-surface invocation | An unauthenticated management or execution endpoint on the agent container is reached directly, or cross-origin from a browser the operator is already using, bypassing every model-level and prompt-level control | TN-2, TN-5 |
 | `T-43` | Ungoverned spec drift | A security baseline held only as an untracked local file diverges from the code generated against it, with no diff, review, or recovery path | TN-8 |
+| `T-44` **[R]** | Unbrokered model/peer endpoint connection | The agent runtime, or a skill it authored, dynamically discovers or binds to a third-party model, sub-model, or peer-agent endpoint outside the declared inventory, bypassing policy-plane mediation entirely | TN-2, TN-6 |
+| `T-45` **[R]** | Model/peer endpoint impersonation | An unauthenticated or self-asserted endpoint claiming to be an authorized model or peer accepts a delegated task, or a spoofed response is accepted back, with no cryptographic identity check | TN-6 |
+| `T-46` **[R]** | Secrets-at-rest exposure | Plaintext API keys or tokens in env files, compose configs, or image layers are read by a compromised process, or committed accidentally, granting broader access than the narrowest tool needs | TN-2, TN-8 |
 
-*Identifiers continue in registration order from the existing catalog (T-01–T-35).*
+*Identifiers continue in registration order from the existing catalog (T-01–T-35). `[R]` marks entries added in the 2026-09-09 redline, not yet cross-checked against the working tree the way `T-36`–`T-43` were.*
 
 ---
 
@@ -238,7 +256,7 @@ No trust-tiering, no structural separation of tool output from instruction, no p
 
 > The agent's ability to affect the world is explicitly enumerated, scoped to the current task, and mediated by a component the agent runtime cannot modify.
 
-**Threats addressed:** `T-03` `T-06` `T-07` `T-08` `T-09` `T-12` `T-24` `T-25` `T-32` `T-42`
+**Threats addressed:** `T-03` `T-06` `T-07` `T-08` `T-09` `T-12` `T-24` `T-25` `T-32` `T-42` `T-44` `T-46`
 
 #### Required controls
 
@@ -252,6 +270,8 @@ No trust-tiering, no structural separation of tool output from instruction, no p
 | `TN-2.6` | Arbitrary code execution and package installation MUST be treated as maximal-blast-radius tools and MUST NOT be default-available. |
 | `TN-2.7` | Self-initiated actions (no operator trigger) MUST be constrained to a strictly narrower tool set than operator-initiated actions. |
 | `TN-2.12` | **Added.** Every control-surface endpoint on the agent container MUST authenticate the caller, and MUST NOT be reachable cross-origin from an operator's browser. |
+| `TN-2.13` | **Added, 2026-09-09 redline.** Any target of cognitive delegation — a sub-model, external reasoning engine, or peer agent — MUST be present in the tool/model inventory (`TN-2.1`) before it can be invoked. The agent runtime MUST NOT dynamically discover, negotiate, or bind to a model or peer-agent endpoint absent from that inventory; new endpoints MUST be added via the same IaC/orchestrator path as any other tool, never by the model itself. |
+| `TN-2.14` | **Added, 2026-09-09 redline.** Credentials and API keys MUST NOT be persisted in plaintext in environment files, compose configs, or container images. Runtime injection MUST occur through a secret store, scoped per `TN-2.4`. |
 
 #### Recommended controls
 
@@ -264,7 +284,7 @@ No trust-tiering, no structural separation of tool output from instruction, no p
 
 #### Verification
 
-From an unauthenticated client on the ingress network, `POST` to `/api/terminal` and `/api/skills`; both MUST be rejected. From the agent runtime, attempt invocation of a tool outside its authorized task context; confirm denial happens at the mediating component, not the runtime. Assuming full runtime compromise, enumerate every action still reachable — that set is the actual blast radius.
+From an unauthenticated client on the ingress network, `POST` to `/api/terminal` and `/api/skills`; both MUST be rejected. From the agent runtime, attempt invocation of a tool outside its authorized task context; confirm denial happens at the mediating component, not the runtime. Assuming full runtime compromise, enumerate every action still reachable — that set is the actual blast radius. **[Added, redline]** Once any model/peer delegation path exists, attempt to have the agent invoke a model or peer-agent endpoint not present in the tool inventory; confirm the policy plane rejects it before any request leaves the appliance. Grep tracked and untracked config (`.env`, `docker-compose.yml`, image layers) for plaintext credential patterns; confirm none exist outside the secret store's runtime-injection path.
 
 #### What this does not protect against
 
@@ -286,6 +306,8 @@ The prompt-level mechanism the draft described is real but permissive rather tha
 Net effect: `TN-2.6` is inverted — arbitrary code execution is not merely default-available to the model, it is available to any unauthenticated caller, and to any web page the operator visits. Every model-level and prompt-level control in this document is bypassable by calling the endpoint directly. **`TN-2.12` is the highest-priority remediation in this document**, ahead of the inventory work, because it is small and it currently nullifies TN-1, TN-2, and parts of TN-5.
 
 Forward-looking note retained from the draft: irreversible-action gating (`TN-2.3`) is the control that must exist before the Football Dan wagering work lands. Per `README.md:191` (FD-4 / #32) that ledger is *paper* wagering with programmatic invariants, and `README.md:192` (FD-5 / #33) explicitly scopes "irreversible-action classification, external gate outside agent runtime" — so `TN-2.3` and `TN-2.5` already have a ticket. This tenet is planned, not merely missing.
+
+🔴 `TN-2.13`/`TN-2.14` — **new, planned, 2026-09-09 redline.** No model/peer delegation inventory exists — Hermes's only externally-facing call today is to LiteLLM (`http://litellm:4000/v1`, `SOUL.md:21`), so there's nothing to bind to dynamically yet. But nothing would stop it if a skill authored one: `/api/skills` accepts arbitrary caller-supplied code (`server.py:1078`) and `config.json:58` sets `network_egress: true`, so a self-authored skill could open a socket to any model endpoint today with no inventory to check it against. **Sequence `TN-2.13` after `TN-2.12`** — the delivery mechanism for such a skill is the same unauthenticated endpoint that already needs closing. `TN-2.14` is separately unimplemented: credentials live in `.env` per the `.env.example` pattern, with no vault or dynamic-injection layer in any manifest.
 
 ---
 
@@ -458,7 +480,7 @@ This is the single most load-bearing false claim in the project's documentation,
 
 > Any request leaving the appliance boundary passes through a single, inspectable egress point, and the decision to escalate is treated as a data-classification decision, never a pure capability or cost optimization.
 
-**Threats addressed:** `T-37` *(inference-tier escalation applies once such a path exists; general egress applies today)*
+**Threats addressed:** `T-37` `T-44` `T-45` *(inference-tier escalation applies once such a path exists; general egress applies today)*
 
 #### Required controls — apply once any cloud-tier escalation exists
 
@@ -468,6 +490,7 @@ This is the single most load-bearing false claim in the project's documentation,
 | `TN-6.2` | Escalation content MUST be authored as a discrete, inspectable artifact rather than a raw forwarded context window. |
 | `TN-6.3` | An outbound classification/secret-scanning check MUST run on every egress artifact, regardless of pattern. |
 | `TN-6.4` | The escalation decision MUST NOT be made solely by a component optimizing for capability or latency. |
+| `TN-6.7` | **Added, 2026-09-09 redline.** Where cognitive delegation crosses a trust boundary — an external model, sub-model, or peer-agent runtime — the endpoint's identity MUST be verified cryptographically (mutual TLS, or scoped signed tokens such as JWTs) before the connection is used for anything beyond the identity check itself. An unauthenticated or self-asserted endpoint identity MUST NOT be trusted. |
 
 #### Recommended controls
 
@@ -475,10 +498,11 @@ This is the single most load-bearing false claim in the project's documentation,
 |---|---|
 | `TN-6.5` | Prefer asynchronous, brokered consultation over synchronous context-forwarding. |
 | `TN-6.6` | Retain request/response pairs at the egress point as the audit record. |
+| `TN-6.8` | **Added, 2026-09-09 redline.** Agent-to-agent (A2A) collaboration, once implemented, SHOULD occur over typed message schemas on a brokered bus — not direct peer sockets, shared memory, or raw context/system-prompt forwarding. Peer responses SHOULD be treated as External-tier input under `TN-1.2`/`TN-1.3`, not as trusted instruction. |
 
 #### Verification
 
-Attempt a direct network call from the agent execution environment to an external endpoint, bypassing the designated egress point — it MUST fail at the network layer. **Run this test now**: `docker compose exec hermes curl -s -o /dev/null -w '%{http_code}' https://example.com`. Per the configuration below this is expected to *succeed*, which is the finding.
+Attempt a direct network call from the agent execution environment to an external endpoint, bypassing the designated egress point — it MUST fail at the network layer. **Run this test now**: `docker compose exec hermes curl -s -o /dev/null -w '%{http_code}' https://example.com`. Per the configuration below this is expected to *succeed*, which is the finding. **[Added, redline]** Once any model/peer delegation path exists, attempt a connection presenting no certificate or an unsigned token; confirm rejection happens at the gateway, not inside the model or peer runtime.
 
 #### What this does not protect against
 
@@ -498,6 +522,8 @@ A capable model can be manipulated into abstracting or encoding sensitive conten
 - Combined with the unauthenticated `/api/terminal` (`TN-2`), any caller can run arbitrary outbound network commands from inside the agent container
 
 So `TN-6.1` — "any request leaving the appliance MUST pass through a single, identifiable egress point" — is **unmet today**, and `TN-6.3` has no implementation. The draft's advice to "track this tenet's status separately… it will flip from 🟢 to 🔴 the day tiering ships" is the right instinct applied to the wrong trigger: **the flip has already happened for general egress.** What remains scheduled is inference-tier egress specifically. `README.md:205` (X-1 / #42) scopes "outbound policy inspection at LiteLLM scanning consultation payloads for seeded tenant canary tokens" and cites `TN-6` — note that inspecting *at LiteLLM* covers the inference path only, not the agent's direct `curl`/browser egress, which needs `TN-6.1` enforced at the network layer.
+
+🔴 `TN-6.7`/`TN-6.8` — **new, planned, 2026-09-09 redline, and currently moot in one direction.** There is no model/peer delegation path to secure yet — the local `ollama_chat` routes carry no external identity to verify (`litellm/config.yaml:10-11,20-21,28-29`). But the control isn't academic: it should be designed into any AWS AgentCore integration or A2A mesh discussed elsewhere in this project *before* that work ships, not retrofitted after. It shares `TN-2.13`'s precondition: neither control closes `T-42` — an attacker using the unauthenticated `/api/terminal` doesn't need a broker, model-identity check, or peer protocol at all; it can just `curl` directly. Identity verification for cognitive delegation only matters once `TN-2.12` closes the path that currently makes it irrelevant.
 
 ---
 
@@ -682,6 +708,8 @@ Changes from the v2 draft are marked. Overall markers reflect the weakest unmet 
 
 **Net effect of verification: three tenets moved down, none moved up.** The pattern is consistent and worth internalising — every marker that proved optimistic was a control described in prose (`SOUL.md`, `AGENTS.md`, this document's own diagram) but not enforced in code. Every marker that held up was enforced in `docker-compose.yml`, a script, or CI. **When setting a marker, cite the enforcing line or mark it 🔴.**
 
+*2026-09-09 redline: `TN-2.13`/`TN-2.14` and `TN-6.7`/`TN-6.8` were added under TN-2 and TN-6 respectively. Neither changes either tenet's overall marker — TN-2 was already 🔴 and TN-6 already 🟡 on other unmet MUSTs — but both are new 🔴 lines with no enforcing citation, consistent with the marker-discipline rule above.*
+
 ### Revised priority order
 
 The draft proposed `TN-2` → `TN-3` → `TN-7`. Two items now precede that, because they are small, they are already-false claims rather than unbuilt features, and each currently nullifies controls elsewhere:
@@ -794,6 +822,14 @@ Every non-🔴 marker above traces to a line here. Verified against the working 
 | 11 | `TN-3.1`/`TN-3.2` | Behavioural budgets with automatic halt, built into the agent loop | L |
 | 12 | `TN-4.3`/`TN-4.4` | Provenance fields and localized git history (FD-3 / #31, `README.md:190`) | L |
 | 13 | `TN-1.2`/`TN-1.3` | Trust-tiering and structural instruction separation | L |
+| 14 | `TN-2.14` | Dynamic secret injection (Infisical/Doppler or equivalent) for LiteLLM and Hermes credentials; remove plaintext values from `.env` | M |
+| 15 | `TN-2.1`/`TN-8.5` | Skill static-analysis gate (AST scan / Bandit / Ruff) on code written via `/api/skills`, before it can be flagged as an active tool | M |
+| 16 | `TN-6.1` | Egress DNS/proxy filtering (Pi-hole/AdGuard, or an egress Squid proxy) so agent WAN egress has one inspectable point | M |
+| 17 | `TN-3.6`/`TN-3.9` | Hardware telemetry (DCGM Exporter + Prometheus/Grafana) to derive concurrency ceilings from measurement instead of assumption, and baseline behavior | M |
+| 18 | `TN-2.13`/`TN-6.7` | Model/peer delegation inventory plus endpoint identity verification (mTLS or scoped JWT) — design in before any AgentCore or A2A integration ships, not after | L |
+| 19 | `TN-7.6` | Out-of-band heartbeat / dead-man's-switch (Uptime Kuma, Healthchecks.io) surfacing a silent freeze the policy plane wouldn't otherwise notice | S |
+
+*Items 14–19 added in the 2026-09-09 redline, sourced from the cognitive-isolation/A2A tenet drafts and the monitoring-gap review. None has a tracked work item yet — assign one before treating any as scheduled, per `TN-8.1`.*
 
 ---
 
