@@ -78,6 +78,21 @@ http://dgx.{$TITAN_DOMAIN:titan.local}, https://dgx.{$TITAN_DOMAIN:titan.local},
 }
 
 # ==============================================================================
+# Observability Plane: Langfuse Gateway (Port 3001)
+# ==============================================================================
+http://langfuse.{$TITAN_DOMAIN:titan.local}, https://langfuse.{$TITAN_DOMAIN:titan.local}, http://langfuse.localhost, https://langfuse.localhost {
+	tls internal
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy {$LANGFUSE_UPSTREAM:host.docker.internal:3001} {
+		flush_interval -1
+	}
+}
+
+# ==============================================================================
 # Ingress Default / Portal Landing Page (HTTP & HTTPS)
 # ==============================================================================
 http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://localhost, https://localhost, :80, :443 {
@@ -509,6 +524,24 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
           <span class="external-badge">New Window &#x2197;</span>
         </div>
       </a>
+
+      <!-- Observability Plane: Langfuse -->
+      <a href="http://langfuse.localhost" target="_blank" rel="noopener noreferrer" class="card" data-subdomain="langfuse">
+        <div>
+          <div class="card-header">
+            <span class="plane-tag" style="background: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8;">Observability</span>
+            <span class="port-indicator">:3001</span>
+          </div>
+          <div class="card-title">
+            <span>Langfuse Platform</span>
+          </div>
+          <p class="card-desc">OpenTelemetry trace aggregation, agent reasoning steps, tool execution latency, and LiteLLM token evaluation.</p>
+        </div>
+        <div class="card-footer">
+          <span class="launch-btn" style="color: #db2777;"><span class="primary-link" style="color: #db2777;">langfuse.localhost</span> &rarr;</span>
+          <span class="external-badge">New Window &#x2197;</span>
+        </div>
+      </a>
     </div>
 
     <div class="hosts-box">
@@ -518,7 +551,7 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
       <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
         All services are instantly accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.titan.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
       </p>
-      <div class="code-snippet">echo "127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local" | sudo tee -a /etc/hosts</div>
+      <div class="code-snippet">echo "127.0.0.1 titan.local hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local langfuse.titan.local" | sudo tee -a /etc/hosts</div>
     </div>
 
     <footer>

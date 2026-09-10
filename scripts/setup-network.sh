@@ -128,6 +128,7 @@ Options:
   --dns <ip1,ip2>        Comma-separated DNS nameservers (e.g. 1.1.1.1,8.8.8.8)
   --domain <domain>      Local base domain suffix (default: ${TITAN_DOMAIN})
   --hosts-target <ip>    IP to map domains to in /etc/hosts (default: 127.0.0.1 or static IP)
+  --langfuse-ip <ip>     Optional dedicated LAN IP for langfuse.${TITAN_DOMAIN} (if on separate machine)
   --skip-ip              Only configure /etc/hosts, skip static IP assignment
   --skip-hosts           Only configure static IP, skip /etc/hosts
   -y, --yes              Non-interactive mode: auto-confirm applying changes
@@ -150,6 +151,8 @@ while [[ $# -gt 0 ]]; do
       ARG_DOMAIN="$2"; shift 2 ;;
     --hosts-target)
       ARG_HOSTS_IP="$2"; shift 2 ;;
+    --langfuse-ip)
+      ARG_LANGFUSE_IP="$2"; shift 2 ;;
     --skip-ip)
       CONFIGURE_STATIC_IP=false; shift ;;
     --skip-hosts)
@@ -328,6 +331,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   echo "                       api.hermes.${SELECTED_DOMAIN}"
   echo "                       proxy.${SELECTED_DOMAIN}"
   echo "                       memory.${SELECTED_DOMAIN}"
+  echo "                       langfuse.${SELECTED_DOMAIN} (Observability)"
   if is_gx10_hardware; then
     echo "                       dgx.${SELECTED_DOMAIN}"
   fi
@@ -371,11 +375,13 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
 
   HOSTS_BLOCK_START="# --- BEGIN PROJECT TITAN DOMAINS ---"
   HOSTS_BLOCK_END="# --- END PROJECT TITAN DOMAINS ---"
+  HOSTS_LANGFUSE_IP="${ARG_LANGFUSE_IP:-$SELECTED_HOSTS_IP}"
   if is_gx10_hardware; then
     HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} dgx.${SELECTED_DOMAIN}"
   else
     HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN}"
   fi
+  LANGFUSE_LINE="${HOSTS_LANGFUSE_IP} langfuse.${SELECTED_DOMAIN}"
 
   # Strip any previous Titan block if present, then append clean block
   TEMP_HOSTS="$(mktemp)"
@@ -390,6 +396,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
     echo "${HOSTS_BLOCK_START}"
     echo "# Configured by Project Titan setup-network.sh on $(date)"
     echo "${HOSTS_LINE}"
+    echo "${LANGFUSE_LINE}"
     echo "${HOSTS_BLOCK_END}"
   } >> "${TEMP_HOSTS}"
 
@@ -544,6 +551,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   echo -e "  - Agent API:       http://api.hermes.${SELECTED_DOMAIN}"
   echo -e "  - Control Plane:   http://proxy.${SELECTED_DOMAIN}"
   echo -e "  - Memory Plane:    http://memory.${SELECTED_DOMAIN}"
+  echo -e "  - Observability:   http://langfuse.${SELECTED_DOMAIN}:3001"
   if is_gx10_hardware; then
     echo -e "  - Telemetry:       http://dgx.${SELECTED_DOMAIN}"
   fi

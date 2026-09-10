@@ -232,10 +232,13 @@ project-titan/
 │   │   └── SOUL.md           # Agent persona and behavioral directives
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── docker/
-│   └── hermes/
-│       ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
-│       └── plugins/
-│           └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
+│   ├── hermes/
+│   │   ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
+│   │   └── plugins/
+│   │       └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
+│   └── langfuse/
+│       ├── docker-compose.yml# Decoupled Langfuse v2 + PostgreSQL observability stack
+│       └── .env.example      # Standalone Langfuse environment template
 ├── docs/                     # Architectural tenets, specifications, and ticket walkthroughs
 │   ├── reference-architecture-tenets.md  # Core security tenets and controls (TN-1 to TN-9)
 │   └── YYYY-MM-DD-ticket*.md # Human-auditable ticket walkthroughs & test evidence
@@ -250,9 +253,12 @@ project-titan/
     ├── setup-network.sh      # Static IP & local appliance domain (/etc/hosts) setup script
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
     ├── setup-memories.sh     # Idempotent provisioning & scaffolding manager for memory plane
+    ├── setup-langfuse.sh     # Standalone decoupled service manager for Langfuse container stack
     ├── verify-hermes.sh      # Automated verification harness for Hermes workspace persistence
     ├── verify-memories.sh    # Automated verification harness for SilverBullet & OKF sync
+    ├── verify-langfuse.sh    # Automated verification harness for Langfuse & OpenTelemetry ingestion
     ├── start-control-plane.sh# Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
+    ├── reload-env.sh         # Synchronizes database passwords and safely reloads all .env changes
     ├── backup.sh             # Full appliance data plane backup and restore manager
     ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager for memories
     └── emergency-stop.sh     # Key revocation script for immediate loop intervention
@@ -317,8 +323,19 @@ Phase 0: Base Config
 
   * Benchmark Ollama vs. vLLM vs. SGLang on native ARM64 / DGX OS to evaluate prefill speed and KV-cache memory pressure.
   * Measure context scaling performance across 4k, 8k, 16k, 32k, and 64k token windows.
-  * Integrate LLM tracing and observability (Langfuse) into LiteLLM control plane gateway.
-  * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies.
+  * **Langfuse Observability & OpenTelemetry Tracing (#19)**:
+    * **Decoupled Architecture**: Langfuse v2 container stack (`docker/langfuse/docker-compose.yml`) is completely decoupled from the main Titan appliance cluster, allowing it to run on a separate developer laptop or workstation over the LAN.
+    * **No Auto-Start by Default**: Controlled via `LANGFUSE_AUTO_START=false` in `.env`. The GX10 appliance runs all core planes (Inference, Control, Agent, Memory) without auto-starting Langfuse.
+    * **Standardized DNS & Dedicated Port**: Tracing endpoints target `langfuse.titan.local` on dedicated **port 3001** (eliminating conflict with SilverBullet on port 3000), mapped via `/etc/hosts` or Docker `extra_hosts` to the remote workstation IP (`LANGFUSE_HOST_IP`).
+    * **Dual Ingestion**:
+      * **LiteLLM Gateway**: Native tracing callback (`langfuse`) and OpenTelemetry exporter capturing request metadata, token counts, model aliases, and latency.
+      * **Hermes Agent**: Direct OTLP trace export via `http://langfuse.titan.local:3001/api/public/otel/v1/traces`.
+    * **Standalone Lifecycle Management**:
+      * Setup & start: `./scripts/setup-langfuse.sh setup && ./scripts/setup-langfuse.sh start`
+      * Service status & logs: `./scripts/setup-langfuse.sh status` / `./scripts/setup-langfuse.sh logs`
+      * Key helper: `./scripts/setup-langfuse.sh keys` (prompts for keys and generates Base64 `LANGFUSE_OTEL_AUTH`)
+      * Verification: `./scripts/verify-langfuse.sh`
+  * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies; dual OTel/LiteLLM trace ingestion validated.
 
 ---
 

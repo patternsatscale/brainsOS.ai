@@ -35,6 +35,8 @@ litellm_settings:
   drop_params: true
   set_verbose: false
   request_timeout: 300
+  success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS
+  failure_callback: os.environ/LITELLM_FAILURE_CALLBACKS
 
 general_settings:
   # Master key for administrative control, dynamic model addition, and virtual key provisioning
