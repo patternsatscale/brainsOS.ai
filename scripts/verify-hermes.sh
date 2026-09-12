@@ -55,9 +55,28 @@ else
   HOST_MEMORIES="${DATA_DIR}"
 fi
 
+# Multi-tenant directory alignment (checks tenant partition if present)
+if [ -d "${HOST_WORKSPACE}/primary" ]; then
+  HOST_WORKSPACE="${HOST_WORKSPACE}/primary"
+fi
+if [ -d "${HOST_MEMORIES}/tenants/primary" ]; then
+  HOST_MEMORIES="${HOST_MEMORIES}/tenants/primary"
+fi
+
+# Detect service & container names (primary agent unit or legacy hermes)
+HERMES_SERVICE="agent-primary"
+if ! docker compose ps --services | grep -q "^agent-primary$" && docker compose ps --services | grep -q "^hermes$"; then
+  HERMES_SERVICE="hermes"
+fi
+HERMES_CONTAINER="titan-agent-primary"
+if ! docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-primary" && docker ps -a --format '{{.Names}}' | grep -qw "titan-hermes"; then
+  HERMES_CONTAINER="titan-hermes"
+fi
+
 log_info "Running Project Titan Hermes Workspace & Persistence Verification..."
 log_info "Host Workspace Path: ${HOST_WORKSPACE}"
 log_info "Host Memories Path:  ${HOST_MEMORIES}"
+log_info "Target Service:      ${HERMES_SERVICE} (${HERMES_CONTAINER})"
 
 # ------------------------------------------------------------------------------
 # 1. Container Running & Health Check
@@ -69,13 +88,13 @@ if ! docker compose ps --services --filter "status=running" | grep -q "^signal-c
   sleep 2
 fi
 
-if ! docker compose ps --services --filter "status=running" | grep -q "^hermes$"; then
-  log_warn "Hermes container is not running. Starting hermes..."
-  docker compose up -d hermes
+if ! docker compose ps --services --filter "status=running" | grep -q "^${HERMES_SERVICE}$"; then
+  log_warn "${HERMES_SERVICE} container is not running. Starting ${HERMES_SERVICE}..."
+  docker compose up -d "${HERMES_SERVICE}"
   sleep 4
 fi
 
-CONTAINER_USER=$(docker compose exec -T hermes id -u hermes)
+CONTAINER_USER=$(docker compose exec -T "${HERMES_SERVICE}" id -u hermes)
 if [ "${CONTAINER_USER}" != "1000" ]; then
   log_error "Hermes container user is UID ${CONTAINER_USER} (expected 1000: unprivileged hermes)."
   exit 1
@@ -95,7 +114,7 @@ else
 fi
 
 log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
-SIGNAL_ABOUT=$(docker compose exec -T hermes curl -s http://signal-cli:8080/v1/about || echo "failed")
+SIGNAL_ABOUT=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about || echo "failed")
 if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
   log_success "Signal-CLI daemon reachable on titan-internal network."
 else
@@ -135,7 +154,7 @@ fi
 # 3. Host Bind-Mount Verification
 # ------------------------------------------------------------------------------
 log_info "Step 3: Verifying workspace is a host bind-mount..."
-COMPOSE_MOUNT_TYPE=$(docker inspect titan-hermes --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Type}}{{end}}{{end}}')
+COMPOSE_MOUNT_TYPE=$(docker inspect "${HERMES_CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Type}}{{end}}{{end}}')
 if [ "${COMPOSE_MOUNT_TYPE}" == "bind" ]; then
   log_success "Verified /workspace is mounted as a host 'bind' mount."
 else
@@ -143,7 +162,7 @@ else
   exit 1
 fi
 
-COMPOSE_MOUNT_SRC=$(docker inspect titan-hermes --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
+COMPOSE_MOUNT_SRC=$(docker inspect "${HERMES_CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
 log_success "Verified host source path: ${COMPOSE_MOUNT_SRC}"
 
 # ------------------------------------------------------------------------------
@@ -151,7 +170,7 @@ log_success "Verified host source path: ${COMPOSE_MOUNT_SRC}"
 # ------------------------------------------------------------------------------
 log_info "Step 4: Testing file write from inside container and host reflection..."
 TEST_MARKER="test_persist_$(date +%s)"
-docker compose exec -T hermes bash -c "echo '${TEST_MARKER}' > /workspace/test_marker.txt"
+docker compose exec -T "${HERMES_SERVICE}" bash -c "echo '${TEST_MARKER}' > /workspace/test_marker.txt"
 
 if [ ! -f "${HOST_WORKSPACE}/test_marker.txt" ]; then
   log_error "File written inside container did not appear on host at ${HOST_WORKSPACE}/test_marker.txt"
@@ -166,11 +185,11 @@ fi
 log_success "File written inside container reflected immediately on host."
 
 # Test persistence across container recreation
-log_info "Recreating Hermes container to verify persistence..."
-docker compose up -d --force-recreate hermes
+log_info "Recreating ${HERMES_SERVICE} container to verify persistence..."
+docker compose up -d --force-recreate "${HERMES_SERVICE}"
 sleep 2
 
-CONTAINER_CONTENT=$(docker compose exec -T hermes cat /workspace/test_marker.txt 2>/dev/null || echo "")
+CONTAINER_CONTENT=$(docker compose exec -T "${HERMES_SERVICE}" cat /workspace/test_marker.txt 2>/dev/null || echo "")
 if [ "${CONTAINER_CONTENT}" == "${TEST_MARKER}" ]; then
   log_success "File persistence verified across container recreation!"
 else
@@ -187,7 +206,7 @@ rm -f "${HOST_WORKSPACE}/test_marker.txt"
 log_info "Step 5: Verifying native 'hermes-okf' plugin and tool registry..."
 
 # 5A: Verify plugin package presence
-if docker compose exec -T hermes test -f /opt/hermes/plugins/hermes-okf/plugin.yaml; then
+if docker compose exec -T "${HERMES_SERVICE}" test -f /opt/hermes/plugins/hermes-okf/plugin.yaml; then
   log_success "Native plugin package verified at /opt/hermes/plugins/hermes-okf."
 else
   log_error "Plugin manifest /opt/hermes/plugins/hermes-okf/plugin.yaml is missing."
@@ -195,14 +214,14 @@ else
 fi
 
 # 5B: Verify zero technical debt (legacy hermes_okf.py removed)
-if docker compose exec -T hermes test -f /opt/hermes/hermes_okf.py || [ -f "${HOST_WORKSPACE}/skills/hermes_okf.py" ]; then
+if docker compose exec -T "${HERMES_SERVICE}" test -f /opt/hermes/hermes_okf.py || [ -f "${HOST_WORKSPACE}/skills/hermes_okf.py" ]; then
   log_error "Technical debt violation: legacy hermes_okf.py still detected in runtime."
   exit 1
 fi
 log_success "Zero technical debt verified: legacy hermes_okf.py completely eradicated."
 
 # 5C: Verify native tool schemas in Hermes Tool Registry
-PLUGIN_CHECK=$(docker compose exec -T hermes python3 -c '
+PLUGIN_CHECK=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
 import json, sys
 from hermes_cli.plugins import discover_plugins
 discover_plugins()
@@ -233,7 +252,7 @@ else
 fi
 
 # 5D: Verify tool execution via registry.dispatch
-DISPATCH_CHECK=$(docker compose exec -T hermes python3 -c '
+DISPATCH_CHECK=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
 import json, sys
 from hermes_cli.plugins import discover_plugins
 discover_plugins()
@@ -317,7 +336,7 @@ fi
 # 8. Zero Docker Socket & LiteLLM Gateway Routing Checks
 # ------------------------------------------------------------------------------
 log_info "Step 8: Verifying Zero Docker Socket inside Hermes container..."
-if ! docker compose exec -T hermes test -e /var/run/docker.sock; then
+if ! docker compose exec -T "${HERMES_SERVICE}" test -e /var/run/docker.sock; then
   log_success "Verified /var/run/docker.sock is strictly absent inside container."
 else
   log_error "Host Docker socket detected inside container!"
@@ -325,7 +344,7 @@ else
 fi
 
 log_info "Step 9: Verifying Gateway reachability via proxy.local from Hermes..."
-GATEWAY_HEALTH=$(docker compose exec -T hermes curl -s -H "Authorization: Bearer ${HERMES_LITELLM_KEY}" http://proxy.local:4000/health || echo "failed")
+GATEWAY_HEALTH=$(docker compose exec -T "${HERMES_SERVICE}" curl -s -H "Authorization: Bearer ${HERMES_LITELLM_KEY}" http://proxy.local:4000/health || echo "failed")
 if echo "${GATEWAY_HEALTH}" | grep -q "healthy"; then
   log_success "Inference gateway reachable via proxy.local:4000 with virtual key."
 else

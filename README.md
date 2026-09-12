@@ -8,59 +8,66 @@ The system architecture enforces an absolute boundary between execution runtimes
 
 ## 1\. System Topology & Philosophy
 
-Project Titan transforms a dedicated bare-metal system into a transactional black box. Rather than running unverified Python loops or local AI tooling directly on the host operating system, the entire application stack is containerized, isolated, and governed by strict plane separation:
+Project Titan transforms a dedicated bare-metal system into a transactional black box. Rather than running unverified Python loops or local AI tooling directly on the host operating system, the entire application stack is containerized, isolated, and structured according to the **Titan L1–L7 Reference Model**:
+
+### Titan L1–L7 Reference Model
 
 ``` text
-                     [ Local / Tunneler Ingress ]  
-                                  │  
-          ┌───────────────────────┼───────────────────────┐  
-          ▼                       ▼                       ▼  
-  hermes.titan.local      proxy.titan.local       memory.titan.local  
-          │                       │                       │  
-          └───────────────────────┼───────────────────────┘  
-                                  ▼  
-                     [ Ingress Reverse Proxy ]  
-                     (titan-caddy Gateway)  
-                                  │  
-    ┌─────────────────────────────┼─────────────────────────────┐  
-    │ :8642                       │ :4000                       │ :3000  
-    ▼                             ▼                             ▼  
-┌──────────────┐          ┌──────────────┐              ┌──────────────┐  
-│ Hermes Agent │──(LLM)──►│   LiteLLM    │              │ SilverBullet │  
-│ (Ephemeral)  │          │   Control    │              │  Memory UI   │  
-└──────┬───────┘          └──────┬───┬───┘              └──────┬───────┘  
-       │ (Writes)                │   │ (Persistence)           │ (Reads/Writes)  
-       │             (Inference) │   ▼                         │  
-       │                         │ ┌──────────────────┐        │  
-       │                         │ │ titan-litellm-db │        │  
-       │                         │ │  (PostgreSQL 16) │        │  
-       │                         │ └────────┬─────────┘        │  
-       │                         ▼          │                  │  
-       │                  ┌──────────────┐  │                  │  
-       │                  │ Inference Eng│  │                  │  
-       │                  │ (vLLM/Ollama)│  │                  │  
-       │                  └──────────────┘  │                  │  
-       │                                    │                  │  
-       └─────────────────────────┬──────────┼──────────────────┘  
-                                  ▼          ▼  
-                       [ Host Storage Bind-Mounts ]  
-                       /data/titan/memories (OKF)   
-                       /data/titan/litellm_db (PostgreSQL)
-                       /data/titan/workspace (Agent State & Tools)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ L7: Communications & UX                                                     │
+│     - Ingress Reverse Proxy: Caddy (*.titan.local, TLS, streaming SSE)      │
+│     - Messaging Daemons: titan-signal-cli (JSON-RPC daemon on :8080)        │
+│     - Human-in-the-Loop PKM: SilverBullet UI (:3000 -> /space)              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ L6: Agent Core Units (Manifest-Driven Fleet: config/agents.yaml)            │
+│     - titan-agent-primary       (:8642 API, :9119 Dashboard, $50 Budget)    │
+│     - titan-agent-football-dan  (:8643 API, :9120 Dashboard, $25 Budget)    │
+│     - titan-agent-cindy-pawford (:8644 API, :9121 Dashboard, $25 Budget)    │
+│     - Personas: config/hermes/personas/*.md (SOUL.md isolation)             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ L5: Memory Plane & Tool Sandbox                                             │
+│     - Standalone Package: packages/titan_memory/ (OKF Engine & Vector SPI)  │
+│     - Partitioned Memories: ./data/memories/tenants/<id> (Pure Markdown)    │
+│     - Tenant Workspaces:   ./data/workspace/<id> (Tools, Caches, DBs)       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ L4: Routing & Security Control Plane                                        │
+│     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
+│     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
+│     - Control Plane DB: titan-litellm-db (PostgreSQL 16, titan-litellm-net) │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ L3: Inference Plane                                                         │
+│     - Host Ollama / vLLM bound strictly to loopback (127.0.0.1:11434)       │
+│     - Zero direct agent access; all completions route through LiteLLM       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ L2: Virtualization & Isolated Bridge Networks                               │
+│     - titan-ingress (Caddy -> Service ports)                                │
+│     - titan-internal (Agent egress & Signal daemon)                         │
+│     - titan-litellm-net (Strictly isolates PostgreSQL from agents)          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ L1: Hardware & System Plane                                                 │
+│     - ASUS Ascent GX10 (NVIDIA GB10 ARM64, unified LPDDR5x ~273 GB/s)       │
+│     - Development Workstation: Apple Silicon macOS (native ARM64 parity)    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Cross-Cutting: Observability & Operational Safety                           │
+│     - Decoupled Langfuse v2 + OpenTelemetry distributed tracing             │
+│     - Unified full-data backup (scripts/backup.sh)                          │
+│     - Granular single-tenant emergency kill-switch (scripts/emergency-stop) │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Core Architecture Rules
 
-  * **Zero Direct Connect:** The agent layer has no network visibility or access keys for raw local inference engines or external APIs. It connects strictly to the LiteLLM proxy gateway.
-  * **Control Plane Database Isolation:** LiteLLM is backed by a dedicated PostgreSQL container (`titan-litellm-db`) isolated on `titan-litellm-net`. Hermes has zero database credentials, zero network route, and zero storage volume visibility to this database.
-  * **Decoupled Memory Plane:** Runtimes are ephemeral and disposable. Long-term knowledge is preserved in human-readable, flat-file Markdown using the Open Knowledge Format (OKF) on a persistent host mount.
+  * **Zero Direct Connect (Rule 2):** The agent layer has no network visibility or access keys for raw local inference engines or external APIs. It connects strictly to the LiteLLM proxy gateway (`http://proxy.local:4000/v1`).
+  * **Control Plane Database Isolation (Rule 6):** LiteLLM is backed by a dedicated PostgreSQL container (`titan-litellm-db`) isolated on `titan-litellm-net`. Agents have zero database credentials, zero network routes, and zero storage mounts to this database.
+  * **Memory Plane Purity (Rule 1):** Runtimes are ephemeral and disposable. Long-term knowledge is preserved in human-readable, flat-file Markdown using the Open Knowledge Format (OKF). Binary indices, SQLite databases, and packages are strictly forbidden in `/memories` and reside in `/workspace`.
+  * **Manifest-Driven Multi-Agent Tenancy:** Fleet composition is declared centrally in `config/agents.yaml`. The reconciler (`scripts/sync-agents.sh`) renders compose topologies (`docker-compose.agents.yml`), Caddy virtual hosts (`config/caddy/agents.caddy`), seeds personas, and provisions virtual keys with budget caps.
+  * **Decoupled Memory Module (`packages/titan_memory`):** Core memory logic, OKF models, purity validators, and a pluggable `VectorStore` abstract SPI are decoupled into a standalone package, allowing memory contributors to extend vector stores without stepping on agent runtime toes.
   * **Unified Persistent Storage & Cloud Backup:** All persistent state across the appliance lives under a single host data root (`./data` in development, or `/data/titan` on production GX10):
-    * `memories/`: Human-auditable OKF Markdown notes, knowledge base, and rules.
+    * `memories/`: Human-auditable OKF Markdown notes partitioned per tenant (`tenants/<tenant_id>/`).
     * `litellm_db/`: LiteLLM PostgreSQL persistence (dynamic models, virtual keys, audit logs).
-    * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches.
-    This layout allows a single cloud backup agent (e.g. Google Drive, rclone, restic) pointing to the root data folder to protect 100% of the appliance's state.
-  * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
-  * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM severs inference streams instantly, stopping rogue agent loops without impacting host system states.
+    * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per tenant (`<tenant_id>/`).
+  * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console across all tenant memory trees. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
+  * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
 
 -----
 
@@ -221,16 +228,26 @@ project-titan/
 ├── README.md                 # System vision, architecture, and quickstart guide
 ├── AGENTS.md                 # Agent operating discipline, tickets, and safety rules
 ├── docker-compose.yml        # Declarative service topology and isolated networks (cluster: titan)
+├── docker-compose.agents.yml # Auto-generated multi-agent fleet service units (sync-agents.sh)
 ├── .env.example              # Environment variables template (UID/GID, pathing, DB secrets)
 ├── config/  
+│   ├── agents.yaml           # Declarative multi-agent fleet manifest (L1–L7 layer definitions)
 │   ├── caddy/  
-│   │   └── Caddyfile         # Reverse proxy virtual hosts mapping *.titan.local
+│   │   ├── Caddyfile         # Main ingress reverse proxy configuration (*.titan.local)
+│   │   └── agents.caddy      # Auto-generated agent subdomain vhosts (sync-agents.sh)
 │   ├── litellm/  
 │   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
 │   ├── hermes/  
 │   │   ├── config.yaml       # Upstream Hermes Agent config (providers, channels, plugins)
-│   │   └── SOUL.md           # Agent persona and behavioral directives
+│   │   ├── SOUL.md           # Primary agent persona and behavioral directives
+│   │   └── personas/         # Decoupled tenant personas (primary, football-dan, cindy-pawford)
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
+├── packages/
+│   └── titan_memory/         # Standalone L5 OKF memory engine, purity guards, & VectorStore SPI
+│       ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
+│       ├── README.md         # Architecture & contributor guide for memory engine & vector stores
+│       ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
+│       └── tests/            # Dedicated pytest suite (100% test coverage)
 ├── docker/
 │   ├── hermes/
 │   │   ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
@@ -244,11 +261,17 @@ project-titan/
 │   └── YYYY-MM-DD-ticket*.md # Human-auditable ticket walkthroughs & test evidence
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files
+│   │   └── tenants/          # Partitioned tenant memories (primary, football-dan, cindy-pawford)
 │   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
-│   ├── workspace/            # Persistent Hermes agent tools, caches, and Signal/Telegram state (git-ignored)
+│   ├── workspace/            # Partitioned agent tools, caches, and Signal/Telegram state (git-ignored)
+│   │   ├── primary/          # Primary agent sandbox workspace
+│   │   ├── football-dan/     # Football-dan tenant sandbox workspace
+│   │   ├── cindy-pawford/    # Cindy-pawford tenant sandbox workspace
 │   │   └── signal/           # signal-cli identity keys and daemon registration state
 │   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
 └── scripts/  
+    ├── sync-agents.sh        # Fleet manifest orchestrator (renders compose, caddy, keys, & storage)
+    ├── verify-fleet.sh       # Multi-agent fleet verification harness (drift, routing, isolation)
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
     ├── setup-network.sh      # Static IP & local appliance domain (/etc/hosts) setup script
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
@@ -261,7 +284,7 @@ project-titan/
     ├── reload-env.sh         # Synchronizes database passwords and safely reloads all .env changes
     ├── backup.sh             # Full appliance data plane backup and restore manager
     ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager for memories
-    └── emergency-stop.sh     # Key revocation script for immediate loop intervention
+    └── emergency-stop.sh     # Granular key revocation & process freeze (targeted or full-fleet)
 ```
 
 -----

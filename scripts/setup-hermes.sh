@@ -62,31 +62,24 @@ fi
 log_success "Docker daemon verified."
 
 # ------------------------------------------------------------------------------
-# 2. Memory & Workspace Plane Scaffolding & Permissions
+# 2. Synchronize Fleet Manifest & Scaffold Host Storage
 # ------------------------------------------------------------------------------
-MEMORIES_DIR="${TITAN_DATA_DIR:-${REPO_ROOT}/data/memories}"
-mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
-log_success "Memory plane directories verified at ${MEMORIES_DIR}."
-
-WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
-mkdir -p "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
-chmod 775 "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
-
-if [ -f "${REPO_ROOT}/config/hermes/config.yaml" ]; then
-  cp "${REPO_ROOT}/config/hermes/config.yaml" "${WORKSPACE_DIR}/config.yaml"
-  log_info "Synced Hermes configuration at ${WORKSPACE_DIR}/config.yaml."
+if [ -x "${REPO_ROOT}/scripts/sync-agents.sh" ]; then
+  "${REPO_ROOT}/scripts/sync-agents.sh"
+else
+  MEMORIES_DIR="${TITAN_DATA_DIR:-${REPO_ROOT}/data/memories}"
+  mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
+  WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
+  mkdir -p "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
+  chmod 775 "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
 fi
 
 # Clean up any legacy hermes_okf.py skill copies to maintain zero technical debt
+WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
 if [ -f "${WORKSPACE_DIR}/skills/hermes_okf.py" ]; then
   rm -f "${WORKSPACE_DIR}/skills/hermes_okf.py"
   log_info "Removed legacy skill copy at ${WORKSPACE_DIR}/skills/hermes_okf.py."
 fi
-
-if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
-  touch "${REPO_ROOT}/data/workspace/.gitkeep"
-fi
-log_success "Workspace host storage verified at ${WORKSPACE_DIR}."
 
 # ------------------------------------------------------------------------------
 # 3. Pull & Build Unprivileged Hermes Sandbox & Messaging Images
@@ -95,7 +88,7 @@ log_info "Ensuring companion services are present (signal-cli)..."
 docker compose pull signal-cli
 
 log_info "Building unprivileged Hermes Agent image (titan-hermes:latest)..."
-docker compose build hermes
+docker compose build agent-primary
 log_success "Hermes Agent container image built successfully."
 
 # ------------------------------------------------------------------------------

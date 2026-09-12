@@ -160,4 +160,10 @@ Agents must never violate the following zero-trust operational boundaries:
 - **Test the Scripts, Not One-Offs**: When debugging or verifying functionality, agents must execute the scripts themselves (e.g. `./scripts/setup-hermes.sh`, `./scripts/verify-hermes.sh`, `./scripts/backup.sh`). If a behavior needs adjustment, update the underlying script, Dockerfile, or configuration file, and re-run the script to validate the fix.
 - **The GX10 Reproducibility Guarantee**: Anyone cloning the repository onto a fresh host (macOS development workstation or production ASUS Ascent GX10 appliance) must be able to achieve a 100% identical, functional state solely by executing the documented scripts in `scripts/`. If a step requires manual human intervention or undocumented Docker commands, the implementation is considered defective.
 
+### Rule 9: Multi-Tenant Partitioning & Manifest Drift Prevention
+- **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/agents.yaml`. Direct manual edits to `docker-compose.agents.yml` or `config/caddy/agents.caddy` are strictly forbidden; all changes must flow through `./scripts/sync-agents.sh`.
+- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/workspace/<tenant_id>`), its own pure OKF memory partition (`/data/memories/tenants/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
+- **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/titan_memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
+- **Automated Drift Enforcement**: The CI pipeline (`.github/workflows/pre-commit.yml`) and verification suites (`./scripts/verify-fleet.sh`) enforce zero drift via `./scripts/sync-agents.sh --check` on every commit and PR.
+
 

@@ -6,6 +6,10 @@
 
 FROM nousresearch/hermes-agent:latest
 
+# Install standalone titan-memory package (L5: Memory & Tools)
+COPY packages/titan_memory /opt/hermes/packages/titan_memory
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/titan_memory
+
 # Install native Titan OKF memory plugin
 COPY docker/hermes/plugins/hermes-okf /opt/hermes/plugins/hermes-okf
 RUN ln -sf /opt/hermes/plugins/hermes-okf /opt/hermes/plugins/memory/hermes-okf

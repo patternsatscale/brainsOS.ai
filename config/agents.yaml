@@ -1,0 +1,116 @@
+# ==============================================================================
+# Project Titan: Multi-Agent Fleet Manifest
+# Single source of truth for all autonomous agent units.
+# Aligned with the Titan L1-L7 Reference Architecture.
+# ==============================================================================
+
+version: "1.0"
+
+agents:
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Primary Operations Agent
+  # ----------------------------------------------------------------------------
+  - id: "primary"
+    name: "Titan Primary Operations Agent"
+    enabled: true
+
+    # L6: Agent Core Runtime
+    runtime: "hermes"
+    persona: "config/hermes/personas/primary.md"
+
+    # L5: Memory & Tool Sandbox
+    memory:
+      path: "./data/memories/tenants/primary"
+    workspace:
+      path: "./data/workspace/primary"
+
+    # L4: Routing & Security (LiteLLM Control Plane)
+    routing:
+      budget_monthly_usd: 50.00
+      virtual_key: "HERMES_LITELLM_KEY"
+
+    # L7: Communications & UX Ingress
+    comms:
+      subdomain: "primary.titan.local"
+      port: 8642
+      dashboard_port: 9119
+      signal:
+        enabled: true
+      telegram:
+        enabled: false
+
+    # Cross-Cutting: Observability & Evaluation
+    observability:
+      otel_tracing: true
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Football Dan - Sports Analytics
+  # ----------------------------------------------------------------------------
+  - id: "football-dan"
+    name: "Football Dan - Sports Analytics"
+    enabled: true
+
+    # L6: Agent Core Runtime
+    runtime: "hermes"
+    persona: "config/hermes/personas/football-dan.md"
+
+    # L5: Memory & Tool Sandbox
+    memory:
+      path: "./data/memories/tenants/football-dan"
+    workspace:
+      path: "./data/workspace/football-dan"
+
+    # L4: Routing & Security (LiteLLM Control Plane)
+    routing:
+      budget_monthly_usd: 25.00
+      virtual_key: "HERMES_FOOTBALL_DAN_KEY"
+
+    # L7: Communications & UX Ingress
+    comms:
+      subdomain: "football-dan.titan.local"
+      port: 8643
+      dashboard_port: 9120
+      signal:
+        enabled: false
+      telegram:
+        enabled: false
+
+    # Cross-Cutting: Observability & Evaluation
+    observability:
+      otel_tracing: true
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Cindy Pawford - Pet Wellness
+  # ----------------------------------------------------------------------------
+  - id: "cindy-pawford"
+    name: "Cindy Pawford - Pet Wellness"
+    enabled: true
+
+    # L6: Agent Core Runtime
+    runtime: "hermes"
+    persona: "config/hermes/personas/cindy-pawford.md"
+
+    # L5: Memory & Tool Sandbox
+    memory:
+      path: "./data/memories/tenants/cindy-pawford"
+    workspace:
+      path: "./data/workspace/cindy-pawford"
+
+    # L4: Routing & Security (LiteLLM Control Plane)
+    routing:
+      budget_monthly_usd: 25.00
+      virtual_key: "HERMES_CINDY_PAWFORD_KEY"
+
+    # L7: Communications & UX Ingress
+    comms:
+      subdomain: "cindy-pawford.titan.local"
+      port: 8644
+      dashboard_port: 9121
+      signal:
+        enabled: false
+      telegram:
+        enabled: false
+
+    # Cross-Cutting: Observability & Evaluation
+    observability:
+      otel_tracing: true
