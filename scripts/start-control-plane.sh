@@ -358,8 +358,10 @@ start_services() {
     log_success "LiteLLM gateway started (PID: ${LITELLM_PID})."
   fi
 
-  # 4. Provision Hermes virtual key in database if not already provisioned
-  if [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
+  # 4. Provision fleet virtual keys in LiteLLM control plane database
+  if [ -x "${REPO_ROOT}/scripts/sync-agents.sh" ]; then
+    "${REPO_ROOT}/scripts/sync-agents.sh" --provision-keys || true
+  elif [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
     KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
       -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${HERMES_LITELLM_KEY}" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
@@ -372,8 +374,6 @@ start_services() {
         -H "Content-Type: application/json" \
         -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\", \"models\": []}" || true
       log_success "Hermes virtual key initialized in database."
-    else
-      log_info "Hermes virtual key is already registered in database."
     fi
   fi
 

@@ -1,11 +1,6 @@
-"""Hermes Plugin Compatibility Shim for titan_memory tools.
+"""Tool registry and adapters for titan-memory."""
 
-Re-exports schemas and handlers from titan_memory.tools for backward compatibility.
-"""
-
-from __future__ import annotations
-
-from titan_memory.tools import (
+from titan_memory.tools.registry import (
     READ_OKF_NOTE_SCHEMA,
     WRITE_OKF_NOTE_SCHEMA,
     SYNTHESIZE_ACTIVE_RULES_SCHEMA,
@@ -13,6 +8,7 @@ from titan_memory.tools import (
     handle_write_okf_note,
     handle_synthesize_active_rules,
 )
+from titan_memory.tools.hermes_adapter import register_hermes_tools
 
 __all__ = [
     "READ_OKF_NOTE_SCHEMA",
@@ -21,4 +17,5 @@ __all__ = [
     "handle_read_okf_note",
     "handle_write_okf_note",
     "handle_synthesize_active_rules",
+    "register_hermes_tools",
 ]

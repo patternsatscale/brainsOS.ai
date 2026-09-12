@@ -33,6 +33,7 @@ fi
 SILVERBULLET_PORT="${SILVERBULLET_PORT:-3000}"
 CADDY_PORT="${CADDY_HTTP_PORT:-80}"
 HERMES_PORT="${HERMES_PORT:-8642}"
+API_SERVER_KEY="${API_SERVER_KEY:-}"
 DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
@@ -41,8 +42,23 @@ else
   MEMORIES_DIR="${DATA_DIR}"
 fi
 
+# Multi-tenant directory alignment & service detection
+AGENT_MEMORIES_DIR="${MEMORIES_DIR}"
+SB_PREFIX=""
+if [ -d "${MEMORIES_DIR}/tenants/primary" ]; then
+  AGENT_MEMORIES_DIR="${MEMORIES_DIR}/tenants/primary"
+  SB_PREFIX="tenants/primary/"
+fi
+
+HERMES_SERVICE="agent-primary"
+if ! docker compose ps --services | grep -q "^agent-primary$" && docker compose ps --services | grep -q "^hermes$"; then
+  HERMES_SERVICE="hermes"
+fi
+
 log_info "Running Project Titan Memory Plane automated verification..."
-log_info "Target memories directory: ${MEMORIES_DIR}"
+log_info "Target memories root:       ${MEMORIES_DIR}"
+log_info "Target agent memories path: ${AGENT_MEMORIES_DIR}"
+log_info "Target Hermes service:      ${HERMES_SERVICE}"
 
 # ------------------------------------------------------------------------------
 # 1. Verify SilverBullet PKM Health & Ingress Routing
@@ -72,7 +88,7 @@ log_info "Testing bi-directional memory synchronization (SilverBullet <-> Hermes
 
 # Test 2A: Host write -> Hermes read
 SYNC_FILE="knowledge/titan_sync_test.md"
-SYNC_FULL_PATH="${MEMORIES_DIR}/${SYNC_FILE}"
+SYNC_FULL_PATH="${AGENT_MEMORIES_DIR}/${SYNC_FILE}"
 cat << 'EOF' > "${SYNC_FULL_PATH}"
 ---
 title: Bi-directional Sync Test Note
@@ -87,7 +103,7 @@ Verified live sync between host filesystem, SilverBullet PKM, and Hermes runtime
 EOF
 
 log_info "Validating Hermes container can read live host memory mount..."
-HERMES_READ=$(docker compose exec -T hermes cat "/memories/${SYNC_FILE}" 2>/dev/null || true)
+HERMES_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "/memories/${SYNC_FILE}" 2>/dev/null || true)
 if echo "${HERMES_READ}" | grep -q "Titan Memory Plane Synchronization Test"; then
   log_success "Hermes container read verified directly from /memories mount."
 else
@@ -97,7 +113,7 @@ else
 fi
 
 log_info "Validating native hermes-okf read_okf_note tool dispatch..."
-HERMES_API_READ=$(docker compose exec -T hermes python3 -c '
+HERMES_API_READ=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
 from hermes_cli.plugins import discover_plugins
 discover_plugins()
 from tools.registry import registry
@@ -118,7 +134,7 @@ rm -f "${SYNC_FULL_PATH}"
 log_success "Test 2A passed: Host -> Hermes read verified."
 
 # Test 2B: SilverBullet API write -> Hermes read
-SB_API_NOTE="knowledge/sb_api_test.md"
+SB_API_NOTE="${SB_PREFIX}knowledge/sb_api_test.md"
 log_info "Writing test note via SilverBullet /.fs API..."
 SB_WRITE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -d "# SilverBullet Written Note" "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" || echo "failed")
 if [ "${SB_WRITE_STATUS}" == "200" ]; then
@@ -128,7 +144,7 @@ else
   exit 1
 fi
 
-HERMES_SB_READ=$(docker compose exec -T hermes cat "/memories/${SB_API_NOTE}" 2>/dev/null || true)
+HERMES_SB_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "/memories/knowledge/sb_api_test.md" 2>/dev/null || true)
 if echo "${HERMES_SB_READ}" | grep -q "SilverBullet Written Note"; then
   log_success "Hermes successfully read note created via SilverBullet."
 else
@@ -200,7 +216,7 @@ fi
 # 5. Verify Active Rules Context Ingestion via Native Plugin
 # ------------------------------------------------------------------------------
 log_info "Verifying active rules context synthesizer via native hermes-okf..."
-RULES_SYNTH=$(docker compose exec -T hermes python3 -c '
+RULES_SYNTH=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
 from hermes_cli.plugins import discover_plugins
 discover_plugins()
 from tools.registry import registry
@@ -212,6 +228,49 @@ if echo "${RULES_SYNTH}" | grep -q "OPERATOR RULES"; then
   log_success "Native synthesize_active_rules tool successfully synthesized active operator rules."
 else
   log_warn "No active rules returned (check if rules/ folder has active notes): ${RULES_SYNTH}"
+fi
+
+# ------------------------------------------------------------------------------
+# 6. Verify End-to-End Hermes API Memory Learning & Markdown File Persistence
+# ------------------------------------------------------------------------------
+log_info "Step 6: Testing Hermes API end-to-end memory write ('User's name is Justin')..."
+API_URL="http://127.0.0.1:${HERMES_PORT}/v1/chat/completions"
+LEARNED_NOTE="${AGENT_MEMORIES_DIR}/knowledge/user_profile.md"
+rm -f "${LEARNED_NOTE}"
+
+if [ -n "${API_SERVER_KEY:-}" ]; then
+  log_info "Dispatching chat completion to Hermes API at ${API_URL}..."
+  API_RESP=$(curl -s -m 90 "${API_URL}" \
+    -H "Authorization: Bearer ${API_SERVER_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "model": "hermes-agent",
+      "messages": [
+        {"role": "user", "content": "Please save an OKF note in your memory using write_okf_note with rel_path knowledge/user_profile.md, title \"User Profile\", and content \"User'\''s name is Justin.\""}
+      ]
+    }' || echo "failed")
+
+  if [ -f "${LEARNED_NOTE}" ] && grep -qi "Justin" "${LEARNED_NOTE}"; then
+    log_success "Verified OKF Markdown note created on host via Hermes API: ${LEARNED_NOTE}"
+    log_info "Note contents:\n$(cat "${LEARNED_NOTE}")"
+
+    # Also verify that SilverBullet PKM sees the new note immediately
+    SB_READ_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_PREFIX}knowledge/user_profile.md" || echo "failed")
+    if [ "${SB_READ_STATUS}" == "200" ]; then
+      log_success "Verified SilverBullet PKM can read the newly learned note over /.fs API."
+    else
+      log_warn "SilverBullet returned HTTP ${SB_READ_STATUS} for learned note (acceptable if not indexed yet)."
+    fi
+
+    # Clean up learned note after successful validation
+    rm -f "${LEARNED_NOTE}"
+  else
+    log_error "Failed: OKF Markdown note not found or missing 'Justin' at ${LEARNED_NOTE}."
+    log_error "Hermes API response: ${API_RESP}"
+    exit 1
+  fi
+else
+  log_warn "API_SERVER_KEY is not set; skipping live Hermes API memory learning test."
 fi
 
 echo ""
