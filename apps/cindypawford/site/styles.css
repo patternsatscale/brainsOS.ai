@@ -1,0 +1,327 @@
+/* ==========================================================================
+   Cindy Pawford Atelier — Haute Couture Styling
+   ========================================================================== */
+
+:root {
+  --bg-primary: #0e0d0c;
+  --bg-surface: #191716;
+  --bg-card: #221f1d;
+  --border-gold: #c5a059;
+  --border-subtle: #3a3530;
+  --text-primary: #f5f3ef;
+  --text-secondary: #b8b2a8;
+  --text-accent: #d4af37;
+  --gold-glow: rgba(212, 175, 55, 0.2);
+  --font-serif: "Didot", "Bodoni MT", "Cinzel", "Playfair Display", Georgia, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header & Brand */
+.atelier-header {
+  padding: 2.5rem 1.5rem 1.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border-gold);
+  background: linear-gradient(180deg, #141211 0%, var(--bg-primary) 100%);
+}
+
+.brand-logo {
+  font-family: var(--font-serif);
+  font-size: 2.75rem;
+  letter-spacing: 0.35em;
+  color: var(--text-accent);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.brand-subtitle {
+  font-size: 0.85rem;
+  letter-spacing: 0.25em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.atelier-nav {
+  margin-top: 1.5rem;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.nav-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  transition: var(--transition-smooth);
+}
+
+.nav-link:hover {
+  color: var(--text-accent);
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+/* Hero Section */
+.hero-section {
+  text-align: center;
+  padding: 3.5rem 2rem;
+  background: radial-gradient(circle at top center, #24201c 0%, var(--bg-surface) 100%);
+  border: 1px solid var(--border-gold);
+  border-radius: 4px;
+  margin-bottom: 3.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 0.35rem 1rem;
+  border: 1px solid var(--border-gold);
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-accent);
+  margin-bottom: 1.5rem;
+}
+
+.hero-title {
+  font-family: var(--font-serif);
+  font-size: 2.5rem;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  line-height: 1.3;
+}
+
+.hero-tagline {
+  font-size: 1.15rem;
+  color: var(--text-secondary);
+  max-width: 680px;
+  margin: 0 auto 2rem;
+  font-style: italic;
+}
+
+.hero-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-bottom: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-primary, .btn-secondary {
+  padding: 0.85rem 1.75rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: var(--transition-smooth);
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: var(--text-accent);
+  color: #0e0d0c;
+  border: 1px solid var(--text-accent);
+}
+
+.btn-primary:hover {
+  background: #e6c555;
+  box-shadow: 0 0 15px var(--gold-glow);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-accent);
+  border: 1px solid var(--border-gold);
+}
+
+.btn-secondary:hover {
+  background: rgba(212, 175, 55, 0.1);
+}
+
+/* Insight Box */
+.insight-box {
+  background: var(--bg-card);
+  border-left: 3px solid var(--text-accent);
+  padding: 1.5rem;
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.insight-text {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.insight-author {
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
+  color: var(--text-accent);
+  text-transform: uppercase;
+}
+
+/* Manifesto Section */
+.content-section {
+  margin-bottom: 4rem;
+}
+
+.section-title {
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-accent);
+  text-align: center;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.section-title::after {
+  content: "";
+  display: block;
+  width: 50px;
+  height: 1px;
+  background: var(--border-gold);
+  margin: 0.75rem auto 0;
+}
+
+.manifesto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.manifesto-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 2rem;
+  border-radius: 4px;
+  transition: var(--transition-smooth);
+}
+
+.manifesto-card:hover {
+  border-color: var(--border-gold);
+  transform: translateY(-2px);
+}
+
+.manifesto-card h4 {
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  color: var(--text-accent);
+  margin-bottom: 0.75rem;
+}
+
+.manifesto-card p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* Drops Section */
+.drops-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.drop-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 1.5rem;
+  border-radius: 4px;
+}
+
+.drop-date {
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-right: 1rem;
+}
+
+.drop-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  background: rgba(212, 175, 55, 0.15);
+  color: var(--text-accent);
+  padding: 0.2rem 0.5rem;
+  border-radius: 2px;
+  margin-bottom: 0.75rem;
+}
+
+.drop-item h4 {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--text-primary);
+  margin: 0.5rem 0;
+}
+
+.drop-item p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Footer */
+.atelier-footer {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.footer-telegram {
+  margin-top: 0.5rem;
+}
+
+.footer-telegram a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.footer-telegram a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .brand-logo {
+    font-size: 2rem;
+  }
+  .hero-title {
+    font-size: 1.75rem;
+  }
+  .atelier-nav {
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+}

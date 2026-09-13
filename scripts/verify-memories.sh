@@ -45,7 +45,10 @@ fi
 # Multi-tenant directory alignment & service detection
 AGENT_MEMORIES_DIR="${MEMORIES_DIR}"
 SB_PREFIX=""
-if [ -d "${MEMORIES_DIR}/tenants/primary" ]; then
+if [ -d "${MEMORIES_DIR}/agents/primary" ]; then
+  AGENT_MEMORIES_DIR="${MEMORIES_DIR}/agents/primary"
+  SB_PREFIX="agents/primary/"
+elif [ -d "${MEMORIES_DIR}/tenants/primary" ]; then
   AGENT_MEMORIES_DIR="${MEMORIES_DIR}/tenants/primary"
   SB_PREFIX="tenants/primary/"
 fi

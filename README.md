@@ -27,7 +27,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
 │     - Standalone Package: packages/titan_memory/ (OKF Engine & Vector SPI)  │
-│     - Partitioned Memories: ./data/memories/tenants/<id> (Pure Markdown)    │
+│     - Partitioned Memories: ./data/memories/agents/<id> (Pure Markdown)     │
 │     - Tenant Workspaces:   ./data/workspace/<id> (Tools, Caches, DBs)       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing & Security Control Plane                                        │
@@ -242,8 +242,11 @@ project-titan/
 │   │   ├── SOUL.md           # Primary agent persona and behavioral directives
 │   │   └── personas/         # Decoupled tenant personas (primary, football-dan, cindy-pawford)
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
+├── apps/
+│   └── cindypawford/
+│       └── site/             # Cindy Pawford vanilla web application workspace (index.html, styles.css, app.js, assets/)
 ├── packages/
-│   └── titan_memory/         # Standalone L5 OKF memory engine, purity guards, & VectorStore SPI
+│   └── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI
 │       ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
 │       ├── README.md         # Architecture & contributor guide for memory engine & vector stores
 │       ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
@@ -261,17 +264,18 @@ project-titan/
 │   └── YYYY-MM-DD-ticket*.md # Human-auditable ticket walkthroughs & test evidence
 ├── data/  
 │   ├── memories/             # Live host volume storage for OKF Markdown files
-│   │   └── tenants/          # Partitioned tenant memories (primary, football-dan, cindy-pawford)
+│   │   └── agents/           # Partitioned agent memories (primary, football-dan, cindy-pawford)
 │   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
 │   ├── workspace/            # Partitioned agent tools, caches, and Signal/Telegram state (git-ignored)
 │   │   ├── primary/          # Primary agent sandbox workspace
-│   │   ├── football-dan/     # Football-dan tenant sandbox workspace
-│   │   ├── cindy-pawford/    # Cindy-pawford tenant sandbox workspace
+│   │   ├── football-dan/     # Football-dan agent sandbox workspace
+│   │   ├── cindy-pawford/    # Cindy-pawford agent runtime sandbox
 │   │   └── signal/           # signal-cli identity keys and daemon registration state
 │   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
 └── scripts/  
     ├── sync-agents.sh        # Fleet manifest orchestrator (renders compose, caddy, keys, & storage)
     ├── verify-fleet.sh       # Multi-agent fleet verification harness (drift, routing, isolation)
+    ├── verify-cindy-agent.sh # Cindy Pawford agent unit verification suite (CW-0A)
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
     ├── setup-network.sh      # Static IP & local appliance domain (/etc/hosts) setup script
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
