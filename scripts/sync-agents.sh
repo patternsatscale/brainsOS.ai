@@ -419,6 +419,8 @@ for agent in manifest.get("agents", []):
 
     mem_dir = os.path.abspath(os.path.join(repo_root, mem_rel.lstrip("./")))
     work_dir = os.path.abspath(os.path.join(repo_root, work_rel.lstrip("./")))
+    os.makedirs(mem_dir, exist_ok=True)
+    os.makedirs(work_dir, exist_ok=True)
 
     # Seamless migration from legacy tenants directory if present and agents dir does not exist
     legacy_mem_dir = os.path.abspath(os.path.join(repo_root, "data", "memories", "tenants", agent_id))
@@ -507,7 +509,8 @@ EOF
 # 4. Enforce permissions (chmod 775)
 chmod -R 775 "${REPO_ROOT}/data/workspace" "${REPO_ROOT}/data/memories" 2>/dev/null || true
 if [ -d "${REPO_ROOT}/apps" ]; then
-  chmod -R 775 "${REPO_ROOT}/apps" 2>/dev/null || true
+  find "${REPO_ROOT}/apps" -type d -exec chmod 775 {} + 2>/dev/null || true
+  find "${REPO_ROOT}/apps" -type f -exec chmod 664 {} + 2>/dev/null || true
 fi
 
 # 5. Provision Virtual Keys
@@ -517,8 +520,8 @@ provision_virtual_keys
 if docker compose ps -q caddy >/dev/null 2>&1 && [ -n "$(docker compose ps -q caddy 2>/dev/null)" ]; then
   log_info "Reloading Caddy ingress gateway to activate routes..."
   if ! docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null; then
-    log_info "Admin API disabled; restarting Caddy container to activate routes..."
-    docker compose restart caddy >/dev/null 2>&1 || log_warn "Failed to restart Caddy container."
+    log_info "Admin API disabled; ensuring Caddy container is up to date..."
+    docker compose up -d --no-deps caddy >/dev/null 2>&1 || log_warn "Failed to update Caddy container."
   fi
 fi
 

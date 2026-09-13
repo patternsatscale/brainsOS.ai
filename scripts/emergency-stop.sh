@@ -86,10 +86,10 @@ if [ "${TARGET_TENANT}" != "all" ]; then
     log_info "Container for tenant '${TARGET_TENANT}' is not currently running."
   fi
 
-  # Resolve tenant virtual key
-  TENANT_VAR_NAME="HERMES_${TARGET_TENANT^^}"
-  TENANT_VAR_NAME="${TENANT_VAR_NAME//-/_}_KEY"
-  KEY_VAL="${!TENANT_VAR_NAME:-}"
+  # Resolve tenant virtual key (macOS Bash 3.2 compatible)
+  UPPER_TENANT=$(echo "${TARGET_TENANT}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+  TENANT_VAR_NAME="HERMES_${UPPER_TENANT}_KEY"
+  eval "KEY_VAL=\${${TENANT_VAR_NAME}:-}"
   if [ -z "${KEY_VAL}" ]; then
     KEY_VAL="sk-titan-${TARGET_TENANT}-key"
   fi
