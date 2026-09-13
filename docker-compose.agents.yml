@@ -6,7 +6,7 @@
 
 services:
   # --------------------------------------------------------------------------
-  # L6: Agent Core Unit: Titan Primary Operations Agent (primary)
+  # L2: Agent Core Unit: Titan Primary Operations Agent (primary)
   # --------------------------------------------------------------------------
   agent-primary:
     build:
@@ -26,11 +26,11 @@ services:
       - "litellm:host-gateway"
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
-      # L5: Memory Plane (pure OKF markdown)
-      - ./data/memories/tenants/primary:/memories
+      # L3: Memory Plane (pure OKF markdown)
+      - ./data/memories/agents/primary:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
-      # L5: Unprivileged Workspace Sandbox
+      # L3: Unprivileged Workspace Sandbox
       - ./data/workspace/primary:/opt/data
       - ./data/workspace/primary:/workspace
     working_dir: /opt/data
@@ -50,6 +50,7 @@ services:
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/opt/data
+      - HERMES_WRITE_SAFE_ROOT=/opt/data
       - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-4096}
       - HERMES_GATEWAY_BOOTSTRAP_STATE=running
       - API_SERVER_HOST=0.0.0.0
@@ -58,8 +59,9 @@ services:
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+      - TELEGRAM_BOT_NAME=@TitanPrimary_bot
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_PRIMARY:-${TELEGRAM_BOT_TOKEN:-}}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_PRIMARY:-${TELEGRAM_ALLOWED_USERS:-}}
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
     command: ["sleep", "infinity"]
     depends_on:
@@ -69,7 +71,7 @@ services:
       - titan-internal
 
   # --------------------------------------------------------------------------
-  # L6: Agent Core Unit: Football Dan - Sports Analytics (football-dan)
+  # L2: Agent Core Unit: Football Dan - Sports Analytics (football-dan)
   # --------------------------------------------------------------------------
   agent-football-dan:
     build:
@@ -89,11 +91,11 @@ services:
       - "litellm:host-gateway"
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
-      # L5: Memory Plane (pure OKF markdown)
-      - ./data/memories/tenants/football-dan:/memories
+      # L3: Memory Plane (pure OKF markdown)
+      - ./data/memories/agents/football-dan:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
-      # L5: Unprivileged Workspace Sandbox
+      # L3: Unprivileged Workspace Sandbox
       - ./data/workspace/football-dan:/opt/data
       - ./data/workspace/football-dan:/workspace
     working_dir: /opt/data
@@ -113,6 +115,7 @@ services:
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/opt/data
+      - HERMES_WRITE_SAFE_ROOT=/opt/data
       - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-4096}
       - HERMES_GATEWAY_BOOTSTRAP_STATE=running
       - API_SERVER_HOST=0.0.0.0
@@ -121,8 +124,9 @@ services:
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+      - TELEGRAM_BOT_NAME=@FootballDan_bot
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_FOOTBALL_DAN:-${TELEGRAM_BOT_TOKEN:-}}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_FOOTBALL_DAN:-${TELEGRAM_ALLOWED_USERS:-}}
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
     command: ["sleep", "infinity"]
     depends_on:
@@ -132,7 +136,7 @@ services:
       - titan-internal
 
   # --------------------------------------------------------------------------
-  # L6: Agent Core Unit: Cindy Pawford - Pet Wellness (cindy-pawford)
+  # L2: Agent Core Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford)
   # --------------------------------------------------------------------------
   agent-cindy-pawford:
     build:
@@ -152,13 +156,13 @@ services:
       - "litellm:host-gateway"
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
-      # L5: Memory Plane (pure OKF markdown)
-      - ./data/memories/tenants/cindy-pawford:/memories
+      # L3: Memory Plane (pure OKF markdown)
+      - ./data/memories/agents/cindy-pawford:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
-      # L5: Unprivileged Workspace Sandbox
+      # L3: Unprivileged Workspace Sandbox
       - ./data/workspace/cindy-pawford:/opt/data
-      - ./data/workspace/cindy-pawford:/workspace
+      - ./apps/cindypawford/site:/workspace
     working_dir: /opt/data
     environment:
       - PUID=${PUID:-1000}
@@ -168,14 +172,15 @@ services:
       - HERMES_DASHBOARD_PORT=9121
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_CINDY_PAWFORD_KEY:-sk-titan-cindy-pawford-key}
-      - CUSTOM_API_KEY=${HERMES_CINDY_PAWFORD_KEY:-sk-titan-cindy-pawford-key}
-      - OPENAI_API_KEY=${HERMES_CINDY_PAWFORD_KEY:-sk-titan-cindy-pawford-key}
+      - HERMES_LITELLM_KEY=${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}
+      - CUSTOM_API_KEY=${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}
+      - OPENAI_API_KEY=${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - MEMORY_DIR=/memories
-      - WORKSPACE_DIR=/opt/data
+      - WORKSPACE_DIR=/workspace
+      - HERMES_WRITE_SAFE_ROOT=/opt/data:/workspace
       - INFERENCE_NUM_CTX=${INFERENCE_NUM_CTX:-4096}
       - HERMES_GATEWAY_BOOTSTRAP_STATE=running
       - API_SERVER_HOST=0.0.0.0
@@ -184,8 +189,9 @@ services:
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+      - TELEGRAM_BOT_NAME=@CindyPawfordBot
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_CINDY:-${TELEGRAM_BOT_TOKEN:-}}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_CINDY:-${TELEGRAM_ALLOWED_USERS:-}}
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
     command: ["sleep", "infinity"]
     depends_on:

@@ -98,7 +98,7 @@ if [ "${TARGET_TENANT}" != "all" ]; then
   log_success "Targeted emergency intervention complete for '${TARGET_TENANT}'."
   echo ""
   echo "To resume operations for '${TARGET_TENANT}':"
-  echo "  1. Audit memories: /memories/tenants/${TARGET_TENANT}"
+  echo "  1. Audit memories: /memories/agents/${TARGET_TENANT}"
   echo "  2. Unpause container: docker unpause ${CONTAINER_NAME} (or docker start ${CONTAINER_NAME})"
   echo "  3. Resync keys: ./scripts/sync-agents.sh --provision-keys"
   echo ""

@@ -59,7 +59,9 @@ fi
 if [ -d "${HOST_WORKSPACE}/primary" ]; then
   HOST_WORKSPACE="${HOST_WORKSPACE}/primary"
 fi
-if [ -d "${HOST_MEMORIES}/tenants/primary" ]; then
+if [ -d "${HOST_MEMORIES}/agents/primary" ]; then
+  HOST_MEMORIES="${HOST_MEMORIES}/agents/primary"
+elif [ -d "${HOST_MEMORIES}/tenants/primary" ]; then
   HOST_MEMORIES="${HOST_MEMORIES}/tenants/primary"
 fi
 
