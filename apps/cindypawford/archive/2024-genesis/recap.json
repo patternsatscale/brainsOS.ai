@@ -1,0 +1,14 @@
+{
+  "era": 1,
+  "slug": "2024-genesis",
+  "theme_name": "The Genesis Atelier",
+  "date_range": "2024-03-15 to 2024-06-19",
+  "closing_quote": "Luxury canine couture isn't just an aesthetic, darling—it's a corporate imperative.",
+  "founding_quote": "Luxury canine couture isn't just an aesthetic, darling—it's a corporate imperative.",
+  "coding_model": "gpt-4-turbo",
+  "stats": {
+    "models_featured": 5,
+    "bacon_strips_demanded": 1000,
+    "mailmen_barked_at": 42
+  }
+}

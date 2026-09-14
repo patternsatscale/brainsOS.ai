@@ -239,12 +239,15 @@ project-titan/
 │   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
 │   ├── hermes/  
 │   │   ├── config.yaml       # Upstream Hermes Agent config (providers, channels, plugins)
+│   │   ├── model_pool.json   # Autonomous coding model pool for weekly engine rotation (cindy-active-coding-model)
 │   │   ├── SOUL.md           # Primary agent persona and behavioral directives
 │   │   └── personas/         # Decoupled tenant personas (primary, football-dan, cindy-pawford)
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── apps/
 │   └── cindypawford/
-│       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repository; mapped to /app/html)
+│       ├── archive/          # Immutable Digital Museum Vault (2024 Genesis era, sealed snapshots, eras.json)
+│       ├── clean-slate/      # Master atelier starter templates (index.html, styles.css, app.js) seeded on reset
+│       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repo; mapped to /app/html)
 ├── packages/
 │   └── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI
 │       ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
@@ -276,6 +279,11 @@ project-titan/
     ├── sync-agents.sh        # Fleet manifest orchestrator (renders compose, caddy, keys, & storage)
     ├── verify-fleet.sh       # Multi-agent fleet verification harness (drift, routing, isolation)
     ├── verify-cindy-agent.sh # Cindy Pawford agent unit verification suite (CW-0A)
+    ├── verify-cindy-canvas.sh# Cindy Pawford canvas isolation verification suite (CW-0A.1)
+    ├── verify-cindy-archive.sh# Genesis archive, digital museum & seal-and-reset suite (CW-0B)
+    ├── build-archive-portal.py# Digital museum gallery compiler
+    ├── process-cindy-reset.sh# Automated 'Seal & Reset' execution engine
+    ├── republish-archives.sh # Out-of-band museum republishing tooling
     ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
     ├── setup-network.sh      # Static IP & local appliance domain (/etc/hosts) setup script
     ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container

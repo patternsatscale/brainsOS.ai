@@ -122,13 +122,14 @@ agents:
       default: "titan-core"
       available:
         - "titan-core"
+        - "cindy-active-coding-model"
         - "llama3.2:3b"
         - "qwen2.5:latest"
     cron:
       - id: "daily-feature-drop"
         name: "Daily Feature Drop"
         schedule: "0 2 * * 1-6"
-        prompt: "Inspect the live site files in /app/html (index.html, styles.css, app.js), review top community ideas, and implement 1-2 spontaneous haute-couture canine features or aesthetic refinements."
+        prompt: "Using your active coding engine (cindy-active-coding-model), inspect the live site files in /app/html (index.html, styles.css, app.js), review top community ideas, and implement 1-2 spontaneous haute-couture canine features or aesthetic refinements."
       - id: "weekly-era-reset"
         name: "Weekly Era Reset"
         schedule: "0 2 * * 0"

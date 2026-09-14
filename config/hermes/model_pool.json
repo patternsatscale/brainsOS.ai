@@ -1,0 +1,8 @@
+{
+  "coding_models": [
+    "titan-core",
+    "llama3.2:3b",
+    "qwen2.5:latest"
+  ],
+  "description": "Candidate coding models rotated weekly for Cindy Pawford autonomous HTML canvas generation."
+}
