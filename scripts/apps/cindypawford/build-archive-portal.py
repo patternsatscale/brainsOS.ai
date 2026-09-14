@@ -8,7 +8,15 @@ import os
 import json
 import html
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+def find_repo_root():
+    d = os.path.abspath(os.path.dirname(__file__))
+    while d != os.path.dirname(d):
+        if os.path.exists(os.path.join(d, "config", "agents.yaml")) or os.path.exists(os.path.join(d, ".git")):
+            return d
+        d = os.path.dirname(d)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+REPO_ROOT = find_repo_root()
 ARCHIVE_DIR = os.path.join(REPO_ROOT, "apps", "cindypawford", "archive")
 ERAS_JSON_PATH = os.path.join(ARCHIVE_DIR, "eras.json")
 OUTPUT_HTML_PATH = os.path.join(ARCHIVE_DIR, "index.html")

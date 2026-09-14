@@ -21,7 +21,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -50,12 +61,12 @@ log_info "================================================================="
 # ------------------------------------------------------------------------------
 log_info "Step 1: Validating fleet manifest synchronization & compose topology..."
 
-if [ ! -x "${REPO_ROOT}/scripts/sync-agents.sh" ]; then
-  log_error "scripts/sync-agents.sh is missing or not executable."
+if [ ! -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
+  log_error "scripts/control/sync-agents.sh is missing or not executable."
   exit 1
 fi
 
-"${REPO_ROOT}/scripts/sync-agents.sh" --check
+"${REPO_ROOT}/scripts/control/sync-agents.sh" --check
 log_success "Fleet manifest drift check passed (config/agents.yaml is in sync)."
 
 docker compose config -q
@@ -191,9 +202,9 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 6: Testing targeted single-tenant emergency stop..."
 
-if [ -x "${REPO_ROOT}/scripts/emergency-stop.sh" ]; then
+if [ -x "${REPO_ROOT}/scripts/control/emergency-stop.sh" ]; then
   # Target only football-dan
-  "${REPO_ROOT}/scripts/emergency-stop.sh" football-dan
+  "${REPO_ROOT}/scripts/control/emergency-stop.sh" football-dan
 
   # Assert football-dan is paused or stopped
   FB_STATE=$(docker inspect titan-agent-football-dan --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
@@ -217,7 +228,7 @@ if [ -x "${REPO_ROOT}/scripts/emergency-stop.sh" ]; then
   docker unpause titan-agent-football-dan 2>/dev/null || docker compose start agent-football-dan 2>/dev/null || true
   log_info "Restored football-dan container."
 else
-  log_error "scripts/emergency-stop.sh not found."
+  log_error "scripts/control/emergency-stop.sh not found."
   exit 1
 fi
 

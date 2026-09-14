@@ -2,8 +2,8 @@
 # ==============================================================================
 # Project Titan: Immediate Software Kill-Switch (L7: Communications & Operational Control)
 # Instantly halts agent loops by pausing/stopping containers and revoking LiteLLM keys.
-# Supports targeted single-tenant stop: ./scripts/emergency-stop.sh <tenant_id>
-# Or full fleet shutdown:              ./scripts/emergency-stop.sh [all]
+# Supports targeted single-tenant stop: ./scripts/control/emergency-stop.sh <tenant_id>
+# Or full fleet shutdown:              ./scripts/control/emergency-stop.sh [all]
 # ==============================================================================
 
 set -euo pipefail
@@ -21,7 +21,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -100,7 +111,7 @@ if [ "${TARGET_TENANT}" != "all" ]; then
   echo "To resume operations for '${TARGET_TENANT}':"
   echo "  1. Audit memories: /memories/agents/${TARGET_TENANT}"
   echo "  2. Unpause container: docker unpause ${CONTAINER_NAME} (or docker start ${CONTAINER_NAME})"
-  echo "  3. Resync keys: ./scripts/sync-agents.sh --provision-keys"
+  echo "  3. Resync keys: ./scripts/control/sync-agents.sh --provision-keys"
   echo ""
 
 else
@@ -155,8 +166,8 @@ if os.path.exists(manifest_path) and master_key:
   log_success "Fleet-wide emergency intervention complete. Core platform remains intact."
   echo ""
   echo "To resume fleet operations:"
-  echo "  1. Verify memories: bash scripts/snapshot-memories.sh"
+  echo "  1. Verify memories: bash scripts/control/snapshot-memories.sh"
   echo "  2. Unpause containers: docker compose unpause"
-  echo "  3. Resync keys: ./scripts/sync-agents.sh --provision-keys"
+  echo "  3. Resync keys: ./scripts/control/sync-agents.sh --provision-keys"
   echo ""
 fi

@@ -20,7 +20,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -72,16 +83,16 @@ if [ -x ".venv/bin/python" ]; then
     LF_VER=$(.venv/bin/python -c "import langfuse; print(langfuse.__version__)" 2>/dev/null || echo "installed")
     pass_check "LiteLLM Python environment: 'langfuse' is installed (v${LF_VER})."
   else
-    fail_check "LiteLLM Python environment: 'langfuse' module is missing. Run ./scripts/setup-host.sh"
+    fail_check "LiteLLM Python environment: 'langfuse' module is missing. Run ./scripts/setup/setup-host.sh"
   fi
 
   if .venv/bin/python -c "from opentelemetry.sdk.trace import TracerProvider; from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter" >/dev/null 2>&1; then
     pass_check "LiteLLM Python environment: OpenTelemetry SDK and OTLP Exporter are installed."
   else
-    fail_check "LiteLLM Python environment: OpenTelemetry packages are missing. Run ./scripts/setup-host.sh"
+    fail_check "LiteLLM Python environment: OpenTelemetry packages are missing. Run ./scripts/setup/setup-host.sh"
   fi
 else
-  fail_check "LiteLLM virtual environment (.venv/bin/python) not found. Run ./scripts/setup-host.sh"
+  fail_check "LiteLLM virtual environment (.venv/bin/python) not found. Run ./scripts/setup/setup-host.sh"
 fi
 
 # ------------------------------------------------------------------------------
@@ -140,7 +151,7 @@ except Exception:
 if [ -n "${HOST_RESOLVED_IP}" ]; then
   pass_check "Host DNS: 'langfuse.titan.local' resolves to ${HOST_RESOLVED_IP}."
 else
-  warn_check "Host DNS: 'langfuse.titan.local' is not registered in /etc/hosts. Run ./scripts/setup-network.sh"
+  warn_check "Host DNS: 'langfuse.titan.local' is not registered in /etc/hosts. Run ./scripts/setup/setup-network.sh"
 fi
 
 if [ -n "${LANGFUSE_HOST_IP}" ]; then
@@ -166,8 +177,8 @@ elif [ "${REMOTE_HEALTH_CODE}" = "200" ]; then
 else
   warn_check "Langfuse service: NOT RESPONDING (Local: HTTP ${LOCAL_HEALTH_CODE}, Remote: HTTP ${REMOTE_HEALTH_CODE})."
   log_info "LANGFUSE_AUTO_START is set to '${LANGFUSE_AUTO_START}'."
-  log_info "To start locally:  ./scripts/setup-langfuse.sh start"
-  log_info "To start remotely: run ./scripts/setup-langfuse.sh start on your remote laptop."
+  log_info "To start locally:  ./scripts/setup/setup-langfuse.sh start"
+  log_info "To start remotely: run ./scripts/setup/setup-langfuse.sh start on your remote laptop."
   ACTIVE_ENDPOINT=""
 fi
 
@@ -200,7 +211,7 @@ if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && [ -n "${LANGFUSE_SECRET_KEY}" ]; then
 else
   warn_check "Langfuse API Keys not set in .env (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)."
   log_info "LiteLLM tracing will remain in standby until keys are configured."
-  log_info "Run ./scripts/setup-langfuse.sh keys to generate and export keys."
+  log_info "Run ./scripts/setup/setup-langfuse.sh keys to generate and export keys."
 fi
 
 # ------------------------------------------------------------------------------

@@ -20,7 +20,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -51,12 +62,12 @@ log_info "================================================================="
 # ------------------------------------------------------------------------------
 log_info "Step 1: Validating fleet manifest synchronization & compose topology..."
 
-if [ ! -x "${REPO_ROOT}/scripts/sync-agents.sh" ]; then
-  log_error "scripts/sync-agents.sh is missing or not executable."
+if [ ! -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
+  log_error "scripts/control/sync-agents.sh is missing or not executable."
   exit 1
 fi
 
-"${REPO_ROOT}/scripts/sync-agents.sh" --check
+"${REPO_ROOT}/scripts/control/sync-agents.sh" --check
 log_success "Fleet manifest drift check passed (config/agents.yaml is 100% in sync)."
 
 docker compose config -q

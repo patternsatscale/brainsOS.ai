@@ -50,8 +50,8 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Cross-Cutting: Observability & Operational Safety                           │
 │     - Decoupled Langfuse v2 + OpenTelemetry distributed tracing             │
-│     - Unified full-data backup (scripts/backup.sh)                          │
-│     - Granular single-tenant emergency kill-switch (scripts/emergency-stop) │
+│     - Unified full-data backup (scripts/control/backup.sh)                  │
+│     - Granular single-tenant emergency kill-switch (scripts/control/stop)   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,14 +60,14 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
   * **Zero Direct Connect (Rule 2):** The agent layer has no network visibility or access keys for raw local inference engines or external APIs. It connects strictly to the LiteLLM proxy gateway (`http://proxy.local:4000/v1`).
   * **Control Plane Database Isolation (Rule 6):** LiteLLM is backed by a dedicated PostgreSQL container (`titan-litellm-db`) isolated on `titan-litellm-net`. Agents have zero database credentials, zero network routes, and zero storage mounts to this database.
   * **Memory Plane Purity (Rule 1):** Runtimes are ephemeral and disposable. Long-term knowledge is preserved in human-readable, flat-file Markdown using the Open Knowledge Format (OKF). Binary indices, SQLite databases, and packages are strictly forbidden in `/memories` and reside in `/workspace`.
-  * **Manifest-Driven Multi-Agent Tenancy:** Fleet composition is declared centrally in `config/agents.yaml`. The reconciler (`scripts/sync-agents.sh`) renders compose topologies (`docker-compose.agents.yml`), Caddy virtual hosts (`config/caddy/agents.caddy`), seeds personas, and provisions virtual keys with budget caps.
+  * **Manifest-Driven Multi-Agent Tenancy:** Fleet composition is declared centrally in `config/agents.yaml`. The reconciler (`scripts/control/sync-agents.sh`) renders compose topologies (`docker-compose.agents.yml`), Caddy virtual hosts (`config/caddy/agents.caddy`), seeds personas, and provisions virtual keys with budget caps.
   * **Decoupled Memory Module (`packages/titan_memory`):** Core memory logic, OKF models, purity validators, and a pluggable `VectorStore` abstract SPI are decoupled into a standalone package, allowing memory contributors to extend vector stores without stepping on agent runtime toes.
   * **Unified Persistent Storage & Cloud Backup:** All persistent state across the appliance lives under a single host data root (`./data` in development, or `/data/titan` on production GX10):
     * `memories/`: Human-auditable OKF Markdown notes partitioned per tenant (`tenants/<tenant_id>/`).
     * `litellm_db/`: LiteLLM PostgreSQL persistence (dynamic models, virtual keys, audit logs).
     * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per tenant (`<tenant_id>/`).
   * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console across all tenant memory trees. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
-  * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
+  * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/control/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
 
 -----
 
@@ -123,7 +123,7 @@ cp .env.example .env
 #### 2. Run Idempotent Host Baseline Setup
 Execute the host setup script to audit system permissions, install host dependencies, initialize the native Ollama inference engine, configure Python virtual environments, and seed the default local model:
 ```bash
-./scripts/setup-host.sh --pull-model
+./scripts/setup/setup-host.sh --pull-model
 ```
 *Flags:*
 - `--pull-model`: Automatically pulls and seeds the baseline model (e.g. `qwen2.5:7b-instruct-q4_K_M` or `hermes3:8b`). Omit if seeding manually.
@@ -132,20 +132,20 @@ Execute the host setup script to audit system permissions, install host dependen
 Provision the pure Open Knowledge Format (OKF) storage directories and build the unprivileged Hermes Agent sandbox:
 ```bash
 # Provision flat-file OKF directory tree (knowledge/, rules/, logs/)
-./scripts/setup-memories.sh
+./scripts/setup/setup-memories.sh
 
 # Build unprivileged Hermes container image with native hermes-okf plugin
-./scripts/setup-hermes.sh
+./scripts/setup/setup-hermes.sh
 ```
 
 #### 4. Start Native Host Control Plane
 Launch the host-side inference runtime (`ollama` on `127.0.0.1:11434`), LiteLLM proxy gateway (`:4000`), and initialize dynamic PostgreSQL persistence:
 ```bash
-./scripts/start-control-plane.sh start
+./scripts/control/start-control-plane.sh start
 ```
 *Verify control plane status:*
 ```bash
-./scripts/start-control-plane.sh status
+./scripts/control/start-control-plane.sh status
 ```
 
 #### 5. Launch Appliance Container Cluster
@@ -162,7 +162,7 @@ docker compose ps
 Route appliance domains to loopback (or your Linux machine's LAN IP) using the automated network script:
 ```bash
 # Register *.titan.local domains non-interactively in /etc/hosts
-sudo ./scripts/setup-network.sh --skip-ip -y
+sudo ./scripts/setup/setup-network.sh --skip-ip -y
 ```
 *Or manually append to `/etc/hosts`:*
 ```text
@@ -174,10 +174,10 @@ sudo ./scripts/setup-network.sh --skip-ip -y
 Validate complete end-to-end functionality, storage isolation, and agent persistence:
 ```bash
 # Verify Hermes agent workspace persistence and LiteLLM mediation
-./scripts/verify-hermes.sh
+./scripts/verify/verify-hermes.sh
 
 # Verify SilverBullet PKM UI and OKF memory plane synchronization
-./scripts/verify-memories.sh
+./scripts/verify/verify-memories.sh
 ```
 
 ---
@@ -200,7 +200,7 @@ Once running, the following endpoints are accessible via your browser:
 
 ```bash
 # Check service status across host and containers
-./scripts/start-control-plane.sh status
+./scripts/control/start-control-plane.sh status
 docker compose ps
 
 # View container logs
@@ -209,14 +209,14 @@ docker compose logs -f hermes
 
 # Gracefully restart the full appliance
 docker compose restart
-./scripts/start-control-plane.sh restart
+./scripts/control/start-control-plane.sh restart
 
 # Gracefully shut down all services
 docker compose down
-./scripts/start-control-plane.sh stop
+./scripts/control/start-control-plane.sh stop
 
 # Emergency kill-switch (instantly revokes agent key and freezes loops)
-./scripts/emergency-stop.sh
+./scripts/control/emergency-stop.sh
 ```
 
 -----
@@ -275,28 +275,36 @@ project-titan/
 │   │   ├── cindy-pawford/    # Cindy-pawford agent runtime sandbox
 │   │   └── signal/           # signal-cli identity keys and daemon registration state
 │   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
-└── scripts/  
-    ├── sync-agents.sh        # Fleet manifest orchestrator (renders compose, caddy, keys, & storage)
-    ├── verify-fleet.sh       # Multi-agent fleet verification harness (drift, routing, isolation)
-    ├── verify-cindy-agent.sh # Cindy Pawford agent unit verification suite (CW-0A)
-    ├── verify-cindy-canvas.sh# Cindy Pawford canvas isolation verification suite (CW-0A.1)
-    ├── verify-cindy-archive.sh# Genesis archive, digital museum & seal-and-reset suite (CW-0B)
-    ├── build-archive-portal.py# Digital museum gallery compiler
-    ├── process-cindy-reset.sh# Automated 'Seal & Reset' execution engine
-    ├── republish-archives.sh # Out-of-band museum republishing tooling
-    ├── setup-host.sh         # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
-    ├── setup-network.sh      # Static IP & local appliance domain (/etc/hosts) setup script
-    ├── setup-hermes.sh       # Automated builder and validator for unprivileged Hermes container
-    ├── setup-memories.sh     # Idempotent provisioning & scaffolding manager for memory plane
-    ├── setup-langfuse.sh     # Standalone decoupled service manager for Langfuse container stack
-    ├── verify-hermes.sh      # Automated verification harness for Hermes workspace persistence
-    ├── verify-memories.sh    # Automated verification harness for SilverBullet & OKF sync
-    ├── verify-langfuse.sh    # Automated verification harness for Langfuse & OpenTelemetry ingestion
-    ├── start-control-plane.sh# Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
-    ├── reload-env.sh         # Synchronizes database passwords and safely reloads all .env changes
-    ├── backup.sh             # Full appliance data plane backup and restore manager
-    ├── snapshot-memories.sh  # Automated versioning and rollback snapshot manager for memories
-    └── emergency-stop.sh     # Granular key revocation & process freeze (targeted or full-fleet)
+└── scripts/                  # Structured operational scripts directory
+    ├── setup/                # Host, container, memory, and network provisioning
+    │   ├── setup-host.sh     # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
+    │   ├── setup-network.sh  # Static IP & local appliance domain (/etc/hosts) setup script
+    │   ├── setup-hermes.sh   # Automated builder and validator for unprivileged Hermes container
+    │   ├── setup-memories.sh # Idempotent provisioning & scaffolding manager for memory plane
+    │   └── setup-langfuse.sh # Standalone decoupled service manager for Langfuse container stack
+    ├── control/              # Runtime lifecycle, fleet management, and disaster recovery
+    │   ├── start-control-plane.sh # Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
+    │   ├── emergency-stop.sh # Granular key revocation & process freeze (targeted or full-fleet)
+    │   ├── reload-env.sh     # Synchronizes database passwords and safely reloads all .env changes
+    │   ├── sync-agents.sh    # Fleet manifest orchestrator (renders compose, caddy, keys, & storage)
+    │   ├── backup.sh         # Full appliance data plane backup and restore manager
+    │   └── snapshot-memories.sh # Automated versioning and rollback snapshot manager for memories
+    ├── verify/               # Automated test harnesses and verification suites
+    │   ├── verify-fleet.sh   # Multi-agent fleet verification harness (drift, routing, isolation)
+    │   ├── verify-hermes.sh  # Automated verification harness for Hermes workspace persistence
+    │   ├── verify-memories.sh# Automated verification harness for SilverBullet & OKF sync
+    │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
+    │   └── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
+    └── apps/                 # Application-specific operations and deployment tooling
+        └── cindypawford/     # Autonomous fashion designer application suite
+            ├── deploy-cindypawford-com.sh   # Direct-to-production deployment tool
+            ├── rollback-cindypawford-com.sh # Deterministic canvas rollback tool
+            ├── process-cindy-reset.sh       # Automated 'Seal & Reset' execution engine
+            ├── republish-archives.sh        # Out-of-band museum republishing tooling
+            ├── build-archive-portal.py      # Digital museum gallery compiler
+            ├── verify-cindy-agent.sh        # Cindy Pawford agent unit verification suite (CW-0A)
+            ├── verify-cindy-canvas.sh       # Canvas isolation verification suite (CW-0A.1)
+            └── verify-cindy-archive.sh      # Genesis archive & seal-and-reset suite (CW-0B)
 ```
 
 -----
@@ -366,10 +374,10 @@ Phase 0: Base Config
       * **LiteLLM Gateway**: Native tracing callback (`langfuse`) and OpenTelemetry exporter capturing request metadata, token counts, model aliases, and latency.
       * **Hermes Agent**: Direct OTLP trace export via `http://langfuse.titan.local:3001/api/public/otel/v1/traces`.
     * **Standalone Lifecycle Management**:
-      * Setup & start: `./scripts/setup-langfuse.sh setup && ./scripts/setup-langfuse.sh start`
-      * Service status & logs: `./scripts/setup-langfuse.sh status` / `./scripts/setup-langfuse.sh logs`
-      * Key helper: `./scripts/setup-langfuse.sh keys` (prompts for keys and generates Base64 `LANGFUSE_OTEL_AUTH`)
-      * Verification: `./scripts/verify-langfuse.sh`
+      * Setup & start: `./scripts/setup/setup-langfuse.sh setup && ./scripts/setup/setup-langfuse.sh start`
+      * Service status & logs: `./scripts/setup/setup-langfuse.sh status` / `./scripts/setup/setup-langfuse.sh logs`
+      * Key helper: `./scripts/setup/setup-langfuse.sh keys` (prompts for keys and generates Base64 `LANGFUSE_OTEL_AUTH`)
+      * Verification: `./scripts/verify/verify-langfuse.sh`
   * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies; dual OTel/LiteLLM trace ingestion validated.
 
 ---

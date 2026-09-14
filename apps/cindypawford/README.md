@@ -62,7 +62,7 @@ sequenceDiagram
     Agent->>Agent: Writes HTML/CSS/JS (zero knowledge of AWS)
     Agent->>GH: git commit & git push (or PR) to main
     Note over Host: Deployment Triggered (Local or CI/CD)
-    Host->>Host: Runs scripts/deploy-cindypawford-com.sh
+    Host->>Host: Runs scripts/apps/cindypawford/deploy-cindypawford-com.sh
     Host->>Host: Copies infra/src/shell.js -> site/_platform/shell.js
     Host->>Host: Auto-injects <script src="/_platform/shell.js" defer> before </body>
     Host->>S3: Syncs assets to S3 bucket & invalidates CloudFront CDN
@@ -81,7 +81,7 @@ sequenceDiagram
 
 ### Phase 2: Build-Time Auto-Injection (Deploy Runner)
 Cindy does not write or maintain `_platform/shell.js`, nor does she need to remember to include it in her HTML:
-1. When deployment runs (via `./scripts/deploy-cindypawford-com.sh` locally or GitHub Actions in CI), the deploy tool inspects `apps/cindypawford/site/index.html`.
+1. When deployment runs (via `./scripts/apps/cindypawford/deploy-cindypawford-com.sh` locally or GitHub Actions in CI), the deploy tool inspects `apps/cindypawford/site/index.html`.
 2. The script copies the latest `apps/cindypawford/infra/src/shell.js` to `apps/cindypawford/site/_platform/shell.js`.
 3. If `index.html` does not contain `/_platform/shell.js`, the script automatically injects:
    ```html
@@ -114,13 +114,13 @@ Cindy Pawford's deployment pipeline supports two complementary execution modes:
 Deployments can be executed directly by an operator or host daemon on the development workstation (macOS) or production appliance (ASUS Ascent GX10):
 ```bash
 # Direct production deployment
-./scripts/deploy-cindypawford-com.sh --stage production
+./scripts/apps/cindypawford/deploy-cindypawford-com.sh --stage production
 
 # Dry-run validation (checks types, injects shell, validates diff)
-./scripts/deploy-cindypawford-com.sh --dry-run
+./scripts/apps/cindypawford/deploy-cindypawford-com.sh --dry-run
 
 # Deterministic rollback to prior git commit
-./scripts/rollback-cindypawford-com.sh HEAD~1
+./scripts/apps/cindypawford/rollback-cindypawford-com.sh HEAD~1
 ```
 In this mode, SST Ion runs natively on the host using AWS credentials configured in the host environment (`~/.aws/credentials` or host `.env`).
 
@@ -159,7 +159,7 @@ This provides a complete hands-off pipeline where Cindy pushes to GitHub and pro
 ## 5. Eras & Reset Engine
 
 Cindy operates in weekly "eras". When an era concludes:
-1. The host executes `./scripts/process-cindy-reset.sh`.
+1. The host executes `./scripts/apps/cindypawford/process-cindy-reset.sh`.
 2. The current canvas in `site/` is frozen, tagged with a Git archive tag (`archive/cindy-<slug>`), and ingested into `apps/cindypawford/archive/<slug>/`.
 3. The suggestions DynamoDB table locks the outgoing era (`status: 'archived'`), closing it to future votes.
 4. Fresh clean-slate templates from `apps/cindypawford/clean-slate/` are seeded into `apps/cindypawford/site/` for the next era.

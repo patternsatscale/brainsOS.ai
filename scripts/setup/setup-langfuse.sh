@@ -21,7 +21,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -136,11 +147,11 @@ start_langfuse() {
     echo -e "  1. Open ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} in your browser and create your admin account."
     echo -e "  2. Create a new Project (e.g. 'Titan')."
     echo -e "  3. Go to Project Settings -> API Keys -> Create new API Keys."
-    echo -e "  4. Run ${BOLD}./scripts/setup-langfuse.sh keys${NC} to configure Titan's .env automatically."
+    echo -e "  4. Run ${BOLD}./scripts/setup/setup-langfuse.sh keys${NC} to configure Titan's .env automatically."
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
   else
     log_warn "Langfuse containers started, but /api/public/health did not return 200 within 45s."
-    log_info "Check service logs via: ./scripts/setup-langfuse.sh logs"
+    log_info "Check service logs via: ./scripts/setup/setup-langfuse.sh logs"
   fi
 }
 

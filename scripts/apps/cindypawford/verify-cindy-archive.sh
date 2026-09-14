@@ -20,7 +20,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -51,7 +62,7 @@ log_info "================================================================="
 # Step 1: Manifest Synchronization & Compose Syntax
 # ------------------------------------------------------------------------------
 log_info "Step 1: Validating fleet manifest synchronization..."
-"${REPO_ROOT}/scripts/sync-agents.sh" --check
+"${REPO_ROOT}/scripts/control/sync-agents.sh" --check
 log_success "Fleet manifest drift check passed."
 
 docker compose config -q
@@ -137,7 +148,7 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 5: Verifying digital museum portal generation..."
 
-python3 "${REPO_ROOT}/scripts/build-archive-portal.py"
+python3 "${REPO_ROOT}/scripts/apps/cindypawford/build-archive-portal.py"
 
 PORTAL_HTML="${ARCHIVE_DIR}/index.html"
 if [ -f "${PORTAL_HTML}" ] && grep -q "The Grand Fashion Archives" "${PORTAL_HTML}" && grep -q "The Genesis Atelier" "${PORTAL_HTML}"; then
@@ -183,7 +194,7 @@ docker exec "${CONTAINER}" bash -c "echo '# persistent skill' > ${SEED_SKILL}"
 docker exec "${CONTAINER}" bash -c "echo '# persistent memory' > ${SEED_MEM}"
 
 # Run process-cindy-reset.sh
-"${REPO_ROOT}/scripts/process-cindy-reset.sh" --week-slug "${TEST_SLUG}"
+"${REPO_ROOT}/scripts/apps/cindypawford/process-cindy-reset.sh" --week-slug "${TEST_SLUG}"
 
 # Verification 6a: Verify snapshot was captured
 TEST_SNAPSHOT_DIR="${ARCHIVE_DIR}/${TEST_SLUG}"
@@ -279,14 +290,14 @@ cat << 'EOF' > "${ERAS_FILE}"
 }
 EOF
 
-python3 "${REPO_ROOT}/scripts/build-archive-portal.py" >/dev/null
+python3 "${REPO_ROOT}/scripts/apps/cindypawford/build-archive-portal.py" >/dev/null
 log_success "Digital museum portal cleanly restored to baseline."
 
 # ------------------------------------------------------------------------------
 # Step 8: Test Out-of-Band Republishing Script
 # ------------------------------------------------------------------------------
 log_info "Step 8: Testing out-of-band republishing tooling..."
-"${REPO_ROOT}/scripts/republish-archives.sh" --dry-run
+"${REPO_ROOT}/scripts/apps/cindypawford/republish-archives.sh" --dry-run
 log_success "Republishing tooling executed successfully in dry-run mode."
 
 log_info "================================================================="
