@@ -17,6 +17,9 @@ data/workspace/*
 !data/workspace/.gitkeep
 *.tar.gz
 
+# Agent Public Web Canvas (cloned dedicated repositories)
+apps/cindypawford/site/
+
 # Local Volume Mounts & Caches
 data/litellm_db/
 data/postgres/

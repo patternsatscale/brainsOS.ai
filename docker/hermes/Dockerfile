@@ -14,6 +14,13 @@ RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/pack
 COPY docker/hermes/plugins/hermes-okf /opt/hermes/plugins/hermes-okf
 RUN ln -sf /opt/hermes/plugins/hermes-okf /opt/hermes/plugins/memory/hermes-okf
 
+# Install GitHub CLI (gh), Git tooling, and configure safe container defaults
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends gh git && \
+    rm -rf /var/lib/apt/lists/* && \
+    git config --system --add safe.directory '*' && \
+    git config --system credential.helper '!gh auth git-credential'
+
 # Switch to /opt/data
 WORKDIR /opt/data
 

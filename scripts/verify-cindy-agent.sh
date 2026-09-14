@@ -120,24 +120,33 @@ for file in index.html styles.css app.js; do
   fi
 done
 
-# Verify container /workspace mount points to apps/cindypawford/site
-MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
-if [ "${MOUNT_CHECK}" = "${SITE_DIR}" ]; then
-  log_success "Verified container '/workspace' bind-mount maps directly to '${SITE_DIR}'."
+# Verify container /workspace mount points to data/workspace/cindy-pawford
+WORK_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
+if [ "${WORK_MOUNT_CHECK}" = "${WORK_DIR}" ]; then
+  log_success "Verified container '/workspace' bind-mount maps directly to '${WORK_DIR}'."
 else
-  log_error "Container '/workspace' mount mismatch: '${MOUNT_CHECK}' vs expected '${SITE_DIR}'."
+  log_error "Container '/workspace' mount mismatch: '${WORK_MOUNT_CHECK}' vs expected '${WORK_DIR}'."
   exit 1
 fi
 
-# Test container write permissions in /workspace
-TEST_WRITE_FILE="/workspace/.test_cindy_perm_$(date +%s)"
+# Verify container /app/html mount points to apps/cindypawford/site
+HTML_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
+if [ "${HTML_MOUNT_CHECK}" = "${SITE_DIR}" ]; then
+  log_success "Verified container '/app/html' bind-mount maps directly to '${SITE_DIR}'."
+else
+  log_error "Container '/app/html' mount mismatch: '${HTML_MOUNT_CHECK}' vs expected '${SITE_DIR}'."
+  exit 1
+fi
+
+# Test container write permissions in /app/html
+TEST_WRITE_FILE="/app/html/.test_cindy_perm_$(date +%s)"
 docker exec "${CONTAINER}" bash -c "echo 'cindy_write_ok' > ${TEST_WRITE_FILE}"
 
 if [ -f "${SITE_DIR}/$(basename "${TEST_WRITE_FILE}")" ]; then
-  log_success "Verified: Agent has verified write access to apps/cindypawford/site from /workspace."
+  log_success "Verified: Agent has verified write access to apps/cindypawford/site from /app/html."
   docker exec "${CONTAINER}" rm -f "${TEST_WRITE_FILE}"
 else
-  log_error "Write test failed: Host did not observe file created from container /workspace."
+  log_error "Write test failed: Host did not observe file created from container /app/html."
   exit 1
 fi
 
