@@ -1,0 +1,20 @@
+{
+  "name": "cindypawford-infra",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "sst deploy",
+    "dev": "sst dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.758.0",
+    "@aws-sdk/lib-dynamodb": "^3.758.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "sst": "3.3.27",
+    "typescript": "^5.8.2"
+  }
+}

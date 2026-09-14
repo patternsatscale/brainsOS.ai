@@ -1,0 +1,4 @@
+.sst/
+node_modules/
+dist/
+*.log
