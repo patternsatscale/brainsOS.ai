@@ -128,11 +128,11 @@ agents:
       - id: "daily-feature-drop"
         name: "Daily Feature Drop"
         schedule: "0 2 * * 1-6"
-        prompt: "Inspect the live site files in /workspace (index.html, styles.css, app.js), review top community ideas, and implement 1-2 spontaneous haute-couture canine features or aesthetic refinements."
+        prompt: "Inspect the live site files in /app/html (index.html, styles.css, app.js), review top community ideas, and implement 1-2 spontaneous haute-couture canine features or aesthetic refinements."
       - id: "weekly-era-reset"
         name: "Weekly Era Reset"
         schedule: "0 2 * * 0"
-        prompt: "Write closing recap.json in /workspace, touch .archive-ready in /workspace to trigger the archive seal, wait for clean slate reset, and brainstorm the grand vision for next week's theme."
+        prompt: "Write closing recap.json in /app/html, touch .archive-ready in /app/html to trigger the archive seal, wait for clean slate reset, and brainstorm the grand vision for next week's theme."
 
     # L3: Memory Plane & Tool Sandbox
     memory:
@@ -140,6 +140,12 @@ agents:
     workspace:
       path: "./data/workspace/cindy-pawford"
       site_path: "./apps/cindypawford/site"
+      canvas_mount: "/app/html"
+      repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
+    git:
+      user_name: "Cindy Pawford"
+      user_email: "cindy@cindypawford.com"
+      token_env: "GITHUB_TOKEN_CINDY"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:

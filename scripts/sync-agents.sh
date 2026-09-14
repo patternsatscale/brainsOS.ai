@@ -103,16 +103,42 @@ for agent in enabled_agents:
     mem_path = agent.get("memory", {}).get("path", f"./data/memories/agents/{agent_id}")
     work_path = agent.get("workspace", {}).get("path", f"./data/workspace/{agent_id}")
     site_path = agent.get("workspace", {}).get("site_path")
+    canvas_mount = agent.get("workspace", {}).get("canvas_mount", "/app/html")
     key_name = agent.get("routing", {}).get("virtual_key", f"HERMES_{agent_id.upper().replace('-', '_')}_KEY")
 
+    volume_lines = [
+        f"      # L3: Memory Plane (pure OKF markdown)",
+        f"      - {mem_path}:/memories",
+        f"      # Read-only configuration",
+        f"      - ./config/hermes:/app/config:ro",
+        f"      # L3: Unprivileged Workspace Sandbox",
+        f"      - {work_path}:/opt/data",
+        f"      - {work_path}:/workspace",
+    ]
+
     if site_path:
-        workspace_mount = f"      - {site_path}:/workspace"
+        volume_lines.append(f"      # Dedicated Public HTML Canvas")
+        volume_lines.append(f"      - {site_path}:{canvas_mount}")
+        write_safe_root = f"/opt/data:/workspace:{canvas_mount}"
         workspace_dir_env = "/workspace"
-        write_safe_root = "/opt/data:/workspace"
     else:
-        workspace_mount = f"      - {work_path}:/workspace"
-        workspace_dir_env = "/opt/data"
         write_safe_root = "/opt/data"
+        workspace_dir_env = "/opt/data"
+
+    git_config = agent.get("git", {})
+    git_env_lines = []
+    if git_config:
+        git_token_env = git_config.get("token_env", f"GITHUB_TOKEN_{agent_id.upper().replace('-', '_')}")
+        git_user = git_config.get("user_name", f"Agent {agent_id}")
+        git_email = git_config.get("user_email", f"{agent_id}@titan.local")
+        git_env_lines = [
+            f"      - GH_TOKEN=${{{git_token_env}:-${{GH_TOKEN:-${{GITHUB_TOKEN:-}}}}}}",
+            f"      - GITHUB_TOKEN=${{{git_token_env}:-${{GH_TOKEN:-${{GITHUB_TOKEN:-}}}}}}",
+            f"      - GIT_AUTHOR_NAME={git_user}",
+            f"      - GIT_AUTHOR_EMAIL={git_email}",
+            f"      - GIT_COMMITTER_NAME={git_user}",
+            f"      - GIT_COMMITTER_EMAIL={git_email}",
+        ]
 
     compose_lines.extend([
         f"  # --------------------------------------------------------------------------",
@@ -136,13 +162,7 @@ for agent in enabled_agents:
         f"      - \"litellm:host-gateway\"",
         f"      - \"langfuse.titan.local:${{LANGFUSE_HOST_IP:-host-gateway}}\"",
         f"    volumes:",
-        f"      # L3: Memory Plane (pure OKF markdown)",
-        f"      - {mem_path}:/memories",
-        f"      # Read-only configuration",
-        f"      - ./config/hermes:/app/config:ro",
-        f"      # L3: Unprivileged Workspace Sandbox",
-        f"      - {work_path}:/opt/data",
-        workspace_mount,
+    ] + volume_lines + [
         f"    working_dir: /opt/data",
         f"    environment:",
         f"      - PUID=${{PUID:-1000}}",
@@ -173,6 +193,7 @@ for agent in enabled_agents:
         f"      - TELEGRAM_BOT_TOKEN=${{{tg_token_env}:-${{TELEGRAM_BOT_TOKEN:-}}}}",
         f"      - TELEGRAM_ALLOWED_USERS=${{{tg_users_env}:-${{TELEGRAM_ALLOWED_USERS:-}}}}",
         f"      - LANGFUSE_OTEL_AUTH=${{LANGFUSE_OTEL_AUTH:-}}",
+    ] + git_env_lines + [
         f"    command: [\"sleep\", \"infinity\"]",
         f"    depends_on:",
         f"      - signal-cli",
@@ -453,10 +474,48 @@ for agent in manifest.get("agents", []):
         with open(keep, "w") as f:
             f.write("")
 
-    # Scaffold dedicated web app site if configured
+    # Scaffold dedicated web app site / HTML canvas repository if configured
     if site_rel:
         site_dir = os.path.abspath(os.path.join(repo_root, site_rel.lstrip("./")))
-        os.makedirs(os.path.join(site_dir, "assets"), exist_ok=True)
+        os.makedirs(site_dir, exist_ok=True)
+        repo_url = agent.get("workspace", {}).get("repo_url")
+        git_dir = os.path.join(site_dir, ".git")
+        if repo_url and not os.path.exists(git_dir):
+            import subprocess
+            try:
+                existing_items = [i for i in os.listdir(site_dir) if i != ".gitkeep"]
+                if not existing_items:
+                    keep_file = os.path.join(site_dir, ".gitkeep")
+                    if os.path.exists(keep_file):
+                        os.remove(keep_file)
+                    subprocess.run(["git", "clone", repo_url, site_dir], check=True, capture_output=True)
+                else:
+                    subprocess.run(["git", "-C", site_dir, "init"], check=True, capture_output=True)
+                    subprocess.run(["git", "-C", site_dir, "remote", "add", "origin", repo_url], check=True, capture_output=True)
+                    subprocess.run(["git", "-C", site_dir, "fetch", "origin"], check=True, capture_output=True)
+                    subprocess.run(["git", "-C", site_dir, "checkout", "-f", "main"], check=True, capture_output=True)
+            except Exception as ge:
+                print(f"[WARN] Git repository binding for {site_dir} encountered: {ge}")
+
+        # Configure local git identity in site_dir if git config provided
+        git_conf = agent.get("git", {})
+        if os.path.exists(git_dir) and git_conf:
+            import subprocess
+            u_name = git_conf.get("user_name")
+            u_email = git_conf.get("user_email")
+            if u_name:
+                subprocess.run(["git", "-C", site_dir, "config", "user.name", u_name], capture_output=True)
+            if u_email:
+                subprocess.run(["git", "-C", site_dir, "config", "user.email", u_email], capture_output=True)
+
+    # Seed agent git config in work_dir if configured
+    git_conf = agent.get("git", {})
+    if git_conf:
+        gitconfig_path = os.path.join(work_dir, ".gitconfig")
+        u_name = git_conf.get("user_name", f"Agent {agent_id}")
+        u_email = git_conf.get("user_email", f"{agent_id}@titan.local")
+        with open(gitconfig_path, "w", encoding="utf-8") as gf:
+            gf.write(f"[user]\n\tname = {u_name}\n\temail = {u_email}\n[credential]\n\thelper = !gh auth git-credential\n[safe]\n\tdirectory = *\n")
 
     # Render Hermes cron jobs if configured
     cron_jobs = agent.get("cron", [])

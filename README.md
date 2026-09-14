@@ -244,7 +244,7 @@ project-titan/
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── apps/
 │   └── cindypawford/
-│       └── site/             # Cindy Pawford vanilla web application workspace (index.html, styles.css, app.js, assets/)
+│       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repository; mapped to /app/html)
 ├── packages/
 │   └── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI
 │       ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
