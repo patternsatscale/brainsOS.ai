@@ -19,7 +19,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -172,7 +183,7 @@ stop_services() {
   # Stop local Langfuse stack if LANGFUSE_AUTO_START is enabled or containers are active
   if [[ "${LANGFUSE_AUTO_START}" =~ ^(true|1|yes)$ ]] || (command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'titan-langfuse'); then
     log_info "Stopping local Langfuse container stack..."
-    "${REPO_ROOT}/scripts/setup-langfuse.sh" stop 2>/dev/null || true
+    "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" stop 2>/dev/null || true
   fi
 }
 
@@ -289,7 +300,7 @@ start_services() {
       log_info "Langfuse observability stack is already running."
     else
       log_info "LANGFUSE_AUTO_START=true: Launching Langfuse observability stack..."
-      "${REPO_ROOT}/scripts/setup-langfuse.sh" start
+      "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" start
     fi
   fi
 
@@ -317,7 +328,7 @@ start_services() {
     log_info "LiteLLM is already running on http://127.0.0.1:${LITELLM_PORT}."
   else
     if [ ! -x ".venv/bin/litellm" ]; then
-      log_error "LiteLLM not found in .venv/bin/litellm. Please run ./scripts/setup-host.sh first."
+      log_error "LiteLLM not found in .venv/bin/litellm. Please run ./scripts/setup/setup-host.sh first."
       exit 1
     fi
 
@@ -359,8 +370,8 @@ start_services() {
   fi
 
   # 4. Provision fleet virtual keys in LiteLLM control plane database
-  if [ -x "${REPO_ROOT}/scripts/sync-agents.sh" ]; then
-    "${REPO_ROOT}/scripts/sync-agents.sh" --provision-keys || true
+  if [ -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
+    "${REPO_ROOT}/scripts/control/sync-agents.sh" --provision-keys || true
   elif [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
     KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
       -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${HERMES_LITELLM_KEY}" \

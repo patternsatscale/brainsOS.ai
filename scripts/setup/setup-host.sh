@@ -30,7 +30,18 @@ for arg in "$@"; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 log_info "Initializing Project Titan host baseline from ${REPO_ROOT}..."
 
@@ -300,9 +311,9 @@ fi
 # ------------------------------------------------------------------------------
 # 5. Storage Directories & Permissions Setup
 # ------------------------------------------------------------------------------
-if [ -f "${REPO_ROOT}/scripts/setup-memories.sh" ]; then
+if [ -f "${REPO_ROOT}/scripts/setup/setup-memories.sh" ]; then
   log_info "Invoking Memory Plane setup and OKF scaffolding..."
-  "${REPO_ROOT}/scripts/setup-memories.sh"
+  "${REPO_ROOT}/scripts/setup/setup-memories.sh"
 fi
 
 DATA_DIR=$(grep -E '^TITAN_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/memories")
@@ -408,9 +419,9 @@ fi
 # ------------------------------------------------------------------------------
 # 7. Hermes Sandbox Image Build
 # ------------------------------------------------------------------------------
-if [ -f "${REPO_ROOT}/scripts/setup-hermes.sh" ]; then
+if [ -f "${REPO_ROOT}/scripts/setup/setup-hermes.sh" ]; then
   log_info "Invoking Hermes sandbox setup and image build..."
-  "${REPO_ROOT}/scripts/setup-hermes.sh"
+  "${REPO_ROOT}/scripts/setup/setup-hermes.sh"
 fi
 
 # ------------------------------------------------------------------------------
@@ -448,9 +459,9 @@ log_info "Ensuring appliance containers are started (docker compose up -d)..."
 docker compose up -d
 
 # 8E. Ensure host control plane services are running
-if [ -f "${REPO_ROOT}/scripts/start-control-plane.sh" ]; then
+if [ -f "${REPO_ROOT}/scripts/control/start-control-plane.sh" ]; then
   log_info "Ensuring host control plane services are running (start-control-plane.sh)..."
-  "${REPO_ROOT}/scripts/start-control-plane.sh" start
+  "${REPO_ROOT}/scripts/control/start-control-plane.sh" start
 fi
 
 # Wait briefly for containers to become ready
@@ -518,5 +529,5 @@ echo "  - LiteLLM Admin UI:  http://proxy.localhost/ui (or http://proxy.titan.lo
 if [ "${IS_GX10}" = true ]; then
   echo "  - DGX Dashboard:     http://dgx.localhost (or http://dgx.titan.local)"
 fi
-echo "  - LiteLLM Control:   ./scripts/start-control-plane.sh {start|stop|status}"
+echo "  - LiteLLM Control:   ./scripts/control/start-control-plane.sh {start|stop|status}"
 echo ""

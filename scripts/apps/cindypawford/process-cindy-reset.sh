@@ -20,7 +20,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -320,7 +331,7 @@ log_success "Clean slate seeded. Cindy Pawford primed for Era ${NEXT_ERA_NUM}."
 # 7. Rebuild Static Digital Museum Portal
 # ------------------------------------------------------------------------------
 log_info "Phase 6: Rebuilding digital museum gallery wall..."
-${PYTHON_BIN} "${REPO_ROOT}/scripts/build-archive-portal.py"
+${PYTHON_BIN} "${REPO_ROOT}/scripts/apps/cindypawford/build-archive-portal.py"
 
 log_info "================================================================="
 log_success "  'Seal & Reset' Pipeline Completed Successfully for ${WEEK_SLUG}!  "

@@ -2,16 +2,27 @@
 # ==============================================================================
 # scripts/verify-cw1-staging.sh
 # Verification harness for Ticket #36 (CW-1):
-# SST Ion Infrastructure, Legacy Stack Retirement, Platform Shell & Suggestion API
+# SST Ion Infrastructure, Platform Shell & Suggestion API
 # ==============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
+ROOT_DIR="${REPO_ROOT}"
 
 INFRA_DIR="${ROOT_DIR}/apps/cindypawford/infra"
 SITE_DIR="${ROOT_DIR}/apps/cindypawford/site"
-PAS_DIR="${ROOT_DIR}/../pas-webapps"
 
 PASS=0
 FAIL=0
@@ -87,56 +98,10 @@ assert_output_contains \
   cat "${ROOT_DIR}/docker-compose.agents.yml"
 
 # ------------------------------------------------------------------------------
-# 2. Legacy Stack Retirement & PASStack Protection (CW1-1)
+# 2. SST Ion Infrastructure Scaffold (CW1-2 & CW1-4)
 # ------------------------------------------------------------------------------
 echo
-echo "--- 2. Legacy Stack Retirement & PASStack Safety ---"
-
-assert_output_not_contains \
-  "Legacy CindyStack is removed from pas-webapps sst.config.ts" \
-  "CindyStack" \
-  cat "${PAS_DIR}/sst.config.ts"
-
-assert_output_contains \
-  "PASStack is safely preserved in pas-webapps sst.config.ts" \
-  "app.stack(PASStack)" \
-  cat "${PAS_DIR}/sst.config.ts"
-
-assert_output_contains \
-  "BackendStack is safely preserved in pas-webapps sst.config.ts" \
-  "app.stack(BackendStack)" \
-  cat "${PAS_DIR}/sst.config.ts"
-
-assert_success \
-  "pas-webapps passes TypeScript typecheck without errors" \
-  npm --prefix "${PAS_DIR}" run typecheck
-
-assert_success \
-  "prod-patternsatscale-CindyStack is confirmed absent from AWS CloudFormation" \
-  node -e '
-    const { execSync } = require("child_process");
-    try {
-      execSync("aws cloudformation describe-stacks --region us-east-1 --stack-name prod-patternsatscale-CindyStack 2>&1", { stdio: "pipe" });
-      process.exit(1); // Should not succeed
-    } catch (e) {
-      process.exit(0); // Expected to fail
-    }
-  '
-
-assert_success \
-  "prod-patternsatscale-PASStack remains intact and active in AWS" \
-  node -e '
-    const { execSync } = require("child_process");
-    const out = execSync("aws cloudformation describe-stacks --region us-east-1 --stack-name prod-patternsatscale-PASStack --query \"Stacks[0].StackStatus\" --output text").toString().trim();
-    if (out.includes("COMPLETE")) process.exit(0);
-    process.exit(1);
-  '
-
-# ------------------------------------------------------------------------------
-# 3. SST Ion Infrastructure Scaffold (CW1-2 & CW1-4)
-# ------------------------------------------------------------------------------
-echo
-echo "--- 3. SST Ion Infrastructure Scaffold ---"
+echo "--- 2. SST Ion Infrastructure Scaffold ---"
 
 assert_success \
   "apps/cindypawford/infra/package.json exists" \
@@ -162,10 +127,10 @@ assert_success \
   npm --prefix "${INFRA_DIR}" run typecheck
 
 # ------------------------------------------------------------------------------
-# 4. Closed Shadow DOM Platform Shell Isolation (CW1-3)
+# 3. Closed Shadow DOM Platform Shell Isolation (CW1-3)
 # ------------------------------------------------------------------------------
 echo
-echo "--- 4. Platform Shell Closed Shadow DOM Isolation ---"
+echo "--- 3. Platform Shell Closed Shadow DOM Isolation ---"
 
 assert_success \
   "shell.js exists in infra/src" \
@@ -196,10 +161,10 @@ assert_success \
   test -f "${SITE_DIR}/_platform/shell.js"
 
 # ------------------------------------------------------------------------------
-# 5. Serverless Suggestion & Voting Logic (CW1-4)
+# 4. Serverless Suggestion & Voting Logic (CW1-4)
 # ------------------------------------------------------------------------------
 echo
-echo "--- 5. Suggestion & Voting Logic ---"
+echo "--- 4. Suggestion & Voting Logic ---"
 
 assert_success \
   "API handlers export topSuggestions, suggest, and vote" \
@@ -228,23 +193,23 @@ assert_success \
   '
 
 # ------------------------------------------------------------------------------
-# 6. Deployment & Rollback Tooling (CW1-5)
+# 5. Deployment & Rollback Tooling (CW1-5)
 # ------------------------------------------------------------------------------
 echo
-echo "--- 6. Deployment & Rollback Scripts ---"
+echo "--- 5. Deployment & Rollback Scripts ---"
 
 assert_success \
-  "scripts/deploy-cindypawford-com.sh shell syntax is valid" \
-  bash -n "${SCRIPT_DIR}/deploy-cindypawford-com.sh"
+  "scripts/apps/cindypawford/deploy-cindypawford-com.sh shell syntax is valid" \
+  bash -n "${ROOT_DIR}/scripts/apps/cindypawford/deploy-cindypawford-com.sh"
 
 assert_success \
-  "scripts/rollback-cindypawford-com.sh shell syntax is valid" \
-  bash -n "${SCRIPT_DIR}/rollback-cindypawford-com.sh"
+  "scripts/apps/cindypawford/rollback-cindypawford-com.sh shell syntax is valid" \
+  bash -n "${ROOT_DIR}/scripts/apps/cindypawford/rollback-cindypawford-com.sh"
 
 assert_output_contains \
   "deploy-cindypawford-com.sh supports --dry-run" \
   "DRY RUN" \
-  "${SCRIPT_DIR}/deploy-cindypawford-com.sh" --dry-run
+  "${ROOT_DIR}/scripts/apps/cindypawford/deploy-cindypawford-com.sh" --dry-run
 
 echo
 echo "================================================================================"

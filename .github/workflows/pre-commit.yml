@@ -61,12 +61,15 @@ jobs:
       - name: Shell Script Syntax Validation
         run: |
           echo "Validating bash syntax on all scripts..."
-          for script in scripts/*.sh; do
-            if [ -f "$script" ]; then
-              bash -n "$script"
-              echo "✓ $script passed syntax check"
-            fi
-          done
+          find scripts -type f -name "*.sh" -exec bash -n {} +
+          echo "✓ All script files passed syntax check"
+
+      - name: Verify Fleet Manifest Zero-Drift
+        run: |
+          echo "Checking fleet manifest drift against generated configs..."
+          pip install pyyaml
+          ./scripts/control/sync-agents.sh --check
+
 
       - name: Docker Compose Topology Validation
         run: |

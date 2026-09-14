@@ -20,7 +20,18 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "${REPO_ROOT}" ]; then
+  _check_dir="${SCRIPT_DIR}"
+  while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+      REPO_ROOT="${_check_dir}"
+      break
+    fi
+    _check_dir="$(dirname "${_check_dir}")"
+  done
+  [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 cd "${REPO_ROOT}"
 
@@ -318,10 +329,10 @@ log_success "Memory Plane remains pure OKF Markdown."
 # ------------------------------------------------------------------------------
 # 7. Unified Backup & Retention Verification
 # ------------------------------------------------------------------------------
-log_info "Step 7: Testing unified full-data backup script (scripts/backup.sh)..."
-if [ -x "${REPO_ROOT}/scripts/backup.sh" ]; then
-  "${REPO_ROOT}/scripts/backup.sh"
-  "${REPO_ROOT}/scripts/backup.sh" --list
+log_info "Step 7: Testing unified full-data backup script (scripts/control/backup.sh)..."
+if [ -x "${REPO_ROOT}/scripts/control/backup.sh" ]; then
+  "${REPO_ROOT}/scripts/control/backup.sh"
+  "${REPO_ROOT}/scripts/control/backup.sh" --list
   LATEST_BACKUP=$(find "${REPO_ROOT}/data/backups" -name "titan_data_*.tar.gz" -type f | sort | tail -n 1)
   if [ -n "${LATEST_BACKUP}" ] && (tar -tzf "${LATEST_BACKUP}" ./manifest.json >/dev/null 2>&1 || (tar -tzf "${LATEST_BACKUP}" 2>/dev/null || true) | grep -q "manifest.json"); then
     log_success "Full data backup created and validated with manifest: $(basename "${LATEST_BACKUP}")"
@@ -330,7 +341,7 @@ if [ -x "${REPO_ROOT}/scripts/backup.sh" ]; then
     exit 1
   fi
 else
-  log_error "scripts/backup.sh not found or not executable."
+  log_error "scripts/control/backup.sh not found or not executable."
   exit 1
 fi
 
