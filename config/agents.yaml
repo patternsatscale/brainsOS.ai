@@ -143,6 +143,8 @@ agents:
       site_path: "./apps/cindypawford/site"
       canvas_mount: "/app/html"
       repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
+      protected_paths:
+        - ".github"
     git:
       user_name: "Cindy Pawford"
       user_email: "cindy@cindypawford.com"

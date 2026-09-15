@@ -124,35 +124,41 @@ Deployments can be executed directly by an operator or host daemon on the develo
 ```
 In this mode, SST Ion runs natively on the host using AWS credentials configured in the host environment (`~/.aws/credentials` or host `.env`).
 
-### Mode 2: Autonomous CI/CD via GitHub Actions
-To automate deployments whenever Cindy pushes a commit or merges a PR in `patternsatscale/CindyPawford-Online`:
-1. Configure AWS credentials in GitHub Secrets for `CindyPawford-Online`:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `AWS_REGION` (`us-east-1`)
-2. On every push to `main`, GitHub Actions executes:
-   ```yaml
-   name: Deploy Cindy Pawford Production
-   on:
-     push:
-       branches: [ main ]
-   jobs:
-     deploy:
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v4
-         - uses: actions/setup-node@v4
-           with:
-             node-version: 22
-         # Inject platform shell and deploy to S3
-         - name: Inject Platform Shell & Sync
-           run: |
-             npm install -g sst@3.3.27
-             # Sync assets to S3 and invalidate CloudFront
-             aws s3 sync . s3://$PRODUCTION_BUCKET/ --exclude ".git/*"
-             aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
-   ```
-This provides a complete hands-off pipeline where Cindy pushes to GitHub and production updates automatically.
+### Mode 2: Autonomous CI/CD via GitHub Actions (Protected Workflows)
+To achieve fully autonomous hands-off deployments upon PR merges in `patternsatscale/CindyPawford-Online` while protecting workflows against agent tampering (Ticket #98):
+
+1. **Scoped Least-Privilege IAM User (`cindy-pawford-deployer`)**:
+   - Scoped strictly to S3 assets bucket (`cindy-pawford-production-productionsiteassets-ksztrkva`) and CloudFront distribution (`E1AXFS263AVC77`).
+   - Zero access to other AWS infrastructure, IAM, or database planes.
+   - Credentials configured in GitHub Secrets:
+     - `AWS_ACCESS_KEY_ID`
+     - `AWS_SECRET_ACCESS_KEY`
+     - `AWS_REGION` (`us-east-1`)
+   - Target identifiers configured in GitHub Variables:
+     - `PRODUCTION_BUCKET` (`cindy-pawford-production-productionsiteassets-ksztrkva`)
+     - `CLOUDFRONT_DISTRIBUTION_ID` (`E1AXFS263AVC77`)
+
+2. **Container Filesystem Masking (Zero Agent Tampering)**:
+   - Cindy's agent container (`titan-agent-cindy-pawford`) mounts the public site canvas at `/app/html`.
+   - The `.github` directory is masked via a dedicated read-only bind mount (`/app/html/.github:ro`).
+   - Any attempt by the agent to create, edit, or delete workflows inside `/app/html/.github/` fails with kernel-level `Read-only file system` rejection.
+
+3. **Branch Protection & CI/CD PR Guard**:
+   - Active GitHub Ruleset `Protected Main & Agent Guard` on `refs/heads/main`:
+     - Disallows direct pushes and branch deletion.
+     - Requires Pull Requests before merging.
+     - Requires the `Guard Protected Paths` status check to pass.
+   - `.github/workflows/pr-guard.yml` automatically verifies PR diffs:
+     - Rejects any PR modifying `.github/**` (`exit 1`).
+     - Validates canvas file integrity and JavaScript syntax (`node -c app.js`).
+   - `.github/CODEOWNERS` assigns `@patternsatscale` ownership of `.github/**`.
+
+4. **Production Deployment Workflow (`.github/workflows/deploy.yml`)**:
+   - Triggers autonomously on `push: branches: [ main ]` (upon PR merge).
+   - Validates that platform shell (`/_platform/shell.js`) is present and injected.
+   - Executes atomic S3 synchronization (`aws s3 sync . s3://$PRODUCTION_BUCKET/ --delete --exclude ".git/*" --exclude ".github/*"`).
+   - Issues wildcard CloudFront invalidation (`aws cloudfront create-invalidation --paths "/*"`).
+   - Validated via `./scripts/apps/cindypawford/verify-cindy-deploy.sh`.
 
 ---
 

@@ -130,6 +130,11 @@ for agent in enabled_agents:
     if site_path:
         volume_lines.append(f"      # Dedicated Public HTML Canvas")
         volume_lines.append(f"      - {site_path}:{canvas_mount}")
+        protected_paths = agent.get("workspace", {}).get("protected_paths", [])
+        for prot_path in protected_paths:
+            prot_clean = prot_path.strip("/")
+            volume_lines.append(f"      # Masked / Read-Only Protected Path")
+            volume_lines.append(f"      - {site_path}/{prot_clean}:{canvas_mount}/{prot_clean}:ro")
         write_safe_root = f"/opt/data:/workspace:{canvas_mount}"
         workspace_dir_env = "/workspace"
     else:
@@ -453,6 +458,12 @@ for agent in manifest.get("agents", []):
     work_dir = os.path.abspath(os.path.join(repo_root, work_rel.lstrip("./")))
     os.makedirs(mem_dir, exist_ok=True)
     os.makedirs(work_dir, exist_ok=True)
+
+    if site_rel:
+        for prot_path in agent.get("workspace", {}).get("protected_paths", []):
+            prot_clean = prot_path.strip("/")
+            prot_full = os.path.abspath(os.path.join(repo_root, site_rel.lstrip("./"), prot_clean))
+            os.makedirs(prot_full, exist_ok=True)
 
     # Seamless migration from legacy tenants directory if present and agents dir does not exist
     legacy_mem_dir = os.path.abspath(os.path.join(repo_root, "data", "memories", "tenants", agent_id))
