@@ -16,10 +16,16 @@ RUN ln -sf /opt/hermes/plugins/hermes-okf /opt/hermes/plugins/memory/hermes-okf
 
 # Install GitHub CLI (gh), Git tooling, and configure safe container defaults
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends gh git && \
+    apt-get install -y --no-install-recommends gh git ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
-    git config --system credential.helper '!gh auth git-credential'
+    git config --system credential.helper '!gh auth git-credential' && \
+    git config --system url."https://github-proxy.titan.local/".insteadOf "https://github.com/" && \
+    git config --system core.askPass ""
+
+# Install Caddy PKI trust boot hook for in-transit proxy credential injection
+COPY docker/hermes/00-caddy-ca /etc/cont-init.d/00-caddy-ca
+RUN chmod +x /etc/cont-init.d/00-caddy-ca
 
 # Switch to /opt/data
 WORKDIR /opt/data

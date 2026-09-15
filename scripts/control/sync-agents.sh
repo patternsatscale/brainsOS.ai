@@ -47,6 +47,16 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
+if [ -n "${GITHUB_TOKEN_CINDY:-}" ] && [ -z "${GITHUB_BASIC_AUTH_CINDY:-}" ]; then
+  GITHUB_BASIC_AUTH_CINDY="$(printf 'x-access-token:%s' "${GITHUB_TOKEN_CINDY}" | base64 | tr -d '\r\n')"
+  export GITHUB_BASIC_AUTH_CINDY
+  if [ -f .env ] && grep -q "^GITHUB_BASIC_AUTH_CINDY=" .env; then
+    sed -i.bak "s|^GITHUB_BASIC_AUTH_CINDY=.*|GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}|" .env && rm -f .env.bak
+  elif [ -f .env ]; then
+    echo "GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}" >> .env
+  fi
+fi
+
 MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
 OUTPUT_COMPOSE="${REPO_ROOT}/docker-compose.agents.yml"
 OUTPUT_CADDY="${REPO_ROOT}/config/caddy/agents.caddy"
@@ -144,17 +154,19 @@ for agent in enabled_agents:
     git_config = agent.get("git", {})
     git_env_lines = []
     if git_config:
-        git_token_env = git_config.get("token_env", f"GITHUB_TOKEN_{agent_id.upper().replace('-', '_')}")
+        proxy_host = git_config.get("proxy_host", "github-proxy.titan.local")
         git_user = git_config.get("user_name", f"Agent {agent_id}")
         git_email = git_config.get("user_email", f"{agent_id}@titan.local")
         git_env_lines = [
-            f"      - GH_TOKEN=${{{git_token_env}:-${{GH_TOKEN:-${{GITHUB_TOKEN:-}}}}}}",
-            f"      - GITHUB_TOKEN=${{{git_token_env}:-${{GH_TOKEN:-${{GITHUB_TOKEN:-}}}}}}",
+            f"      - GH_HOST={proxy_host}",
             f"      - GIT_AUTHOR_NAME={git_user}",
             f"      - GIT_AUTHOR_EMAIL={git_email}",
             f"      - GIT_COMMITTER_NAME={git_user}",
             f"      - GIT_COMMITTER_EMAIL={git_email}",
+            f"      - GIT_TERMINAL_PROMPT=0",
         ]
+        volume_lines.append(f"      # In-Transit Caddy Internal PKI CA Mount")
+        volume_lines.append(f"      - caddy_data:/etc/ssl/caddy:ro")
 
     compose_lines.extend([
         f"  # --------------------------------------------------------------------------",
@@ -216,6 +228,15 @@ for agent in enabled_agents:
         f"    networks:",
         f"      - titan-ingress",
         f"      - titan-internal",
+        "",
+    ])
+
+has_caddy_volume = any(a.get("git") for a in enabled_agents)
+if has_caddy_volume:
+    compose_lines.extend([
+        "volumes:",
+        "  caddy_data:",
+        "    name: titan_caddy_data",
         "",
     ])
 
@@ -536,8 +557,15 @@ for agent in manifest.get("agents", []):
         gitconfig_path = os.path.join(work_dir, ".gitconfig")
         u_name = git_conf.get("user_name", f"Agent {agent_id}")
         u_email = git_conf.get("user_email", f"{agent_id}@titan.local")
+        proxy_host = git_conf.get("proxy_host", "github-proxy.titan.local")
         with open(gitconfig_path, "w", encoding="utf-8") as gf:
-            gf.write(f"[user]\n\tname = {u_name}\n\temail = {u_email}\n[credential]\n\thelper = !gh auth git-credential\n[safe]\n\tdirectory = *\n")
+            gf.write(
+                f"[user]\n\tname = {u_name}\n\temail = {u_email}\n"
+                f"[credential]\n\thelper = !gh auth git-credential\n"
+                f"[safe]\n\tdirectory = *\n"
+                f"[url \"https://{proxy_host}/\"]\n\tinsteadOf = https://github.com/\n"
+                f"[core]\n\taskPass = \"\"\n"
+            )
 
     # Render Hermes cron jobs if configured
     cron_jobs = agent.get("cron", [])

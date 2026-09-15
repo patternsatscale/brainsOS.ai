@@ -172,4 +172,9 @@ Agents must never violate the following zero-trust operational boundaries:
 - **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/titan_memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
 - **Automated Drift Enforcement**: The CI pipeline (`.github/workflows/pre-commit.yml`) and verification suites (`./scripts/verify/verify-fleet.sh`) enforce zero drift via `./scripts/control/sync-agents.sh --check` on every commit and PR.
 
+### Rule 10: In-Transit Egress Credential Injection
+- **Zero Ambient Container Secrets**: Agent containers must **never** hold raw GitHub tokens (`GH_TOKEN`, `GITHUB_TOKEN`), personal access tokens (PATs), or third-party egress API secrets in their environment variables, `.env` mounts, or on-disk configuration files.
+- **In-Transit Gateway Proxying**: All agent Git Smart HTTP operations (`git push`, `git fetch`) and GitHub CLI (`gh`) API requests must route strictly through the Caddy gateway (`https://github-proxy.titan.local`).
+- **Edge Credential Injection**: Caddy holds host secrets securely and injects `Authorization: Bearer` (for GraphQL & REST APIs) and `Authorization: Basic` (for Git Smart HTTP) in transit as traffic exits the internal network.
+
 

@@ -205,10 +205,18 @@ log_success "Container 'git status' inside /app/html executed successfully."
 # ------------------------------------------------------------------------------
 log_info "Step 6: Verifying GitHub CLI authentication and API access..."
 
-# Verify gh auth status
+# Assert zero ambient tokens in container environment (Ticket #93)
+ENV_TOKENS=$(docker exec "${CONTAINER}" env | grep -i -E '(gh_token|github_token|github_pat)' || true)
+if [ -n "${ENV_TOKENS}" ]; then
+  log_error "Security boundary violation: GitHub tokens detected in container environment!"
+  exit 1
+fi
+log_success "Zero ambient GitHub secrets detected in container environment."
+
+# Verify gh auth status (via in-transit proxy or direct)
 AUTH_OUTPUT=$(docker exec "${CONTAINER}" bash -c "gh auth status" 2>&1 || true)
-if echo "${AUTH_OUTPUT}" | grep -qi "Logged in to github.com"; then
-  log_success "Verified 'gh auth status' inside container: authenticated via token."
+if echo "${AUTH_OUTPUT}" | grep -qi -E "Logged in to (github\.com|github-proxy\.titan\.local)"; then
+  log_success "Verified 'gh auth status' inside container: authenticated via in-transit relay."
 else
   log_error "GitHub CLI is not authenticated inside container! Output:\n${AUTH_OUTPUT}"
   exit 1

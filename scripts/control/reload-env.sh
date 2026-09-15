@@ -55,6 +55,17 @@ set -a
 . "${ENV_FILE}"
 set +a
 
+# Auto-derive GITHUB_BASIC_AUTH_CINDY from GITHUB_TOKEN_CINDY if not explicitly set
+if [ -n "${GITHUB_TOKEN_CINDY:-}" ] && [ -z "${GITHUB_BASIC_AUTH_CINDY:-}" ]; then
+  GITHUB_BASIC_AUTH_CINDY="$(printf 'x-access-token:%s' "${GITHUB_TOKEN_CINDY}" | base64 | tr -d '\r\n')"
+  export GITHUB_BASIC_AUTH_CINDY
+  if grep -q "^GITHUB_BASIC_AUTH_CINDY=" "${ENV_FILE}"; then
+    sed -i.bak "s|^GITHUB_BASIC_AUTH_CINDY=.*|GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}|" "${ENV_FILE}" && rm -f "${ENV_FILE}.bak"
+  else
+    echo "GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}" >> "${ENV_FILE}"
+  fi
+fi
+
 cd "${REPO_ROOT}"
 
 # ------------------------------------------------------------------------------

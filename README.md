@@ -68,6 +68,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
     * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per tenant (`<tenant_id>/`).
   * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console across all tenant memory trees. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
   * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/control/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
+  * **In-Transit Egress Credential Injection (Rule 10):** Agent containers hold zero ambient API tokens or GitHub secrets (`GH_TOKEN`, `GITHUB_TOKEN`) in their environment or filesystem. Git Smart HTTP and GitHub CLI traffic routes through Caddy (`https://github-proxy.titan.local`), which terminates internal TLS and injects fine-grained authorization headers in transit as traffic leaves the internal network.
 
 -----
 
@@ -294,7 +295,8 @@ project-titan/
     │   ├── verify-hermes.sh  # Automated verification harness for Hermes workspace persistence
     │   ├── verify-memories.sh# Automated verification harness for SilverBullet & OKF sync
     │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
-    │   └── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
+    │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
+    │   └── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
     └── apps/                 # Application-specific operations and deployment tooling
         └── cindypawford/     # Autonomous fashion designer application suite
             ├── deploy-cindypawford-com.sh   # Direct-to-production deployment tool

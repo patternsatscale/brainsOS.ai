@@ -30,9 +30,20 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - titan-ingress
+      titan-ingress:
+        aliases:
+          - github-proxy.titan.local
+          - github-proxy.titan.internal
+          - github-proxy.localhost
+      titan-internal:
+        aliases:
+          - github-proxy.titan.local
+          - github-proxy.titan.internal
+          - github-proxy.localhost
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
+      - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
+      - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
