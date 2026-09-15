@@ -39,6 +39,15 @@ if [ -f .env ]; then
   set -a
   . ./.env
   set +a
+  if [ -n "${GITHUB_TOKEN_CINDY:-}" ] && [ -z "${GITHUB_BASIC_AUTH_CINDY:-}" ]; then
+    GITHUB_BASIC_AUTH_CINDY="$(printf 'x-access-token:%s' "${GITHUB_TOKEN_CINDY}" | base64 | tr -d '\r\n')"
+    export GITHUB_BASIC_AUTH_CINDY
+    if grep -q "^GITHUB_BASIC_AUTH_CINDY=" .env; then
+      sed -i.bak "s|^GITHUB_BASIC_AUTH_CINDY=.*|GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}|" .env && rm -f .env.bak
+    else
+      echo "GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}" >> .env
+    fi
+  fi
 fi
 
 PID_DIR="${REPO_ROOT}/data/control_plane"
@@ -55,6 +64,11 @@ LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 HERMES_LITELLM_KEY="${HERMES_LITELLM_KEY:-}"
 DATABASE_URL="${DATABASE_URL:-}"
 INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX:-4096}"
+
+SETSID_CMD=""
+if command -v setsid >/dev/null 2>&1; then
+  SETSID_CMD="setsid"
+fi
 
 # Observability Plane (Langfuse & OpenTelemetry)
 LANGFUSE_AUTO_START="${LANGFUSE_AUTO_START:-false}"
@@ -248,7 +262,7 @@ start_services() {
     log_info "Ollama is already running on http://127.0.0.1:11434."
   else
     log_info "Starting host Ollama daemon (bound strictly to 127.0.0.1:11434)..."
-    OLLAMA_HOST="127.0.0.1:11434" nohup setsid ollama serve </dev/null >"${PID_DIR}/ollama.log" 2>&1 &
+    OLLAMA_HOST="127.0.0.1:11434" nohup ${SETSID_CMD} ollama serve </dev/null >"${PID_DIR}/ollama.log" 2>&1 &
     OLLAMA_PID=$!
     disown "${OLLAMA_PID}" 2>/dev/null || true
     echo "${OLLAMA_PID}" > "${OLLAMA_PID_FILE}"
@@ -341,7 +355,7 @@ start_services() {
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
-    nohup setsid .venv/bin/litellm \
+    nohup ${SETSID_CMD} .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \
       --port "${LITELLM_PORT}" \
@@ -396,7 +410,7 @@ start_services() {
     else
       if command -v socat >/dev/null 2>&1; then
         log_info "Starting DGX Telemetry reverse proxy bridge on ${BRIDGE_BIND}:${DGX_BRIDGE_PORT}..."
-        nohup setsid socat "TCP-LISTEN:${DGX_BRIDGE_PORT},fork,reuseaddr,bind=${BRIDGE_BIND}" "TCP:127.0.0.1:11000" \
+        nohup ${SETSID_CMD} socat "TCP-LISTEN:${DGX_BRIDGE_PORT},fork,reuseaddr,bind=${BRIDGE_BIND}" "TCP:127.0.0.1:11000" \
           </dev/null >"${PID_DIR}/dgx_bridge.log" 2>&1 &
         DGX_BRIDGE_PID=$!
         disown "${DGX_BRIDGE_PID}" 2>/dev/null || true

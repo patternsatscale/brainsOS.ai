@@ -69,6 +69,51 @@ http://langfuse.{$TITAN_DOMAIN:titan.local}, https://langfuse.{$TITAN_DOMAIN:tit
 }
 
 # ==============================================================================
+# Security Hardening: In-Transit GitHub Credential Injection Gateway (Ticket #93)
+# Relays GitHub CLI (gh) REST/GraphQL queries and Git Smart HTTP traffic,
+# injecting Authorization credentials in transit so agent containers hold zero secrets.
+# ==============================================================================
+http://github-proxy.{$TITAN_DOMAIN:titan.local}, https://github-proxy.{$TITAN_DOMAIN:titan.local}, http://github-proxy.titan.internal, https://github-proxy.titan.internal, http://github-proxy.localhost, https://github-proxy.localhost {
+	tls internal
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+
+	# GitHub Enterprise / CLI GraphQL API: /api/graphql -> /graphql
+	handle /api/graphql* {
+		rewrite * /graphql
+		reverse_proxy https://api.github.com {
+			header_up Host api.github.com
+			header_up Authorization "Bearer {$GITHUB_TOKEN_CINDY}"
+			header_up X-Real-IP {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# GitHub Enterprise / CLI REST API: /api/v3/* -> /*
+	handle_path /api/v3/* {
+		reverse_proxy https://api.github.com {
+			header_up Host api.github.com
+			header_up Authorization "Bearer {$GITHUB_TOKEN_CINDY}"
+			header_up X-Real-IP {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# Git Smart HTTP Protocol (git-upload-pack, git-receive-pack, info/refs) & Web UI
+	handle {
+		reverse_proxy https://github.com {
+			header_up Host github.com
+			header_up Authorization "Basic {$GITHUB_BASIC_AUTH_CINDY}"
+			header_up X-Real-IP {remote_host}
+			flush_interval -1
+		}
+	}
+}
+
+# ==============================================================================
 # Ingress Default / Portal Landing Page (HTTP & HTTPS)
 # ==============================================================================
 http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://localhost, https://localhost, :80, :443 {

@@ -149,6 +149,7 @@ agents:
       user_name: "Cindy Pawford"
       user_email: "cindy@cindypawford.com"
       token_env: "GITHUB_TOKEN_CINDY"
+      proxy_host: "github-proxy.titan.local"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
