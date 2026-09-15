@@ -165,6 +165,8 @@ services:
       - ./data/workspace/cindy-pawford:/workspace
       # Dedicated Public HTML Canvas
       - ./apps/cindypawford/site:/app/html
+      # Masked / Read-Only Protected Path
+      - ./apps/cindypawford/site/.github:/app/html/.github:ro
     working_dir: /opt/data
     environment:
       - PUID=${PUID:-1000}

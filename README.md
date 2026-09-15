@@ -304,7 +304,8 @@ project-titan/
             ├── build-archive-portal.py      # Digital museum gallery compiler
             ├── verify-cindy-agent.sh        # Cindy Pawford agent unit verification suite (CW-0A)
             ├── verify-cindy-canvas.sh       # Canvas isolation verification suite (CW-0A.1)
-            └── verify-cindy-archive.sh      # Genesis archive & seal-and-reset suite (CW-0B)
+            ├── verify-cindy-archive.sh      # Genesis archive & seal-and-reset suite (CW-0B)
+            └── verify-cindy-deploy.sh       # Protected CI/CD and autonomous deployment suite (#98)
 ```
 
 -----
