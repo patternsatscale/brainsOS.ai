@@ -8,6 +8,10 @@
 # Explicitly ensure config templates are tracked
 !config/memories/**
 
+# Local Manifest Overrides (Host-specific fleet customization)
+config/agents.local.yaml
+config/agents.override.yaml
+
 # Live Agent Memories (Keep root gitkeep, live notes remain git-ignored)
 data/memories/*
 !data/memories/.gitkeep

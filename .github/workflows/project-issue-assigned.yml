@@ -1,0 +1,207 @@
+name: Auto Move Issue to In Progress on Assignment
+
+on:
+  issues:
+    types: [assigned]
+
+permissions:
+  issues: write
+  repository-projects: write
+
+jobs:
+  move-to-in-progress:
+    name: Move Issue to In Progress in Project
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Project Status to In Progress
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN || secrets.GH_PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+          ISSUE_NODE_ID: ${{ github.event.issue.node_id }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          python3 - << 'EOF'
+          import os
+          import json
+          import subprocess
+          import sys
+
+          issue_id = os.environ.get("ISSUE_NODE_ID")
+          issue_number = os.environ.get("ISSUE_NUMBER")
+          owner = os.environ.get("REPO_OWNER")
+          repo = os.environ.get("REPO_NAME")
+
+          print(f"[INFO] Inspecting Project items for Issue #{issue_number} (Node ID: {issue_id})...")
+
+          def run_gh_graphql(query, variables):
+              cmd = ["gh", "api", "graphql", "-f", f"query={query}"]
+              for k, v in variables.items():
+                  cmd.extend(["-F", f"{k}={v}"])
+              res = subprocess.run(cmd, capture_output=True, text=True)
+              if res.returncode != 0:
+                  print(f"[WARN] GraphQL call failed: {res.stderr.strip()}", file=sys.stderr)
+                  return None
+              try:
+                  return json.loads(res.stdout)
+              except Exception as e:
+                  print(f"[WARN] Failed to parse GraphQL response: {e}", file=sys.stderr)
+                  return None
+
+          query_issue_projects = """
+          query($issueId: ID!) {
+            node(id: $issueId) {
+              ... on Issue {
+                projectItems(first: 10) {
+                  nodes {
+                    id
+                    project {
+                      id
+                      title
+                      fields(first: 50) {
+                        nodes {
+                          ... on ProjectV2SingleSelectField {
+                            id
+                            name
+                            options {
+                              id
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          data = run_gh_graphql(query_issue_projects, {"issueId": issue_id})
+          items = []
+          if data and "data" in data and data["data"].get("node"):
+              items = data["data"]["node"].get("projectItems", {}).get("nodes", [])
+
+          if not items:
+              print(f"[INFO] Issue #{issue_number} is not currently attached to any ProjectV2 item.")
+              print(f"[INFO] Checking if repository {owner}/{repo} has linked projects to attach...")
+
+              query_repo_projects = """
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  projectsV2(first: 5) {
+                    nodes {
+                      id
+                      title
+                      fields(first: 50) {
+                        nodes {
+                          ... on ProjectV2SingleSelectField {
+                            id
+                            name
+                            options {
+                              id
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              """
+              repo_data = run_gh_graphql(query_repo_projects, {"owner": owner, "repo": repo})
+              projects = []
+              if repo_data and "data" in repo_data and repo_data["data"].get("repository"):
+                  projects = repo_data["data"]["repository"].get("projectsV2", {}).get("nodes", [])
+
+              for proj in projects:
+                  proj_id = proj["id"]
+                  print(f"[INFO] Adding issue #{issue_number} to project '{proj.get('title')}' ({proj_id})...")
+                  add_mutation = """
+                  mutation($projectId: ID!, $contentId: ID!) {
+                    addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                      item {
+                        id
+                      }
+                    }
+                  }
+                  """
+                  add_res = run_gh_graphql(add_mutation, {"projectId": proj_id, "contentId": issue_id})
+                  if add_res and "data" in add_res and add_res["data"].get("addProjectV2ItemById"):
+                      new_item_id = add_res["data"]["addProjectV2ItemById"]["item"]["id"]
+                      items.append({
+                          "id": new_item_id,
+                          "project": proj
+                      })
+
+          if not items:
+              print("[INFO] No project items found or attached.")
+              sys.exit(0)
+
+          mutation_update = """
+          mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+            updateProjectV2ItemFieldValue(input: {
+              projectId: $projectId,
+              itemId: $itemId,
+              fieldId: $fieldId,
+              value: {
+                singleSelectOptionId: $optionId
+              }
+            }) {
+              projectV2Item {
+                id
+              }
+            }
+          }
+          """
+
+          updated_count = 0
+          for item in items:
+              item_id = item["id"]
+              proj = item.get("project", {})
+              proj_id = proj.get("id")
+              proj_title = proj.get("title", "Unknown Project")
+              fields = proj.get("fields", {}).get("nodes", [])
+
+              status_field = None
+              for f in fields:
+                  if f and f.get("name", "").strip().lower() == "status":
+                      status_field = f
+                      break
+
+              if not status_field:
+                  print(f"[WARN] No 'Status' field found in project '{proj_title}'.")
+                  continue
+
+              field_id = status_field["id"]
+              options = status_field.get("options", [])
+              in_progress_option = None
+              for opt in options:
+                  name = opt.get("name", "").strip().lower()
+                  if name in ("in progress", "in-progress", "doing", "active"):
+                      in_progress_option = opt
+                      break
+
+              if not in_progress_option:
+                  print(f"[WARN] No 'In Progress' option found under Status field in project '{proj_title}'. Options: {[o.get('name') for o in options]}")
+                  continue
+
+              option_id = in_progress_option["id"]
+              print(f"[INFO] Updating Issue #{issue_number} in project '{proj_title}' to '{in_progress_option.get('name')}'...")
+
+              mut_res = run_gh_graphql(mutation_update, {
+                  "projectId": proj_id,
+                  "itemId": item_id,
+                  "fieldId": field_id,
+                  "optionId": option_id
+              })
+              if mut_res and "data" in mut_res and mut_res["data"].get("updateProjectV2ItemFieldValue"):
+                  print(f"[SUCCESS] Successfully updated Issue #{issue_number} status to '{in_progress_option.get('name')}' in project '{proj_title}'.")
+                  updated_count += 1
+              else:
+                  print(f"[WARN] Could not update status in project '{proj_title}': {mut_res}")
+
+          print(f"[INFO] Completed. Updated {updated_count} project items.")
+          EOF

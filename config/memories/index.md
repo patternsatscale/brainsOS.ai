@@ -8,35 +8,37 @@ This workspace mounts the host filesystem (`/memories`) using the **Open Knowled
 
 ## 🧭 Multi-Agent Fleet Navigation
 
-### 1. [[primary/SOUL|Titan Primary Operations Agent]]
+### 1. [[agents/primary/SOUL|Titan Primary Operations Agent]]
 
-- **Soul & Persona**: [[primary/SOUL|SOUL.md]]
+- **Soul & Persona**: [[agents/primary/SOUL|SOUL.md]]
 
-- **Knowledge Base**: [[primary/knowledge/|knowledge/]]
+- **Knowledge Base**: [[agents/primary/knowledge/|knowledge/]]
 
-- **Operator Rules**: [[primary/rules/|rules/]]
+- **Operator Rules**: [[agents/primary/rules/|rules/]]
 
-- **Session Logs**: [[primary/logs/|logs/]]
+- **Session Logs**: [[agents/primary/logs/|logs/]]
 
-### 2. [[football-dan/SOUL|Football Dan - Sports Analytics]]
+### 2. [[agents/football-dan/SOUL|Football Dan - Sports Analytics]]
 
-- **Soul & Persona**: [[football-dan/SOUL|SOUL.md]]
+- **Soul & Persona**: [[agents/football-dan/SOUL|SOUL.md]]
 
-- **Knowledge Base**: [[football-dan/knowledge/|knowledge/]]
+- **Knowledge Base**: [[agents/football-dan/knowledge/|knowledge/]]
 
-- **Operator Rules**: [[football-dan/rules/|rules/]]
+- **Operator Rules**: [[agents/football-dan/rules/|rules/]]
 
-- **Session Logs**: [[football-dan/logs/|logs/]]
+- **Session Logs**: [[agents/football-dan/logs/|logs/]]
 
-### 3. [[cindy-pawford/SOUL|Cindy Pawford - Creative Director & Supermodel CEO]]
+### 3. [[agents/cindy-pawford/SOUL|Cindy Pawford - Creative Director & Supermodel CEO]]
 
-- **Soul & Persona**: [[cindy-pawford/SOUL|SOUL.md]]
+- **Soul & Persona**: [[agents/cindy-pawford/SOUL|SOUL.md]]
 
-- **Knowledge Base**: [[cindy-pawford/knowledge/|knowledge/]]
+  - **Sub-Agent (web-developer)**: [[agents/cindy-pawford/subagents/web-developer/SOUL|Website Builder Sub-Agent]]
 
-- **Operator Rules**: [[cindy-pawford/rules/|rules/]]
+- **Knowledge Base**: [[agents/cindy-pawford/knowledge/|knowledge/]]
 
-- **Session Logs**: [[cindy-pawford/logs/|logs/]]
+- **Operator Rules**: [[agents/cindy-pawford/rules/|rules/]]
+
+- **Session Logs**: [[agents/cindy-pawford/logs/|logs/]]
 
 ---
 
