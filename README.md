@@ -27,7 +27,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
 │     - Standalone Package: packages/titan_memory/ (OKF Engine & Vector SPI)  │
-│     - Partitioned Memories: ./data/memories/agents/<id> (Pure Markdown)     │
+│     - Partitioned Memories: ./data/memories/<id> (Pure Markdown)            │
 │     - Tenant Workspaces:   ./data/workspace/<id> (Tools, Caches, DBs)       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing & Security Control Plane                                        │
@@ -63,9 +63,9 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
   * **Manifest-Driven Multi-Agent Tenancy:** Fleet composition is declared centrally in `config/agents.yaml`. The reconciler (`scripts/control/sync-agents.sh`) renders compose topologies (`docker-compose.agents.yml`), Caddy virtual hosts (`config/caddy/agents.caddy`), seeds personas, and provisions virtual keys with budget caps.
   * **Decoupled Memory Module (`packages/titan_memory`):** Core memory logic, OKF models, purity validators, and a pluggable `VectorStore` abstract SPI are decoupled into a standalone package, allowing memory contributors to extend vector stores without stepping on agent runtime toes.
   * **Unified Persistent Storage & Cloud Backup:** All persistent state across the appliance lives under a single host data root (`./data` in development, or `/data/titan` on production GX10):
-    * `memories/`: Human-auditable OKF Markdown notes partitioned per tenant (`tenants/<tenant_id>/`).
+    * `memories/`: Human-auditable OKF Markdown notes partitioned per agent (`memories/<agent_id>/`).
     * `litellm_db/`: LiteLLM PostgreSQL persistence (dynamic models, virtual keys, audit logs).
-    * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per tenant (`<tenant_id>/`).
+    * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per agent (`workspace/<agent_id>/`).
   * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console across all tenant memory trees. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
   * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/control/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
   * **In-Transit Egress Credential Injection (Rule 10):** Agent containers hold zero ambient API tokens or GitHub secrets (`GH_TOKEN`, `GITHUB_TOKEN`) in their environment or filesystem. Git Smart HTTP and GitHub CLI traffic routes through Caddy (`https://github-proxy.titan.local`), which terminates internal TLS and injects fine-grained authorization headers in transit as traffic leaves the internal network.
@@ -167,18 +167,27 @@ sudo ./scripts/setup/setup-network.sh --skip-ip -y
 ```
 *Or manually append to `/etc/hosts`:*
 ```text
-127.0.0.1 titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local
+127.0.0.1 titan.local primary.titan.local api.primary.titan.local football-dan.titan.local api.football-dan.titan.local cindypawford.titan.local api.cindypawford.titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local langfuse.titan.local
 ```
 *(Note: If accessing this Linux appliance remotely from another machine on your LAN, replace `127.0.0.1` with the appliance's actual static LAN IP).*
 
 #### 7. Run Automated Verification Tests
 Validate complete end-to-end functionality, storage isolation, and agent persistence:
 ```bash
-# Verify Hermes agent workspace persistence and LiteLLM mediation
+# Verify multi-agent fleet manifest, isolation, and scheduling
+./scripts/verify/verify-fleet.sh
+
+# Verify primary agent workspace persistence and LiteLLM mediation
 ./scripts/verify/verify-hermes.sh
 
 # Verify SilverBullet PKM UI and OKF memory plane synchronization
 ./scripts/verify/verify-memories.sh
+
+# Verify Langfuse observability and OpenTelemetry ingestion
+./scripts/verify/verify-langfuse.sh
+
+# Verify in-transit edge egress credential injection
+./scripts/verify/verify-egress-token-injection.sh
 ```
 
 ---
@@ -190,10 +199,15 @@ Once running, the following endpoints are accessible via your browser:
 | Endpoint | Ingress URL | Port | Default Credentials | Description |
 |---|---|---|---|---|
 | **Appliance Portal** | [http://titan.local](http://titan.local) | `80` / `443` | *None* | ASUS Ascent GX10 appliance dashboard & hub |
-| **Hermes Web Dashboard** | [http://hermes.titan.local](http://hermes.titan.local) | `9119` | `admin` / `titan_admin_secret` | Hermes agent UI, channel manager, and tool config |
-| **Hermes API Gateway** | [http://api.hermes.titan.local/v1](http://api.hermes.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
-| **SilverBullet PKM UI** | [http://memory.titan.local](http://memory.titan.local) | `3000` | *None* | Human-in-the-loop OKF memory & rules inspector |
-| **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing & audit proxy |
+| **Primary Agent UI** | [http://primary.titan.local](http://primary.titan.local) *(alias: [http://hermes.titan.local](http://hermes.titan.local))* | `9119` | `admin` / `titan_admin_secret` | Primary operations agent dashboard, channels & tool config |
+| **Primary Agent API** | [http://api.primary.titan.local/v1](http://api.primary.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
+| **Football Dan UI** | [http://football-dan.titan.local](http://football-dan.titan.local) | `9120` | `admin` / `titan_admin_secret` | Sports analytics agent dashboard & telemetry |
+| **Football Dan API** | [http://api.football-dan.titan.local/v1](http://api.football-dan.titan.local/v1) | `8643` | Bearer `${HERMES_FOOTBALL_DAN_KEY}` | Football Dan chat completions interface |
+| **Cindy Pawford UI** | [http://cindypawford.titan.local](http://cindypawford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Cindy Pawford supermodel CEO dashboard & atelier |
+| **Cindy Pawford API** | [http://api.cindypawford.titan.local/v1](http://api.cindypawford.titan.local/v1) | `8644` | Bearer `${HERMES_CINDY_LITELLM_KEY}` | Cindy Pawford chat completions interface |
+| **SilverBullet PKM UI** | [http://memory.titan.local](http://memory.titan.local) | `3000` | *None* | Human-in-the-loop OKF memory & rules inspector across all tenants |
+| **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing, key & budget proxy |
+| **Langfuse Observability** | [http://langfuse.titan.local:3001](http://langfuse.titan.local:3001) | `3001` | *Local account* | Distributed tracing, token telemetry & agent spans |
 
 ---
 
@@ -206,7 +220,7 @@ docker compose ps
 
 # View container logs
 docker compose logs -f caddy
-docker compose logs -f hermes
+docker compose logs -f agent-primary agent-football-dan agent-cindy-pawford
 
 # Gracefully restart the full appliance
 docker compose restart
@@ -331,7 +345,7 @@ Phase 0: Base Config
   * Execute package pinning (`apt-mark hold`) across hardware drivers and runtime toolkits on DGX OS.
   * Configure local directory layouts under `/data/titan/memories` and seed environment schemas.
   * Deploy the reverse proxy container (Caddy/Traefik) running inside an isolated Docker bridge network.
-  * *Exit Criteria:* Validated local network routing across `hermes.titan.local` and `proxy.titan.local` endpoints to mockup responses.
+  * *Exit Criteria:* Validated local network routing across `primary.titan.local` (and `[agent].titan.local`) and `proxy.titan.local` endpoints to mockup responses.
 
 ### Phase 1: Control Plane (Inference & LiteLLM Gateway)
 
@@ -346,7 +360,7 @@ Phase 0: Base Config
   * Enforce outbound internet egress on `titan-internal` while strictly eliminating the host Docker socket (`/var/run/docker.sock`) and isolating the control plane database (`titan-litellm-db`).
   * Route outbound agent queries strictly to `http://proxy.local:4000/v1` authenticated via virtual proxy key, isolating host infrastructure names from agent context (Rule 7).
   * Deploy a companion `signal-cli` daemon service on `titan-internal` persisting registration state in `/workspace/signal`.
-  * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `hermes.titan.local` (port `9119`) and gateway API at `api.hermes.titan.local` (port `8642`).
+  * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `[agent].titan.local` (e.g. `primary.titan.local:9119`) and gateway API at `api.[agent].titan.local` (e.g. `api.primary.titan.local:8642`), preserving `hermes.titan.local` as an alias.
   * *Exit Criteria:* Hermes processing loops and dashboard are operational; Web Dashboard allows visual configuration of Signal and Telegram channels; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
 
 ### Phase 3: Memory Mgmt (Flat-File OKF & PKM Interface)

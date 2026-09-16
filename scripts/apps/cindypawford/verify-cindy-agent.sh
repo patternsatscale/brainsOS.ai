@@ -51,7 +51,7 @@ CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 AGENT_ID="cindy-pawford"
 CONTAINER="titan-agent-${AGENT_ID}"
 SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-MEM_DIR="${REPO_ROOT}/data/memories/agents/${AGENT_ID}"
+MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
 WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
 
 log_info "================================================================="
@@ -175,9 +175,9 @@ else
   exit 1
 fi
 
-# Verify persona content markers (high-fashion supermodel, comedic irony)
-if grep -q "supermodel" "${SOUL_PATH}" && grep -q "bacon" "${SOUL_PATH}" && grep -q "mailman" "${SOUL_PATH}"; then
-  log_success "SOUL.md contains required persona voice (supermodel CEO, bacon, mailman rivalry)."
+# Verify persona content markers (couture, bacon, comedic irony)
+if grep -q "Cindy Pawford" "${SOUL_PATH}" && grep -q "bacon" "${SOUL_PATH}" && grep -q "couture" "${SOUL_PATH}"; then
+  log_success "SOUL.md contains required persona voice (Cindy Pawford, bacon, couture)."
 else
   log_error "SOUL.md is missing required voice elements."
   exit 1
@@ -207,21 +207,21 @@ fi
 log_info "Step 5: Verifying cross-agent and host filesystem isolation..."
 
 # Probe 1: Cindy cannot access primary agent memory
-if docker exec "${CONTAINER}" test -d /home/patternsatscale/ProjectTitan/data/memories/agents/primary 2>/dev/null; then
+if docker exec "${CONTAINER}" test -d "${REPO_ROOT}/data/memories/primary" 2>/dev/null; then
   log_error "Isolation breach: Cindy container can access primary agent memory on host!"
   exit 1
 fi
 log_success "Verified: Cindy cannot access primary agent memory."
 
 # Probe 2: Cindy cannot access primary workspace
-if docker exec "${CONTAINER}" test -d /home/patternsatscale/ProjectTitan/data/workspace/primary 2>/dev/null; then
+if docker exec "${CONTAINER}" test -d "${REPO_ROOT}/data/workspace/primary" 2>/dev/null; then
   log_error "Isolation breach: Cindy container can access primary agent workspace on host!"
   exit 1
 fi
 log_success "Verified: Cindy cannot access primary agent workspace."
 
 # Probe 3: Cindy cannot view host root files or .env
-if docker exec "${CONTAINER}" test -f /home/patternsatscale/ProjectTitan/.env 2>/dev/null; then
+if docker exec "${CONTAINER}" test -f "${REPO_ROOT}/.env" 2>/dev/null; then
   log_error "Isolation breach: Cindy container can access host .env file!"
   exit 1
 fi

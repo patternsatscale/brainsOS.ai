@@ -76,61 +76,20 @@ else
   chmod -R 775 "${TARGET_MEMORIES_DIR}" || true
 fi
 
-# Ensure OKF subdirectories exist
-mkdir -p "${TARGET_MEMORIES_DIR}/knowledge"
-mkdir -p "${TARGET_MEMORIES_DIR}/rules"
-mkdir -p "${TARGET_MEMORIES_DIR}/logs"
-
-log_success "Directory structure initialized: knowledge/, rules/, logs/."
+log_success "Memory plane storage directory initialized."
 
 # ------------------------------------------------------------------------------
-# 3. Seed Starter OKF Templates Idempotently
+# 3. Seed Starter OKF Templates & Fleet Index
 # ------------------------------------------------------------------------------
 TEMPLATE_DIR="${REPO_ROOT}/config/memories"
 
 if [ -d "${TEMPLATE_DIR}" ]; then
   log_info "Seeding starter OKF templates from ${TEMPLATE_DIR}..."
 
-  # Copy index.md if not already customized
+  # Copy fleet index.md if not already customized
   if [ ! -f "${TARGET_MEMORIES_DIR}/index.md" ]; then
     cp "${TEMPLATE_DIR}/index.md" "${TARGET_MEMORIES_DIR}/index.md"
     log_success "Created ${TARGET_MEMORIES_DIR}/index.md"
-  fi
-
-  # Copy knowledge templates
-  if [ -d "${TEMPLATE_DIR}/knowledge" ]; then
-    for f in "${TEMPLATE_DIR}/knowledge"/*.md; do
-      [ -e "$f" ] || continue
-      fname="$(basename "$f")"
-      if [ ! -f "${TARGET_MEMORIES_DIR}/knowledge/${fname}" ]; then
-        cp "$f" "${TARGET_MEMORIES_DIR}/knowledge/${fname}"
-        log_success "Seeded knowledge note: ${fname}"
-      fi
-    done
-  fi
-
-  # Copy rules templates
-  if [ -d "${TEMPLATE_DIR}/rules" ]; then
-    for f in "${TEMPLATE_DIR}/rules"/*.md; do
-      [ -e "$f" ] || continue
-      fname="$(basename "$f")"
-      if [ ! -f "${TARGET_MEMORIES_DIR}/rules/${fname}" ]; then
-        cp "$f" "${TARGET_MEMORIES_DIR}/rules/${fname}"
-        log_success "Seeded rule note: ${fname}"
-      fi
-    done
-  fi
-
-  # Copy logs templates
-  if [ -d "${TEMPLATE_DIR}/logs" ]; then
-    for f in "${TEMPLATE_DIR}/logs"/*.md; do
-      [ -e "$f" ] || continue
-      fname="$(basename "$f")"
-      if [ ! -f "${TARGET_MEMORIES_DIR}/logs/${fname}" ]; then
-        cp "$f" "${TARGET_MEMORIES_DIR}/logs/${fname}"
-        log_success "Seeded log note: ${fname}"
-      fi
-    done
   fi
 fi
 

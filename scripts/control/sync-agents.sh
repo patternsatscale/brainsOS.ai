@@ -121,7 +121,7 @@ for agent in enabled_agents:
     tg_token_env = tg_config.get("token_env", f"TELEGRAM_BOT_TOKEN_{agent_id.upper().replace('-', '_')}")
     tg_users_env = tg_config.get("allowed_users_env", f"TELEGRAM_ALLOWED_USERS_{agent_id.upper().replace('-', '_')}")
 
-    mem_path = agent.get("memory", {}).get("path", f"./data/memories/agents/{agent_id}")
+    mem_path = agent.get("memory", {}).get("path", f"./data/memories/{agent_id}")
     work_path = agent.get("workspace", {}).get("path", f"./data/workspace/{agent_id}")
     site_path = agent.get("workspace", {}).get("site_path")
     canvas_mount = agent.get("workspace", {}).get("canvas_mount", "/app/html")
@@ -469,6 +469,8 @@ manifest_path = os.path.join(repo_root, "config", "agents.yaml")
 with open(manifest_path, "r", encoding="utf-8") as f:
     manifest = yaml.safe_load(f)
 
+enabled_agents = [a for a in manifest.get("agents", []) if a.get("enabled", True)]
+
 for agent in manifest.get("agents", []):
     agent_id = agent["id"]
     mem_rel = agent.get("memory", {}).get("path", f"./data/memories/agents/{agent_id}")
@@ -501,6 +503,12 @@ for agent in manifest.get("agents", []):
             with open(keep, "w") as f:
                 f.write("")
 
+    # Seed universal memory purity guardrail rule
+    rules_tmpl = os.path.join(repo_root, "config", "memories", "rules", "memory_purity_guardrail.md")
+    dest_rule = os.path.join(mem_dir, "rules", "memory_purity_guardrail.md")
+    if os.path.exists(rules_tmpl) and not os.path.exists(dest_rule):
+        shutil.copyfile(rules_tmpl, dest_rule)
+
     # Seed persona (SOUL.md) to both memory plane and Hermes runtime workspace
     persona_path = agent.get("persona")
     if persona_path and os.path.exists(os.path.join(repo_root, persona_path)):
@@ -508,9 +516,20 @@ for agent in manifest.get("agents", []):
         shutil.copyfile(src_persona, os.path.join(mem_dir, "SOUL.md"))
         shutil.copyfile(src_persona, os.path.join(work_dir, "SOUL.md"))
 
-    # Scaffold workspace sandbox
-    for sub in ("skills", "plugins", "signal", "cron"):
+    # Scaffold workspace sandbox (tools, skills, cron, and runtime memories)
+    for sub in ("skills", "plugins", "signal", "cron", "memories"):
         os.makedirs(os.path.join(work_dir, sub), exist_ok=True)
+
+    # Seed initial Hermes working memory files if not present
+    ws_memories_dir = os.path.join(work_dir, "memories")
+    mem_file = os.path.join(ws_memories_dir, "MEMORY.md")
+    user_file = os.path.join(ws_memories_dir, "USER.md")
+    if not os.path.exists(mem_file):
+        with open(mem_file, "w", encoding="utf-8") as f:
+            f.write(f"# {agent.get('name', agent_id)} — Working Memory\n\nActive context and execution notes.\n")
+    if not os.path.exists(user_file):
+        with open(user_file, "w", encoding="utf-8") as f:
+            f.write(f"# User Profile\n\nFacts and preferences learned about the user.\n")
 
     keep = os.path.join(work_dir, ".gitkeep")
     if not os.path.exists(keep):
@@ -613,6 +632,35 @@ for agent in manifest.get("agents", []):
     print(f"  - Workspace: {work_dir}")
     if site_rel:
         print(f"  - Site:      {os.path.abspath(os.path.join(repo_root, site_rel.lstrip('./')))}")
+
+# 3B. Render dynamic SilverBullet PKM fleet memory index
+index_lines = [
+    "# Project Titan: Multi-Agent Fleet Memory Plane\n",
+    "Welcome to the **Project Titan Memory Plane**—the human-auditable, decoupled knowledge and governance hub for autonomous agent execution.\n",
+    "This workspace mounts the host filesystem (`/memories`) using the **Open Knowledge Format (OKF)**: pure, human-readable flat-file Markdown.\n",
+    "---\n",
+    "## 🧭 Multi-Agent Fleet Navigation\n"
+]
+for idx, a in enumerate(enabled_agents, 1):
+    a_id = a["id"]
+    a_name = a.get("name", a_id)
+    index_lines.append(f"### {idx}. [[agents/{a_id}/SOUL|{a_name}]]\n")
+    index_lines.append(f"- **Soul & Persona**: [[agents/{a_id}/SOUL|SOUL.md]]\n")
+    index_lines.append(f"- **Knowledge Base**: [[agents/{a_id}/knowledge/|knowledge/]]\n")
+    index_lines.append(f"- **Operator Rules**: [[agents/{a_id}/rules/|rules/]]\n")
+    index_lines.append(f"- **Session Logs**: [[agents/{a_id}/logs/|logs/]]\n")
+
+index_lines.append("---\n")
+index_lines.append("> [!NOTE]\n> **Memory Purity Enforcement**: Only Markdown (`.md`) files are allowed in this space. Binary files, SQLite databases, package caches, and virtualenvs are strictly barred to ensure zero-trust human auditability.\n")
+index_content = "\n".join(index_lines)
+
+for target_idx in [
+    os.path.join(repo_root, "data", "memories", "index.md"),
+    os.path.join(repo_root, "config", "memories", "index.md")
+]:
+    os.makedirs(os.path.dirname(target_idx), exist_ok=True)
+    with open(target_idx, "w", encoding="utf-8") as f:
+        f.write(index_content)
 EOF
 
 # 4. Enforce permissions (chmod 775)

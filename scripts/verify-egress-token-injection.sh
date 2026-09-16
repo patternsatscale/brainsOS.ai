@@ -1,1 +1,0 @@
-verify/verify-egress-token-injection.sh

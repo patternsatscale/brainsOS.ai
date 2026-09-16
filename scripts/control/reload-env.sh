@@ -44,6 +44,11 @@ echo -e "${BLUE}${BOLD}=========================================================
 echo -e "${BLUE}${BOLD}Project Titan: Environment Reload & Password Synchronization${NC}"
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
 
+# Optional formatting flag (--format or --clean)
+if [ "${1:-}" = "--format" ] || [ "${1:-}" = "--clean" ]; then
+  "${SCRIPT_DIR}/format-env.sh"
+fi
+
 if [ ! -f "${ENV_FILE}" ]; then
   log_error ".env file not found at ${ENV_FILE}. Run: cp .env.example .env"
   exit 1

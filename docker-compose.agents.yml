@@ -27,7 +27,7 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/agents/primary:/memories
+      - ./data/memories/primary:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
@@ -92,7 +92,7 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/agents/football-dan:/memories
+      - ./data/memories/football-dan:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
@@ -157,7 +157,7 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/agents/cindy-pawford:/memories
+      - ./data/memories/cindy-pawford:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
