@@ -29,7 +29,7 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/personas/primary.md"
+    persona: "config/hermes/primary/SOUL.md"
     models:
       default: "titan-core"
       available:
@@ -73,7 +73,7 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/personas/football-dan.md"
+    persona: "config/hermes/football-dan/SOUL.md"
     models:
       default: "titan-core"
       available:
@@ -117,7 +117,7 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/personas/cindy-pawford.md"
+    persona: "config/hermes/cindy-pawford/SOUL.md"
     models:
       default: "titan-core"
       available:
@@ -125,11 +125,42 @@ agents:
         - "cindy-active-coding-model"
         - "llama3.2:3b"
         - "qwen2.5:latest"
+
+    # Generic Sub-Agents Specification
+    subagents:
+      - id: "web-developer"
+        name: "Website Builder Sub-Agent"
+        tool_name: "build_website_feature"
+        description: "Builds or updates HTML5, CSS, and JavaScript features on the public canvas (/app/html) under a clean software engineering persona without conversational artifacts."
+        persona: "config/hermes/cindy-pawford/web-developer/SOUL.md"
+        model: "cindy-active-coding-model"
+        target_dir: "/app/html"
+        parameters:
+          feature_name:
+            type: "string"
+            description: "Short descriptive feature title"
+            required: true
+          specification:
+            type: "string"
+            description: "Detailed UX requirements, behavior, and layout intent"
+            required: true
+          target_files:
+            type: "array"
+            description: "Specific files to inspect or modify"
+            default: ["index.html", "styles.css", "app.js"]
+          design_tokens:
+            type: "object"
+            description: "Visual style constraints, color palettes, and typography guidance"
+        quality_gate:
+          type: "web_code"
+          sanitizer: "strip_fences_and_personality"
+          syntax_check: "node_check"
+
     cron:
       - id: "daily-feature-drop"
         name: "Daily Feature Drop"
         schedule: "0 2 * * 1-6"
-        prompt: "Using your active coding engine (cindy-active-coding-model), inspect the live site files in /app/html (index.html, styles.css, app.js), review top community ideas, and implement 1-2 spontaneous haute-couture canine features or aesthetic refinements."
+        prompt: "As Creative Director, inspect live site files in /app/html (index.html, styles.css, app.js), review top community ideas, formulate technical specifications, and invoke the website builder sub-agent via build_website_feature with structured parameters. Then report the clean shipped diff back to fans."
       - id: "weekly-era-reset"
         name: "Weekly Era Reset"
         schedule: "0 2 * * 0"

@@ -23,7 +23,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 │     - titan-agent-primary       (:8642 API, :9119 Dashboard, $50 Budget)    │
 │     - titan-agent-football-dan  (:8643 API, :9120 Dashboard, $25 Budget)    │
 │     - titan-agent-cindy-pawford (:8644 API, :9121 Dashboard, $25 Budget)    │
-│     - Personas: config/hermes/personas/*.md (SOUL.md isolation)             │
+│     - Personas: config/hermes/<id>/SOUL.md & subagents/<sub_id>/SOUL.md     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
 │     - Standalone Package: packages/titan_memory/ (OKF Engine & Vector SPI)  │
@@ -255,8 +255,12 @@ project-titan/
 │   ├── hermes/  
 │   │   ├── config.yaml       # Upstream Hermes Agent config (providers, channels, plugins)
 │   │   ├── model_pool.json   # Autonomous coding model pool for weekly engine rotation (cindy-active-coding-model)
-│   │   ├── SOUL.md           # Primary agent persona and behavioral directives
-│   │   └── personas/         # Decoupled tenant personas (primary, football-dan, cindy-pawford)
+│   │   ├── primary/          # Primary operations agent persona (SOUL.md)
+│   │   ├── football-dan/     # Sports analytics companion persona (SOUL.md)
+│   │   └── cindy-pawford/    # Cindy Pawford conversational persona & specialized subagents
+│   │       ├── SOUL.md       # Primary conversational & Creative Director persona
+│   │       └── web-developer/
+│   │           └── SOUL.md   # Website builder sub-agent clean software engineering persona
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
 ├── apps/
 │   └── cindypawford/

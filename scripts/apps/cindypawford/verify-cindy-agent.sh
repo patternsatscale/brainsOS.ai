@@ -175,22 +175,46 @@ else
   exit 1
 fi
 
-# Verify persona content markers (couture, bacon, comedic irony)
-if grep -q "Cindy Pawford" "${SOUL_PATH}" && grep -q "bacon" "${SOUL_PATH}" && grep -q "couture" "${SOUL_PATH}"; then
-  log_success "SOUL.md contains required persona voice (Cindy Pawford, bacon, couture)."
+# Verify persona content markers (couture, bacon, comedic irony, Creative Director)
+if grep -q "Cindy Pawford" "${SOUL_PATH}" && grep -q "bacon" "${SOUL_PATH}" && grep -q "couture" "${SOUL_PATH}" && grep -q "Creative Director" "${SOUL_PATH}"; then
+  log_success "SOUL.md contains required persona voice and Creative Director directives."
 else
-  log_error "SOUL.md is missing required voice elements."
+  log_error "SOUL.md is missing required voice or Creative Director elements."
   exit 1
 fi
 
-# Verify Rule 7: Compartmentalization (No host daemon/DB leakage in SOUL.md)
+# Verify Sub-Agent SOUL.md in memory partition and workspace
+SUB_SOUL_PATH="${MEM_DIR}/subagents/web-developer/SOUL.md"
+WORK_SUB_SOUL="${WORK_DIR}/subagents/web-developer/SOUL.md"
+if [ -f "${SUB_SOUL_PATH}" ] && [ -f "${WORK_SUB_SOUL}" ]; then
+  log_success "Found seeded sub-agent SOUL.md at ${SUB_SOUL_PATH} and ${WORK_SUB_SOUL}."
+else
+  log_error "Missing sub-agent SOUL.md in subagents partition!"
+  exit 1
+fi
+
+# Verify developer sub-agent persona purity (Strict engineering, ZERO canine humor/bacon)
+if grep -q "Website Builder Sub-Agent" "${SUB_SOUL_PATH}" && grep -q "Zero Conversational Chatter" "${SUB_SOUL_PATH}"; then
+  log_success "Sub-agent SOUL.md verified under clean software engineering persona."
+else
+  log_error "Sub-agent SOUL.md is missing required engineering directives."
+  exit 1
+fi
+
+if grep -qi "bacon" "${SUB_SOUL_PATH}" || grep -qi "tennis ball" "${SUB_SOUL_PATH}"; then
+  log_error "Persona contamination: Found conversational canine humor inside developer sub-agent SOUL.md!"
+  exit 1
+fi
+log_success "Sub-agent SOUL.md verified 100% clean of conversational roleplay or canine humor."
+
+# Verify Rule 7: Compartmentalization (No host daemon/DB leakage in SOUL.md or sub-agent SOUL.md)
 for forbidden in "127.0.0.1:11434" "titan-litellm-db" "postgresql://" "vllm" "SST"; do
-  if grep -qi "${forbidden}" "${SOUL_PATH}"; then
-    log_error "Rule 7 violation: Found forbidden backend leak '${forbidden}' in ${SOUL_PATH}!"
+  if grep -qi "${forbidden}" "${SOUL_PATH}" || grep -qi "${forbidden}" "${SUB_SOUL_PATH}"; then
+    log_error "Rule 7 violation: Found forbidden backend leak '${forbidden}' in SOUL files!"
     exit 1
   fi
 done
-log_success "Rule 7 verified: Zero host backend infrastructure details leaked in SOUL.md."
+log_success "Rule 7 verified: Zero host backend infrastructure details leaked in SOUL files."
 
 # Verify Rule 1: Memory plane purity (No sqlite .db or binary indices in /memories)
 DIRTY_FILES=$(find "${MEM_DIR}" -type f \( -name "*.db" -o -name "*.sqlite" -o -name "*.bin" \) 2>/dev/null || true)
@@ -276,6 +300,105 @@ if grep -qE "@CindyPawford(_bot|Bot)" "${REPO_ROOT}/config/agents.yaml" && \
   log_success "Verified per-agent Telegram config (CindyPawford bot profile, TELEGRAM_BOT_TOKEN_CINDY)."
 else
   log_error "Missing per-agent Telegram configuration for Cindy Pawford."
+  exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Step 8: Generic Sub-Agent Manifest & Code Quality Gate Sanitization
+# ------------------------------------------------------------------------------
+log_info "Step 8: Verifying generic sub-agent manifest and quality gate sanitization..."
+
+# 8a. Verify subagents.json catalog in workspace and memories
+if [ -f "${WORK_DIR}/subagents.json" ] && [ -f "${MEM_DIR}/subagents.json" ]; then
+  log_success "Found subagents.json catalog in workspace and memory partitions."
+else
+  log_error "Missing subagents.json catalog!"
+  exit 1
+fi
+
+# Verify subagent properties (id, tool_name, persona, model)
+if grep -q "web-developer" "${WORK_DIR}/subagents.json" && \
+   grep -q "build_website_feature" "${WORK_DIR}/subagents.json" && \
+   grep -q "cindy-active-coding-model" "${WORK_DIR}/subagents.json"; then
+  log_success "Verified 'web-developer' subagent definition in subagents.json."
+else
+  log_error "Invalid or incomplete web-developer subagent definition in subagents.json!"
+  exit 1
+fi
+
+# 8b. Verify subagent execution engine script exists
+BUILDER_SCRIPT="${REPO_ROOT}/scripts/apps/cindypawford/cindy-web-builder.py"
+if [ -x "${BUILDER_SCRIPT}" ]; then
+  log_success "Found executable sub-agent builder script: ${BUILDER_SCRIPT}"
+else
+  log_error "Missing or non-executable sub-agent builder script: ${BUILDER_SCRIPT}"
+  exit 1
+fi
+
+# 8c. Test parameterized sub-agent invocation with dry-run
+log_info "Testing parameterized subagent invocation with quality gate & sanitization..."
+INVOKE_OUTPUT=$(python3 "${BUILDER_SCRIPT}" \
+  --feature-name "Velvet Paw VIP Status Lounge" \
+  --specification "Add a luxury gold badge in the navigation bar" \
+  --canvas-dir "${SITE_DIR}" \
+  --memory-dir "${MEM_DIR}" \
+  --dry-run)
+
+if echo "${INVOKE_OUTPUT}" | grep -q '"status": "success"'; then
+  log_success "Sub-agent dry-run execution succeeded with status 'success'."
+else
+  log_error "Sub-agent dry-run execution failed: ${INVOKE_OUTPUT}"
+  exit 1
+fi
+
+# 8d. Test Quality Gate & Sanitization functions (Markdown fences & conversational strip)
+python3 -c "
+import sys
+sys.path.insert(0, '${REPO_ROOT}/scripts/apps/cindypawford')
+import importlib.util
+spec = importlib.util.spec_from_file_location('cindy_web_builder', '${BUILDER_SCRIPT}')
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+from pathlib import Path
+
+# Test fence stripping
+dirty_js = '''\`\`\`javascript
+(function() {
+  console.log('Clean execution');
+})();
+\`\`\`'''
+clean_js, warns = mod.sanitize_code_content(dirty_js, 'app.js')
+assert '\`\`\`' not in clean_js, 'Markdown fences were not stripped!'
+assert '(function()' in clean_js, 'Valid JS missing!'
+
+# Test conversational header stripping
+dirty_html = '''Here is the updated HTML with the new VIP banner:
+\`\`\`html
+<section id=\"vip-lounge\"><h2>VIP Lounge</h2></section>
+\`\`\`
+Hope this looks fabulous!'''
+clean_html, warns = mod.sanitize_code_content(dirty_html, 'index.html')
+assert '\`\`\`' not in clean_html, 'Fences remained in HTML!'
+assert '<section' in clean_html, 'HTML content missing!'
+assert 'Here is the' not in clean_html, 'Conversational header was not stripped!'
+
+# Test syntax validation
+valid, err = mod.validate_syntax(Path('app.js'), clean_js)
+assert valid, f'Syntax check failed on clean JS: {err}'
+
+# Test invalid syntax rejection
+invalid_js = 'function broken( {'
+valid_bad, err_bad = mod.validate_syntax(Path('app.js'), invalid_js)
+assert not valid_bad, 'Syntax check failed to reject invalid JavaScript!'
+"
+log_success "Quality Gate passed: Markdown fences and conversational chatter stripped, JS syntax validated."
+
+# 8e. Verify titan-subagents plugin files
+PLUGIN_DIR="${WORK_DIR}/plugins/titan-subagents"
+if [ -f "${PLUGIN_DIR}/plugin.yaml" ] && [ -f "${PLUGIN_DIR}/__init__.py" ]; then
+  log_success "Verified titan-subagents plugin scaffolded in workspace: ${PLUGIN_DIR}."
+else
+  log_error "Missing titan-subagents plugin in workspace!"
   exit 1
 fi
 

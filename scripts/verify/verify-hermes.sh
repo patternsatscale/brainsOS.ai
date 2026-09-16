@@ -66,11 +66,25 @@ else
   HOST_MEMORIES="${DATA_DIR}"
 fi
 
+if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml"
+elif [ -f "${REPO_ROOT}/config/agents.override.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.override.yaml"
+else
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
+fi
+PRIMARY_AGENT_ID=$(python3 -c "import yaml; m = yaml.safe_load(open('${MANIFEST_FILE}')); print(m.get('agents', [{}])[0].get('id', 'primary'))" 2>/dev/null || echo "primary")
+
 # Multi-tenant directory alignment (checks tenant partition if present)
-if [ -d "${HOST_WORKSPACE}/primary" ]; then
+if [ -d "${HOST_WORKSPACE}/${PRIMARY_AGENT_ID}" ]; then
+  HOST_WORKSPACE="${HOST_WORKSPACE}/${PRIMARY_AGENT_ID}"
+elif [ -d "${HOST_WORKSPACE}/primary" ]; then
   HOST_WORKSPACE="${HOST_WORKSPACE}/primary"
 fi
-if [ -d "${HOST_MEMORIES}/primary" ]; then
+
+if [ -d "${HOST_MEMORIES}/${PRIMARY_AGENT_ID}" ]; then
+  HOST_MEMORIES="${HOST_MEMORIES}/${PRIMARY_AGENT_ID}"
+elif [ -d "${HOST_MEMORIES}/primary" ]; then
   HOST_MEMORIES="${HOST_MEMORIES}/primary"
 elif [ -d "${HOST_MEMORIES}/agents/primary" ]; then
   HOST_MEMORIES="${HOST_MEMORIES}/agents/primary"
@@ -78,14 +92,23 @@ elif [ -d "${HOST_MEMORIES}/tenants/primary" ]; then
   HOST_MEMORIES="${HOST_MEMORIES}/tenants/primary"
 fi
 
-# Detect service & container names (primary agent unit or legacy hermes)
-HERMES_SERVICE="agent-primary"
-if ! docker compose ps --services | grep -q "^agent-primary$" && docker compose ps --services | grep -q "^hermes$"; then
-  HERMES_SERVICE="hermes"
+# Detect service & container names (primary agent unit, terrastella, or legacy hermes)
+HERMES_SERVICE="agent-${PRIMARY_AGENT_ID}"
+if ! docker compose ps --services | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
+  if docker compose ps --services | grep -q "^agent-primary$"; then
+    HERMES_SERVICE="agent-primary"
+  elif docker compose ps --services | grep -q "^hermes$"; then
+    HERMES_SERVICE="hermes"
+  fi
 fi
-HERMES_CONTAINER="titan-agent-primary"
-if ! docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-primary" && docker ps -a --format '{{.Names}}' | grep -qw "titan-hermes"; then
-  HERMES_CONTAINER="titan-hermes"
+
+HERMES_CONTAINER="titan-agent-${PRIMARY_AGENT_ID}"
+if ! docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-${PRIMARY_AGENT_ID}"; then
+  if docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-primary"; then
+    HERMES_CONTAINER="titan-agent-primary"
+  elif docker ps -a --format '{{.Names}}' | grep -qw "titan-hermes"; then
+    HERMES_CONTAINER="titan-hermes"
+  fi
 fi
 
 log_info "Running Project Titan Hermes Workspace & Persistence Verification..."

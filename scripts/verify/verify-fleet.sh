@@ -50,14 +50,25 @@ fi
 TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
-MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
+EXPLICIT_MANIFEST=0
+if [ -n "${MANIFEST_FILE:-}" ]; then
+  EXPLICIT_MANIFEST=1
+else
+  if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml"
+  elif [ -f "${REPO_ROOT}/config/agents.override.yaml" ]; then
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.override.yaml"
+  else
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
+  fi
+fi
 
 log_info "================================================================="
 log_info "  Running Project Titan Multi-Agent Fleet Verification Suite     "
 log_info "================================================================="
 
 # ------------------------------------------------------------------------------
-# 1. Manifest Drift & Topology Validation
+# 1. Manifest Drift & Topology Validation (Both Canonical & Local)
 # ------------------------------------------------------------------------------
 log_info "Step 1: Validating fleet manifest synchronization & compose topology..."
 
@@ -66,11 +77,41 @@ if [ ! -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
   exit 1
 fi
 
-"${REPO_ROOT}/scripts/control/sync-agents.sh" --check
-log_success "Fleet manifest drift check passed (config/agents.yaml is in sync)."
+if [ "${EXPLICIT_MANIFEST}" -eq 1 ]; then
+  log_info "Validating specified manifest: $(basename "${MANIFEST_FILE}")..."
+  MANIFEST_FILE="${MANIFEST_FILE}" "${REPO_ROOT}/scripts/control/sync-agents.sh"
+  MANIFEST_FILE="${MANIFEST_FILE}" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check
+  docker compose config -q
+  log_success "Manifest $(basename "${MANIFEST_FILE}") validated successfully."
+else
+  # Always validate canonical open-source manifest
+  log_info "Validating canonical open-source manifest (config/agents.yaml)..."
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh"
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check
+  docker compose config -q
+  log_success "Canonical open-source manifest validated successfully."
 
-docker compose config -q
-log_success "Docker Compose topology syntax validated successfully."
+  # If host-local manifest exists, validate it as well
+  if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
+    log_info "Validating host-local manifest override (config/agents.local.yaml)..."
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh"
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check
+    docker compose config -q
+    log_success "Host-local manifest override validated successfully."
+  fi
+fi
+
+# Detect enabled agents & primary agent from compose
+ENABLED_AGENTS=$(docker compose config --services | grep '^agent-' | sed 's/^agent-//' || echo "primary football-dan cindy-pawford")
+PRIMARY_AGENT_ID="primary"
+if echo "${ENABLED_AGENTS}" | grep -qw "terrastella"; then
+  PRIMARY_AGENT_ID="terrastella"
+elif echo "${ENABLED_AGENTS}" | grep -qw "primary"; then
+  PRIMARY_AGENT_ID="primary"
+else
+  PRIMARY_AGENT_ID=$(echo "${ENABLED_AGENTS}" | awk '{print $1}')
+fi
+PRIMARY_CONTAINER="titan-agent-${PRIMARY_AGENT_ID}"
 
 # ------------------------------------------------------------------------------
 # 2. Container Health & Unprivileged UID Verification
@@ -84,13 +125,26 @@ if ! docker compose ps --services --filter "status=running" | grep -q "^caddy$";
   sleep 2
 fi
 
-if ! docker compose ps --services --filter "status=running" | grep -q "^agent-primary$"; then
+# Clean up any conflicting superseded primary agent container
+for old_primary in primary terrastella; do
+  if [ "${old_primary}" != "${PRIMARY_AGENT_ID}" ]; then
+    if docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-${old_primary}"; then
+      log_info "Stopping superseded container 'titan-agent-${old_primary}' to release ports for '${PRIMARY_CONTAINER}'..."
+      docker stop "titan-agent-${old_primary}" >/dev/null 2>&1 || true
+      docker rm -f "titan-agent-${old_primary}" >/dev/null 2>&1 || true
+    fi
+  fi
+done
+
+if ! docker compose ps --services --filter "status=running" | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
   log_info "Starting fleet agents..."
-  docker compose up -d agent-primary agent-football-dan agent-cindy-pawford
+  for a_id in ${ENABLED_AGENTS}; do
+    docker compose up -d "agent-${a_id}"
+  done
   sleep 3
 fi
 
-for agent_id in primary football-dan cindy-pawford; do
+for agent_id in ${ENABLED_AGENTS}; do
   CONTAINER="titan-agent-${agent_id}"
   if ! docker ps --format '{{.Names}}' | grep -qw "${CONTAINER}"; then
     log_warn "Container '${CONTAINER}' is not currently running. Starting service agent-${agent_id}..."
@@ -121,11 +175,18 @@ done
 # ------------------------------------------------------------------------------
 log_info "Step 3: Checking Caddy ingress routing for agent subdomains..."
 
-for agent_id in primary football-dan cindy-pawford; do
+for agent_id in ${ENABLED_AGENTS}; do
   SUBDOMAIN="${agent_id}.${TITAN_DOMAIN}"
   
-  # HTTP probe via Caddy on port 80 with Host header
-  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${SUBDOMAIN}" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
+  # HTTP probe via Caddy on port 80 with Host header (with retry for container bootstrap)
+  HTTP_STATUS="failed"
+  for _ in {1..8}; do
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${SUBDOMAIN}" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
+    if [ "${HTTP_STATUS}" = "200" ] || [ "${HTTP_STATUS}" = "302" ] || [ "${HTTP_STATUS}" = "401" ]; then
+      break
+    fi
+    sleep 1
+  done
   if [ "${HTTP_STATUS}" = "200" ] || [ "${HTTP_STATUS}" = "302" ] || [ "${HTTP_STATUS}" = "401" ]; then
     log_success "Caddy ingress resolves '${SUBDOMAIN}' -> HTTP ${HTTP_STATUS}."
   else
@@ -134,7 +195,14 @@ for agent_id in primary football-dan cindy-pawford; do
   fi
 
   # Check localhost alias as well
-  LOCAL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${agent_id}.localhost" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
+  LOCAL_STATUS="failed"
+  for _ in {1..8}; do
+    LOCAL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${agent_id}.localhost" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
+    if [ "${LOCAL_STATUS}" = "200" ] || [ "${LOCAL_STATUS}" = "302" ] || [ "${LOCAL_STATUS}" = "401" ]; then
+      break
+    fi
+    sleep 1
+  done
   if [ "${LOCAL_STATUS}" = "200" ] || [ "${LOCAL_STATUS}" = "302" ] || [ "${LOCAL_STATUS}" = "401" ]; then
     log_success "Caddy ingress resolves '${agent_id}.localhost' -> HTTP ${LOCAL_STATUS}."
   else
@@ -148,29 +216,29 @@ done
 # ------------------------------------------------------------------------------
 log_info "Step 4: Verifying cross-tenant storage isolation (Rule 1 & Rule 4)..."
 
-# Test 1: Write marker note into Agent primary memory
+# Test 1: Write marker note into primary agent memory
 TEST_MARKER="marker_primary_$(date +%s)"
-docker exec titan-agent-primary bash -c "echo '${TEST_MARKER}' > /memories/knowledge/isolation_test.md"
+docker exec "${PRIMARY_CONTAINER}" bash -c "echo '${TEST_MARKER}' > /memories/knowledge/isolation_test.md"
 
-# Test 2: Verify Agent football-dan CANNOT see Agent primary marker
+# Test 2: Verify Agent football-dan CANNOT see primary agent marker
 if docker exec titan-agent-football-dan test -f /memories/knowledge/isolation_test.md 2>/dev/null; then
-  log_error "Isolation breach: football-dan container can access primary container /memories!"
+  log_error "Isolation breach: football-dan container can access ${PRIMARY_CONTAINER} /memories!"
   exit 1
 fi
-log_success "Verified: Agent 'football-dan' cannot access Agent 'primary' memory partition."
+log_success "Verified: Agent 'football-dan' cannot access Agent '${PRIMARY_AGENT_ID}' memory partition."
 
-# Test 3: Verify Agent primary CANNOT see Agent football-dan workspace
+# Test 3: Verify primary agent CANNOT see Agent football-dan workspace
 FB_MARKER="marker_football_$(date +%s)"
 docker exec titan-agent-football-dan bash -c "echo '${FB_MARKER}' > /workspace/fb_isolated.txt"
 
-if docker exec titan-agent-primary test -f /workspace/fb_isolated.txt 2>/dev/null; then
-  log_error "Isolation breach: primary container can access football-dan container /workspace!"
+if docker exec "${PRIMARY_CONTAINER}" test -f /workspace/fb_isolated.txt 2>/dev/null; then
+  log_error "Isolation breach: ${PRIMARY_CONTAINER} can access football-dan container /workspace!"
   exit 1
 fi
-log_success "Verified: Agent 'primary' cannot access Agent 'football-dan' workspace partition."
+log_success "Verified: Agent '${PRIMARY_AGENT_ID}' cannot access Agent 'football-dan' workspace partition."
 
 # Clean up isolation test files
-docker exec titan-agent-primary rm -f /memories/knowledge/isolation_test.md 2>/dev/null || true
+docker exec "${PRIMARY_CONTAINER}" rm -f /memories/knowledge/isolation_test.md 2>/dev/null || true
 docker exec titan-agent-football-dan rm -f /workspace/fb_isolated.txt 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
@@ -181,7 +249,7 @@ log_info "Step 5: Verifying hardware serialization through LiteLLM (Rule 3)..."
 if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
   log_info "LiteLLM gateway is online; issuing concurrent completion probes across agents..."
 
-  PRIMARY_KEY="${HERMES_LITELLM_KEY:-sk-titan-primary-key}"
+  PRIMARY_KEY="${HERMES_LITELLM_KEY:-sk-titan-${PRIMARY_AGENT_ID}-key}"
   FOOTBALL_KEY="${HERMES_FOOTBALL_DAN_KEY:-sk-titan-football-dan-key}"
 
   # Issue concurrent health / models requests with different keys
@@ -216,11 +284,11 @@ if [ -x "${REPO_ROOT}/scripts/control/emergency-stop.sh" ]; then
   fi
 
   # Assert primary agent was NOT stopped
-  PRIMARY_STATE=$(docker inspect titan-agent-primary --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
+  PRIMARY_STATE=$(docker inspect "${PRIMARY_CONTAINER}" --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
   if [ "${PRIMARY_STATE}" = "running" ]; then
-    log_success "Non-targeted agent 'titan-agent-primary' remained RUNNING without interruption."
+    log_success "Non-targeted agent '${PRIMARY_CONTAINER}' remained RUNNING without interruption."
   else
-    log_error "Blast radius failure: non-targeted agent 'titan-agent-primary' was affected (State: ${PRIMARY_STATE})."
+    log_error "Blast radius failure: non-targeted agent '${PRIMARY_CONTAINER}' was affected (State: ${PRIMARY_STATE})."
     exit 1
   fi
 

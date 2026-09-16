@@ -53,10 +53,22 @@ else
   MEMORIES_DIR="${DATA_DIR}"
 fi
 
+if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml"
+elif [ -f "${REPO_ROOT}/config/agents.override.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.override.yaml"
+else
+  MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
+fi
+PRIMARY_AGENT_ID=$(python3 -c "import yaml; m = yaml.safe_load(open('${MANIFEST_FILE}')); print(m.get('agents', [{}])[0].get('id', 'primary'))" 2>/dev/null || echo "primary")
+
 # Multi-tenant directory alignment & service detection
 AGENT_MEMORIES_DIR="${MEMORIES_DIR}"
 SB_PREFIX=""
-if [ -d "${MEMORIES_DIR}/primary" ]; then
+if [ -d "${MEMORIES_DIR}/${PRIMARY_AGENT_ID}" ]; then
+  AGENT_MEMORIES_DIR="${MEMORIES_DIR}/${PRIMARY_AGENT_ID}"
+  SB_PREFIX="${PRIMARY_AGENT_ID}/"
+elif [ -d "${MEMORIES_DIR}/primary" ]; then
   AGENT_MEMORIES_DIR="${MEMORIES_DIR}/primary"
   SB_PREFIX="primary/"
 elif [ -d "${MEMORIES_DIR}/agents/primary" ]; then
@@ -67,9 +79,13 @@ elif [ -d "${MEMORIES_DIR}/tenants/primary" ]; then
   SB_PREFIX="tenants/primary/"
 fi
 
-HERMES_SERVICE="agent-primary"
-if ! docker compose ps --services | grep -q "^agent-primary$" && docker compose ps --services | grep -q "^hermes$"; then
-  HERMES_SERVICE="hermes"
+HERMES_SERVICE="agent-${PRIMARY_AGENT_ID}"
+if ! docker compose ps --services | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
+  if docker compose ps --services | grep -q "^agent-primary$"; then
+    HERMES_SERVICE="agent-primary"
+  elif docker compose ps --services | grep -q "^hermes$"; then
+    HERMES_SERVICE="hermes"
+  fi
 fi
 
 log_info "Running Project Titan Memory Plane automated verification..."
