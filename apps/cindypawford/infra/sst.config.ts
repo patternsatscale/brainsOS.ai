@@ -59,5 +59,11 @@ export default $config({
       path: "../archive",
       domain: "archive.cindypawford.com",
     });
+
+    // 5. Project Information StaticSite on AWS S3 + CloudFront (info.cindypawford.com)
+    new sst.aws.StaticSite("InfoSite", {
+      path: "../info",
+      domain: "info.cindypawford.com",
+    });
   },
 });

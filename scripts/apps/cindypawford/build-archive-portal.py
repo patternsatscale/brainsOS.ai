@@ -2,6 +2,7 @@
 """
 Project Titan: Cindy Pawford Digital Museum Portal Generator
 Deterministically compiles apps/cindypawford/archive/index.html from eras.json and recaps.
+Retro Green Terminal & Historic Archival Ledger Aesthetic.
 """
 
 import os
@@ -61,28 +62,26 @@ def render_portal_html(eras_data):
 
         card = f"""
         <article class="era-card" id="era-{slug}">
-          <div class="card-glow"></div>
+          <div class="card-stamp-badge">[IMMUTABLE_RECORD]</div>
           <div class="card-header">
-            <span class="era-tag">ERA {era_num:02d} • {html.escape(slug.upper())}</span>
-            <span class="era-dates">{html.escape(date_range)}</span>
+            <span class="era-tag">[ ENTRY: ERA {era_num:02d} // {html.escape(slug.upper())} ]</span>
+            <span class="era-dates">[ STAMPED: {html.escape(date_range)} ]</span>
           </div>
           <h3 class="era-title">{html.escape(theme_name)}</h3>
           <blockquote class="era-quote">
             <span class="quote-mark">&ldquo;</span>{html.escape(quote)}<span class="quote-mark">&rdquo;</span>
+            <cite class="quote-author">&mdash; Cindy Pawford, Executive Visionary</cite>
           </blockquote>
           <div class="era-engine-badge">
-            <svg class="engine-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
-            </svg>
-            <span>Autonomous Coding Engine: <strong>{html.escape(coding_model)}</strong></span>
+            <span class="engine-prefix">&gt; ENGINE:</span>
+            <span class="engine-name">{html.escape(coding_model)}</span>
+            <span class="engine-tag">[AUTONOMOUS]</span>
           </div>
           {f'<div class="stats-row">{stats_html}</div>' if stats_html else ''}
           <div class="card-footer">
             <a href="./{slug}/index.html" class="btn-visit">
-              <span>Enter Archived Atelier</span>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
+              <span>&gt; Enter Archived Atelier</span>
+              <span class="retro-arrow">&rarr;</span>
             </a>
           </div>
         </article>
@@ -99,41 +98,83 @@ def render_portal_html(eras_data):
   <title>Cindy Pawford — Digital Museum & Historic Archive</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {{
-      --bg-dark: #09090b;
-      --bg-card: rgba(24, 24, 27, 0.7);
-      --gold: #d4af37;
-      --gold-light: #fef08a;
-      --gold-glow: rgba(212, 175, 55, 0.25);
-      --text-main: #f4f4f5;
-      --text-muted: #a1a1aa;
-      --border-subtle: rgba(212, 175, 55, 0.2);
+      --bg-chassis: #090C0A;
+      --bg-terminal: #0E1410;
+      --bg-card: #131B15;
+      --term-green: #00FF66;
+      --term-green-bright: #39FF14;
+      --term-green-dim: #2D6A4F;
+      --term-green-dark: #1B4332;
+      --term-green-glow: rgba(0, 255, 102, 0.2);
+      --gold: #C5A059;
+      --gold-light: #FBF4DC;
+      --border-outer: #1E3827;
+      --border-inner: #15291C;
+      --text-main: #E8F5E9;
+      --text-muted: #8FAD95;
       --font-display: 'Playfair Display', Georgia, serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Courier New', monospace;
       --font-sans: 'Inter', -apple-system, sans-serif;
     }}
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
-      background-color: var(--bg-dark);
+      background-color: var(--bg-chassis);
       background-image: 
-        radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.12) 0%, transparent 60%),
-        radial-gradient(circle at 100% 50%, rgba(212, 175, 55, 0.05) 0%, transparent 40%),
-        linear-gradient(to bottom, #09090b, #18181b);
+        radial-gradient(circle at 50% 0%, rgba(0, 255, 102, 0.08) 0%, transparent 65%),
+        radial-gradient(circle at 100% 40%, rgba(197, 160, 89, 0.05) 0%, transparent 45%),
+        linear-gradient(to bottom, #090C0A 0%, #0D120E 100%);
       color: var(--text-main);
       font-family: var(--font-sans);
       min-height: 100vh;
-      line-height: 1.6;
+      line-height: 1.65;
       padding-bottom: 5rem;
     }}
+
+    /* Top Classification Bar */
+    .classification-bar {{
+      background: #050705;
+      border-bottom: 1px solid var(--border-outer);
+      padding: 0.45rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: var(--term-green);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }}
+
+    .classification-tag {{
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }}
+
+    .pulse-dot {{
+      width: 7px;
+      height: 7px;
+      background: var(--term-green-bright);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--term-green-bright);
+      display: inline-block;
+    }}
+
     .nav-bar {{
       display: flex;
       justify-content: space-between;
       align-items: center;
       max-width: 1200px;
       margin: 0 auto;
-      padding: 2rem 1.5rem;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 2px solid var(--term-green-dark);
+      background: rgba(14, 20, 16, 0.9);
     }}
+
     .nav-brand {{
       display: flex;
       align-items: center;
@@ -141,205 +182,363 @@ def render_portal_html(eras_data):
       text-decoration: none;
       color: var(--text-main);
     }}
+
     .monogram {{
       font-family: var(--font-display);
-      font-size: 1.5rem;
+      font-size: 1.35rem;
       font-weight: 700;
-      color: var(--gold);
-      border: 1.5px solid var(--gold);
+      color: var(--term-green);
+      border: 2px solid var(--term-green);
+      outline: 1px solid var(--border-outer);
+      outline-offset: 3px;
       width: 44px;
       height: 44px;
       line-height: 40px;
       text-align: center;
       border-radius: 50%;
-      box-shadow: 0 0 12px var(--gold-glow);
+      box-shadow: 2px 2px 0 #000, 0 0 10px var(--term-green-glow);
+      background: var(--bg-terminal);
     }}
+
+    .brand-name-group {{
+      display: flex;
+      flex-direction: column;
+    }}
+
     .brand-name {{
       font-family: var(--font-display);
       font-size: 1.25rem;
-      letter-spacing: 0.05em;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #FFFFFF;
     }}
+
+    .brand-sub {{
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--term-green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+
+    .nav-links {{
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }}
+
     .nav-links a {{
       color: var(--text-muted);
       text-decoration: none;
-      font-size: 0.9rem;
-      transition: color 0.2s;
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      padding: 0.4rem 0.75rem;
+      border: 1px solid var(--border-outer);
+      border-radius: 3px;
+      transition: all 0.15s ease;
     }}
-    .nav-links a:hover {{ color: var(--gold-light); }}
+
+    .nav-links a:hover {{
+      color: var(--term-green-bright);
+      border-color: var(--term-green);
+      background: rgba(0, 255, 102, 0.05);
+    }}
+
     .hero {{
       text-align: center;
-      max-width: 860px;
-      margin: 2rem auto 4rem auto;
+      max-width: 880px;
+      margin: 2.5rem auto 3.5rem auto;
       padding: 0 1.5rem;
     }}
+
     .museum-tag {{
-      display: inline-block;
-      padding: 0.35rem 1rem;
-      background: rgba(212, 175, 55, 0.1);
-      border: 1px solid var(--border-subtle);
-      border-radius: 9999px;
-      font-size: 0.8rem;
-      color: var(--gold);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.9rem;
+      background: rgba(0, 255, 102, 0.08);
+      border: 1px solid var(--term-green-dark);
+      border-left: 3px solid var(--term-green);
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--term-green);
       text-transform: uppercase;
-      letter-spacing: 0.15em;
+      letter-spacing: 0.1em;
       margin-bottom: 1.25rem;
+      box-shadow: 1px 1px 0 #000;
     }}
+
     .hero-title {{
       font-family: var(--font-display);
-      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-size: clamp(2.4rem, 4.8vw, 3.8rem);
       font-weight: 700;
-      line-height: 1.15;
-      background: linear-gradient(135deg, #ffffff 20%, var(--gold-light) 60%, var(--gold) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      line-height: 1.18;
+      color: #FFFFFF;
       margin-bottom: 1.25rem;
     }}
+
     .hero-subtitle {{
       color: var(--text-muted);
-      font-size: 1.15rem;
-      max-width: 680px;
-      margin: 0 auto;
+      font-size: 1.1rem;
+      max-width: 720px;
+      margin: 0 auto 1.5rem auto;
+      line-height: 1.7;
     }}
+
+    .archive-ticker {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #0B0F0C;
+      border: 1px solid var(--border-outer);
+      border-radius: 4px;
+      padding: 0.45rem 1.1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--term-green);
+      box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.8);
+    }}
+
+    .ticker-dot {{
+      color: var(--term-green-bright);
+      font-size: 0.75rem;
+    }}
+
     .gallery-container {{
       max-width: 1200px;
       margin: 0 auto;
       padding: 0 1.5rem;
     }}
+
     .gallery-grid {{
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
       gap: 2rem;
     }}
+
+    /* Archival Era Card */
     .era-card {{
       position: relative;
       background: var(--bg-card);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--border-subtle);
-      border-radius: 16px;
-      padding: 2.25rem;
+      border: 1px solid var(--border-outer);
+      border-top: 3px solid var(--term-green);
+      border-radius: 4px;
+      padding: 2.25rem 2rem;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-      overflow: hidden;
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+      box-shadow: 4px 4px 0 #050705, inset 0 0 24px rgba(0, 0, 0, 0.4);
     }}
+
     .era-card:hover {{
-      transform: translateY(-4px);
-      border-color: rgba(212, 175, 55, 0.5);
-      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6), 0 0 20px var(--gold-glow);
+      transform: translateY(-3px);
+      border-top-color: var(--term-green-bright);
+      box-shadow: 4px 6px 14px rgba(0, 0, 0, 0.7), 0 0 16px var(--term-green-glow);
     }}
+
+    .card-stamp-badge {{
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--term-green);
+      border: 1px solid var(--term-green-dim);
+      padding: 0.15rem 0.45rem;
+      border-radius: 2px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: #09120B;
+    }}
+
     .card-header {{
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
+      gap: 0.35rem;
       margin-bottom: 1.25rem;
     }}
+
     .era-tag {{
+      font-family: var(--font-mono);
       font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--gold);
-      letter-spacing: 0.1em;
+      font-weight: 700;
+      color: var(--term-green);
+      letter-spacing: 0.08em;
     }}
+
     .era-dates {{
-      font-size: 0.8rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
       color: var(--text-muted);
     }}
+
     .era-title {{
       font-family: var(--font-display);
-      font-size: 1.75rem;
-      color: #fff;
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: #FFFFFF;
       margin-bottom: 1rem;
       line-height: 1.25;
+      border-bottom: 1px dashed var(--border-outer);
+      padding-bottom: 0.75rem;
     }}
+
     .era-quote {{
       font-family: var(--font-display);
       font-style: italic;
       color: var(--text-muted);
       font-size: 1rem;
-      line-height: 1.55;
+      line-height: 1.6;
       margin-bottom: 1.5rem;
       flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }}
-    .quote-mark {{ color: var(--gold); font-size: 1.2rem; }}
+
+    .quote-mark {{ color: var(--term-green); font-size: 1.2rem; }}
+
+    .quote-author {{
+      font-style: normal;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--term-green);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }}
+
     .era-engine-badge {{
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
+      background: #0A0F0C;
+      border: 1px solid var(--border-inner);
+      border-left: 3px solid var(--term-green);
+      border-radius: 3px;
       padding: 0.4rem 0.75rem;
-      font-size: 0.8rem;
-      color: #e4e4e7;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-main);
       margin-bottom: 1.25rem;
     }}
-    .engine-icon {{ color: var(--gold); }}
+
+    .engine-prefix {{ color: var(--term-green); }}
+    .engine-name {{ color: #FFFFFF; font-weight: 600; }}
+    .engine-tag {{ color: var(--text-muted); font-size: 0.68rem; }}
+
     .stats-row {{
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       margin-bottom: 1.5rem;
     }}
+
     .stat-pill {{
-      background: rgba(212, 175, 55, 0.08);
-      border: 1px solid rgba(212, 175, 55, 0.2);
-      border-radius: 9999px;
+      background: rgba(0, 255, 102, 0.06);
+      border: 1px solid var(--border-outer);
+      border-radius: 3px;
       padding: 0.2rem 0.65rem;
-      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
       color: var(--text-muted);
     }}
-    .stat-pill strong {{ color: #fff; }}
+
+    .stat-pill strong {{ color: var(--term-green-bright); font-weight: 600; }}
+
     .card-footer {{
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      border-top: 1px solid var(--border-inner);
       padding-top: 1.25rem;
     }}
+
+    /* Tactile Retro Green Button */
     .btn-visit {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
+      gap: 0.6rem;
       width: 100%;
       padding: 0.75rem 1.25rem;
-      background: linear-gradient(135deg, #18181b 0%, #27272a 100%);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      color: #fff;
-      font-size: 0.9rem;
-      font-weight: 500;
+      background: linear-gradient(180deg, #183C25 0%, #0E2517 100%);
+      border: 1px solid var(--term-green);
+      border-radius: 4px;
+      color: var(--term-green-bright);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
       text-decoration: none;
-      transition: all 0.2s ease;
+      box-shadow: 2px 2px 0 #000;
+      transition: all 0.15s ease;
     }}
+
     .btn-visit:hover {{
-      background: var(--gold);
-      color: #000;
-      border-color: var(--gold);
-      box-shadow: 0 0 16px var(--gold-glow);
+      background: var(--term-green);
+      color: #050705;
+      box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.7), 0 0 14px var(--term-green-glow);
+      transform: translateY(-1px);
     }}
+
+    .btn-visit:active {{
+      transform: translate(1px, 1px);
+      box-shadow: inset 1px 1px 2px #000;
+    }}
+
+    .retro-arrow {{ font-family: monospace; font-size: 1rem; }}
+
     .museum-footer {{
       text-align: center;
       margin-top: 5rem;
-      color: #71717a;
+      color: var(--text-muted);
       font-size: 0.85rem;
+      font-family: var(--font-mono);
+    }}
+
+    .museum-footer a {{
+      color: var(--term-green);
+      text-decoration: none;
     }}
   </style>
 </head>
 <body>
+  <div class="classification-bar">
+    <div class="classification-tag">
+      <span class="pulse-dot"></span>
+      <span>ARCHIVAL LEDGER // IMMUTABLE HISTORIC RECORD</span>
+    </div>
+    <span>SYSTEM NO. TITAN-ARM64-GB10 // TAMPER-SEAL VERIFIED</span>
+  </div>
+
   <nav class="nav-bar">
     <a href="./" class="nav-brand">
       <div class="monogram">CP</div>
-      <span class="brand-name">Cindy Pawford Archive</span>
+      <div class="brand-name-group">
+        <span class="brand-name">Cindy Pawford</span>
+        <span class="brand-sub">Historic Museum Archive</span>
+      </div>
     </a>
     <div class="nav-links">
-      <a href="http://cindypawford.titan.local" target="_blank">Live Atelier &rarr;</a>
+      <a href="https://cindypawford.com" target="_blank" rel="noopener">Live Atelier &rarr;</a>
+      <a href="https://info.cindypawford.com" target="_blank" rel="noopener">Research Brief &rarr;</a>
+      <a href="https://t.me/CindyPawford_bot" target="_blank" rel="noopener">&gt; Talk to Cindy</a>
     </div>
   </nav>
 
   <header class="hero">
-    <span class="museum-tag">Permanent Digital Vault • {total_eras} Verified Era{'s' if total_eras != 1 else ''}</span>
+    <div class="museum-tag">
+      <span>●</span>
+      <span>PERMANENT DIGITAL VAULT • {total_eras} VERIFIED ERA{'S' if total_eras != 1 else ''}</span>
+    </div>
     <h1 class="hero-title">The Grand Fashion Archives</h1>
     <p class="hero-subtitle">
       A curated chronicle of Cindy Pawford's weekly haute-couture eras, autonomous code evolutions, and executive canine philosophy preserved for posterity.
     </p>
+    <div class="archive-ticker">
+      <span class="ticker-dot">&bull;</span>
+      <span>RECORD COUNT: {total_eras:02d} VERIFIED ERAS // FORMAT: L5 OPEN KNOWLEDGE // REPOSITORY: TAMPER-SEALED</span>
+    </div>
   </header>
 
   <main class="gallery-container">
@@ -349,7 +548,7 @@ def render_portal_html(eras_data):
   </main>
 
   <footer class="museum-footer">
-    <p>&copy; 2024&ndash;2026 Cindy Pawford Pet Company • Immutable Vault Preserved by Project Titan</p>
+    <p>&copy; 2024&ndash;2026 Cindy Pawford Pet Company &bull; Immutable Vault Preserved by <a href="https://info.cindypawford.com" target="_blank" rel="noopener">Project Titan</a></p>
   </footer>
 </body>
 </html>
