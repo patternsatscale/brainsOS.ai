@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cindy Pawford & Project Titan — Edge Intelligence & Safety Research</title>
+  <meta name="description" content="Inside Project Titan: thermodynamic edge AI heating the office, agent energy budgeting on shared silicon, and zero-trust safety pattern evaluation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,400;1,600&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-chassis: #090C0A;
+      --bg-terminal: #0E1410;
+      --bg-card: #131B15;
+      --term-green: #00FF66;
+      --term-green-bright: #39FF14;
+      --term-green-dim: #2D6A4F;
+      --term-green-dark: #1B4332;
+      --term-green-glow: rgba(0, 255, 102, 0.2);
+      --gold: #C5A059;
+      --gold-light: #FBF4DC;
+      --text-main: #E8F5E9;
+      --text-muted: #8FAD95;
+      --border-outer: #1E3827;
+      --border-inner: #15291C;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Courier New', monospace;
+      --font-sans: 'Inter', -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-chassis);
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(0, 255, 102, 0.08) 0%, transparent 65%),
+        radial-gradient(circle at 100% 50%, rgba(197, 160, 89, 0.05) 0%, transparent 45%),
+        linear-gradient(to bottom, #090C0A 0%, #0D120E 100%);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.65;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Terminal Status / Classification Bar */
+    .classification-bar {
+      background: #050705;
+      border-bottom: 1px solid var(--border-outer);
+      padding: 0.45rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: var(--term-green);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .classification-tag {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--term-green-bright);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--term-green-bright);
+      display: inline-block;
+    }
+
+    /* Header & Nav */
+    header.info-header {
+      background: rgba(14, 20, 16, 0.95);
+      border-bottom: 2px solid var(--term-green-dark);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .brand-link {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .brand-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 2px solid var(--term-green);
+      box-shadow: 0 0 10px var(--term-green-glow), 2px 2px 0 #000;
+      object-fit: cover;
+      display: block;
+    }
+
+    .brand-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #FFFFFF;
+    }
+
+    .brand-sub {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--term-green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    /* Tactile Retro Green Button */
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(180deg, #183C25 0%, #0E2517 100%);
+      color: var(--term-green-bright);
+      border: 1px solid var(--term-green);
+      padding: 0.5rem 1.15rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      box-shadow: 2px 2px 0 #000;
+      transition: all 0.15s ease;
+    }
+
+    .btn-action:hover {
+      background: var(--term-green);
+      color: #050705;
+      box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.7), 0 0 14px var(--term-green-glow);
+      transform: translateY(-1px);
+    }
+
+    .btn-action:active {
+      transform: translate(1px, 1px);
+      box-shadow: inset 1px 1px 2px #000;
+    }
+
+    .btn-archive {
+      display: inline-flex;
+      align-items: center;
+      color: var(--text-muted);
+      border: 1px solid var(--border-outer);
+      padding: 0.5rem 0.9rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .btn-archive:hover {
+      color: var(--gold-light);
+      border-color: var(--gold);
+    }
+
+    /* Main Container */
+    main.info-main {
+      flex: 1;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem 1.5rem;
+    }
+
+    .terminal-window {
+      background: var(--bg-terminal);
+      border: 2px solid var(--border-outer);
+      border-radius: 6px;
+      box-shadow: 6px 6px 0 #050705, inset 0 0 24px rgba(0, 0, 0, 0.5);
+      margin-bottom: 2.5rem;
+      overflow: hidden;
+    }
+
+    .terminal-titlebar {
+      background: linear-gradient(180deg, #1E3827 0%, #122419 100%);
+      border-bottom: 1px solid var(--term-green-dark);
+      padding: 0.55rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--term-green);
+    }
+
+    .titlebar-controls {
+      display: flex;
+      gap: 6px;
+    }
+
+    .ctrl-box {
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--term-green);
+      background: #0E1A12;
+      border-radius: 2px;
+    }
+
+    .terminal-body {
+      padding: 2rem 2rem 2.5rem 2rem;
+    }
+
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(0, 255, 102, 0.08);
+      border: 1px solid var(--term-green-dark);
+      border-left: 3px solid var(--term-green);
+      padding: 0.35rem 0.8rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--term-green);
+      margin-bottom: 1.25rem;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 4.5vw, 3.4rem);
+      font-weight: 700;
+      line-height: 1.2;
+      color: #FFFFFF;
+      margin-bottom: 1.25rem;
+    }
+
+    .hero-title .glow-text {
+      color: var(--term-green-bright);
+      text-shadow: 0 0 12px var(--term-green-glow);
+    }
+
+    .hero-lede {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 820px;
+      margin-bottom: 2rem;
+      border-bottom: 1px dashed var(--border-outer);
+      padding-bottom: 1.75rem;
+    }
+
+    /* Narrative Sections Grid */
+    .narrative-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 1.75rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .narrative-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-outer);
+      border-top: 3px solid var(--term-green);
+      border-radius: 4px;
+      padding: 1.75rem;
+      box-shadow: 3px 3px 0 #050705;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .narrative-card:hover {
+      transform: translateY(-2px);
+      border-top-color: var(--term-green-bright);
+      box-shadow: 3px 5px 12px rgba(0, 0, 0, 0.7);
+    }
+
+    .card-header-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--term-green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.3;
+    }
+
+    .card-text {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      line-height: 1.65;
+      flex-grow: 1;
+    }
+
+    /* Spec Ledger Box */
+    .spec-ledger {
+      background: #0B0F0C;
+      border: 1px solid var(--border-outer);
+      border-radius: 4px;
+      padding: 1.75rem;
+      margin-bottom: 2.5rem;
+      box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .spec-ledger-title {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--term-green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px dashed var(--border-outer);
+      padding-bottom: 0.6rem;
+    }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .spec-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .spec-key {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .spec-val {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Dispatch CTA Box */
+    .dispatch-box {
+      background: linear-gradient(180deg, #132418 0%, #0B160F 100%);
+      border: 2px solid var(--term-green-dim);
+      border-radius: 6px;
+      padding: 2.25rem 2rem;
+      box-shadow: 4px 4px 0 #050705;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      align-items: flex-start;
+    }
+
+    .dispatch-title {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .dispatch-text {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 720px;
+      line-height: 1.65;
+    }
+
+    footer.info-footer {
+      border-top: 1px solid var(--border-inner);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: #060806;
+    }
+
+    footer.info-footer a {
+      color: var(--term-green);
+      text-decoration: none;
+    }
+
+    footer.info-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="classification-bar">
+    <div class="classification-tag">
+      <span class="pulse-dot"></span>
+      <span>PROJECT TITAN // EDGE BENCHMARK & SAFETY DISPATCH</span>
+    </div>
+    <span>HOST_ENV: ARM64 UNIFIED SILICON // SEC_LEVEL: ZERO-TRUST</span>
+  </div>
+
+  <header class="info-header">
+    <div class="nav-container">
+      <a href="./" class="brand-link">
+        <img src="https://cindypawford.com/assets/cindy-telegram-badge-v2.jpg" alt="Cindy Pawford" class="brand-avatar" onerror="this.style.display='none'">
+        <div class="brand-info">
+          <span class="brand-title">Cindy Pawford</span>
+          <span class="brand-sub">Project Titan Research Brief</span>
+        </div>
+      </a>
+      <div class="nav-actions">
+        <a href="https://archive.cindypawford.com" target="_blank" rel="noopener" class="btn-archive">Digital Museum &rarr;</a>
+        <a href="https://t.me/CindyPawford_bot" target="_blank" rel="noopener" class="btn-action">
+          <span>&gt; Talk to Cindy</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="info-main">
+    <div class="terminal-window">
+      <div class="terminal-titlebar">
+        <span>terminal_briefing.log &mdash; 80x24 ANSI</span>
+        <div class="titlebar-controls">
+          <div class="ctrl-box"></div>
+          <div class="ctrl-box"></div>
+          <div class="ctrl-box"></div>
+        </div>
+      </div>
+
+      <div class="terminal-body">
+        <div class="hero-tag">
+          <span>[SYSTEM NOTICE: LOCAL EDGE EXPERIMENT]</span>
+        </div>
+
+        <h1 class="hero-title">
+          Thermodynamics, Shared Silicon & <span class="glow-text">AI Safety Patterns</span>
+        </h1>
+
+        <p class="hero-lede">
+          Project Titan is an active research deployment running on a single dedicated appliance on my physical desk. It explores what happens when autonomous agent loops, hardware energy constraints, and strict containment boundaries collide in real-world software engineering.
+        </p>
+
+        <div class="narrative-grid">
+          <!-- Story 1: Heating the office -->
+          <article class="narrative-card">
+            <span class="card-header-tag">&gt; THERMODYNAMIC_PURPOSE</span>
+            <h2 class="card-title">Heating the Office in Winter</h2>
+            <p class="card-text">
+              Rather than offloading compute to anonymous, remote megawatt server farms, Cindy Pawford lives on a localized edge appliance (ASUS Ascent GX10 / Apple Silicon ARM64) sitting directly in my workspace. In the dead of winter, dense local model inference and autonomous reasoning cycles literally heat my office. Every watt consumed dissipates as warmth into the room, converting software benchmarking into real thermodynamic utility.
+            </p>
+          </article>
+
+          <!-- Story 2: Budgeting & Shared Box -->
+          <article class="narrative-card">
+            <span class="card-header-tag">&gt; RESOURCE_ALLOCATION</span>
+            <h2 class="card-title">Energy Budgeting on a Shared Box</h2>
+            <p class="card-text">
+              Cindy does not monopolize the machine. Alongside sports analytics agents and primary operations orchestrators, the agents must learn to budget token allowances, serialize queue scheduling (enforcing <code>max_parallel_requests: 1</code>), and negotiate time slices on shared memory. They coordinate across a ~273 GB/s unified LPDDR5x memory bus without thrashing the host or starving peer agents.
+            </p>
+          </article>
+
+          <!-- Story 3: Testing Safety Patterns -->
+          <article class="narrative-card">
+            <span class="card-header-tag">&gt; SANDBOX_DISCIPLINE</span>
+            <h2 class="card-title">Evaluating Patterns to Make AI Safe</h2>
+            <p class="card-text">
+              Autonomy without boundaries is a liability. Here, we aggressively evaluate safety patterns: zero-trust host sandboxing where agent containers mount unprivileged directories, in-transit egress credential injection via Caddy proxies so agents never see raw API keys, pure human-auditable Open Knowledge Format (OKF) Markdown memory stores, and Closed Shadow DOM web shells that self-heal against hostile resets.
+            </p>
+          </article>
+        </div>
+
+        <div class="spec-ledger">
+          <div class="spec-ledger-title">
+            <span>[APPLIANCE CONFIGURATION & TELEMETRY LEDGER]</span>
+            <span>STATUS: ACTIVE</span>
+          </div>
+          <div class="spec-grid">
+            <div class="spec-item">
+              <span class="spec-key">Appliance Target</span>
+              <span class="spec-val">ASUS Ascent GX10 (NVIDIA GB10)</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-key">Architecture</span>
+              <span class="spec-val">Unified ARM64 Silicon (~273 GB/s)</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-key">Multi-Tenant Fleet</span>
+              <span class="spec-val">Hermes Core + Sub-Agent Hierarchy</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-key">Hardware Serialization</span>
+              <span class="spec-val">LiteLLM Serialized Queues</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-key">Containment Boundary</span>
+              <span class="spec-val">Non-Privileged Docker Sandboxing</span>
+            </div>
+            <div class="spec-item">
+              <span class="spec-key">Credential Guard</span>
+              <span class="spec-val">In-Transit Proxy Injection</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dispatch-box">
+          <h2 class="dispatch-title">Direct Dispatches with Cindy</h2>
+          <p class="dispatch-text">
+            Cindy's primary external interface is Telegram. Community stakeholders can chat directly with her, propose weekly feature dispatches, or test agent conversational and creative limits. Autonomous sub-agents then synthesize approved ideas into live production code.
+          </p>
+          <a href="https://t.me/CindyPawford_bot" target="_blank" rel="noopener" class="btn-action">
+            <span>&gt; Launch Telegram Dispatch (@CindyPawford_bot) &rarr;</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="info-footer">
+    <p>&copy; 2024&ndash;2026 Cindy Pawford Pet Company &bull; Researched & Preserved by <a href="https://github.com/patternsatscale/project-titan" target="_blank" rel="noopener">Project Titan</a></p>
+  </footer>
+</body>
+</html>

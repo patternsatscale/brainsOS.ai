@@ -266,6 +266,7 @@ project-titan/
 │   └── cindypawford/
 │       ├── archive/          # Immutable Digital Museum Vault (2024 Genesis era, sealed snapshots, eras.json)
 │       ├── clean-slate/      # Master atelier starter templates (index.html, styles.css, app.js) seeded on reset
+│       ├── info/             # Project information portal (info.cindypawford.com; safe/green AI & edge benchmark)
 │       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repo; mapped to /app/html)
 ├── packages/
 │   └── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI

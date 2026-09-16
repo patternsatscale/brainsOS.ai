@@ -1,6 +1,7 @@
 /**
  * Cindy Pawford Floating Platform Shell
  * Un-nukeable Web Component with Closed Shadow DOM Isolation
+ * Retro-Chic Aesthetic: Tactile Desk Accessory & Telegram Dispatch Vault
  */
 (function () {
   if (customElements.get("cindy-platform-dock")) return;
@@ -22,7 +23,6 @@
 
     connectedCallback() {
       this.#attachEventListeners();
-      this.#fetchTelemetry();
       this.#fetchSuggestions();
     }
 
@@ -37,7 +37,7 @@
             z-index: 2147483647 !important;
             display: block !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-            color: #FAFAFA !important;
+            color: #F5EFEB !important;
             box-sizing: border-box !important;
           }
 
@@ -47,45 +47,42 @@
             padding: 0;
           }
 
-          /* Floating Dock Button */
+          /* Floating Dock Button: Tactile Desk Accessory Badge */
           .platform-dock-btn {
-            background: linear-gradient(135deg, #18181B 0%, #0A0A0B 100%) !important;
-            color: #D4AF37 !important;
-            border: 1px solid rgba(212, 175, 55, 0.45) !important;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65), 0 0 16px rgba(212, 175, 55, 0.2) !important;
-            border-radius: 9999px !important;
-            padding: 10px 20px !important;
-            font-size: 13px !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.04em !important;
+            width: 62px !important;
+            height: 62px !important;
+            padding: 0 !important;
+            border-radius: 50% !important;
+            background: #181512 !important;
+            border: 2.5px solid #C5A059 !important;
+            box-shadow: 2px 4px 14px rgba(0, 0, 0, 0.75), 0 0 16px rgba(212, 175, 55, 0.3) !important;
             cursor: pointer !important;
             display: flex !important;
             align-items: center !important;
-            gap: 8px !important;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-            backdrop-filter: blur(12px) !important;
+            justify-content: center !important;
+            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.22s ease !important;
             user-select: none !important;
+            overflow: hidden !important;
           }
 
           .platform-dock-btn:hover {
-            transform: translateY(-2px) scale(1.02) !important;
-            border-color: #D4AF37 !important;
-            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 24px rgba(212, 175, 55, 0.35) !important;
+            transform: scale(1.08) !important;
+            border-color: #E5C158 !important;
+            box-shadow: 2px 6px 20px rgba(0, 0, 0, 0.85), 0 0 22px rgba(212, 175, 55, 0.5) !important;
           }
 
-          .dock-badge-pulse {
-            width: 8px !important;
-            height: 8px !important;
+          .platform-dock-btn:active {
+            transform: scale(0.95) translate(1px, 1px) !important;
+            box-shadow: inset 1px 1px 4px rgba(0, 0, 0, 0.9), 0 2px 6px rgba(0, 0, 0, 0.6) !important;
+          }
+
+          .dock-badge-icon {
+            width: 100% !important;
+            height: 100% !important;
             border-radius: 50% !important;
-            background-color: #10B981 !important;
-            box-shadow: 0 0 8px #10B981 !important;
-            animation: pulse 2s infinite !important;
-          }
-
-          @keyframes pulse {
-            0% { transform: scale(0.95); opacity: 0.8; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(0.95); opacity: 0.8; }
+            object-fit: cover !important;
+            display: block !important;
+            pointer-events: none !important;
           }
 
           /* Backdrop */
@@ -95,8 +92,8 @@
             left: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            background: rgba(0, 0, 0, 0.65) !important;
-            backdrop-filter: blur(6px) !important;
+            background: rgba(14, 12, 10, 0.75) !important;
+            backdrop-filter: blur(8px) !important;
             opacity: 0 !important;
             pointer-events: none !important;
             transition: opacity 0.3s ease !important;
@@ -108,17 +105,17 @@
             pointer-events: auto !important;
           }
 
-          /* Slide-Out Drawer */
+          /* Slide-Out Drawer: Vintage Archive Desk Panel */
           .drawer-panel {
             position: fixed !important;
             top: 0 !important;
-            right: -420px !important;
-            width: 400px !important;
-            max-width: calc(100vw - 32px) !important;
+            right: -450px !important;
+            width: 420px !important;
+            max-width: calc(100vw - 24px) !important;
             height: 100vh !important;
-            background: #0D0E12 !important;
-            border-left: 1px solid rgba(212, 175, 55, 0.25) !important;
-            box-shadow: -12px 0 48px rgba(0, 0, 0, 0.85) !important;
+            background: #141210 !important;
+            border-left: 3px double #C5A059 !important;
+            box-shadow: -14px 0 48px rgba(0, 0, 0, 0.9) !important;
             display: flex !important;
             flex-direction: column !important;
             transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -130,135 +127,142 @@
             right: 0 !important;
           }
 
+          /* Retro Window Header */
           .drawer-header {
-            padding: 24px 24px 16px 24px !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+            padding: 16px 20px !important;
+            background: linear-gradient(180deg, #241E18 0%, #171411 100%) !important;
+            border-bottom: 2px solid #C5A059 !important;
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5) !important;
+          }
+
+          .drawer-title-group {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+          }
+
+          .drawer-title-icon {
+            color: #C5A059 !important;
+            font-size: 14px !important;
           }
 
           .drawer-title {
-            font-size: 16px !important;
+            font-family: 'Playfair Display', Georgia, serif !important;
+            font-size: 15px !important;
             font-weight: 700 !important;
-            letter-spacing: 0.05em !important;
-            color: #D4AF37 !important;
+            letter-spacing: 0.04em !important;
+            color: #F5EFEB !important;
             text-transform: uppercase !important;
           }
 
           .drawer-close-btn {
-            background: transparent !important;
-            border: none !important;
-            color: #71717A !important;
-            font-size: 20px !important;
+            background: #241E18 !important;
+            border: 1px solid #C5A059 !important;
+            color: #C5A059 !important;
+            font-family: 'Courier New', Courier, monospace !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
             cursor: pointer !important;
             padding: 4px 8px !important;
-            border-radius: 4px !important;
+            border-radius: 3px !important;
             line-height: 1 !important;
-            transition: color 0.2s ease !important;
+            box-shadow: 1px 1px 0 #000 !important;
+            transition: all 0.15s ease !important;
           }
 
           .drawer-close-btn:hover {
-            color: #FAFAFA !important;
+            background: #C5A059 !important;
+            color: #141210 !important;
+          }
+
+          .drawer-close-btn:active {
+            transform: translate(1px, 1px) !important;
+            box-shadow: inset 1px 1px 2px #000 !important;
           }
 
           .drawer-body {
-            padding: 24px !important;
+            padding: 22px 20px !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 24px !important;
+            gap: 22px !important;
             flex: 1 !important;
-          }
-
-          /* Telemetry Badge */
-          .telemetry-card {
-            background: rgba(24, 24, 27, 0.75) !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 10px !important;
-            padding: 12px 16px !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 6px !important;
-          }
-
-          .telemetry-title {
-            font-size: 11px !important;
-            text-transform: uppercase !important;
-            letter-spacing: 0.06em !important;
-            color: #A1A1AA !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 6px !important;
-          }
-
-          .telemetry-badge {
-            font-size: 12px !important;
-            font-weight: 600 !important;
-            color: #E4E4E7 !important;
           }
 
           /* Sections */
           .section-block {
             display: flex !important;
             flex-direction: column !important;
-            gap: 12px !important;
+            gap: 10px !important;
           }
 
-          .section-heading {
-            font-size: 13px !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.04em !important;
-            color: #D4AF37 !important;
-            text-transform: uppercase !important;
-          }
-
-          /* Archive Links */
-          .archive-links {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 8px !important;
-          }
-
-          .archive-btn {
-            background: rgba(39, 39, 42, 0.5) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            color: #FAFAFA !important;
-            border-radius: 8px !important;
-            padding: 10px 14px !important;
-            font-size: 13px !important;
-            text-decoration: none !important;
+          .section-header-row {
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
+            border-bottom: 1px dashed #3D3226 !important;
+            padding-bottom: 5px !important;
+          }
+
+          .section-heading {
+            font-family: 'Playfair Display', Georgia, serif !important;
+            font-size: 13.5px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.06em !important;
+            color: #C5A059 !important;
+            text-transform: uppercase !important;
+          }
+
+          .section-tag {
+            font-family: 'SF Mono', 'Courier New', monospace !important;
+            font-size: 9.5px !important;
+            color: #A89880 !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+          }
+
+          /* Project Information Card ("Learn More") */
+          .info-card-btn {
+            background: #1B1713 !important;
+            border: 1px solid #3D3226 !important;
+            border-left: 3px solid #2AABEE !important;
+            padding: 12px 14px !important;
+            text-decoration: none !important;
+            display: block !important;
+            border-radius: 4px !important;
+            box-shadow: 1px 1px 0 #000 !important;
             transition: all 0.2s ease !important;
           }
 
-          .archive-btn:hover {
-            background: rgba(212, 175, 55, 0.1) !important;
-            border-color: rgba(212, 175, 55, 0.4) !important;
-            color: #D4AF37 !important;
+          .info-card-btn:hover {
+            background: #221D17 !important;
+            border-color: #2AABEE !important;
             transform: translateX(2px) !important;
+            box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.6) !important;
           }
 
-          /* Telegram Channel */
-          .telegram-btn {
-            background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%) !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            border-radius: 8px !important;
-            padding: 10px 14px !important;
+          .info-card-title {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
             font-size: 13px !important;
             font-weight: 600 !important;
-            text-decoration: none !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 8px !important;
-            transition: opacity 0.2s ease !important;
+            color: #FFFFFF !important;
+            margin-bottom: 4px !important;
           }
 
-          .telegram-btn:hover {
-            opacity: 0.9 !important;
+          .info-card-desc {
+            font-size: 11.5px !important;
+            color: #A89880 !important;
+            line-height: 1.4 !important;
+          }
+
+          .retro-arrow {
+            color: #C5A059 !important;
+            font-family: monospace !important;
+            font-size: 13px !important;
           }
 
           /* Suggestion Box Form */
@@ -270,20 +274,21 @@
 
           .suggestion-textarea {
             width: 100% !important;
-            height: 72px !important;
-            background: #18181B !important;
-            border: 1px solid rgba(255, 255, 255, 0.15) !important;
-            border-radius: 8px !important;
+            height: 70px !important;
+            background: #0E0C0A !important;
+            border: 1px solid #4A3D2F !important;
+            border-radius: 4px !important;
             padding: 10px 12px !important;
-            color: #FAFAFA !important;
-            font-size: 13px !important;
+            color: #F5EFEB !important;
+            font-size: 12.5px !important;
             font-family: inherit !important;
             resize: none !important;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
           }
 
           .suggestion-textarea:focus {
             outline: none !important;
-            border-color: #D4AF37 !important;
+            border-color: #C5A059 !important;
             box-shadow: 0 0 8px rgba(212, 175, 55, 0.25) !important;
           }
 
@@ -294,8 +299,10 @@
           }
 
           .char-count {
-            font-size: 11px !important;
-            color: #71717A !important;
+            font-family: 'SF Mono', 'Courier New', monospace !important;
+            font-size: 10.5px !important;
+            color: #A89880 !important;
+            letter-spacing: 0.04em !important;
           }
 
           .char-count.limit {
@@ -303,25 +310,38 @@
           }
 
           .submit-btn {
-            background: #D4AF37 !important;
-            color: #0A0A0B !important;
-            border: none !important;
-            border-radius: 6px !important;
+            background: linear-gradient(180deg, #D4AF37 0%, #A88725 100%) !important;
+            color: #0E0C0A !important;
+            border: 1px solid #E5C158 !important;
+            border-radius: 3px !important;
             padding: 6px 14px !important;
-            font-size: 12px !important;
+            font-family: 'SF Mono', 'Courier New', monospace !important;
+            font-size: 11px !important;
             font-weight: 700 !important;
+            letter-spacing: 0.05em !important;
             cursor: pointer !important;
-            transition: all 0.2s ease !important;
+            box-shadow: 1px 1px 0 #000 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            transition: all 0.15s ease !important;
           }
 
           .submit-btn:hover {
             background: #E5C158 !important;
-            transform: scale(1.02) !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 1px 2px 6px rgba(0, 0, 0, 0.7) !important;
+          }
+
+          .submit-btn:active {
+            transform: translate(1px, 1px) !important;
+            box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.6) !important;
           }
 
           .form-message {
-            font-size: 12px !important;
+            font-size: 11.5px !important;
             min-height: 16px !important;
+            font-family: 'SF Mono', monospace !important;
           }
 
           .form-message.success { color: #10B981 !important; }
@@ -331,118 +351,228 @@
           .suggestion-list {
             display: flex !important;
             flex-direction: column !important;
-            gap: 10px !important;
-            max-height: 240px !important;
+            gap: 8px !important;
+            max-height: 220px !important;
             overflow-y: auto !important;
           }
 
           .suggestion-card {
-            background: rgba(24, 24, 27, 0.6) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 8px !important;
+            background: #191512 !important;
+            border: 1px solid #382F24 !important;
+            border-left: 3px solid #C5A059 !important;
+            border-radius: 4px !important;
             padding: 10px 12px !important;
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
             gap: 10px !important;
+            box-shadow: 1px 1px 0 #000 !important;
           }
 
           .suggestion-text {
             font-size: 12px !important;
-            color: #D4D4D8 !important;
+            color: #E2DCD5 !important;
             line-height: 1.4 !important;
             flex: 1 !important;
             word-break: break-word !important;
           }
 
           .vote-btn {
-            background: rgba(212, 175, 55, 0.1) !important;
-            border: 1px solid rgba(212, 175, 55, 0.3) !important;
+            background: #241E18 !important;
+            border: 1px solid #C5A059 !important;
             color: #D4AF37 !important;
-            border-radius: 6px !important;
-            padding: 6px 10px !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
+            border-radius: 3px !important;
+            padding: 4px 8px !important;
+            font-family: 'SF Mono', 'Courier New', monospace !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
             cursor: pointer !important;
             display: flex !important;
             align-items: center !important;
             gap: 4px !important;
-            transition: all 0.2s ease !important;
+            box-shadow: 1px 1px 0 #000 !important;
+            transition: all 0.15s ease !important;
             flex-shrink: 0 !important;
           }
 
           .vote-btn:hover {
-            background: #D4AF37 !important;
-            color: #0A0A0B !important;
+            background: #C5A059 !important;
+            color: #141210 !important;
+          }
+
+          .vote-btn:active {
+            transform: translate(1px, 1px) !important;
+            box-shadow: inset 1px 1px 2px #000 !important;
           }
 
           .empty-state {
-            font-size: 12px !important;
-            color: #71717A !important;
+            font-size: 11.5px !important;
+            color: #8C7B68 !important;
             text-align: center !important;
-            padding: 16px 0 !important;
+            padding: 14px 0 !important;
             font-style: italic !important;
+            font-family: 'SF Mono', monospace !important;
+          }
+
+          /* Era Archive Links */
+          .archive-links {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+
+          .archive-btn {
+            background: #1B1713 !important;
+            border: 1px solid #3D3226 !important;
+            border-left: 3px solid #C5A059 !important;
+            color: #F5EFEB !important;
+            border-radius: 4px !important;
+            padding: 10px 14px !important;
+            font-size: 12.5px !important;
+            text-decoration: none !important;
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            box-shadow: 1px 1px 0 #000 !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .archive-btn:hover {
+            background: #241E18 !important;
+            border-color: #D4AF37 !important;
+            color: #D4AF37 !important;
+            transform: translateX(2px) !important;
+          }
+
+          .archive-btn-label {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+          }
+
+          /* Direct Telegram Button */
+          .telegram-btn {
+            background: linear-gradient(180deg, #2AABEE 0%, #1E86BC 100%) !important;
+            color: #FFFFFF !important;
+            border: 1px solid #66C5F5 !important;
+            border-radius: 4px !important;
+            padding: 11px 14px !important;
+            font-size: 12.5px !important;
+            font-weight: 600 !important;
+            text-decoration: none !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 8px !important;
+            box-shadow: 1px 2px 6px rgba(0, 0, 0, 0.4) !important;
+            transition: all 0.2s ease !important;
+          }
+
+          .telegram-btn:hover {
+            background: #229ED9 !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 1px 4px 12px rgba(42, 171, 238, 0.4) !important;
+          }
+
+          .telegram-btn:active {
+            transform: translate(1px, 1px) !important;
+            box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.4) !important;
           }
         </style>
 
         <div class="drawer-backdrop" id="backdrop"></div>
 
-        <button class="platform-dock-btn" id="dock-btn" aria-label="Open Atelier Platform Vault">
-          <span class="dock-badge-pulse"></span>
-          <span>Atelier Platform</span>
-          <span>✨</span>
+        <button class="platform-dock-btn" id="dock-btn" aria-label="Cindy Console">
+          <img src="/assets/cindy-telegram-badge-v2.jpg" alt="Cindy Console" class="dock-badge-icon" />
         </button>
 
         <aside class="drawer-panel" id="drawer" role="dialog" aria-modal="true" aria-hidden="true">
           <div class="drawer-header">
-            <h2 class="drawer-title">Platform Shell</h2>
-            <button class="drawer-close-btn" id="close-btn" aria-label="Close Platform Vault">✕</button>
+            <div class="drawer-title-group">
+              <span class="drawer-title-icon">❖</span>
+              <h2 class="drawer-title">Cindy Console</h2>
+            </div>
+            <button class="drawer-close-btn" id="close-btn" aria-label="Close Cindy Console">[✕]</button>
           </div>
 
           <div class="drawer-body">
-            <!-- Appliance Telemetry -->
-            <div class="telemetry-card">
-              <span class="telemetry-title">⚡ Appliance Telemetry</span>
-              <span class="telemetry-badge" id="telemetry-badge">Powered by ASUS Ascent GX10 • GB10 Unified Architecture • Hermes Agent</span>
-            </div>
-
-            <!-- Suggestion Box & Upvote Board -->
+            <!-- Request a feature -->
             <div class="section-block">
-              <h3 class="section-heading">Executive Feature Requests</h3>
+              <div class="section-header-row">
+                <h3 class="section-heading">Request a feature</h3>
+                <span class="section-tag">COMMUNITY DISPATCH</span>
+              </div>
               <form class="suggestion-form" id="suggest-form">
                 <textarea class="suggestion-textarea" id="suggest-input" maxlength="140" placeholder="Pitch Cindy an avant-garde runway feature (max 140 chars)..."></textarea>
                 <div class="form-footer">
-                  <span class="char-count" id="char-counter">140 left</span>
-                  <button type="submit" class="submit-btn" id="submit-suggest">Submit</button>
+                  <span class="char-count" id="char-counter">[ 140 CHARS REMAINING ]</span>
+                  <button type="submit" class="submit-btn" id="submit-suggest">
+                    <span>DISPATCH</span>
+                    <span>➔</span>
+                  </button>
                 </div>
                 <div class="form-message" id="form-message"></div>
               </form>
 
               <div class="suggestion-list" id="suggestions-container">
-                <div class="empty-state">Loading active community suggestions...</div>
+                <div class="empty-state">Loading active community dispatches...</div>
               </div>
             </div>
 
-            <!-- Archive Vault -->
+            <!-- Era Archive -->
             <div class="section-block">
-              <h3 class="section-heading">Archive Museum</h3>
+              <div class="section-header-row">
+                <h3 class="section-heading">Era Archive</h3>
+                <span class="section-tag">IMMUTABLE VAULT</span>
+              </div>
               <div class="archive-links">
                 <a href="https://archive.cindypawford.com" target="_blank" rel="noopener" class="archive-btn">
-                  <span>🏛️ Historical Museum Portal</span>
-                  <span>→</span>
+                  <span class="archive-btn-label">
+                    <span>🏛️</span>
+                    <span>Historical Museum Portal</span>
+                  </span>
+                  <span class="retro-arrow">➔</span>
                 </a>
                 <a href="https://archive.cindypawford.com/2024-genesis/" target="_blank" rel="noopener" class="archive-btn">
-                  <span>✨ Era 1: 2024 Genesis Archive</span>
-                  <span>→</span>
+                  <span class="archive-btn-label">
+                    <span>📜</span>
+                    <span>Era 1: 2024 Genesis Archive</span>
+                  </span>
+                  <span class="retro-arrow">➔</span>
                 </a>
               </div>
             </div>
 
-            <!-- Direct Telegram Channel -->
+            <!-- Talk to Cindy directly -->
             <div class="section-block">
-              <h3 class="section-heading">Autonomous Channels</h3>
+              <div class="section-header-row">
+                <h3 class="section-heading">Talk to Cindy directly</h3>
+                <span class="section-tag">CONVERSATION</span>
+              </div>
               <a href="https://t.me/CindyPawford_bot" target="_blank" rel="noopener" class="telegram-btn">
-                <span>💬 Talk to Cindy on Telegram (@CindyPawford_bot)</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.19-.08-.05-.19-.02-.27 0-.12.03-1.99 1.27-5.63 3.72-.53.36-1.02.54-1.45.53-.48-.01-1.4-.27-2.09-.49-.84-.27-1.51-.42-1.45-.89.03-.25.38-.5 1.07-.77 4.2-1.83 7-3.04 8.4-3.64 4-.1.72 1.63 1.04 1.83.1.07.24.11.4.11.16 0 .28-.04.38-.11z"/>
+                </svg>
+                <span>Talk to Cindy directly (@CindyPawford_bot)</span>
+              </a>
+            </div>
+
+            <!-- Project Information ("Learn More") -->
+            <div class="section-block">
+              <div class="section-header-row">
+                <h3 class="section-heading">Project Information</h3>
+                <span class="section-tag">RESEARCH BRIEF</span>
+              </div>
+              <a href="https://info.cindypawford.com" target="_blank" rel="noopener" class="info-card-btn">
+                <div class="info-card-content">
+                  <div class="info-card-title">
+                    <span>🌱 Safe, Green AI on Edge Silicon</span>
+                    <span class="retro-arrow">➔</span>
+                  </div>
+                  <p class="info-card-desc">
+                    Learn about Cindy's low-power edge benchmarking on unified architecture, zero-trust sandboxing, and autonomous agent loops.
+                  </p>
+                </div>
               </a>
             </div>
           </div>
@@ -464,7 +594,7 @@
 
       suggestInput.addEventListener("input", () => {
         const remaining = 140 - suggestInput.value.length;
-        charCounter.textContent = `${remaining} left`;
+        charCounter.textContent = `[ ${remaining} CHARS REMAINING ]`;
         if (remaining < 20) {
           charCounter.classList.add("limit");
         } else {
@@ -492,21 +622,6 @@
         drawer.classList.remove("open");
         backdrop.classList.remove("open");
         drawer.setAttribute("aria-hidden", "true");
-      }
-    }
-
-    async #fetchTelemetry() {
-      try {
-        const res = await fetch("/era-info.json");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.model) {
-            const badge = this.#shadow.getElementById("telemetry-badge");
-            badge.textContent = `Powered by ASUS Ascent GX10 • ${data.model} • Hermes Agent`;
-          }
-        }
-      } catch {
-        // Fallback to default styling
       }
     }
 
@@ -591,7 +706,7 @@
           msg.className = "form-message success";
           msg.textContent = "Submitted for Cindy's atelier consideration!";
           input.value = "";
-          this.#shadow.getElementById("char-counter").textContent = "140 left";
+          this.#shadow.getElementById("char-counter").textContent = "[ 140 CHARS REMAINING ]";
           await this.#fetchSuggestions();
           setTimeout(() => {
             msg.textContent = "";
