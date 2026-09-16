@@ -387,10 +387,19 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   HOSTS_BLOCK_START="# --- BEGIN PROJECT TITAN DOMAINS ---"
   HOSTS_BLOCK_END="# --- END PROJECT TITAN DOMAINS ---"
   HOSTS_LANGFUSE_IP="${ARG_LANGFUSE_IP:-$SELECTED_HOSTS_IP}"
+  # Dynamically discover all fleet agent subdomains from config/agents.yaml
+  DYNAMIC_AGENT_DOMAINS=""
+  if [ -f "${REPO_ROOT}/config/agents.yaml" ]; then
+    while read -r sub; do
+      [ -z "${sub}" ] && continue
+      DYNAMIC_AGENT_DOMAINS="${DYNAMIC_AGENT_DOMAINS} ${sub} api.${sub}"
+    done < <(grep -E '^[[:space:]]*subdomain:' "${REPO_ROOT}/config/agents.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+  fi
+  FLEET_DOMAINS="hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} github-proxy.${SELECTED_DOMAIN}${DYNAMIC_AGENT_DOMAINS}"
   if is_gx10_hardware; then
-    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} dgx.${SELECTED_DOMAIN}"
+    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} ${FLEET_DOMAINS} dgx.${SELECTED_DOMAIN}"
   else
-    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN}"
+    HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} ${FLEET_DOMAINS}"
   fi
   LANGFUSE_LINE="${HOSTS_LANGFUSE_IP} langfuse.${SELECTED_DOMAIN}"
 

@@ -119,7 +119,7 @@ if [ -f "config/hermes/config.yaml" ]; then
 fi
 
 # Docker Compose Hermes extra_hosts
-if grep -q "langfuse.titan.local" docker-compose.yml; then
+if grep -q "langfuse.titan.local" docker-compose.yml docker-compose.agents.yml 2>/dev/null; then
   pass_check "Docker Compose: 'langfuse.titan.local' entry mapped in hermes.extra_hosts."
 else
   fail_check "Docker Compose: missing 'langfuse.titan.local' in hermes.extra_hosts."

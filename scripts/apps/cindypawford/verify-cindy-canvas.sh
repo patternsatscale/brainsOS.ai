@@ -49,7 +49,7 @@ fi
 AGENT_ID="cindy-pawford"
 CONTAINER="titan-agent-${AGENT_ID}"
 SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-MEM_DIR="${REPO_ROOT}/data/memories/agents/${AGENT_ID}"
+MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
 WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 
@@ -105,7 +105,7 @@ else
   exit 1
 fi
 
-# 3b. Verify /memories mount maps to data/memories/agents/cindy-pawford
+# 3b. Verify /memories mount maps to data/memories/cindy-pawford
 MEM_MOUNT=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/memories"}}{{.Source}}{{end}}{{end}}')
 if [ "${MEM_MOUNT}" = "${MEM_DIR}" ]; then
   log_success "Verified container '/memories' bind-mount maps to '${MEM_DIR}'."

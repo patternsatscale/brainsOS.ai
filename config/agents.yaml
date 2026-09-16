@@ -38,7 +38,7 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/agents/primary"
+      path: "./data/memories/primary"
     workspace:
       path: "./data/workspace/primary"
 
@@ -82,7 +82,7 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/agents/football-dan"
+      path: "./data/memories/football-dan"
     workspace:
       path: "./data/workspace/football-dan"
 
@@ -137,7 +137,7 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/agents/cindy-pawford"
+      path: "./data/memories/cindy-pawford"
     workspace:
       path: "./data/workspace/cindy-pawford"
       site_path: "./apps/cindypawford/site"

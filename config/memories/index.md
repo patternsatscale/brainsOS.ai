@@ -1,4 +1,4 @@
-# Project Titan: Memory Plane
+# Project Titan: Multi-Agent Fleet Memory Plane
 
 Welcome to the **Project Titan Memory Plane**—the human-auditable, decoupled knowledge and governance hub for autonomous agent execution.
 
@@ -6,56 +6,37 @@ This workspace mounts the host filesystem (`/memories`) using the **Open Knowled
 
 ---
 
-## 🧭 Memory Navigation
+## 🧭 Multi-Agent Fleet Navigation
 
-- **[[knowledge/README|📚 Knowledge Base]]** — Synthesized facts, architecture references, and research notes.
-- **[[rules/README|🛡️ Operator Rules & Guardrails]]** — Active behavioral rules, privacy constraints, and operator directives.
-- **[[logs/README|📜 Audit Logs & Traces]]** — Human-readable task logs, run summaries, and session records.
-- **[[knowledge/working_memory|🧠 Working Memory]]** — Active agent scratchpad and current task context.
+### 1. [[primary/SOUL|Titan Primary Operations Agent]]
 
----
+- **Soul & Persona**: [[primary/SOUL|SOUL.md]]
 
-## ⚡ Quick Actions
+- **Knowledge Base**: [[primary/knowledge/|knowledge/]]
 
-${widgets.commandButton("Create Knowledge Note", "New Page: knowledge/")}
-${widgets.commandButton("Create Operator Rule", "New Page: rules/")}
-${widgets.commandButton("Create Session Log", "New Page: logs/")}
+- **Operator Rules**: [[primary/rules/|rules/]]
 
----
+- **Session Logs**: [[primary/logs/|logs/]]
 
-## 📋 Active Operator Rules
+### 2. [[football-dan/SOUL|Football Dan - Sports Analytics]]
 
-${some(query[[
-  from p = index.subPages("rules")
-  where p.name != "rules/README" and p.name != "rules/template"
-  order by p.lastModified desc
-  limit 10
-  select templates.fullPageItem(p)
-]]) or "_No custom operator rules defined yet. Add rules in [[rules/README|rules/]]._"}
+- **Soul & Persona**: [[football-dan/SOUL|SOUL.md]]
 
----
+- **Knowledge Base**: [[football-dan/knowledge/|knowledge/]]
 
-## 📚 Recently Updated Knowledge
+- **Operator Rules**: [[football-dan/rules/|rules/]]
 
-${some(query[[
-  from p = index.subPages("knowledge")
-  where p.name != "knowledge/README" and p.name != "knowledge/template"
-  order by p.lastModified desc
-  limit 10
-  select templates.fullPageItem(p)
-]]) or "_No custom knowledge notes yet._"}
+- **Session Logs**: [[football-dan/logs/|logs/]]
 
----
+### 3. [[cindy-pawford/SOUL|Cindy Pawford - Creative Director & Supermodel CEO]]
 
-## 📜 Recent Audit Logs
+- **Soul & Persona**: [[cindy-pawford/SOUL|SOUL.md]]
 
-${some(query[[
-  from p = index.subPages("logs")
-  where p.name != "logs/README" and p.name != "logs/template"
-  order by p.lastModified desc
-  limit 10
-  select templates.fullPageItem(p)
-]]) or "_No session logs recorded yet._"}
+- **Knowledge Base**: [[cindy-pawford/knowledge/|knowledge/]]
+
+- **Operator Rules**: [[cindy-pawford/rules/|rules/]]
+
+- **Session Logs**: [[cindy-pawford/logs/|logs/]]
 
 ---
 

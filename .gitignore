@@ -1,6 +1,8 @@
 # Environment & Secrets
 .env
 *.env
+.env.*
+.env.bak*
 !.env.example
 
 # Explicitly ensure config templates are tracked

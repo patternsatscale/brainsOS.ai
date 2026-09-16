@@ -24,7 +24,13 @@ When assigned an issue (e.g., "Work on issue #2"):
    ```bash
    gh issue view <issue_number>
    ```
-2. Thoroughly parse the **Objective**, **Acceptance Criteria**, **Security Constraints**, and **Verification Steps**.
+
+2. Change the ticket status to "In Progress":
+   ```bash
+   gh issue edit <issue_number> --state "In Progress"
+   ```
+
+3. Thoroughly parse the **Objective**, **Acceptance Criteria**, **Security Constraints**, and **Verification Steps**.
 
 ### Step 2: Branching Policy
 Never develop or commit directly on the `main` branch.
@@ -165,10 +171,11 @@ Agents must never violate the following zero-trust operational boundaries:
   - `scripts/verify/`: Automated test harnesses and verification suites.
   - `scripts/apps/<app_id>/`: Application-specific deployment and management scripts.
   All scripts dynamically discover `REPO_ROOT` so they function identically across environments.
+- **Strictly No Symbolic Links**: The repository strictly forbids symbolic links (`symlinks`). All scripts, configurations, templates, and documentation must reside in and reference their canonical filesystem locations directly. Compatibility symlinks across directories are strictly prohibited to ensure maximum portability across host operating systems (Linux and macOS) and container bind mounts.
 
 ### Rule 9: Multi-Tenant Partitioning & Manifest Drift Prevention
 - **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/agents.yaml`. Direct manual edits to `docker-compose.agents.yml` or `config/caddy/agents.caddy` are strictly forbidden; all changes must flow through `./scripts/control/sync-agents.sh`.
-- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/workspace/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/memories/agents/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
+- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/workspace/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/memories/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
 - **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/titan_memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
 - **Automated Drift Enforcement**: The CI pipeline (`.github/workflows/pre-commit.yml`) and verification suites (`./scripts/verify/verify-fleet.sh`) enforce zero drift via `./scripts/control/sync-agents.sh --check` on every commit and PR.
 

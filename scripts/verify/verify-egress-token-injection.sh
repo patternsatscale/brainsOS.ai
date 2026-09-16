@@ -248,9 +248,9 @@ fi
 log_success "Verified container has zero access to host Docker socket."
 
 # Rule 1: Memory plane purity
-MEM_FILES=$(find "${REPO_ROOT}/data/memories/agents/${AGENT_ID}" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*")
+MEM_FILES=$(find "${REPO_ROOT}/data/memories/${AGENT_ID}" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*")
 if [ -z "${MEM_FILES}" ]; then
-  log_success "Rule 1 verified: Memory plane data/memories/agents/${AGENT_ID} is 100% pure OKF Markdown."
+  log_success "Rule 1 verified: Memory plane data/memories/${AGENT_ID} is 100% pure OKF Markdown."
 else
   log_error "Memory plane purity violation: non-markdown files detected: ${MEM_FILES}"
   exit 1
