@@ -1,0 +1,91 @@
+name: Deploy Cindy Pawford Cloud Infrastructure (SST)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/cindypawford/**"
+      - ".github/workflows/deploy-sst.yml"
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "SST deployment stage (production / staging)"
+        required: true
+        default: "production"
+  repository_dispatch:
+    types:
+      - cindypawford-online-deploy
+
+concurrency:
+  group: cindy-sst-infrastructure-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy SST Ion Infrastructure to AWS
+    runs-on: ubuntu-latest
+    env:
+      STAGE: ${{ github.event.inputs.stage || 'production' }}
+    steps:
+      - name: Checkout Project Titan
+        uses: actions/checkout@v4
+
+      - name: Checkout CindyPawford-Online Canvas
+        uses: actions/checkout@v4
+        with:
+          repository: patternsatscale/CindyPawford-Online
+          path: apps/cindypawford/site
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/cindypawford/infra/package-lock.json
+
+      - name: Stage Platform Shell & Runtime Config
+        run: |
+          echo "--> Staging master platform shell into apps/cindypawford/site/_platform/..."
+          mkdir -p apps/cindypawford/site/_platform
+          cp apps/cindypawford/infra/src/shell.js apps/cindypawford/site/_platform/shell.js
+
+          echo "--> Generating runtime configuration fallback..."
+          cat << 'CONF' > apps/cindypawford/site/_platform/config.js
+          window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
+          CONF
+
+          echo "--> Ensuring platform scripts are injected into index.html..."
+          if [ -f "apps/cindypawford/site/index.html" ]; then
+            if ! grep -q "/_platform/config.js" apps/cindypawford/site/index.html; then
+              sed -i 's|</body>|  <script src="/_platform/config.js"></script>\n</body>|' apps/cindypawford/site/index.html
+            fi
+            if ! grep -q "/_platform/shell.js" apps/cindypawford/site/index.html; then
+              sed -i 's|</body>|  <script src="/_platform/shell.js" defer></script>\n</body>|' apps/cindypawford/site/index.html
+            fi
+          fi
+
+      - name: Install SST Dependencies
+        working-directory: apps/cindypawford/infra
+        run: npm ci
+
+      - name: Validate TypeScript Types
+        working-directory: apps/cindypawford/infra
+        run: npm run typecheck
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Deploy SST Infrastructure
+        working-directory: apps/cindypawford/infra
+        run: |
+          echo "--> Deploying SST Ion infrastructure to AWS (${STAGE})..."
+          npx sst deploy --stage "${STAGE}"

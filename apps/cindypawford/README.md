@@ -161,6 +161,18 @@ To achieve fully autonomous hands-off deployments upon PR merges in `patternsats
    - Issues wildcard CloudFront invalidation (`aws cloudfront create-invalidation --paths "/*"`).
    - Validated via `./scripts/apps/cindypawford/verify-cindy-deploy.sh`.
 
+### Mode 3: Autonomous Cloud Infrastructure CI/CD (`project-titan/.github/workflows/deploy-sst.yml`)
+To deploy and update the cloud infrastructure plane (DynamoDB `Suggestions`, ApiGatewayV2 `CindyApi`, `ProductionSite`, `ArchiveSite`, and `InfoSite`) in AWS:
+1. **Triggering Events**:
+   - Autonomous push trigger on `main` when `apps/cindypawford/**` or `.github/workflows/deploy-sst.yml` changes.
+   - Manual dispatch via `workflow_dispatch` (supporting `--stage production` / `staging`).
+   - Cross-repository dispatch via `repository_dispatch: [cindypawford-online-deploy]`.
+2. **Automatic Canvas Synchronization**:
+   - Clones/checks out latest `patternsatscale/CindyPawford-Online` into `apps/cindypawford/site`.
+   - Automatically stages the master platform shell (`infra/src/shell.js`) and runtime configuration (`_platform/config.js`).
+   - Validates TypeScript types (`npm run typecheck`).
+   - Executes `npx sst deploy --stage production` to provision and synchronize all AWS CloudFront distributions, Route 53 DNS records, and ApiGatewayV2 routes.
+
 ---
 
 ## 5. Eras & Reset Engine
