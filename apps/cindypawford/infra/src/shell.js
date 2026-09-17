@@ -6,7 +6,11 @@
 (function () {
   if (customElements.get("cindy-platform-dock")) return;
 
-  const API_BASE = window.CINDY_API_URL || "";
+  const API_BASE = (
+    (typeof window !== "undefined" && window.CINDY_API_URL) ||
+    (typeof document !== "undefined" && document.querySelector('meta[name="cindy-api-url"]')?.getAttribute("content")) ||
+    "https://api.cindypawford.com"
+  ).replace(/\/+$/, "");
 
   class CindyPlatformDock extends HTMLElement {
     #shadow;
@@ -629,13 +633,33 @@
       const container = this.#shadow.getElementById("suggestions-container");
       try {
         const res = await fetch(`${API_BASE}/api/top-suggestions`);
-        if (!res.ok) throw new Error("API response not ok");
+        const contentType = res.headers ? res.headers.get("content-type") : "";
+        const isJson = contentType && contentType.includes("application/json");
+
+        if (!res.ok) {
+          let errorDetail = `HTTP ${res.status}`;
+          if (isJson) {
+            const errData = await res.json().catch(() => null);
+            if (errData && errData.error) errorDetail = errData.error;
+          }
+          throw new Error(`Failed to load suggestions: ${errorDetail}`);
+        }
+
+        if (!isJson) {
+          throw new Error("Unexpected non-JSON response received from suggestions API");
+        }
+
         const data = await res.json();
         this.#suggestions = data.suggestions || [];
         this.#eraInfo = { era_id: data.era_id, is_active: data.is_active };
         this.#renderSuggestions();
       } catch (err) {
-        container.innerHTML = `<div class="empty-state">Unable to load suggestions right now.</div>`;
+        console.error("Suggestions retrieval failed:", err);
+        const errorMsg =
+          err instanceof TypeError
+            ? "Network connection error loading suggestions."
+            : "Unable to load suggestions right now.";
+        container.innerHTML = `<div class="empty-state">${this.#escapeHtml(errorMsg)}</div>`;
       }
     }
 
@@ -671,13 +695,25 @@
         const res = await fetch(`${API_BASE}/api/vote/${id}?era=${encodeURIComponent(eraId || this.#eraInfo.era_id)}`, {
           method: "POST",
         });
+        const contentType = res.headers ? res.headers.get("content-type") : "";
+        const isJson = contentType && contentType.includes("application/json");
+
         if (res.ok) {
-          const data = await res.json();
-          const target = this.#suggestions.find((s) => s.id === id);
-          if (target) {
-            target.votes = data.votes;
-            this.#renderSuggestions();
+          if (isJson) {
+            const data = await res.json();
+            const target = this.#suggestions.find((s) => s.id === id);
+            if (target && typeof data.votes === "number") {
+              target.votes = data.votes;
+              this.#renderSuggestions();
+            }
           }
+        } else {
+          let errorDetail = `HTTP ${res.status}`;
+          if (isJson) {
+            const errData = await res.json().catch(() => null);
+            if (errData && errData.error) errorDetail = errData.error;
+          }
+          console.error("Vote failed:", errorDetail);
         }
       } catch (err) {
         console.error("Vote failed:", err);
@@ -701,8 +737,13 @@
           body: JSON.stringify({ text, era_id: this.#eraInfo.era_id }),
         });
 
-        const data = await res.json();
+        const contentType = res.headers ? res.headers.get("content-type") : "";
+        const isJson = contentType && contentType.includes("application/json");
+
         if (res.ok) {
+          if (isJson) {
+            await res.json().catch(() => ({}));
+          }
           msg.className = "form-message success";
           msg.textContent = "Submitted for Cindy's atelier consideration!";
           input.value = "";
@@ -712,12 +753,25 @@
             msg.textContent = "";
           }, 3000);
         } else {
+          let errorMessage = `Submission failed (HTTP ${res.status}).`;
+          if (isJson) {
+            const errData = await res.json().catch(() => null);
+            if (errData && errData.error) errorMessage = errData.error;
+          } else {
+            console.warn(`Non-JSON error response from API Gateway (HTTP ${res.status}):`, await res.text().catch(() => ""));
+          }
           msg.className = "form-message error";
-          msg.textContent = data.error || "Submission failed.";
+          msg.textContent = errorMessage;
+          console.error("Suggestion submission failed with HTTP status:", res.status, errorMessage);
         }
       } catch (err) {
+        console.error("Suggestion submission failed:", err);
         msg.className = "form-message error";
-        msg.textContent = "Network error submitting suggestion.";
+        if (err instanceof TypeError) {
+          msg.textContent = "Network connection error submitting suggestion.";
+        } else {
+          msg.textContent = err.message || "Network error submitting suggestion.";
+        }
       }
     }
 
