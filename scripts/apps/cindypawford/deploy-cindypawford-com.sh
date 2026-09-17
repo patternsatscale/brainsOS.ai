@@ -47,19 +47,24 @@ echo "Stage: ${STAGE}"
 echo "Dry Run: ${DRY_RUN}"
 echo "Root Dir: ${ROOT_DIR}"
 
-# 1. Ensure Platform Shell is staged and injected
-echo "--> Ensuring Platform Shell is injected..."
+# 1. Ensure Platform Shell and Runtime Config are staged and injected
+echo "--> Ensuring Platform Shell and runtime configuration are staged..."
 mkdir -p "${SITE_DIR}/_platform"
 if [ -f "${PLATFORM_SHELL_SRC}" ]; then
   cp "${PLATFORM_SHELL_SRC}" "${SITE_DIR}/_platform/shell.js"
 fi
 
+# Stage runtime config fallback for non-CloudFront / local environments
+cat << 'EOF' > "${SITE_DIR}/_platform/config.js"
+window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
+EOF
+
 # Auto-inject script tag if not present
 if [ -f "${SITE_DIR}/index.html" ]; then
   if ! grep -q "/_platform/shell.js" "${SITE_DIR}/index.html"; then
     echo "--> Injecting platform shell script into ${SITE_DIR}/index.html..."
-    sed -i '' 's|</body>|  <script src="/_platform/shell.js" defer></script>\
-</body>|' "${SITE_DIR}/index.html"
+    sed -i.bak 's|</body>|  <script src="/_platform/shell.js" defer></script>\
+</body>|' "${SITE_DIR}/index.html" && rm -f "${SITE_DIR}/index.html.bak"
   fi
 fi
 

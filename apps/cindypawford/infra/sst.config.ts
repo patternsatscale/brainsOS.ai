@@ -25,7 +25,9 @@ export default $config({
     });
 
     // 2. Serverless API Gateway for suggestions, voting & Cindy's daily query
-    const api = new sst.aws.ApiGatewayV2("CindyApi");
+    const api = new sst.aws.ApiGatewayV2("CindyApi", {
+      domain: "api.cindypawford.com",
+    });
 
     api.route("GET /api/top-suggestions", {
       handler: "src/api.topSuggestions",

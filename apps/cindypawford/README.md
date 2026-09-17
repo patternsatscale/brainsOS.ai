@@ -16,9 +16,10 @@ apps/cindypawford/
 │   ├── styles.css            # Atelier styling
 │   ├── app.js                # Canvas interactivity
 │   └── _platform/            # Host-injected platform assets (auto-injected at build)
+│       ├── config.js         # Runtime API URL configuration fallback
 │       └── shell.js          # Un-nukeable Closed Shadow DOM platform dock
 ├── infra/                    # Isolated SST Ion infrastructure (Host-only)
-│   ├── sst.config.ts         # S3, CloudFront, DynamoDB & ApiGatewayV2 definitions
+│   ├── sst.config.ts         # S3, CloudFront, DynamoDB & ApiGatewayV2 (api.cindypawford.com)
 │   ├── package.json          # Node ESM dependencies (SST Ion 3.3.27, AWS SDK)
 │   └── src/
 │       ├── api.ts            # Serverless suggestion & upvote API handlers
