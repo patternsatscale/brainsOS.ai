@@ -44,9 +44,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: apps/cindypawford/infra/package-lock.json
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
       - name: Stage Platform Shell & Runtime Config
         run: |
@@ -69,20 +76,15 @@ jobs:
             fi
           fi
 
-      - name: Install SST Dependencies
+      - name: Install SST Dependencies & Providers
         working-directory: apps/cindypawford/infra
-        run: npm ci
+        run: |
+          npm ci
+          npx sst install
 
       - name: Validate TypeScript Types
         working-directory: apps/cindypawford/infra
         run: npm run typecheck
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
       - name: Deploy SST Infrastructure
         working-directory: apps/cindypawford/infra

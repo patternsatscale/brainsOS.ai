@@ -94,6 +94,10 @@ fi
 
 # 3. Validate TypeScript & SST configuration
 echo "--> Validating SST configuration and TypeScript types..."
+if [ ! -d "${INFRA_DIR}/.sst/platform" ]; then
+  echo "--> Installing SST providers..."
+  (cd "${INFRA_DIR}" && npx sst install)
+fi
 (cd "${INFRA_DIR}" && npm run typecheck)
 
 # 4. Deploy SST Infrastructure (or Dry-Run Diff)
