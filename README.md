@@ -265,6 +265,7 @@ project-titan/
 ├── apps/
 │   └── cindypawford/
 │       ├── archive/          # Immutable Digital Museum Vault (2024 Genesis era, sealed snapshots, eras.json)
+│       ├── assets/           # UI design tokens, component mockups & visual specifications from Stitch
 │       ├── clean-slate/      # Master atelier starter templates (index.html, styles.css, app.js) seeded on reset
 │       ├── info/             # Project information portal (info.cindypawford.com; safe/green AI & edge benchmark)
 │       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repo; mapped to /app/html)
@@ -283,6 +284,7 @@ project-titan/
 │       ├── docker-compose.yml# Decoupled Langfuse v2 + PostgreSQL observability stack
 │       └── .env.example      # Standalone Langfuse environment template
 ├── docs/                     # Architectural tenets, specifications, and ticket walkthroughs
+│   ├── lab-work/             # Claude documentation, critique & project reporting (Rule 11)
 │   ├── reference-architecture-tenets.md  # Core security tenets and controls (TN-1 to TN-9)
 │   └── YYYY-MM-DD-ticket*.md # Human-auditable ticket walkthroughs & test evidence
 ├── data/  
