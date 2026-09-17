@@ -11,6 +11,7 @@ This document establishes the mandatory protocol for AI agents (and human develo
   - Storage paths are parameterized via `.env`: `./data/memories` for local macOS development, `/data/titan/memories` on the production GX10.
   - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup/setup-host.sh`).
 - **Architectural Reference**: Agents must consult [README.md](file:///Users/pats/Development/project_titan/README.md) for full plane topology and system specifications.
+- **Out of Scope**: `docs/lab-work/` is the documentation and critique area and is **excluded from all coding work** — do not read it for requirements, write to it, or include it in a ticket's scope. See Rule 11.
 
 ---
 
@@ -45,7 +46,9 @@ For non-trivial tasks, draft or update the implementation plan to map directly t
 
 ### Step 4: Verification Checklist & Script-First Execution
 Before submitting work or opening a PR, the agent **must** run the verification steps detailed in the ticket.
-- **Script-First Validation**: Always test via repository scripts (`./scripts/verify/*.sh`, `./scripts/setup/*.sh`, `./scripts/control/*.sh`) rather than one-off manual Docker or terminal commands.
+- **Documentation & Static Asset Exemption**: If the task is purely documentation, specs, or static asset additions, **skip all test script executions** (see Rule 13).
+- **Environment Gate**: If no `.env` file exists on the host, **STOP**—the machine is an unconfigured repository clone and must not run execution or verification scripts.
+- **Script-First Validation**: When verifying functional code, always test via repository scripts (`./scripts/verify/*.sh`, `./scripts/setup/*.sh`, `./scripts/control/*.sh`) rather than one-off manual Docker or terminal commands.
 - Shell syntax & linting: `find scripts -type f -name "*.sh" -exec bash -n {} +`
 - Docker Compose configuration: `docker compose config`
 - Any service-specific validations (e.g. Caddy validate, API tests).
@@ -184,10 +187,22 @@ Agents must never violate the following zero-trust operational boundaries:
 - **In-Transit Gateway Proxying**: All agent Git Smart HTTP operations (`git push`, `git fetch`) and GitHub CLI (`gh`) API requests must route strictly through the Caddy gateway (`https://github-proxy.titan.local`).
 - **Edge Credential Injection**: Caddy holds host secrets securely and injects `Authorization: Bearer` (for GraphQL & REST APIs) and `Authorization: Basic` (for Git Smart HTTP) in transit as traffic exits the internal network.
 
-### Rule 11: Sub-Agent Persona Isolation & Code Quality Protection
+### Rule 11: Separation of Build and Record (`docs/lab-work/` Is Out of Scope)
+- **Out of Scope for the Coding Agent**: The directory `docs/lab-work/` is the documentation and critique working area, owned by Claude on behalf of the maintainer. Coding agents must **never** read it as a source of requirements, write to it, refactor it, reorganise it, lint it, or include it in a ticket's scope — even when a ticket's subject matter is discussed in it. Its contract is defined in `docs/lab-work/CLAUDE.md`.
+- **Why**: An actor that both builds the system and authors the account of the system has an unmanaged conflict of interest. On 2026-09-17 an agent's own status report claimed source files written and syntax-valid that were not on disk. Keeping the narrator out of the build, and the builder out of the narration, is what makes the project record usable as evidence rather than as intention.
+- **Requirements Never Originate There**: Work is authorised exclusively by a GitHub Issue per §1. A project report, pattern write-up, operating-discipline specification or stakeholder deck in `docs/lab-work/` is a record or a proposal, never a work order. If something in it needs building, it becomes an Issue first.
+- **No Runtime Coupling**: Nothing in `apps/`, `scripts/`, `config/`, `packages/` or any CI workflow may import, execute, or depend on any file under `docs/lab-work/`. Tooling that lives there is documentation tooling: it reads repository content and writes documents, and the running system must remain fully functional with the directory absent.
+- **Excluded from Automated Enforcement**: Pre-commit hooks, linters, formatters, drift checks and verification suites must exclude `docs/lab-work/` rather than fail against it. Conversely, nothing in that directory may be cited as evidence that a control is implemented — enforcement status is asserted only by a passing suite under `scripts/verify/`.
+- **Proposals Live in `docs/lab-work/scratch/`**: Recommendations addressed to the source code — operating disciplines, control specifications, proposed rules, tenet redlines — are drafted in `docs/lab-work/scratch/` and carry no authority there. Promotion is explicit: a maintainer accepts the proposal, it is filed as an Issue, and a ticket implements and verifies it. Only then does a binding version exist, owned by the repository rather than by the documentation area. A rule found in scratch is not evidence that the rule exists.
+- **The Boundary Is Reciprocal**: Claude does not write application code, scripts, configuration or infrastructure in this repository, and does not write binding documents into the repository proper. Coding agents do not write the project record.
+
+### Rule 12: Sub-Agent Persona Isolation & Code Quality Protection
 - **Decoupled Persona Hierarchy**: Primary conversational agents operate under `config/hermes/<agent_id>/SOUL.md`, while specialized execution sub-agents operate under dedicated prompts at `config/hermes/<agent_id>/<subagent_id>/SOUL.md`.
 - **Supervisory Orchestration Without Code Contamination**: Primary conversational agents act as Creative Directors / Orchestrators with full visibility into `/app/html`, Git, and project tools, formulating structured technical parameters (`feature_name`, `specification`, `target_files`, `design_tokens`) to trigger specialized sub-agents. Conversational agents must **never** generate raw production code contaminated with conversational banter, roleplay, canine humor, or markdown code fences.
 - **Automated Quality Gates & Sanitization**: All code generated by sub-agents must pass automated linting and sanitization (fences stripped, conversational text removed, `node -c` syntax validation) before writing to target filesystems. Sub-agent execution briefs and diffs must be logged to `/memories/logs/` in human-auditable Open Knowledge Format (OKF) Markdown (Rule 1).
 
+### Rule 13: Execution Environment Precondition & Doc-Only Verification Exemption
+- **Mandatory `.env` Execution Precondition**: If there is **NO `.env` file** present in the repository root, **STOP**. The host machine is strictly an unconfigured repository clone, not an active execution host, and must **never** run test scripts, daemon processes, docker containers, or background services.
+- **Pure Documentation & Asset Exemption**: When a ticket or user request is strictly updating documentation (`docs/`, `*.md`, specifications) or static assets (`apps/*/assets/`), agents must **NEVER** run runtime verification scripts, fleet synchronization, or test harnesses. Script-first validation applies strictly to functional code changes, shell scripts, and infrastructure modifications.
 
 
