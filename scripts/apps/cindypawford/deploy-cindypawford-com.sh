@@ -23,11 +23,11 @@ ROOT_DIR="${REPO_ROOT}"
 INFRA_DIR="${ROOT_DIR}/apps/cindypawford/infra"
 SITE_DIR="${ROOT_DIR}/apps/cindypawford/site"
 PLATFORM_SHELL_SRC="${INFRA_DIR}/src/shell.js"
-STAGE="${1:-production}"
+STAGE="production"
 DRY_RUN=false
 
-for arg in "$@"; do
-  case "$arg" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --dry-run)
       DRY_RUN=true
       shift
@@ -36,8 +36,12 @@ for arg in "$@"; do
       STAGE="$2"
       shift 2
       ;;
-    production|prod)
-      STAGE="production"
+    production|prod|staging|dev)
+      STAGE="$1"
+      shift
+      ;;
+    *)
+      shift
       ;;
   esac
 done
@@ -47,7 +51,22 @@ echo "Stage: ${STAGE}"
 echo "Dry Run: ${DRY_RUN}"
 echo "Root Dir: ${ROOT_DIR}"
 
-# 1. Ensure Platform Shell and Runtime Config are staged and injected
+# 1. Synchronize CindyPawford-Online Canvas
+echo "--> Synchronizing Cindy Pawford site canvas..."
+if [ ! -d "${SITE_DIR}/.git" ]; then
+  echo "--> Cloning patternsatscale/CindyPawford-Online into ${SITE_DIR}..."
+  mkdir -p "${SITE_DIR}"
+  git clone https://github.com/patternsatscale/CindyPawford-Online.git "${SITE_DIR}"
+else
+  if git -C "${SITE_DIR}" diff --quiet 2>/dev/null && git -C "${SITE_DIR}" diff --cached --quiet 2>/dev/null; then
+    echo "--> Pulling latest canvas from patternsatscale/CindyPawford-Online..."
+    git -C "${SITE_DIR}" pull origin main --rebase 2>/dev/null || true
+  else
+    echo "--> Canvas has local modifications; deploying active working tree state."
+  fi
+fi
+
+# 2. Ensure Platform Shell and Runtime Config are staged and injected
 echo "--> Ensuring Platform Shell and runtime configuration are staged..."
 mkdir -p "${SITE_DIR}/_platform"
 if [ -f "${PLATFORM_SHELL_SRC}" ]; then
@@ -59,8 +78,13 @@ cat << 'EOF' > "${SITE_DIR}/_platform/config.js"
 window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
 EOF
 
-# Auto-inject script tag if not present
+# Auto-inject script tags if not present
 if [ -f "${SITE_DIR}/index.html" ]; then
+  if ! grep -q "/_platform/config.js" "${SITE_DIR}/index.html"; then
+    echo "--> Injecting runtime config script into ${SITE_DIR}/index.html..."
+    sed -i.bak 's|</body>|  <script src="/_platform/config.js"></script>\
+</body>|' "${SITE_DIR}/index.html" && rm -f "${SITE_DIR}/index.html.bak"
+  fi
   if ! grep -q "/_platform/shell.js" "${SITE_DIR}/index.html"; then
     echo "--> Injecting platform shell script into ${SITE_DIR}/index.html..."
     sed -i.bak 's|</body>|  <script src="/_platform/shell.js" defer></script>\
@@ -68,22 +92,22 @@ if [ -f "${SITE_DIR}/index.html" ]; then
   fi
 fi
 
-# 2. Validate TypeScript & SST configuration
+# 3. Validate TypeScript & SST configuration
 echo "--> Validating SST configuration and TypeScript types..."
 (cd "${INFRA_DIR}" && npm run typecheck)
 
-# 3. Deploy SST Infrastructure (or Dry-Run Diff)
+# 4. Deploy SST Infrastructure (or Dry-Run Diff)
 if [ "${DRY_RUN}" = true ]; then
   echo "--> [DRY RUN] Validating SST configuration..."
-  (cd "${INFRA_DIR}" && sst diff --stage "${STAGE}" 2>&1 || echo "--> [DRY RUN] Stage not yet deployed in AWS; ready for initial deployment.")
+  (cd "${INFRA_DIR}" && npx sst diff --stage "${STAGE}" 2>&1 || echo "--> [DRY RUN] Stage not yet deployed in AWS; ready for initial deployment.")
   echo "=== [DRY RUN Complete: No changes deployed] ==="
   exit 0
 fi
 
 echo "--> Deploying SST Ion infrastructure to AWS (${STAGE})..."
-(cd "${INFRA_DIR}" && sst deploy --stage "${STAGE}")
+(cd "${INFRA_DIR}" && npx sst deploy --stage "${STAGE}")
 
-# 4. Enforce S3 Bucket Versioning on Production Bucket
+# 5. Enforce S3 Bucket Versioning on Production Bucket
 echo "--> Checking S3 buckets and enforcing versioning..."
 BUCKETS=$(aws s3api list-buckets --query "Buckets[?contains(Name, 'cindy-pawford') || contains(Name, 'cindypawford')].Name" --output text || true)
 
