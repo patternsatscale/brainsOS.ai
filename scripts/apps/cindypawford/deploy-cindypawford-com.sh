@@ -92,6 +92,12 @@ if [ -f "${SITE_DIR}/index.html" ]; then
   fi
 fi
 
+# Rebuild digital museum archive portal
+if [ -f "${ROOT_DIR}/scripts/apps/cindypawford/build-archive-portal.py" ]; then
+  echo "--> Compiling digital museum and declassified logbook archive portal..."
+  python3 "${ROOT_DIR}/scripts/apps/cindypawford/build-archive-portal.py"
+fi
+
 # 3. Validate TypeScript & SST configuration
 echo "--> Validating SST configuration and TypeScript types..."
 if [ ! -d "${INFRA_DIR}/.sst/platform" ]; then

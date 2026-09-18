@@ -47,7 +47,7 @@ assert_output_contains() {
   echo -n "  [TEST] ${desc}... "
   local out
   out=$("$@")
-  if echo "${out}" | grep -q "${expected}"; then
+  if echo "${out}" | grep "${expected}" >/dev/null; then
     echo "PASS"
     PASS=$((PASS + 1))
   else
@@ -63,12 +63,12 @@ assert_output_not_contains() {
   echo -n "  [TEST] ${desc}... "
   local out
   out=$("$@")
-  if ! echo "${out}" | grep -q "${unexpected}"; then
+  if echo "${out}" | grep "${unexpected}" >/dev/null; then
+    echo "FAIL (expected NOT to contain '${unexpected}')"
+    FAIL=$((FAIL + 1))
+  else
     echo "PASS"
     PASS=$((PASS + 1))
-  else
-    echo "FAIL (found unexpected '${unexpected}')"
-    FAIL=$((FAIL + 1))
   fi
 }
 

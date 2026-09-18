@@ -71,12 +71,13 @@ The walkthrough document must record:
 2. **Acceptance Criteria Verification**: Evidence that all checkboxes in the ticket are satisfied.
 3. **Automated & Manual Test Logs**: Exact terminal commands and outputs validating functionality.
 4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
+5. **Local Web Preview URLs**: For tickets touching web applications, canvases, portals, or frontend UI components (e.g. `apps/cindypawford/`), the agent must ensure a local preview server is running and explicitly provide clickable localhost and LAN URLs with instructions on specific rendering and interaction points to test (including mobile viewport emulation).
 
 > [!IMPORTANT]
 > **Internal Pre-Commit Review Gate**:
 > The agent must **NEVER** commit, push, or open a Pull Request without explicit human review and approval.
-> - After generating the walkthrough document and validating all changes, the agent **must STOP and present the walkthrough summary to the user**.
-> - The human developer conducts an internal review of the proposed changes, test logs, and diff.
+> - After generating the walkthrough document and validating all changes, the agent **must STOP and present the walkthrough summary to the user along with active preview URLs**.
+> - The human developer conducts an internal review of the proposed changes, test logs, live web rendering, and diff.
 > - Only upon receiving explicit approval ("Approved", "Proceed with commit/PR", etc.) may the agent proceed to Step 7.
 
 ### Step 7: Post-Approval Commit, Push & Pull Request
