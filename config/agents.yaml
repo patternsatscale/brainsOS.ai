@@ -10,26 +10,26 @@ agents:
   # ----------------------------------------------------------------------------
   # Agent Unit: Primary Operations Agent
   # ----------------------------------------------------------------------------
-  - id: "primary"
-    name: "Titan Primary Operations Agent"
+  - id: "terrastella"
+    name: "Terrastella - Primary Operations Agent"
     enabled: true
 
     # L1: Communications & UX Ingress
     comms:
-      subdomain: "primary.titan.local"
+      subdomain: "terrastella.titan.local"
       port: 8642
       dashboard_port: 9119
       signal:
         enabled: true
       telegram:
         enabled: false
-        bot_name: "@TitanPrimary_bot"
-        token_env: "TELEGRAM_BOT_TOKEN_PRIMARY"
-        allowed_users_env: "TELEGRAM_ALLOWED_USERS_PRIMARY"
+        bot_name: "@Terrastella_bot"
+        token_env: "TELEGRAM_BOT_TOKEN_TERRASTELLA"
+        allowed_users_env: "TELEGRAM_ALLOWED_USERS_TERRASTELLA"
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/primary/SOUL.md"
+    persona: "config/hermes/terrastella/SOUL.md"
     models:
       default: "titan-core"
       available:
@@ -38,9 +38,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/primary"
+      path: "./data/memories/terrastella"
     workspace:
-      path: "./data/workspace/primary"
+      path: "./data/workspace/terrastella"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
