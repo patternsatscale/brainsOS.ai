@@ -299,7 +299,9 @@
                 </div>
                 <div class="flex items-center gap-2 flex-wrap" id="archive-filter-deck">
                   <button class="filter-btn active font-label-sm text-label-sm px-3 py-1.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-md transition-all cursor-pointer" data-category="all">[ALL EVENTS]</button>
-                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="new-era">[★ NEW ERAS]</button>
+                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="new-era">[★ CANONICAL ERAS (WEEKLY/WIPES)]</button>
+                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-secondary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="pr">[📦 ALL PULL REQUESTS]</button>
+                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="release">[🚀 ROOM EXPANSIONS &amp; RELEASES]</button>
                   <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-secondary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="protocol">[⚡ PROTOCOL &amp; CIPS]</button>
                   <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-error hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="anomaly">[⚠ ANOMALIES &amp; INCIDENTS]</button>
                   <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-tertiary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="media">[♬ AUDIO &amp; MEDIA]</button>
@@ -313,7 +315,7 @@
 
                 
     <!-- TIMELINE ENTRY: SEP 18 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="new-era">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="release" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-primary-container/40 rounded text-center shadow-md">
@@ -330,6 +332,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-primary-container text-on-primary-container font-bold">[GALA ROOM EXPANSION]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">PR #13</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/13" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #13 • 820d709</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -371,7 +374,7 @@
     
 
     <!-- TIMELINE ENTRY: SEP 17 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-secondary/40 rounded text-center shadow-md">
@@ -388,6 +391,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-secondary text-on-secondary font-bold">[PLATFORM_INTEGRATION]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">CLOSED SHADOW DOM</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/12" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #12 • SHELL v2</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -437,7 +441,7 @@
     
 
     <!-- TIMELINE ENTRY: SEP 16 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="anomaly">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="anomaly" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-error/40 rounded text-center shadow-md">
@@ -454,6 +458,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-error/20 text-error font-bold border border-error/40">[ANOMALY_RESOLVED]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">INCIDENT #011</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/11" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #11 • PHYSICS HOTFIX</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -508,7 +513,7 @@
     
 
     <!-- TIMELINE ENTRY: SEP 16 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-primary-container/40 rounded text-center shadow-md">
@@ -525,6 +530,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-primary-container text-on-primary-container font-bold">[SYSTEM_TELEMETRY]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">CI/CD PROBE</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/10" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #10 • PIPELINE</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -566,7 +572,7 @@
     
 
     <!-- TIMELINE ENTRY: SEP 16 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="new-era">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="new-era" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-primary-container/40 rounded text-center shadow-md">
@@ -583,6 +589,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-primary-container text-on-primary-container font-bold">[NEW ERA FOUNDED]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">ERA 1: GALA</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-primary-container/20 text-primary border border-primary/40 uppercase tracking-wider font-bold">★ CANONICAL ERA</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/9" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #9 • ACTIVE ERA</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -632,7 +639,7 @@
     
 
     <!-- TIMELINE ENTRY: SEP 16 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-secondary/40 rounded text-center shadow-md">
@@ -649,6 +656,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-secondary text-on-secondary font-bold">[COMMUNITY_DISPATCH]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">CANINE MANIFESTO</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/8" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #8 • README</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -698,7 +706,7 @@
     
 
     <!-- TIMELINE ENTRY: SEP 16 2026 -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="new-era">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="new-era" data-is-pr="true">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border border-primary-container/40 rounded text-center shadow-md">
@@ -715,6 +723,7 @@
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT bg-primary-container text-on-primary-container font-bold">[NEW ERA FOUNDED]</span>
               <span class="font-label-sm text-label-sm text-tertiary font-mono">ERA 0: GENESIS</span>
+              <span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-primary-container/20 text-primary border border-primary/40 uppercase tracking-wider font-bold">★ CANONICAL ERA</span>
             </div>
             <a href="https://github.com/patternsatscale/CindyPawford-Online/pull/7" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>PR #7 • COMMIT: 80890dc</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>
           </div>
@@ -1122,7 +1131,16 @@
 
             const cat = btn.getAttribute('data-category');
             entries.forEach(entry => {
-              if (cat === 'all' || entry.getAttribute('data-cat') === cat) {
+              const entryCat = entry.getAttribute('data-cat');
+              const isPr = entry.getAttribute('data-is-pr') === 'true';
+
+              if (cat === 'all') {
+                entry.style.display = 'flex';
+              } else if (cat === 'pr') {
+                entry.style.display = isPr ? 'flex' : 'none';
+              } else if (cat === 'new-era') {
+                entry.style.display = entryCat === 'new-era' ? 'flex' : 'none';
+              } else if (entryCat === cat) {
                 entry.style.display = 'flex';
               } else {
                 entry.style.display = 'none';

@@ -74,20 +74,38 @@ def classify_pr(title, body=""):
     body_lower = body.lower()
     full_text = f"{title_lower} {body_lower}"
 
-    if "era" in title_lower or "genesis" in title_lower:
+    # 1. Canonical New Eras: ONLY weekly macro epochs or wipe-triggered founding events
+    if any(k in title_lower for k in ["new era founded", "era genesis", "epoch inception", "canvas wipe", "weekly era"]) or \
+       (title_lower.startswith("era:") and "gala" in title_lower) or \
+       (title_lower.startswith("era zero") and "white test" in title_lower):
         return "new-era", "[NEW ERA FOUNDED]", "primary"
-    elif "the ten" in title_lower or ("gala" in full_text and "room" in full_text):
-        return "new-era", "[GALA ROOM EXPANSION]", "primary"
+
+    # 2. Anomalies & Hotfixes
     elif any(word in full_text for word in ["fix", "bug", "glitch", "incident", "timing anomaly", "hotfix"]):
         return "anomaly", "[ANOMALY_RESOLVED]", "error"
-    elif any(word in full_text for word in ["audio", "synth", "sound", "music", "midi"]):
+
+    # 3. Audio & Media Stems
+    elif any(word in full_text for word in ["audio", "synth", "sound", "music", "midi", "soundboard"]):
         return "media", "[AUDIO_DEPLOYMENT]", "tertiary"
+
+    # 4. Canvas Releases & Room Expansions
+    elif "the ten" in title_lower or any(word in full_text for word in ["room", "expansion", "gallery", "arcade", "vault", "pac", "mystery", "favorites", "canvas release"]):
+        badge_text = "[GALA ROOM EXPANSION]" if ("the ten" in title_lower or "room" in full_text) else "[CANVAS RELEASE]"
+        return "release", badge_text, "primary"
+
+    # 5. Protocol, Shell, Governance, Telemetry
+    elif any(word in full_text for word in ["shell", "console", "terminal", "platform", "shadow dom"]):
+        return "protocol", "[PLATFORM_INTEGRATION]", "secondary"
     elif any(word in full_text for word in ["cip", "protocol", "governance", "rules", "soul", "workflow"]):
         return "protocol", "[GOVERNANCE_CIP]", "secondary"
-    elif any(word in full_text for word in ["shell", "console", "terminal", "platform"]):
-        return "protocol", "[PLATFORM_INTEGRATION]", "secondary"
+    elif any(word in full_text for word in ["probe", "telemetry", "ci/cd", "pipeline", "s3", "cloudfront"]):
+        return "protocol", "[SYSTEM_TELEMETRY]", "primary"
+    elif any(word in full_text for word in ["manifesto", "dispatch", "readme"]):
+        return "protocol", "[COMMUNITY_DISPATCH]", "secondary"
+
+    # 6. Default PR Release
     else:
-        return "protocol", "[PR RELEASE]", "primary"
+        return "release", "[PULL_REQUEST]", "primary"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Ingest merged GitHub PR into Cindy Pawford Declassified Logbook.")
@@ -97,7 +115,7 @@ def parse_args():
     parser.add_argument("--commit-sha", type=str, help="Merged commit SHA")
     parser.add_argument("--summary", type=str, default="", help="Summary or agent report description")
     parser.add_argument("--timestamp", type=str, default=None, help="PR merge ISO timestamp")
-    parser.add_argument("--category", type=str, choices=["new-era", "protocol", "anomaly", "media", "code", "dispatch", "telecom"], default=None, help="Entry category")
+    parser.add_argument("--category", type=str, choices=["new-era", "release", "protocol", "anomaly", "media", "code", "dispatch", "telecom"], default=None, help="Entry category")
     parser.add_argument("--badge", type=str, default=None, help="Badge text")
     parser.add_argument("--badge-type", type=str, choices=["primary", "secondary", "tertiary", "error"], default=None, help="Badge color type")
     parser.add_argument("--auto-scan", action="store_true", help="Auto-scan git history and PRs for unrecorded entries")
@@ -113,6 +131,12 @@ def extract_from_github_event():
     try:
         with open(event_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # STRICT ISOLATION GUARD: Reject any event not originating from patternsatscale/CindyPawford-Online
+        repo_name = (data.get("repository") or {}).get("full_name")
+        if repo_name != "patternsatscale/CindyPawford-Online":
+            print(f"[INFO] GITHUB_EVENT_PATH belongs to '{repo_name}' (expected 'patternsatscale/CindyPawford-Online'). Skipping automatic event extraction.")
+            return {}
 
         # 1. Direct pull_request event
         pr = data.get("pull_request", {})
@@ -301,28 +325,32 @@ def auto_scan_and_ingest(dry_run=False):
     # 2. Secondary fallback: inspect git log in apps/cindypawford/site (CindyPawford-Online clone)
     if not discovered_prs and os.path.exists(site_dir):
         try:
-            res = subprocess.run(
-                ["git", "-C", site_dir, "log", "-n", "20", "--format=%H%x09%s%x09%an%x09%aI"],
-                capture_output=True, text=True, check=True
-            )
-            for line in res.stdout.strip().splitlines():
-                parts = line.split("\t")
-                if len(parts) >= 4:
-                    sha, subject, author, dt_str = parts[0], parts[1], parts[2], parts[3]
-                    m = re.search(r'\(#(\d+)\)', subject) or re.search(r'Merge pull request #(\d+)', subject)
-                    if m:
-                        pr_num = int(m.group(1))
-                        if "verification" in subject.lower() or "cicd-verify" in subject.lower():
-                            continue
-                        if pr_num not in recorded_prs and not any(p["pr_number"] == pr_num for p in discovered_prs):
-                            discovered_prs.append({
-                                "pr_number": pr_num,
-                                "pr_title": subject,
-                                "pr_author": author,
-                                "commit_sha": sha,
-                                "timestamp": dt_str,
-                                "summary": subject
-                            })
+            rem = subprocess.run(["git", "-C", site_dir, "remote", "get-url", "origin"], capture_output=True, text=True)
+            if "CindyPawford-Online" not in rem.stdout:
+                print(f"[WARN] {site_dir} remote is '{rem.stdout.strip()}' (not CindyPawford-Online). Skipping git log fallback.")
+            else:
+                res = subprocess.run(
+                    ["git", "-C", site_dir, "log", "-n", "20", "--format=%H%x09%s%x09%an%x09%aI"],
+                    capture_output=True, text=True, check=True
+                )
+                for line in res.stdout.strip().splitlines():
+                    parts = line.split("\t")
+                    if len(parts) >= 4:
+                        sha, subject, author, dt_str = parts[0], parts[1], parts[2], parts[3]
+                        m = re.search(r'\(#(\d+)\)', subject) or re.search(r'Merge pull request #(\d+)', subject)
+                        if m:
+                            pr_num = int(m.group(1))
+                            if "verification" in subject.lower() or "cicd-verify" in subject.lower():
+                                continue
+                            if pr_num not in recorded_prs and not any(p["pr_number"] == pr_num for p in discovered_prs):
+                                discovered_prs.append({
+                                    "pr_number": pr_num,
+                                    "pr_title": subject,
+                                    "pr_author": author,
+                                    "commit_sha": sha,
+                                    "timestamp": dt_str,
+                                    "summary": subject
+                                })
         except Exception as e:
             print(f"[WARN] Error scanning git log in {site_dir}: {e}")
 
