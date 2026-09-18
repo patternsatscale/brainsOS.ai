@@ -20,7 +20,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 │     - Human-in-the-Loop PKM: SilverBullet UI (:3000 -> /space)              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Core Units (Manifest-Driven Fleet: config/agents.yaml)            │
-│     - titan-agent-primary       (:8642 API, :9119 Dashboard, $50 Budget)    │
+│     - titan-agent-terrastella   (:8642 API, :9119 Dashboard, $50 Budget)    │
 │     - titan-agent-football-dan  (:8643 API, :9120 Dashboard, $25 Budget)    │
 │     - titan-agent-cindy-pawford (:8644 API, :9121 Dashboard, $25 Budget)    │
 │     - Personas: config/hermes/<id>/SOUL.md & subagents/<sub_id>/SOUL.md     │

@@ -5,31 +5,31 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Agent Unit: Titan Primary Operations Agent (primary) - Dashboard & Console
+# Agent Unit: Terrastella - Primary Operations Agent (terrastella) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://primary.titan.local, https://primary.titan.local, http://primary.localhost, https://primary.localhost, http://hermes.{$TITAN_DOMAIN:titan.local}, https://hermes.{$TITAN_DOMAIN:titan.local}, http://hermes.localhost, https://hermes.localhost {
+http://terrastella.titan.local, https://terrastella.titan.local, http://terrastella.localhost, https://terrastella.localhost {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy titan-agent-primary:9119 {
+	reverse_proxy titan-agent-terrastella:9119 {
 		flush_interval -1
 	}
 }
 
 # ------------------------------------------------------------------------------
-# Agent Unit: Titan Primary Operations Agent (primary) - OpenAI-Compatible API
+# Agent Unit: Terrastella - Primary Operations Agent (terrastella) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.primary.titan.local, https://api.primary.titan.local, http://api.primary.localhost, https://api.primary.localhost, http://api.hermes.{$TITAN_DOMAIN:titan.local}, https://api.hermes.{$TITAN_DOMAIN:titan.local}, http://api.hermes.localhost, https://api.hermes.localhost {
+http://api.terrastella.titan.local, https://api.terrastella.titan.local, http://api.terrastella.localhost, https://api.terrastella.localhost {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy titan-agent-primary:8642 {
+	reverse_proxy titan-agent-terrastella:8642 {
 		flush_interval -1
 	}
 }
@@ -67,7 +67,7 @@ http://api.football-dan.titan.local, https://api.football-dan.titan.local, http:
 # ------------------------------------------------------------------------------
 # Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindy-pawford.localhost, https://cindy-pawford.localhost, http://cindy-pawford.{$TITAN_DOMAIN:titan.local}, https://cindy-pawford.{$TITAN_DOMAIN:titan.local} {
+http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindypawford.localhost, https://cindypawford.localhost, http://cindy-pawford.localhost, https://cindy-pawford.localhost {
 	tls internal
 	encode gzip zstd
 	log {
@@ -82,7 +82,7 @@ http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindy-
 # ------------------------------------------------------------------------------
 # Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.cindypawford.titan.local, https://api.cindypawford.titan.local, http://api.cindy-pawford.localhost, https://api.cindy-pawford.localhost, http://api.cindy-pawford.{$TITAN_DOMAIN:titan.local}, https://api.cindy-pawford.{$TITAN_DOMAIN:titan.local} {
+http://api.cindypawford.titan.local, https://api.cindypawford.titan.local, http://api.cindypawford.localhost, https://api.cindypawford.localhost, http://api.cindy-pawford.localhost, https://api.cindy-pawford.localhost {
 	tls internal
 	encode gzip zstd
 	log {

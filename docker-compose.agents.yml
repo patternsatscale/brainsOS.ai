@@ -6,14 +6,14 @@
 
 services:
   # --------------------------------------------------------------------------
-  # L2: Agent Core Unit: Titan Primary Operations Agent (primary)
+  # L2: Agent Core Unit: Terrastella - Primary Operations Agent (terrastella)
   # --------------------------------------------------------------------------
-  agent-primary:
+  agent-terrastella:
     build:
       context: .
       dockerfile: docker/hermes/Dockerfile
     image: titan-hermes:latest
-    container_name: titan-agent-primary
+    container_name: titan-agent-terrastella
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -27,12 +27,12 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/primary:/memories
+      - ./data/memories/terrastella:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
-      - ./data/workspace/primary:/opt/data
-      - ./data/workspace/primary:/workspace
+      - ./data/workspace/terrastella:/opt/data
+      - ./data/workspace/terrastella:/workspace
     working_dir: /opt/data
     environment:
       - PUID=${PUID:-1000}
@@ -42,9 +42,9 @@ services:
       - HERMES_DASHBOARD_PORT=9119
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY:-sk-titan-primary-key}
-      - CUSTOM_API_KEY=${HERMES_LITELLM_KEY:-sk-titan-primary-key}
-      - OPENAI_API_KEY=${HERMES_LITELLM_KEY:-sk-titan-primary-key}
+      - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY:-sk-titan-terrastella-key}
+      - CUSTOM_API_KEY=${HERMES_LITELLM_KEY:-sk-titan-terrastella-key}
+      - OPENAI_API_KEY=${HERMES_LITELLM_KEY:-sk-titan-terrastella-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
@@ -59,9 +59,9 @@ services:
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
-      - TELEGRAM_BOT_NAME=@TitanPrimary_bot
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_PRIMARY:-${TELEGRAM_BOT_TOKEN:-}}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_PRIMARY:-${TELEGRAM_ALLOWED_USERS:-}}
+      - TELEGRAM_BOT_NAME=@Terrastella_bot
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_TERRASTELLA:-${TELEGRAM_BOT_TOKEN:-}}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_TERRASTELLA:-${TELEGRAM_ALLOWED_USERS:-}}
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
     command: ["sleep", "infinity"]
     depends_on:

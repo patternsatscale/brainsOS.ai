@@ -269,21 +269,23 @@ for idx, agent in enumerate(enabled_agents):
     dash_port = agent.get("comms", {}).get("dashboard_port", 9119)
     subdomain = agent.get("comms", {}).get("subdomain", f"{agent_id}.titan.local")
 
-    # For primary agent (or terrastella / first agent), support legacy aliases hermes.titan.local / hermes.localhost
-    aliases = ""
-    api_aliases = ""
-    if agent_id in ("primary", "terrastella") or idx == 0:
-        aliases = f", http://hermes.{{$TITAN_DOMAIN:titan.local}}, https://hermes.{{$TITAN_DOMAIN:titan.local}}, http://hermes.localhost, https://hermes.localhost"
-        api_aliases = f", http://api.hermes.{{$TITAN_DOMAIN:titan.local}}, https://api.hermes.{{$TITAN_DOMAIN:titan.local}}, http://api.hermes.localhost, https://api.hermes.localhost"
-    elif agent_id == "cindy-pawford":
-        aliases = f", http://cindy-pawford.{{$TITAN_DOMAIN:titan.local}}, https://cindy-pawford.{{$TITAN_DOMAIN:titan.local}}"
-        api_aliases = f", http://api.cindy-pawford.{{$TITAN_DOMAIN:titan.local}}, https://api.cindy-pawford.{{$TITAN_DOMAIN:titan.local}}"
+    # Clean host routing - zero legacy debt
+    sub_prefix = subdomain.split(".")[0]
+    host_list = [f"http://{subdomain}", f"https://{subdomain}", f"http://{sub_prefix}.localhost", f"https://{sub_prefix}.localhost"]
+    api_host_list = [f"http://api.{subdomain}", f"https://api.{subdomain}", f"http://api.{sub_prefix}.localhost", f"https://api.{sub_prefix}.localhost"]
+
+    if agent_id != sub_prefix:
+        host_list.extend([f"http://{agent_id}.localhost", f"https://{agent_id}.localhost"])
+        api_host_list.extend([f"http://api.{agent_id}.localhost", f"https://api.{agent_id}.localhost"])
+
+    hosts_str = ", ".join(host_list)
+    api_hosts_str = ", ".join(api_host_list)
 
     caddy_lines.extend([
         f"# ------------------------------------------------------------------------------",
         f"# Agent Unit: {name} ({agent_id}) - Dashboard & Console",
         f"# ------------------------------------------------------------------------------",
-        f"http://{subdomain}, https://{subdomain}, http://{agent_id}.localhost, https://{agent_id}.localhost{aliases} {{",
+        f"{hosts_str} {{",
         f"	tls internal",
         f"	encode gzip zstd",
         f"	log {{",
@@ -298,7 +300,7 @@ for idx, agent in enumerate(enabled_agents):
         f"# ------------------------------------------------------------------------------",
         f"# Agent Unit: {name} ({agent_id}) - OpenAI-Compatible API",
         f"# ------------------------------------------------------------------------------",
-        f"http://api.{subdomain}, https://api.{subdomain}, http://api.{agent_id}.localhost, https://api.{agent_id}.localhost{api_aliases} {{",
+        f"{api_hosts_str} {{",
         f"	tls internal",
         f"	encode gzip zstd",
         f"	log {{",

@@ -8,15 +8,15 @@ This workspace mounts the host filesystem (`/memories`) using the **Open Knowled
 
 ## 🧭 Multi-Agent Fleet Navigation
 
-### 1. [[agents/primary/SOUL|Titan Primary Operations Agent]]
+### 1. [[agents/terrastella/SOUL|Terrastella - Primary Operations Agent]]
 
-- **Soul & Persona**: [[agents/primary/SOUL|SOUL.md]]
+- **Soul & Persona**: [[agents/terrastella/SOUL|SOUL.md]]
 
-- **Knowledge Base**: [[agents/primary/knowledge/|knowledge/]]
+- **Knowledge Base**: [[agents/terrastella/knowledge/|knowledge/]]
 
-- **Operator Rules**: [[agents/primary/rules/|rules/]]
+- **Operator Rules**: [[agents/terrastella/rules/|rules/]]
 
-- **Session Logs**: [[agents/primary/logs/|logs/]]
+- **Session Logs**: [[agents/terrastella/logs/|logs/]]
 
 ### 2. [[agents/football-dan/SOUL|Football Dan - Sports Analytics]]
 
