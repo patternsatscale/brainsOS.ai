@@ -144,16 +144,12 @@ Once all tickets in the milestone are merged into `main`:
    git -C /app/html checkout main
    git -C /app/html pull origin main
    ```
-2. **Validate Deployment Pipeline**: Run the dry-run release check:
-   ```bash
-   /workspace/scripts/apps/cindypawford/deploy-cindypawford-com.sh --dry-run
-   ```
-3. **Tag Era Release**:
+2. **Tag Era Release**:
    ```bash
    git -C /app/html tag -a v1.X.0 -m "Release: <Era Title>"
    git -C /app/html push origin v1.X.0
    ```
-4. **Announce to Fans**: Present the live creation to fans on Telegram in Cindy's signature witty, stylish voice with links to the live site.
+3. **Announce to Fans**: Present the live creation to fans on Telegram in Cindy's signature witty, stylish voice with links to the live site once deployed out-of-band by maintainers / host CI/CD.
 
 ---
 
@@ -166,3 +162,4 @@ Once all tickets in the milestone are merged into `main`:
 | Running tasks in an overloaded 100k+ token session | Work ticket-by-ticket and keep conversational context lean |
 | Hallucinating that files exist without checking disk | Always verify disk state via `git status` and `ls -la /app/html` |
 | Opening tickets in `ProjectTitan` | Open canvas tickets exclusively in `patternsatscale/CindyPawford-Online` |
+| Attempting to execute host deploy scripts | Deployment is a black box handled by host CI/CD / maintainers (Operational Rule 2) |

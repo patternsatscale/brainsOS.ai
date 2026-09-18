@@ -82,14 +82,16 @@ sequenceDiagram
 
 ### Phase 2: Build-Time Auto-Injection (Deploy Runner)
 Cindy does not write or maintain `_platform/shell.js`, nor does she need to remember to include it in her HTML:
-1. When deployment runs (via `./scripts/apps/cindypawford/deploy-cindypawford-com.sh` locally or GitHub Actions in CI), the deploy tool inspects `apps/cindypawford/site/index.html`.
-2. The script copies the latest `apps/cindypawford/infra/src/shell.js` to `apps/cindypawford/site/_platform/shell.js`.
-3. If `index.html` does not contain `/_platform/shell.js`, the script automatically injects:
+1. When deployment runs (via `./scripts/apps/cindypawford/deploy-cindypawford-com.sh` locally or GitHub Actions in CI), the deploy tool syncs the clean canvas from `apps/cindypawford/site` to an isolated build directory (`apps/cindypawford/infra/dist/site/`).
+2. The script copies the latest `apps/cindypawford/infra/src/shell.js` and runtime configuration to `dist/site/_platform/shell.js` and `dist/site/_platform/config.js`.
+3. If HTML files in `dist/site` do not contain platform script tags, the deploy script automatically injects:
    ```html
+     <script src="/_platform/config.js"></script>
      <script src="/_platform/shell.js" defer></script>
    </body>
    ```
-4. The complete bundle (including `_platform/shell.js`) is synced to the production S3 bucket, and CloudFront cache is invalidated.
+4. The complete bundle in `dist/site` is deployed via SST to the production S3 bucket, and CloudFront cache is invalidated.
+5. Cindy's working tree in `/app/html` (`apps/cindypawford/site`) remains 100% untouched and pure Git, preventing any dirty-state stalls.
 
 ### Phase 3: Client-Side Mounting & Closed Shadow DOM Isolation
 When a visitor opens `https://cindypawford.com`:

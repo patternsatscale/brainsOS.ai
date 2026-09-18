@@ -211,6 +211,14 @@ assert_output_contains \
   "DRY RUN" \
   "${ROOT_DIR}/scripts/apps/cindypawford/deploy-cindypawford-com.sh" --dry-run
 
+assert_success \
+  "Platform shell script is staged into build dist/site/_platform/shell.js" \
+  test -f "${INFRA_DIR}/dist/site/_platform/shell.js"
+
+assert_success \
+  "deploy-cindypawford-com.sh preserves canvas git purity (zero uncommitted changes)" \
+  test -z "$(git -C "${SITE_DIR}" status --porcelain 2>/dev/null)"
+
 echo
 echo "================================================================================"
 echo "Verification Summary: ${PASS} Passed, ${FAIL} Failed"

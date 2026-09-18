@@ -1,4 +1,5 @@
 /// <reference path="./.sst/platform/config.d.ts" />
+import fs from "node:fs";
 
 export default $config({
   app(input) {
@@ -45,8 +46,10 @@ export default $config({
     });
 
     // 3. Production StaticSite on AWS S3 + CloudFront (cindypawford.com + www redirect)
+    const distSite = "dist/site";
+    const sitePath = fs.existsSync(distSite) ? distSite : "../site";
     const productionSite = new sst.aws.StaticSite("ProductionSite", {
-      path: "../site",
+      path: sitePath,
       domain: {
         name: "cindypawford.com",
         redirects: ["www.cindypawford.com"],
