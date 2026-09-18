@@ -37,6 +37,38 @@ def load_logbook():
     with open(LOGBOOK_JSON, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def sanitize_summary(text):
+    if not text:
+        return ""
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        # Skip markdown section headers
+        if re.match(r'^#+\s*(The Era|What\'s in it|Methodology|Overview|Summary|Objective|Context)', line, re.IGNORECASE):
+            continue
+        line = re.sub(r'^#+\s*', '', line).strip()
+        if line:
+            lines.append(line)
+    cleaned = " ".join(lines)
+    # Strip markdown bold / italic markers and backticks
+    cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned)
+    cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)
+    cleaned = re.sub(r'`([^`]+)`', r'\1', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    if len(cleaned) > 430:
+        # Prefer breaking at a clean sentence period
+        period_idx = cleaned[:430].rfind(". ")
+        if period_idx > 220:
+            cleaned = cleaned[:period_idx + 1]
+        else:
+            truncated = cleaned[:427]
+            last_space = truncated.rfind(" ")
+            if last_space > 220:
+                cleaned = truncated[:last_space] + "..."
+            else:
+                cleaned = truncated + "..."
+    return cleaned
+
 def classify_pr(title, body=""):
     title_lower = title.lower()
     body_lower = body.lower()
@@ -44,6 +76,8 @@ def classify_pr(title, body=""):
 
     if "era" in title_lower or "genesis" in title_lower:
         return "new-era", "[NEW ERA FOUNDED]", "primary"
+    elif "the ten" in title_lower or ("gala" in full_text and "room" in full_text):
+        return "new-era", "[GALA ROOM EXPANSION]", "primary"
     elif any(word in full_text for word in ["fix", "bug", "glitch", "incident", "timing anomaly", "hotfix"]):
         return "anomaly", "[ANOMALY_RESOLVED]", "error"
     elif any(word in full_text for word in ["audio", "synth", "sound", "music", "midi"]):
@@ -62,6 +96,7 @@ def parse_args():
     parser.add_argument("--pr-author", type=str, help="GitHub PR author username")
     parser.add_argument("--commit-sha", type=str, help="Merged commit SHA")
     parser.add_argument("--summary", type=str, default="", help="Summary or agent report description")
+    parser.add_argument("--timestamp", type=str, default=None, help="PR merge ISO timestamp")
     parser.add_argument("--category", type=str, choices=["new-era", "protocol", "anomaly", "media", "code", "dispatch", "telecom"], default=None, help="Entry category")
     parser.add_argument("--badge", type=str, default=None, help="Badge text")
     parser.add_argument("--badge-type", type=str, choices=["primary", "secondary", "tertiary", "error"], default=None, help="Badge color type")
@@ -87,7 +122,8 @@ def extract_from_github_event():
                 "pr_title": pr.get("title"),
                 "pr_author": pr.get("user", {}).get("login"),
                 "commit_sha": pr.get("merge_commit_sha") or os.environ.get("GITHUB_SHA"),
-                "summary": pr.get("body", "")[:300] if pr.get("body") else ""
+                "timestamp": pr.get("merged_at"),
+                "summary": pr.get("body", "")[:400] if pr.get("body") else ""
             }
 
         # 2. Push event on main (squash merge commit)
@@ -106,7 +142,8 @@ def extract_from_github_event():
                 "pr_title": title,
                 "pr_author": head_commit.get("author", {}).get("username") or head_commit.get("author", {}).get("name"),
                 "commit_sha": head_commit.get("id") or os.environ.get("GITHUB_SHA"),
-                "summary": body[:300] if body else title
+                "timestamp": head_commit.get("timestamp"),
+                "summary": body[:400] if body else title
             }
 
         return {}
@@ -114,7 +151,7 @@ def extract_from_github_event():
         print(f"[WARN] Failed to read GITHUB_EVENT_PATH: {e}")
         return {}
 
-def ingest_pr(pr_num, pr_title, pr_author, commit_sha, summary, category=None, badge=None, badge_type=None, dry_run=False):
+def ingest_pr(pr_num, pr_title, pr_author, commit_sha, summary, category=None, badge=None, badge_type=None, timestamp=None, dry_run=False):
     logbook = load_logbook()
     entries = logbook.get("entries", [])
 
@@ -131,13 +168,25 @@ def ingest_pr(pr_num, pr_title, pr_author, commit_sha, summary, category=None, b
     btype = badge_type or auto_type
 
     entry_num = len(entries) + 1
-    now = datetime.datetime.now(datetime.timezone.utc)
-    date_display = now.strftime("%b %d %Y").upper()
-    time_display = now.strftime("%H:%M:%S UTC")
 
-    clean_summary = summary.strip() if summary else f"Merged pull request #{pr_num}: {pr_title} into main."
-    if len(clean_summary) > 400:
-        clean_summary = clean_summary[:397] + "..."
+    # Resolve timestamp
+    if timestamp:
+        try:
+            if isinstance(timestamp, str):
+                ts = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            elif isinstance(timestamp, datetime.datetime):
+                ts = timestamp
+            else:
+                ts = datetime.datetime.now(datetime.timezone.utc)
+        except Exception:
+            ts = datetime.datetime.now(datetime.timezone.utc)
+    else:
+        ts = datetime.datetime.now(datetime.timezone.utc)
+
+    date_display = ts.strftime("%b %d %Y").upper()
+    time_display = ts.strftime("%H:%M:%S UTC")
+
+    clean_summary = sanitize_summary(summary) if summary else f"Merged pull request #{pr_num}: {pr_title} into main."
 
     short_sha = commit_sha[:7] if commit_sha and len(commit_sha) >= 7 else "HEAD"
     subbadge = f"PR #{pr_num}"
@@ -146,7 +195,7 @@ def ingest_pr(pr_num, pr_title, pr_author, commit_sha, summary, category=None, b
     entry = {
         "id": f"ENTRY #{entry_num:03d}",
         "entry_num": entry_num,
-        "timestamp": now.isoformat(),
+        "timestamp": ts.isoformat(),
         "date_display": date_display,
         "time_display": time_display,
         "category": cat,
@@ -176,9 +225,9 @@ def ingest_pr(pr_num, pr_title, pr_author, commit_sha, summary, category=None, b
     else:
         entry["telemetry"] = {
             "sig": f"SIG: PR_{pr_num}_{short_sha.upper()}",
-            "system_tag": "GITHUB_ACTIONS // RELEASE",
+            "system_tag": "CANVAS // RELEASE" if cat == "new-era" else "GITHUB_ACTIONS // RELEASE",
             "hash": f"0x{short_sha}...001",
-            "status": "MERGED TO MAIN"
+            "status": "● LIVE ON GALA CANVAS" if cat == "new-era" else "MERGED TO MAIN"
         }
 
     if dry_run:
@@ -244,7 +293,7 @@ def auto_scan_and_ingest(dry_run=False):
                     "pr_author": (item.get("author") or {}).get("login") or "cindy-pawford",
                     "commit_sha": (item.get("mergeCommit") or {}).get("oid") or "HEAD",
                     "timestamp": item.get("mergedAt") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "summary": (item.get("body") or "")[:300]
+                    "summary": item.get("body") or ""
                 })
     except Exception as e:
         print(f"[INFO] gh CLI scan fallback to git log: {e}")
@@ -284,7 +333,7 @@ def auto_scan_and_ingest(dry_run=False):
     print(f"[INFO] Auto-scan discovered {len(discovered_prs)} unrecorded PRs from CindyPawford-Online: {[p['pr_number'] for p in discovered_prs]}")
     success = True
     for p in discovered_prs:
-        cat, badge, badge_type = classify_pr(p["pr_title"])
+        cat, badge, badge_type = classify_pr(p["pr_title"], p.get("summary", ""))
         ok = ingest_pr(
             pr_num=p["pr_number"],
             pr_title=p["pr_title"],
@@ -294,6 +343,7 @@ def auto_scan_and_ingest(dry_run=False):
             category=cat,
             badge=badge,
             badge_type=badge_type,
+            timestamp=p.get("timestamp"),
             dry_run=dry_run
         )
         if not ok:
@@ -344,6 +394,7 @@ def main():
     pr_author = args.pr_author or event_data.get("pr_author")
     commit_sha = args.commit_sha or event_data.get("commit_sha")
     summary = args.summary or event_data.get("summary")
+    timestamp = args.timestamp or event_data.get("timestamp")
 
     # If neither flags nor GH event provided a PR number, fallback to auto_scan
     if not pr_num:
@@ -359,6 +410,7 @@ def main():
         category=args.category,
         badge=args.badge,
         badge_type=args.badge_type,
+        timestamp=timestamp,
         dry_run=args.dry_run
     )
 
