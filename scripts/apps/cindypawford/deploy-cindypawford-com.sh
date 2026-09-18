@@ -78,22 +78,27 @@ cat << 'EOF' > "${SITE_DIR}/_platform/config.js"
 window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
 EOF
 
-# Auto-inject script tags if not present
-if [ -f "${SITE_DIR}/index.html" ]; then
-  if ! grep -q "/_platform/config.js" "${SITE_DIR}/index.html"; then
-    echo "--> Injecting runtime config script into ${SITE_DIR}/index.html..."
+# Auto-inject script tags into all HTML pages if not present
+for html_file in "${SITE_DIR}"/*.html; do
+  [ -f "${html_file}" ] || continue
+  if ! grep -q "/_platform/config.js" "${html_file}"; then
+    echo "--> Injecting runtime config script into ${html_file}..."
     sed -i.bak 's|</body>|  <script src="/_platform/config.js"></script>\
-</body>|' "${SITE_DIR}/index.html" && rm -f "${SITE_DIR}/index.html.bak"
+</body>|' "${html_file}" && rm -f "${html_file}.bak"
   fi
-  if ! grep -q "/_platform/shell.js" "${SITE_DIR}/index.html"; then
-    echo "--> Injecting platform shell script into ${SITE_DIR}/index.html..."
+  if ! grep -q "/_platform/shell.js" "${html_file}"; then
+    echo "--> Injecting platform shell script into ${html_file}..."
     sed -i.bak 's|</body>|  <script src="/_platform/shell.js" defer></script>\
-</body>|' "${SITE_DIR}/index.html" && rm -f "${SITE_DIR}/index.html.bak"
+</body>|' "${html_file}" && rm -f "${html_file}.bak"
   fi
-fi
+done
 
-# Rebuild digital museum archive portal
+# Ingest latest PRs and rebuild digital museum archive portal
 if [ -f "${ROOT_DIR}/scripts/apps/cindypawford/build-archive-portal.py" ]; then
+  if [ -f "${ROOT_DIR}/scripts/apps/cindypawford/ingest-pr-logbook.py" ]; then
+    echo "--> Ingesting latest CindyPawford-Online PRs into declassified logbook..."
+    python3 "${ROOT_DIR}/scripts/apps/cindypawford/ingest-pr-logbook.py" --auto-scan || echo "[WARN] PR auto-scan non-fatal fallback."
+  fi
   echo "--> Compiling digital museum and declassified logbook archive portal..."
   python3 "${ROOT_DIR}/scripts/apps/cindypawford/build-archive-portal.py"
 fi

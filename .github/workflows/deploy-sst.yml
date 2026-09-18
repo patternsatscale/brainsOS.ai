@@ -66,15 +66,16 @@ jobs:
           window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
           CONF
 
-          echo "--> Ensuring platform scripts are injected into index.html..."
-          if [ -f "apps/cindypawford/site/index.html" ]; then
-            if ! grep -q "/_platform/config.js" apps/cindypawford/site/index.html; then
-              sed -i 's|</body>|  <script src="/_platform/config.js"></script>\n</body>|' apps/cindypawford/site/index.html
+          echo "--> Ensuring platform scripts are injected into all HTML pages..."
+          for html_file in apps/cindypawford/site/*.html; do
+            [ -f "$html_file" ] || continue
+            if ! grep -q "/_platform/config.js" "$html_file"; then
+              sed -i 's|</body>|  <script src="/_platform/config.js"></script>\n</body>|' "$html_file"
             fi
-            if ! grep -q "/_platform/shell.js" apps/cindypawford/site/index.html; then
-              sed -i 's|</body>|  <script src="/_platform/shell.js" defer></script>\n</body>|' apps/cindypawford/site/index.html
+            if ! grep -q "/_platform/shell.js" "$html_file"; then
+              sed -i 's|</body>|  <script src="/_platform/shell.js" defer></script>\n</body>|' "$html_file"
             fi
-          fi
+          done
 
       - name: Ingest Merged PR into Digital Museum Logbook
         run: |
