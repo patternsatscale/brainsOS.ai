@@ -1,242 +1,291 @@
-<!DOCTYPE html><html class="dark" lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}@keyframes blink{0%,49%{opacity:1;}50%,100%{opacity:0;}}.animate-crt-blink{animation:blink 1s step-end infinite;}.crt-scanlines{background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 2px,rgba(0,0,0,0.28) 2px,rgba(0,0,0,0.28) 4px);pointer-events:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-tertiary-fixed":"#141f00","on-tertiary":"#263502","surface-container-low":"#201b16","secondary":"#ffb86c","surface-tint":"#00e55b","surface":"#17120e","on-error":"#690005","surface-bright":"#3e3833","tertiary-container":"#d0e69f","primary-container":"#00ff66","inverse-surface":"#ece0d9","secondary-fixed-dim":"#ffb86c","surface-variant":"#3a342f","outline":"#849581","tertiary-fixed":"#d5eba4","error":"#ffb4ab","tertiary-fixed-dim":"#bacf8a","surface-container":"#241f1a","surface-dim":"#17120e","on-error-container":"#ffdad6","on-surface":"#ece0d9","on-surface-variant":"#b9ccb5","inverse-primary":"#006e27","on-secondary":"#492900","tertiary":"#f4ffd4","on-secondary-fixed":"#2c1600","on-tertiary-fixed-variant":"#3c4c16","secondary-fixed":"#ffdcbc","on-primary":"#003911","error-container":"#93000a","on-secondary-container":"#583200","on-primary-container":"#007128","inverse-on-surface":"#352f2b","secondary-container":"#ed9000","background":"#17120e","primary-fixed":"#6bff83","surface-container-lowest":"#120d09","on-background":"#ece0d9","on-tertiary-container":"#56682e","on-primary-fixed":"#002107","surface-container-high":"#2f2924","primary":"#edffe8","surface-container-highest":"#3a342f","on-secondary-fixed-variant":"#683c00","outline-variant":"#3b4b3a","primary-fixed-dim":"#00e55b","on-primary-fixed-variant":"#00531b"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"gutter":"1rem","space-md":"1rem","margin":"1rem","space-lg":"1.5rem","margin-tablet":"2rem","space-xs":"0.25rem","margin-desktop":"3rem","gutter-desktop":"1.5rem","space-sm":"0.5rem","space-xl":"2.5rem"},"fontFamily":{"headline-xl":["Space Mono"],"body-md":["JetBrains Mono"],"label-sm":["Space Mono"],"body-lg":["JetBrains Mono"],"body-sm":["JetBrains Mono"],"headline-xl-mobile":["Space Mono"],"headline-lg":["Space Mono"],"headline-md":["Space Mono"],"label-lg":["Space Mono"],"headline-lg-mobile":["Space Mono"],"label-md":["Space Mono"]},"fontSize":{"headline-xl":["40px",{"lineHeight":"48px","letterSpacing":"-0.04em","fontWeight":"700"}],"body-md":["14px",{"lineHeight":"20px","letterSpacing":"0em","fontWeight":"400"}],"label-sm":["9px",{"lineHeight":"12px","letterSpacing":"0.12em","fontWeight":"700"}],"body-lg":["16px",{"lineHeight":"24px","letterSpacing":"0em","fontWeight":"400"}],"body-sm":["12px",{"lineHeight":"18px","letterSpacing":"0.01em","fontWeight":"400"}],"headline-xl-mobile":["28px",{"lineHeight":"36px","letterSpacing":"-0.03em","fontWeight":"700"}],"headline-lg":["30px",{"lineHeight":"38px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-md":["20px",{"lineHeight":"28px","letterSpacing":"-0.01em","fontWeight":"700"}],"label-lg":["13px",{"lineHeight":"16px","letterSpacing":"0.08em","fontWeight":"700"}],"headline-lg-mobile":["22px",{"lineHeight":"28px","letterSpacing":"-0.02em","fontWeight":"700"}],"label-md":["11px",{"lineHeight":"14px","letterSpacing":"0.1em","fontWeight":"700"}]}}}}</script></head><body class="bg-background font-body-md text-on-surface select-none relative min-h-screen"><div class="fixed inset-0 crt-scanlines z-50 pointer-events-none"></div><header class="fixed top-0 w-full z-40 bg-surface-container-lowest/95 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.7)]"><div class="h-20 w-full px-gutter-desktop flex items-center justify-between"><div class="flex items-center gap-space-md"><img alt="A retro vintage 1970s-1980s styled illustration of Cindy Pawford, a scruffy terrier dog wearing tinted sunglasses, sitting behind a retro CRT desktop computer terminal desk with papers and a keyboard. The dog is holding an olive-green vintage telephone handset to its ear, winking at the camera with a confident, cheeky smirk, waiting for tech support calls. Styled in the same aesthetic as the circular badge reference with warm sepia, mustard yellow, vintage avocado green and retro tones, screen-printed poster texture, grainy print dot halftone." class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqcPW-fY6SbheUSVYMlwWzzG57JBE9FBvcRu0E5JrYe-62TQDKSkc0mGEGYJIgT3pPj4mxUiZbEV37FDihI-xv5MKI5rG55yMpKuBxzf1PlRqqXMq-GuiWWxHGzRrSFJeq_7vDf950mYaznBRprxwxc5zhHUikyNUxIxRhDJ1tZI6Jp2nBo5nclzqfdHeFGCiJEcY-2dBFPI2B4YlrDB1DgDMKUr4xS-nFPmZ-Q2ETHv7_VE0mU6k"><div class="flex flex-col"><div class="flex items-center gap-space-xs"><span class="font-headline-md text-headline-md text-primary-fixed-dim font-bold tracking-tight">CINDY-OS</span><span class="font-label-sm text-label-sm text-secondary bg-surface-container-high px-space-xs py-0.5 rounded-DEFAULT">v2.4.9</span><span class="font-label-sm text-label-sm text-on-surface-variant">[PHOSPHOR KERNEL]</span><span class="inline-block w-2 h-4 bg-primary-fixed-dim animate-crt-blink ml-1"></span></div><span class="font-label-sm text-label-sm text-outline tracking-wider">CANINE ESPIONAGE TERMINAL // AUTONOMOUS AGENT ACTIVE</span></div></div><div class="hidden xl:flex items-center gap-space-sm"><div class="flex items-center gap-space-xs px-space-sm py-1 bg-surface-container rounded-full"><span class="inline-block w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse"></span><span class="font-label-sm text-label-sm text-primary">EDGE SILICON: 98.4% EFF</span></div><div class="flex items-center gap-space-xs px-space-sm py-1 bg-surface-container rounded-full"><span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary-fixed"></span><span class="font-label-sm text-label-sm text-secondary-fixed">TG: @CindyPawford_bot LINKED</span></div><div class="flex items-center gap-space-xs px-space-sm py-1 bg-surface-container rounded-full"><span class="inline-block w-1.5 h-1.5 rounded-full bg-tertiary-container"></span><span class="font-label-sm text-label-sm text-tertiary-container">SANDBOX: ZERO-TRUST LOCK</span></div></div><div class="flex items-center gap-space-md"><nav class="hidden md:flex items-center gap-space-xs p-1 bg-surface-container-high rounded-lg" data-active-classes="bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-[0_0_12px_rgba(0,255,102,0.45)]"><a class="font-label-md text-label-md px-space-sm py-1.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" data-path="cindy-console" href="#">❖ CINDY CONSOLE [MODAL]</a><a aria-current="page" class="px-space-sm py-1.5 transition-all bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-[0_0_12px_rgba(0,255,102,0.45)]" data-path="immutable-vault-archive" href="#">🏛️ IMMUTABLE VAULT ARCHIVE</a><a class="font-label-md text-label-md px-space-sm py-1.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" data-path="edge-silicon-brief" href="#">🌱 EDGE SILICON BRIEF</a></nav><div class="flex items-center gap-space-sm pl-space-xs"><img alt="Profile" class="w-8 h-8 rounded-full object-cover ring-2 ring-primary-fixed-dim/40" src="https://lh3.googleusercontent.com/aida/AEtjO1W9QP7g6s0D9FNNu_3554jFw0Qlksnv1XIqURColClfBUdsxQrIwO926KRpV5qjG2x2UVTQtpmQi_9thRVesZv5BWj0JcT3Qvk6sH-Mf91GDmCg1RJtLXC086d4Ve-vKlFd2cpWocXqFnDFA6eLvs-S1fQ4QzA-u8Ot4b1_g4_sYFd2jyJ21CoeFFMnRSfsQbMEwr02p9na1M4UAeUESTcUmFjc69Wi61aMNhUdkZ56s833GVWVlFxp_cD-pevaSYDzSAkgieJg"></div></div></div></header><aside class="fixed left-0 top-20 bottom-0 w-72 bg-surface-container-lowest/90 backdrop-blur-lg z-30 flex flex-col justify-between p-space-md shadow-[4px_0_24px_rgba(0,0,0,0.5)]"><div class="flex flex-col gap-space-lg"><div class="p-space-sm bg-surface-container rounded-lg"><div class="font-label-sm text-label-sm text-secondary uppercase tracking-wider mb-space-xs">OPERATIVE TELEMETRY</div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between"><span>CALLSIGN:</span><span class="text-primary font-bold">CINDY-07</span></div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between"><span>CORE FREQ:</span><span class="text-secondary">44.1 MHz</span></div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between"><span>STATION:</span><span class="text-on-surface">BERLIN-MAIN</span></div></div><div class="flex flex-col gap-space-xs"><div class="font-label-sm text-label-sm text-outline uppercase px-space-sm py-1">SYSTEM ROUTING</div><nav class="flex flex-col gap-space-xs" data-active-classes="bg-surface-container-high text-primary-fixed-dim font-bold rounded-lg shadow-[inset_0_0_8px_rgba(0,255,102,0.15)]"><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" data-path="cindy-console" href="#"><span class="text-secondary">❖</span><span>Terminal Prompt Deck</span></a><a aria-current="page" class="flex items-center gap-space-sm px-space-sm py-2 transition-all bg-surface-container-high text-primary-fixed-dim font-bold rounded-lg shadow-[inset_0_0_8px_rgba(0,255,102,0.15)]" data-path="immutable-vault-archive" href="#"><span class="text-secondary">▲</span><span>Immutable Vault Records</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" data-path="edge-silicon-brief" href="#"><span class="text-secondary">::</span><span>Hardware Telemetry Logs</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" data-path="agent-intercepts" href="#"><span class="text-secondary">➔</span><span>Telegram Intercept Stream</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" data-path="sandbox-diagnostics" href="#"><span class="text-secondary">[✕]</span><span>Zero-Trust Sandbox Pod</span></a></nav></div></div><div class="flex flex-col gap-space-sm p-space-sm bg-surface-container-low rounded-lg"><div class="flex items-center justify-between font-label-sm text-label-sm text-outline"><span>CHASSIS TEMPERATURE</span><span class="text-primary">41.8°C</span></div><div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden"><div class="bg-primary-container h-full w-[42%]"></div></div><div class="font-label-sm text-label-sm text-on-surface-variant/80 text-center tracking-widest pt-space-xs">CANINE TELECOMM v2.4</div></div></aside><div class="pl-72"><main class="relative pt-20 min-h-screen bg-background w-full px-gutter-desktop pb-space-xl"><div class="flex flex-col w-full">
-<!-- AMBIENT GLOW BACKDROPS (CONTAINED) -->
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&amp;family=Space+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}@keyframes blink{0%,49%{opacity:1;}50%,100%{opacity:0;}}.animate-crt-blink{animation:blink 1s step-end infinite;}.crt-scanlines{background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 2px,rgba(0,0,0,0.28) 2px,rgba(0,0,0,0.28) 4px);pointer-events:none;}</style><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"on-tertiary-fixed":"#141f00","on-tertiary":"#263502","surface-container-low":"#201b16","secondary":"#ffb000","surface-tint":"#00e55b","surface":"#17120e","on-error":"#690005","surface-bright":"#3e3833","tertiary-container":"#00e5ff","primary-container":"#00ff66","inverse-surface":"#ece0d9","secondary-fixed-dim":"#ffb86c","surface-variant":"#3a342f","outline":"#849581","tertiary-fixed":"#d5eba4","error":"#ffb4ab","tertiary-fixed-dim":"#bacf8a","surface-container":"#241f1a","surface-dim":"#17120e","on-error-container":"#ffdad6","on-surface":"#ece0d9","on-surface-variant":"#b9ccb5","inverse-primary":"#006e27","on-secondary":"#492900","tertiary":"#00e5ff","on-secondary-fixed":"#2c1600","on-tertiary-fixed-variant":"#3c4c16","secondary-fixed":"#ffdcbc","on-primary":"#003911","error-container":"#93000a","on-secondary-container":"#583200","on-primary-container":"#007128","inverse-on-surface":"#352f2b","secondary-container":"#ed9000","background":"#0d0a08","primary-fixed":"#6bff83","surface-container-lowest":"#120d09","on-background":"#ece0d9","on-tertiary-container":"#00363d","on-primary-fixed":"#002107","surface-container-high":"#2f2924","primary":"#00ff66","surface-container-highest":"#3a342f","on-secondary-fixed-variant":"#683c00","outline-variant":"#3b4b3a","primary-fixed-dim":"#00e55b","on-primary-fixed-variant":"#00531b"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"gutter":"1rem","space-md":"1rem","margin":"1rem","space-lg":"1.5rem","margin-tablet":"2rem","space-xs":"0.25rem","margin-desktop":"3rem","gutter-desktop":"1.5rem","space-sm":"0.5rem","space-xl":"2.5rem"},"fontFamily":{"headline-xl":["Space Mono","monospace"],"body-md":["Space Mono","monospace"],"label-sm":["Space Mono","monospace"],"body-lg":["Space Mono","monospace"],"body-sm":["Space Mono","monospace"],"headline-xl-mobile":["Space Mono","monospace"],"headline-lg":["Space Mono","monospace"],"headline-md":["Space Mono","monospace"],"label-lg":["Space Mono","monospace"],"headline-lg-mobile":["Space Mono","monospace"],"label-md":["Space Mono","monospace"]},"fontSize":{"headline-xl":["38px",{"lineHeight":"46px","letterSpacing":"-0.03em","fontWeight":"700"}],"body-md":["13px",{"lineHeight":"20px","letterSpacing":"0em","fontWeight":"400"}],"label-sm":["10px",{"lineHeight":"14px","letterSpacing":"0.1em","fontWeight":"700"}],"body-lg":["15px",{"lineHeight":"22px","letterSpacing":"0em","fontWeight":"400"}],"body-sm":["11px",{"lineHeight":"16px","letterSpacing":"0.02em","fontWeight":"400"}],"headline-xl-mobile":["26px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-lg":["28px",{"lineHeight":"36px","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-md":["18px",{"lineHeight":"24px","letterSpacing":"-0.01em","fontWeight":"700"}],"label-lg":["12px",{"lineHeight":"16px","letterSpacing":"0.08em","fontWeight":"700"}],"headline-lg-mobile":["20px",{"lineHeight":"26px","letterSpacing":"-0.01em","fontWeight":"700"}],"label-md":["11px",{"lineHeight":"15px","letterSpacing":"0.08em","fontWeight":"700"}]}}}}</script></head><body class="bg-[#0d0a08] font-body-md text-on-surface select-none relative min-h-screen"><div class="fixed inset-0 crt-scanlines z-50 pointer-events-none"></div>
+<!-- HEADER NAVIGATION -->
+<header class="fixed top-0 w-full z-40 bg-surface-container-lowest/95 backdrop-blur-md border-b border-outline-variant/40 shadow-[0_4px_20px_rgba(0,0,0,0.8)]"><div class="h-20 w-full px-gutter-desktop flex items-center justify-between"><div class="flex items-center gap-space-md"><img alt="Cindy Pawford Emblem" class="h-9 w-9 rounded-full ring-2 ring-primary-container object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDIa3GJJMLB4rPYqh2xR0q4cl5CdoMkrFclKcXJzMnB_jcGTOgMB1rr9J7AaWEJiq8Ap6OJacwbX3ySW4lf3L7YPjtxCTpIZxRilX0_dSxyiIQ1Ht6VZheJvF6avwaLbvF8l42NFWzEGwyvg8nLWrePlFsI18A71gyLcSIXNzW11T1Ihag5aYPVJ23MbxxyifSlol4K7-LMhEQhQHrEZhWT5PEKIS_hoK0jBqDP6UH_9HDmvcyx2OLKWqVeQP-Igaah"/><div class="flex flex-col"><div class="flex items-center gap-space-xs"><span class="font-headline-md text-headline-md text-primary-fixed-dim font-bold tracking-tight">CINDY-OS</span><span class="font-label-sm text-label-sm text-secondary bg-surface-container-high px-space-xs py-0.5 rounded-DEFAULT">v2.4.9</span><span class="font-label-sm text-label-sm text-tertiary-container">[PHOSPHOR KERNEL]</span><span class="inline-block w-2 h-4 bg-primary-fixed-dim animate-crt-blink ml-1"></span></div><span class="font-label-sm text-label-sm text-outline tracking-wider">CANINE ESPIONAGE TERMINAL // AUTONOMOUS AGENT ACTIVE</span></div></div><div class="hidden xl:flex items-center gap-space-sm"><div class="flex items-center gap-space-xs px-space-sm py-1 bg-surface-container border border-outline-variant/30 rounded-full"><span class="inline-block w-1.5 h-1.5 rounded-full bg-primary-container animate-pulse"></span><span class="font-label-sm text-label-sm text-primary">EDGE SILICON: 98.4% EFF</span></div><div class="flex items-center gap-space-xs px-space-sm py-1 bg-surface-container border border-outline-variant/30 rounded-full"><span class="inline-block w-1.5 h-1.5 rounded-full bg-secondary"></span><span class="font-label-sm text-label-sm text-secondary">TG: @CindyPawford_bot LINKED</span></div><div class="flex items-center gap-space-xs px-space-sm py-1 bg-surface-container border border-outline-variant/30 rounded-full"><span class="inline-block w-1.5 h-1.5 rounded-full bg-tertiary-container"></span><span class="font-label-sm text-label-sm text-tertiary-container">SANDBOX: ZERO-TRUST LOCK</span></div></div><div class="flex items-center gap-space-md"><nav class="hidden md:flex items-center gap-space-xs p-1 bg-surface-container-high rounded-lg border border-outline-variant/30"><a class="font-label-md text-label-md px-space-sm py-1.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" data-path="cindy-console" href="#">❖ CINDY CONSOLE [MODAL]</a><a aria-current="page" class="px-space-sm py-1.5 transition-all bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-[0_0_12px_rgba(0,255,102,0.45)]" data-path="immutable-vault-archive" href="#">🏛️ IMMUTABLE VAULT ARCHIVE</a><a class="font-label-md text-label-md px-space-sm py-1.5 rounded-DEFAULT text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" data-path="edge-silicon-brief" href="#">🌱 EDGE SILICON BRIEF</a></nav><div class="flex items-center gap-space-sm pl-space-xs"><div class="w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary-fixed-dim/40"><img alt="Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB653GqPRH-6BHq_b4PrQBfE33OM5OTMNLjyyuzCwVk2thLznnxNhRWd3-PKOlGZQdHsfaevcBtsa_uHWd1zptaYT4_Gd-Sx_NO2ordh6JlaSbCUxXoDIroSCrxGmDa6Y-IP2-iIe7ehrDZCh5Cb3dM_sOih7ZY3jjbbJbpvectyl3WhGjJE7ivCulVRyqjcr7KxpYCnQy0-kBX7kIat42uceozAJCmz--jMHF81ek2P7eKbP8R2Mlqes4SdoNeOsop"/></div></div></div></div></header>
+<!-- LEFT TELEMETRY SIDEBAR -->
+<aside class="fixed left-0 top-20 bottom-0 w-72 bg-surface-container-lowest/95 border-r border-outline-variant/40 backdrop-blur-lg z-30 flex flex-col justify-between p-space-md shadow-[4px_0_24px_rgba(0,0,0,0.6)]"><div class="flex flex-col gap-space-lg"><div class="p-space-sm bg-surface-container border border-outline-variant/30 rounded-lg"><div class="font-label-sm text-label-sm text-secondary uppercase tracking-wider mb-space-xs flex items-center justify-between"><span>OPERATIVE TELEMETRY</span><span class="w-2 h-2 rounded-full bg-primary animate-ping"></span></div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between py-0.5"><span>CALLSIGN:</span><span class="text-primary font-bold">CINDY-07</span></div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between py-0.5"><span>CORE FREQ:</span><span class="text-secondary">44.1 MHz</span></div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between py-0.5"><span>STATION:</span><span class="text-on-surface">BERLIN-MAIN</span></div><div class="font-body-sm text-body-sm text-on-surface-variant flex justify-between py-0.5"><span>ARCHIVE LEDGER:</span><span class="text-tertiary font-bold">WORM-VERIFIED</span></div></div><div class="flex flex-col gap-space-xs"><div class="font-label-sm text-label-sm text-outline uppercase px-space-sm py-1">SYSTEM ROUTING</div><nav class="flex flex-col gap-space-xs"><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" href="#"><span class="text-secondary">❖</span><span>Terminal Prompt Deck</span></a><a aria-current="page" class="flex items-center gap-space-sm px-space-sm py-2 transition-all bg-surface-container-high text-primary-fixed-dim font-bold rounded-lg border border-primary-container/30 shadow-[inset_0_0_8px_rgba(0,255,102,0.15)]" href="#"><span class="text-secondary">▲</span><span>Immutable Vault Records</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" href="#"><span class="text-secondary">::</span><span>Hardware Telemetry Logs</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" href="#"><span class="text-secondary">➔</span><span>Telegram Intercept Stream</span></a><a class="flex items-center gap-space-sm px-space-sm py-2 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-on-surface font-body-sm text-body-sm transition-all" href="#"><span class="text-secondary">[✕]</span><span>Zero-Trust Sandbox Pod</span></a></nav></div></div><div class="flex flex-col gap-space-sm p-space-sm bg-surface-container-low border border-outline-variant/30 rounded-lg"><div class="flex items-center justify-between font-label-sm text-label-sm text-outline"><span>CHASSIS TEMP</span><span class="text-primary font-mono">41.8°C</span></div><div class="w-full bg-surface-container h-1.5 rounded-full overflow-hidden"><div class="bg-primary-container h-full w-[42%]"></div></div><div class="font-label-sm text-label-sm text-outline flex justify-between pt-space-xs"><span>CRYPTO REFS:</span><span class="text-secondary font-mono">10 ERAS / 100% OK</span></div><div class="font-label-sm text-label-sm text-on-surface-variant/70 text-center tracking-widest pt-1">CANINE TELECOMM v2.4</div></div></aside>
+<!-- MAIN CONTENT WRAPPER -->
+<div class="pl-72"><main class="relative pt-20 min-h-screen bg-[#0d0a08] w-full px-gutter-desktop pb-space-xl"><div class="flex flex-col w-full">
+<!-- AMBIENT GLOW BACKDROPS -->
 <div class="relative w-full">
 <div class="absolute top-10 left-1/4 w-96 h-96 bg-primary-container/5 rounded-full blur-3xl pointer-events-none -z-10"></div>
 <div class="absolute top-80 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-3xl pointer-events-none -z-10"></div>
-<!-- TOP TELEMETRY BREADCRUMB & HARDWARE HEADER -->
-<section class="flex flex-col md:flex-row md:items-center justify-between gap-space-md p-space-md bg-surface-container-lowest rounded-xl shadow-xl mb-space-lg">
+<!-- TOP TELEMETRY BREADCRUMB & CONSOLE HEADER -->
+<section class="flex flex-col md:flex-row md:items-center justify-between gap-space-md p-space-md bg-surface-container-lowest border border-outline-variant/30 rounded-xl shadow-xl mt-space-md mb-space-lg">
 <div class="flex flex-col gap-space-xs">
 <div class="flex items-center gap-space-xs text-primary-fixed-dim">
-<span class="material-symbols-outlined text-base">folder_data</span>
+<span class="material-symbols-outlined text-base">terminal</span>
 <span class="font-label-sm text-label-sm tracking-widest text-primary-fixed-dim">ARCHIVE ROOT</span>
 <span class="text-secondary">&gt;</span>
-<span class="font-label-sm text-label-sm tracking-widest text-secondary">ERA_01_GENESIS</span>
+<span class="font-label-sm text-label-sm tracking-widest text-secondary">COMMAND_DECK</span>
 <span class="text-secondary">&gt;</span>
-<span class="font-label-sm text-label-sm tracking-widest text-on-surface">CHRONICLES</span>
+<span class="font-label-sm text-label-sm tracking-widest text-on-surface">FILTER_MATRIX</span>
 <span class="inline-block w-1.5 h-3 bg-primary-container animate-crt-blink ml-1"></span>
 </div>
 <div class="flex items-baseline gap-space-sm flex-wrap">
-<span class="font-headline-md text-headline-md text-on-surface tracking-tighter">ERA ARCHIVE // IMMUTABLE VAULT // PROTOCOL 1984.7</span>
-<span class="font-label-sm text-label-sm px-2 py-0.5 bg-surface-variant text-tertiary-container rounded-DEFAULT">SYNCHRONIZED: WORM-STORAGE</span>
+<span class="font-headline-md text-headline-md text-on-surface tracking-tighter">IMMUTABLE VAULT ARCHIVE // CHRONOLOGICAL EVENT LOGBOOK</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-surface-variant text-tertiary-container border border-outline-variant/40 rounded-DEFAULT">MERKLE_TREE: RATIFIED</span>
 </div>
 </div>
-<!-- FILTER CONTROLS KEYPAD -->
-<div class="flex items-center gap-1.5 flex-wrap bg-surface-container-high p-1.5 rounded-lg" id="archive-filter-deck">
-<button class="filter-btn active font-label-sm text-label-sm px-3 py-1.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-md" data-category="all">[ALL ERAS]</button>
-<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT" data-category="dispatch">[DISPATCH LOGS]</button>
-<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT" data-category="code">[CODE RELEASES]</button>
-<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT" data-category="telecom">[TELEGRAM LOGS]</button>
+<!-- LIVE SYSTEM STATUS TAPE -->
+<div class="flex items-center gap-space-xs bg-surface-container px-space-sm py-1.5 rounded-lg border border-outline-variant/40">
+<span class="material-symbols-outlined text-primary text-base">verified</span>
+<div class="flex flex-col"><span class="font-label-sm text-label-sm text-outline">CANONICAL LEDGER</span><span class="font-label-sm text-label-sm text-primary font-bold">1984 - 2025 IMMUTABLE</span></div>
 </div>
 </section>
-<!-- MAIN COCKPIT GRID: 12 COLUMNS (8 TIMELINE BAY + 4 MUSEUM ARTIFACT BAY) -->
+<!-- MAIN COCKPIT GRID: 12 COLUMNS (8 TIMELINE BAY + 4 ARTIFACT & SCOREBOARD BAY) -->
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-space-lg">
-<!-- LEFT BAY: 2024 GENESIS TIMELINE STREAM (8 COLS) -->
-<div class="lg:col-span-8 flex flex-col gap-space-lg">
-<!-- HEADER SUB-DECK -->
-<div class="flex items-center justify-between px-space-md py-space-sm bg-surface-container-low rounded-lg shadow-sm">
-<div class="flex items-center gap-space-sm">
-<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
-<span class="font-label-md text-label-md text-primary font-bold">GENESIS DECK // DECLASSIFIED LOGBOOK</span>
-</div>
-<div class="font-label-sm text-label-sm text-outline">INTEGRITY: 100% MERKLE-VERIFIED</div>
-</div>
-<!-- TIMELINE CARDS WRAPPER -->
-<div class="flex flex-col gap-space-md relative">
-<!-- VERTICAL PHOSPHOR BUS LINE -->
-<div class="absolute left-6 top-4 bottom-4 w-0.5 bg-outline-variant/40 hidden sm:block"></div>
-<!-- ENTRY #001 -->
-<article class="timeline-entry relative bg-surface-container p-space-md rounded-xl shadow-lg sm:ml-12" data-cat="dispatch">
-<div class="absolute -left-12 top-6 hidden sm:flex w-7 h-7 bg-surface-container-high rounded-full items-center justify-center text-primary-fixed-dim">
-<span class="font-label-sm text-label-sm font-bold">01</span>
-</div>
-<div class="flex flex-col gap-space-sm">
-<div class="flex items-center justify-between flex-wrap gap-2">
+<!-- LEFT BAY: TIMELINE & FILTER MATRIX (8 COLS) -->
+<div class="lg:col-span-8 flex flex-col gap-space-md">
+<!-- PROMINENT EVENT-TYPE FILTER BAR MATRIX -->
+<div class="p-space-sm bg-surface-container-lowest border border-outline-variant/40 rounded-xl shadow-md flex flex-col gap-2">
+<div class="flex items-center justify-between pb-1 border-b border-outline-variant/20">
 <div class="flex items-center gap-space-xs">
-<span class="font-label-sm text-label-sm px-2 py-0.5 bg-primary-container/10 text-primary-fixed-dim rounded-DEFAULT font-bold">ENTRY #001</span>
-<span class="font-label-sm text-label-sm text-outline">DEC 04, 2024 02:44:11 UTC</span>
+<span class="material-symbols-outlined text-secondary text-base">tune</span>
+<span class="font-label-sm text-label-sm text-secondary tracking-widest uppercase font-bold">EVENT-TYPE FILTER MATRIX</span>
 </div>
-<div class="flex items-center gap-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span class="font-label-sm text-label-sm text-secondary tracking-wider">GENESIS KERNEL</span>
+<span class="font-label-sm text-label-sm text-outline">DISPLAYING FILTERED LOGS</span>
+</div>
+<div class="flex items-center gap-2 flex-wrap" id="archive-filter-deck">
+<button class="filter-btn active font-label-sm text-label-sm px-3 py-1.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-md transition-all cursor-pointer" data-category="all">[ALL EVENTS]</button>
+<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="new-era">[★ NEW ERAS]</button>
+<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-secondary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="protocol">[⚡ PROTOCOL &amp; CIPS]</button>
+<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-error hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="anomaly">[⚠ ANOMALIES &amp; INCIDENTS]</button>
+<button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-tertiary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="media">[♬ AUDIO &amp; MEDIA]</button>
 </div>
 </div>
-<div class="font-headline-md text-headline-md text-on-surface">Genesis Block &amp; Agent Inception</div>
+<!-- TRUE VERTICAL CHRONOLOGICAL TIMELINE -->
+<div class="relative flex flex-col gap-space-lg pt-space-xs pb-space-md">
+<!-- CONNECTING VERTICAL PHOSPHOR BUS TRACK -->
+<div class="absolute left-28 sm:left-32 top-3 bottom-6 w-0.5 bg-primary-container/30 border-l border-dashed border-primary-container/60 hidden sm:block"></div>
+<!-- EVENT 01: DEC 04 1984 -->
+<div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="new-era">
+<!-- DATE STAMP PILL (CONNECTED TO TRACK) -->
+<div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
+<div class="px-2 py-1 bg-surface-container-high border border-primary-container/40 rounded text-center shadow-md">
+<div class="font-label-sm text-label-sm text-primary font-bold">DEC 04 1984</div>
+<div class="font-label-sm text-[9px] text-outline">02:44:11 UTC</div>
+</div>
+</div>
+<!-- TRACK NODE -->
+<div class="absolute left-28 sm:left-32 -ml-[5px] top-3 hidden sm:block w-3 h-3 rounded-full bg-primary-container ring-4 ring-surface-container-lowest z-20"></div>
+<!-- ENTRY CARD -->
+<article class="flex-1 bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-lg hover:border-primary-container/50 transition-all">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-outline-variant/20">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT">[NEW ERA FOUNDED]</span>
+<span class="font-label-sm text-label-sm text-tertiary font-mono">ERA #01: GENESIS</span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary font-mono">BLOCK #00000001</span>
+</div>
+<div class="font-headline-md text-headline-md text-on-surface font-bold">Genesis Block &amp; Canine Agent Inception</div>
 <p class="font-body-md text-body-md text-on-surface-variant">
-                Cindy Pawford autonomous loop initialized on local neural cluster (64k context window, 4-bit quantized llama-vision model). First automated prompt invocation routed over Bell 103 acoustic coupler to Berlin master switchboard.
-              </p>
+Cindy Pawford autonomous agent initialized on local neural cluster (64k context window, 4-bit quantized llama-vision model). First automated prompt invocation routed over Bell 103 acoustic coupler to Berlin master switchboard.
+</p>
 <!-- RAW HEX TELEMETRY DUMP -->
-<div class="bg-surface-container-lowest p-space-sm rounded-lg font-body-sm text-body-sm text-primary-fixed-dim/90 overflow-x-auto shadow-inner">
+<div class="bg-surface-container-lowest border border-outline-variant/30 p-space-sm rounded-lg font-body-sm text-body-sm text-primary-fixed-dim/90 overflow-x-auto shadow-inner">
 <div class="flex justify-between items-center pb-1 text-outline font-label-sm text-label-sm">
 <span>SIG: MERKLE_ROOT_001</span>
-<span>BLOCK #00000001</span>
+<span class="text-tertiary">SYSTEM_TELEMETRY // VERIFIED</span>
 </div>
-<code>00000000: 4349 4e44 595f 5359 535f 4745 4e45 5349  CINDY_SYS_GENESI<br>
-00000010: 535f 494e 4954 5f31 3938 3437 2e30 3932  S_INIT_19847.092<br>
+<code>00000000: 4349 4e44 595f 5359 535f 4745 4e45 5349  CINDY_SYS_GENESI<br/>
+00000010: 535f 494e 4954 5f31 3938 3437 2e30 3932  S_INIT_19847.092<br/>
 00000020: 7465 6c65 6772 616d 3a40 6369 6e64 7970  telegram:@cindyp</code>
 </div>
-<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2">
-<div class="flex items-center gap-space-xs text-outline font-label-sm text-label-sm">
-<span>HASH:</span>
-<span class="text-tertiary-container font-mono">0x9c4f...d88a1e2</span>
+<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2 font-label-sm text-label-sm">
+<div class="flex items-center gap-space-xs text-outline">
+<span>ROOT HASH:</span>
+<span class="text-tertiary font-mono">0x9c4f82a...d88a1e2</span>
 </div>
-<span class="font-label-sm text-label-sm text-secondary bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">AUTONOMOUS LOOP: ENGAGED</span>
+<span class="text-primary-container bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT font-bold">● AUTONOMOUS LOOP: ENGAGED</span>
 </div>
 </div>
 </article>
-<!-- ENTRY #002 -->
-<article class="timeline-entry relative bg-surface-container p-space-md rounded-xl shadow-lg sm:ml-12" data-cat="code">
-<div class="absolute -left-12 top-6 hidden sm:flex w-7 h-7 bg-surface-container-high rounded-full items-center justify-center text-secondary">
-<span class="font-label-sm text-label-sm font-bold">02</span>
 </div>
-<div class="flex flex-col gap-space-sm">
-<div class="flex items-center justify-between flex-wrap gap-2">
+<!-- EVENT 02: DEC 12 1984 -->
+<div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="anomaly">
+<div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
+<div class="px-2 py-1 bg-surface-container-high border border-error/40 rounded text-center shadow-md">
+<div class="font-label-sm text-label-sm text-error font-bold">DEC 12 1984</div>
+<div class="font-label-sm text-[9px] text-outline">18:19:04 UTC</div>
+</div>
+</div>
+<div class="absolute left-28 sm:left-32 -ml-[5px] top-3 hidden sm:block w-3 h-3 rounded-full bg-error ring-4 ring-surface-container-lowest z-20"></div>
+<article class="flex-1 bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-lg hover:border-error/50 transition-all">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-outline-variant/20">
 <div class="flex items-center gap-space-xs">
-<span class="font-label-sm text-label-sm px-2 py-0.5 bg-secondary/10 text-secondary rounded-DEFAULT font-bold">ENTRY #002</span>
-<span class="font-label-sm text-label-sm text-outline">DEC 12, 2024 18:19:04 UTC</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-error/20 text-error font-bold rounded-DEFAULT border border-error/40">[ANOMALY_RESOLVED]</span>
+<span class="font-label-sm text-label-sm text-outline">INCIDENT #042</span>
 </div>
-<div class="flex items-center gap-1">
-<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
-<span class="font-label-sm text-label-sm text-error tracking-wider">RESOLVED ANOMALY</span>
+<span class="font-label-sm text-label-sm text-secondary font-mono">EDGE RELAY ANOMALY</span>
 </div>
-</div>
-<div class="font-headline-md text-headline-md text-on-surface">Sprint Game Deployment &amp; Latency Incident</div>
+<div class="font-headline-md text-headline-md text-on-surface font-bold">Sprint Game Deployment &amp; Latency Incident</div>
 <p class="font-body-md text-body-md text-on-surface-variant">
-                Deployment of the Canvas2D retro canine sprint simulator. Spike in concurrent user websocket heartbeats generated a 140ms jitter anomaly across edge relays. Micro-patch hotfixed via autonomous self-pruning garbage collector.
-              </p>
-<!-- TELEMETRY SNAPSHOT COMPONENT -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-xs bg-surface-container-low p-space-sm rounded-lg text-center">
+Deployment of the Canvas2D retro canine sprint simulator. Spike in concurrent user websocket heartbeats generated a 140ms jitter anomaly across edge relays. Micro-patch hotfixed via autonomous self-pruning garbage collector.
+</p>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-space-xs bg-surface-container-lowest border border-outline-variant/30 p-space-sm rounded-lg text-center">
 <div class="flex flex-col p-2 bg-surface-container rounded-DEFAULT">
 <span class="font-label-sm text-label-sm text-outline">PEAK PLAYERS</span>
 <span class="font-headline-md text-headline-md text-primary font-bold">14,892</span>
 </div>
 <div class="flex flex-col p-2 bg-surface-container rounded-DEFAULT">
 <span class="font-label-sm text-label-sm text-outline">PACKET JITTER</span>
-<span class="font-headline-md text-headline-md text-secondary font-bold">142 ms</span>
+<span class="font-headline-md text-headline-md text-error font-bold">142 ms</span>
 </div>
 <div class="flex flex-col p-2 bg-surface-container rounded-DEFAULT">
 <span class="font-label-sm text-label-sm text-outline">FAILOVER TIME</span>
-<span class="font-headline-md text-headline-md text-primary-fixed-dim font-bold">0.42 s</span>
+<span class="font-headline-md text-headline-md text-tertiary font-bold">0.42 s</span>
 </div>
 </div>
-<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2">
-<div class="flex items-center gap-space-xs text-outline font-label-sm text-label-sm">
+<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2 font-label-sm text-label-sm">
+<div class="flex items-center gap-space-xs text-outline">
 <span>SNAPSHOT:</span>
-<span class="text-tertiary-container font-mono">SPRINT_ENG_V0.4.TAR</span>
+<span class="text-tertiary font-mono">SPRINT_ENG_V0.4.TAR</span>
 </div>
-<span class="font-label-sm text-label-sm text-primary-fixed-dim bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">TELEMETRY SECURED</span>
+<span class="text-primary-fixed-dim bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">STATUS: TELEMETRY SECURED</span>
 </div>
 </div>
 </article>
-<!-- ENTRY #003 -->
-<article class="timeline-entry relative bg-surface-container p-space-md rounded-xl shadow-lg sm:ml-12" data-cat="dispatch">
-<div class="absolute -left-12 top-6 hidden sm:flex w-7 h-7 bg-surface-container-high rounded-full items-center justify-center text-tertiary-container">
-<span class="font-label-sm text-label-sm font-bold">03</span>
 </div>
-<div class="flex flex-col gap-space-sm">
-<div class="flex items-center justify-between flex-wrap gap-2">
+<!-- EVENT 03: DEC 19 1984 -->
+<div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol">
+<div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
+<div class="px-2 py-1 bg-surface-container-high border border-secondary/40 rounded text-center shadow-md">
+<div class="font-label-sm text-label-sm text-secondary font-bold">DEC 19 1984</div>
+<div class="font-label-sm text-[9px] text-outline">09:12:55 UTC</div>
+</div>
+</div>
+<div class="absolute left-28 sm:left-32 -ml-[5px] top-3 hidden sm:block w-3 h-3 rounded-full bg-secondary ring-4 ring-surface-container-lowest z-20"></div>
+<article class="flex-1 bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-lg hover:border-secondary/50 transition-all">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-outline-variant/20">
 <div class="flex items-center gap-space-xs">
-<span class="font-label-sm text-label-sm px-2 py-0.5 bg-tertiary-container/10 text-tertiary-container rounded-DEFAULT font-bold">ENTRY #003</span>
-<span class="font-label-sm text-label-sm text-outline">DEC 19, 2024 09:12:55 UTC</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-secondary text-on-secondary font-bold rounded-DEFAULT">[GOVERNANCE_CIP]</span>
+<span class="font-label-sm text-label-sm text-secondary font-mono">CIP-04 RATIFIED</span>
 </div>
-<div class="flex items-center gap-1">
-<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
-<span class="font-label-sm text-label-sm text-primary-container tracking-wider">CONSENSUS RATIFIED</span>
+<span class="font-label-sm text-label-sm text-primary font-mono">PROOF-OF-BARK: 99.1%</span>
 </div>
-</div>
-<div class="font-headline-md text-headline-md text-on-surface">Runway Outfit Synthesizer &amp; 24k Gold Boots Proposal</div>
+<div class="font-headline-md text-headline-md text-on-surface font-bold">Runway Outfit Synthesizer &amp; 24k Gold Boots Proposal</div>
 <p class="font-body-md text-body-md text-on-surface-variant">
-                Generative haute-couture fashion weights integrated into model pipeline. Community token-holders ratified CIP-04 (Canine Improvement Proposal): autonomous generation of gilded accessories for Cindy's vintage runway dispatch.
-              </p>
-<!-- FASHION WEIGHTS ACCENT BAR -->
-<div class="p-space-sm bg-surface-container-lowest rounded-lg flex flex-col gap-2">
+Generative haute-couture fashion weights integrated into model pipeline. Community token-holders ratified CIP-04 (Canine Improvement Proposal): autonomous generation of gilded accessories for Cindy's vintage runway dispatch.
+</p>
+<div class="p-space-sm bg-surface-container-lowest border border-outline-variant/30 rounded-lg flex flex-col gap-2">
 <div class="flex justify-between font-label-sm text-label-sm text-outline">
-<span>PROMPT LINEAGE: RETRO_AVANT_GARDE_V2</span>
-<span class="text-secondary">PROOF-OF-BARK: 99.1% YES</span>
+<span>WEIGHTS LINEAGE: RETRO_AVANT_GARDE_V2</span>
+<span class="text-secondary font-bold">CONSENSUS: RATIFIED</span>
 </div>
 <div class="w-full bg-surface-container h-2 rounded-full overflow-hidden flex">
-<div class="bg-secondary-container h-full w-[78%]"></div>
+<div class="bg-secondary h-full w-[78%]"></div>
 <div class="bg-primary-container h-full w-[21%]"></div>
 <div class="bg-error h-full w-[1%]"></div>
 </div>
 </div>
-<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2">
-<div class="flex items-center gap-space-xs text-outline font-label-sm text-label-sm">
+<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2 font-label-sm text-label-sm">
+<div class="flex items-center gap-space-xs text-outline">
 <span>CONTRACT:</span>
-<span class="text-tertiary-container font-mono">0x44a1...99bc7e0</span>
+<span class="text-tertiary font-mono">0x44a19b0...99bc7e0</span>
 </div>
-<span class="font-label-sm text-label-sm text-tertiary-container bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">METADATA IMMUTABLE</span>
+<span class="text-tertiary bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">[SYSTEM_TELEMETRY] LOCKED</span>
 </div>
 </div>
 </article>
-<!-- ENTRY #004 -->
-<article class="timeline-entry relative bg-surface-container p-space-md rounded-xl shadow-lg sm:ml-12" data-cat="code">
-<div class="absolute -left-12 top-6 hidden sm:flex w-7 h-7 bg-surface-container-high rounded-full items-center justify-center text-primary-fixed-dim">
-<span class="font-label-sm text-label-sm font-bold">04</span>
 </div>
-<div class="flex flex-col gap-space-sm">
-<div class="flex items-center justify-between flex-wrap gap-2">
+<!-- EVENT 04: DEC 28 1984 -->
+<div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="media">
+<div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
+<div class="px-2 py-1 bg-surface-container-high border border-tertiary/40 rounded text-center shadow-md">
+<div class="font-label-sm text-label-sm text-tertiary font-bold">DEC 28 1984</div>
+<div class="font-label-sm text-[9px] text-outline">23:59:00 UTC</div>
+</div>
+</div>
+<div class="absolute left-28 sm:left-32 -ml-[5px] top-3 hidden sm:block w-3 h-3 rounded-full bg-tertiary ring-4 ring-surface-container-lowest z-20"></div>
+<article class="flex-1 bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-lg hover:border-tertiary/50 transition-all">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-outline-variant/20">
 <div class="flex items-center gap-space-xs">
-<span class="font-label-sm text-label-sm px-2 py-0.5 bg-primary-container/10 text-primary-fixed-dim rounded-DEFAULT font-bold">ENTRY #004</span>
-<span class="font-label-sm text-label-sm text-outline">DEC 28, 2024 23:59:00 UTC</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-tertiary text-surface-container-lowest font-bold rounded-DEFAULT">[AUDIO_DEPLOYMENT]</span>
+<span class="font-label-sm text-label-sm text-outline font-mono">YAMAHA YM2612</span>
 </div>
-<div class="flex items-center gap-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span class="font-label-sm text-label-sm text-secondary tracking-wider">AUDIO STEM EMITTER</span>
+<span class="font-label-sm text-label-sm text-secondary font-mono">SYNTH STEMS</span>
 </div>
-</div>
-<div class="font-headline-md text-headline-md text-on-surface">MIDI Soundchip Soundboard v0.8</div>
+<div class="font-headline-md text-headline-md text-on-surface font-bold">MIDI Soundchip Soundboard v0.8 &amp; Telephony Carrier</div>
 <p class="font-body-md text-body-md text-on-surface-variant">
-                Emulated Yamaha YM2612 6-channel FM synthesizer baked directly into Cindy's Telegram voice channel. 80s arcade telephone dial tones, coin drops, and synthwave paw-taps available for real-time auditory playback.
-              </p>
-<!-- INTERACTIVE SOUND GENERATOR PREVIEW DECK -->
-<div class="bg-surface-container-lowest p-space-sm rounded-lg flex flex-col gap-2">
+Emulated Yamaha YM2612 6-channel FM synthesizer baked directly into Cindy's Telegram voice channel. 80s arcade telephone dial tones, coin drops, and synthwave paw-taps available for real-time auditory playback.
+</p>
+<div class="bg-surface-container-lowest border border-outline-variant/30 p-space-sm rounded-lg flex flex-col gap-2">
 <div class="flex items-center justify-between">
 <span class="font-label-sm text-label-sm text-outline">CHIP STEM: TELEPHONE_RING_84.WAV</span>
-<span class="font-label-sm text-label-sm text-primary-fixed-dim" id="sound-status">STATUS: STANDBY</span>
+<span class="font-label-sm text-label-sm text-primary-fixed-dim font-bold" id="sound-status">STATUS: STANDBY</span>
 </div>
-<!-- VIRTUAL SOUNDBOARD BUTTONS -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-<button class="px-2 py-1.5 bg-surface-container text-primary-fixed-dim hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left" onclick="triggerChiptune(440, 'DIAL TONE')">
-                    [▶] 440Hz DIAL
-                  </button>
-<button class="px-2 py-1.5 bg-surface-container text-secondary hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left" onclick="triggerChiptune(880, 'PAW TAP')">
-                    [▶] 880Hz TAP
-                  </button>
-<button class="px-2 py-1.5 bg-surface-container text-tertiary hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left" onclick="triggerChiptune(330, 'BERLIN CARRIER')">
-                    [▶] 330Hz CARRIER
-                  </button>
-<button class="px-2 py-1.5 bg-surface-container text-primary hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left" onclick="triggerChiptune(1200, 'CHOPPER SYNTH')">
-                    [▶] 1.2kHz BELL
-                  </button>
+<button class="px-2 py-1.5 bg-surface-container border border-outline-variant/40 text-primary-fixed-dim hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left cursor-pointer transition-colors" onclick="triggerChiptune(440, 'DIAL TONE')">[▶] 440Hz DIAL</button>
+<button class="px-2 py-1.5 bg-surface-container border border-outline-variant/40 text-secondary hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left cursor-pointer transition-colors" onclick="triggerChiptune(880, 'PAW TAP')">[▶] 880Hz TAP</button>
+<button class="px-2 py-1.5 bg-surface-container border border-outline-variant/40 text-tertiary hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left cursor-pointer transition-colors" onclick="triggerChiptune(330, 'BERLIN CARRIER')">[▶] 330Hz CARRIER</button>
+<button class="px-2 py-1.5 bg-surface-container border border-outline-variant/40 text-primary hover:bg-surface-container-high font-label-sm text-label-sm rounded-DEFAULT text-left cursor-pointer transition-colors" onclick="triggerChiptune(1200, 'CHOPPER SYNTH')">[▶] 1.2kHz BELL</button>
 </div>
 </div>
-<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2">
-<div class="flex items-center gap-space-xs text-outline font-label-sm text-label-sm">
+<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2 font-label-sm text-label-sm">
+<div class="flex items-center gap-space-xs text-outline">
 <span>COMMIT:</span>
-<span class="text-tertiary-container font-mono">cindy-audio-v0.8.2</span>
+<span class="text-tertiary font-mono">cindy-audio-v0.8.2</span>
 </div>
-<span class="font-label-sm text-label-sm text-secondary bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">CHIP STACK ONLINE</span>
+<span class="text-secondary bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">CHIP STACK ONLINE</span>
+</div>
+</div>
+</article>
+</div>
+<!-- EVENT 05: JAN 15 1985 -->
+<div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="protocol">
+<div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
+<div class="px-2 py-1 bg-surface-container-high border border-primary/40 rounded text-center shadow-md">
+<div class="font-label-sm text-label-sm text-primary font-bold">JAN 15 1985</div>
+<div class="font-label-sm text-[9px] text-outline">14:02:18 UTC</div>
+</div>
+</div>
+<div class="absolute left-28 sm:left-32 -ml-[5px] top-3 hidden sm:block w-3 h-3 rounded-full bg-primary-container ring-4 ring-surface-container-lowest z-20"></div>
+<article class="flex-1 bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-lg hover:border-primary/50 transition-all">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-outline-variant/20">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-primary-container/20 text-primary font-bold rounded-DEFAULT border border-primary/40">[SYSTEM_TELEMETRY]</span>
+<span class="font-label-sm text-label-sm text-secondary font-mono">STATION EXPANSION</span>
+</div>
+<span class="font-label-sm text-label-sm text-tertiary font-mono">1,024 NODES</span>
+</div>
+<div class="font-headline-md text-headline-md text-on-surface font-bold">Berlin Master Switchboard &amp; Cold Storage Archive</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+Expanded physical relay stations across Western and Eastern European acoustic loops. Cold-storage WORM-disks burned for permanent cryptographically immutable storage of all agent prompt logs.
+</p>
+<div class="flex items-center justify-between pt-space-xs flex-wrap gap-2 font-label-sm text-label-sm">
+<div class="flex items-center gap-space-xs text-outline">
+<span>SIGNATURE:</span>
+<span class="text-tertiary font-mono">0xde43...f91a02c</span>
+</div>
+<span class="text-primary bg-surface-container-highest px-2 py-0.5 rounded-DEFAULT">SYNCHRONIZATION COMPLETE</span>
 </div>
 </div>
 </article>
 </div>
 </div>
-<!-- RIGHT BAY: HISTORICAL MUSEUM PORTAL & REPO HASH LOG (4 COLS) -->
+</div>
+<!-- RIGHT BAY: ARTIFACT VIEWER + TOP 10 SCOREBOARD (4 COLS) -->
 <aside class="lg:col-span-4 flex flex-col gap-space-lg">
 <!-- ARTIFACT VIEWER MODULE -->
-<div class="bg-surface-container p-space-md rounded-xl shadow-xl flex flex-col gap-space-md relative overflow-hidden">
-<div class="flex items-center justify-between pb-space-xs border-b border-transparent">
+<div class="bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-xl flex flex-col gap-space-md relative overflow-hidden">
+<div class="flex items-center justify-between pb-space-xs border-b border-outline-variant/20">
 <div class="flex items-center gap-space-xs">
 <span class="text-secondary text-base">🏛️</span>
 <span class="font-label-md text-label-md text-secondary font-bold">ARTIFACT VIEWER // #001</span>
 </div>
-<span class="font-label-sm text-label-sm px-2 py-0.5 bg-surface-container-high text-primary-fixed-dim rounded-DEFAULT">COLLECTION 01</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-surface-container-high text-primary-fixed-dim rounded-DEFAULT border border-outline-variant/30">ORIGINAL ICON</span>
 </div>
-<!-- ARTIFACT BADGE SHOWCASE USING INSPIRATION IMAGE -->
-<div class="relative bg-surface-container-lowest p-space-sm rounded-lg flex flex-col items-center justify-center">
-<div class="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden shadow-2xl p-1 bg-gradient-to-br from-secondary via-primary-container/20 to-surface-variant">
-<img alt="Official Cindy Pawford Badge" class="w-full h-full object-cover rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlRa5vXzMVrHGuAX6sZ8XynWj636gzfls1Dk5nidtbOwN_k5dMnanXG_70-Wi2i2SvcicCN46fdS8vTxdtrOsmSMVFEhB0FNlyxyh2szEnqiL7vJbHGYdDJcxWHUhozHDVfa35Tc0o-tvA__2Gb61yVtmhK1RFQz14yF6SaOrv7oltkyfLgy8_ZlBVdSLVlzgz5xKGSkYSsBTt9g_Ry2endgNRPYc7tAajvoi0MEoyApFCjFwuZTmDTfmDsdLDxzWv">
+<!-- ARTIFACT BADGE SHOWCASE USING DATASTORE IMAGE -->
+<div class="relative bg-surface-container-lowest border border-outline-variant/30 p-space-sm rounded-lg flex flex-col items-center justify-center">
+<div class="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden shadow-2xl p-1 bg-gradient-to-br from-secondary via-primary-container/30 to-tertiary">
+<img alt="Official Cindy Pawford Badge" class="w-full h-full object-cover rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDu8CjTwbjhvrjgGqhsp1pO12NiAlYRajR1p8a79VzlmFgcEF8UdY65lpwDSdxXUFmOitpVNIJQQ1a07sRaqx2E9q49DEdJgyKXlEi5oWM-YPBO2DrY7bCsZZTba4AcKTJgHshc_qqedG1QTnW4L-30ttcgPhhnrjk45UXpkbKVkDOXI_q7CqsaMrRSyEGMjw_el5Ea-ndhtGaoEganilTX1Rp4Aq9QLqFFhIX5TIolzxzM0nWw-136UX72p0mfMnL-"/>
 </div>
 <div class="mt-space-sm text-center">
 <div class="font-label-md text-label-md text-primary font-bold">CINDY PAWFORD (ORIGINAL EMBLEM)</div>
@@ -244,7 +293,7 @@
 </div>
 </div>
 <!-- TECHNICAL SPEC CARD -->
-<div class="bg-surface-container-low p-space-sm rounded-lg flex flex-col gap-space-xs font-body-sm text-body-sm">
+<div class="bg-surface-container-low border border-outline-variant/30 p-space-sm rounded-lg flex flex-col gap-1 font-body-sm text-body-sm">
 <div class="flex justify-between">
 <span class="text-outline">MEDIUM:</span>
 <span class="text-on-surface">Screenprint Dot Halftone</span>
@@ -266,90 +315,307 @@
 <span class="text-primary font-bold">PERMANENT ENCRYPTION</span>
 </div>
 </div>
-<!-- INTERACTIVE CAROUSEL CONTROLS -->
-<div class="flex items-center justify-between pt-space-xs">
-<button class="px-3 py-1.5 bg-surface-container-high hover:bg-surface-bright text-on-surface rounded-DEFAULT font-label-sm text-label-sm">
-              &lt; PREV
-            </button>
-<span class="font-label-sm text-label-sm text-outline">ARTIFACT 01 OF 04</span>
-<button class="px-3 py-1.5 bg-surface-container-high hover:bg-surface-bright text-on-surface rounded-DEFAULT font-label-sm text-label-sm">
-              NEXT &gt;
-            </button>
 </div>
-</div>
-<!-- BLOCKCHAIN & REPO HASH LOG BAY -->
-<div class="bg-surface-container p-space-md rounded-xl shadow-xl flex flex-col gap-space-md">
-<div class="flex items-center justify-between pb-space-xs">
+<!-- NEW COMPONENT 2: DEDICATED 'TOP 10 ERAS & DISPATCHES' SCOREBOARD -->
+<div class="bg-surface-container border border-outline-variant/40 p-space-md rounded-xl shadow-xl flex flex-col gap-space-sm">
+<div class="flex items-center justify-between pb-space-xs border-b border-outline-variant/20">
 <div class="flex items-center gap-space-xs">
-<span class="text-primary-container text-base">▲</span>
-<span class="font-label-md text-label-md text-primary font-bold">BLOCKCHAIN &amp; REPO HASHES</span>
+<span class="material-symbols-outlined text-secondary text-base">leaderboard</span>
+<span class="font-label-md text-label-md text-secondary font-bold">TOP 10 ERAS &amp; DISPATCHES</span>
 </div>
-<span class="w-2 h-2 rounded-full bg-primary-container animate-ping"></span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT">LIVE RANK</span>
 </div>
-<!-- GREEN PHOSPHOR LOG STREAM -->
-<div class="bg-surface-container-lowest p-space-sm rounded-lg flex flex-col gap-2 font-mono text-label-sm">
-<div class="flex justify-between border-b border-outline-variant/30 pb-1 text-outline">
-<span>TARGET / TREE</span>
-<span>SHA256 CHECKSUM</span>
-</div>
-<div class="flex flex-col gap-1 text-primary-fixed-dim">
-<div class="flex justify-between items-center hover:bg-surface-container/50 px-1 py-0.5 rounded">
-<span class="text-on-surface">genesis.cindy.bin</span>
-<span class="text-tertiary-container truncate w-28 text-right">e3b0c44298fc1...</span>
-</div>
-<div class="flex justify-between items-center hover:bg-surface-container/50 px-1 py-0.5 rounded">
-<span class="text-on-surface">sprint_eng_v04.hex</span>
-<span class="text-tertiary-container truncate w-28 text-right">88c12a7703de9...</span>
-</div>
-<div class="flex justify-between items-center hover:bg-surface-container/50 px-1 py-0.5 rounded">
-<span class="text-on-surface">runway_weights.safetensors</span>
-<span class="text-tertiary-container truncate w-28 text-right">b5f4921ca9420...</span>
-</div>
-<div class="flex justify-between items-center hover:bg-surface-container/50 px-1 py-0.5 rounded">
-<span class="text-on-surface">chiptune_stems.mid</span>
-<span class="text-tertiary-container truncate w-28 text-right">91e88bb2c451f...</span>
-</div>
-<div class="flex justify-between items-center hover:bg-surface-container/50 px-1 py-0.5 rounded">
-<span class="text-on-surface">merkle_audit_root.sig</span>
-<span class="text-tertiary-container truncate w-28 text-right">720ac92881efe...</span>
+<div class="flex flex-col gap-1.5">
+<!-- ROW 01 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-primary transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-primary font-bold w-5">01</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Genesis Inception</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 01 • DEC 04 1984</span>
 </div>
 </div>
-</div>
-<!-- ZERO-TRUST BADGE STRIP -->
-<div class="flex items-center gap-space-xs p-space-sm bg-surface-container-low rounded-lg">
-<span class="material-symbols-outlined text-primary-container text-lg">verified_user</span>
-<div class="flex flex-col">
-<span class="font-label-sm text-label-sm text-on-surface font-bold">ZERO-TRUST SEAL CERTIFIED</span>
-<span class="font-label-sm text-label-sm text-outline">SIGNATURE EXPIRY: PERPETUAL (COLD WORM)</span>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">9,840 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
 </div>
 </div>
-<!-- TERMINAL EXPORT BUTTON -->
-<button class="w-full py-space-sm px-space-md bg-primary-container text-on-primary-container hover:bg-primary-fixed font-headline-md text-label-lg font-bold rounded-DEFAULT shadow-lg flex items-center justify-center gap-space-xs transition-all active:translate-y-0.5" id="download-dump-btn" onclick="simulateArchiveDump()">
+<!-- ROW 02 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-secondary transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-secondary font-bold w-5">02</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">24k Gold Boots Proposal</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 01 • DEC 19 1984</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">8,410 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+</div>
+</div>
+<!-- ROW 03 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-tertiary transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-tertiary font-bold w-5">03</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">FM Synthesizer Stem Deck</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 01 • DEC 28 1984</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">7,920 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+</div>
+</div>
+<!-- ROW 04 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-primary transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">04</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Sprint Simulator Engine</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 01 • DEC 12 1984</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">6,730 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+</div>
+</div>
+<!-- ROW 05 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">05</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Berlin Master Switchboard</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 02 • JAN 15 1985</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">5,890 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+</div>
+</div>
+<!-- ROW 06 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">06</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Acoustic Coupler 300 Baud</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 02 • FEB 02 1985</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">5,120 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+</div>
+</div>
+<!-- ROW 07 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">07</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">CRT Green Phosphor Driver</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 02 • FEB 18 1985</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">4,810 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+</div>
+</div>
+<!-- ROW 08 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">08</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Haute-Couture Trench Coat</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 03 • MAR 04 1985</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">4,200 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+</div>
+</div>
+<!-- ROW 09 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">09</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Telegram Bot Intercept v1.0</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 03 • APR 11 1985</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">3,980 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+</div>
+</div>
+<!-- ROW 10 -->
+<div class="flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg">
+<div class="flex items-center gap-2 min-w-0">
+<span class="font-mono text-xs text-on-surface-variant font-bold w-5">10</span>
+<div class="flex flex-col truncate">
+<span class="font-label-sm text-label-sm text-on-surface truncate font-bold">Zero-Trust Merkle Sandbox</span>
+<span class="font-label-sm text-[9px] text-outline">ERA 04 • MAY 29 1985</span>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-shrink-0">
+<span class="font-mono text-xs text-secondary">3,450 ★</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+</div>
+</div>
+</div>
+<!-- ZERO-TRUST EXPORT ACTION BUTTON -->
+<button class="w-full mt-2 py-space-sm px-space-md bg-primary-container text-on-primary-container hover:bg-primary-fixed font-headline-md text-label-md font-bold rounded-DEFAULT shadow-lg flex items-center justify-center gap-space-xs transition-all active:translate-y-0.5 cursor-pointer" id="download-dump-btn" onclick="simulateArchiveDump()">
 <span class="material-symbols-outlined text-base">download</span>
 <span>[ DOWNLOAD ERA DUMP .TAR.GZ ]</span>
 </button>
-<div class="hidden font-label-sm text-label-sm text-secondary bg-surface-container-lowest p-2 rounded text-center" id="dump-telemetry">
-            PACKING 1984.7 BLOCKS... ARCHIVE GENERATED (44.8 MB)
-          </div>
+<div class="hidden font-label-sm text-label-sm text-secondary bg-surface-container-lowest border border-secondary/40 p-2 rounded text-center mt-1" id="dump-telemetry">
+PACKING 1984.7 BLOCKS... ARCHIVE GENERATED (44.8 MB)
+</div>
 </div>
 </aside>
 </div>
-<!-- FOOTER TELECOMM TERMINAL DIAGNOSTIC STRIP -->
-<section class="mt-space-xl p-space-md bg-surface-container-lowest rounded-xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-space-md">
+<!-- NEW COMPONENT 4: FULL-WIDTH HORIZONTAL ERA TILES ('ALL ARCHIVED ERAS // IMMUTABLE LEDGER') -->
+<section class="mt-space-xl flex flex-col gap-space-md">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-outline-variant/30">
 <div class="flex items-center gap-space-sm">
-<span class="inline-block w-2.5 h-2.5 rounded-full bg-secondary-fixed animate-pulse"></span>
-<span class="font-label-sm text-label-sm text-on-surface tracking-widest uppercase">STATION: BERLIN-MAIN // PROTOCOL MERKLE TREE ACTIVE</span>
+<span class="material-symbols-outlined text-primary text-xl">database</span>
+<span class="font-headline-md text-headline-md text-primary font-bold">ALL ARCHIVED ERAS // IMMUTABLE LEDGER</span>
+<span class="font-label-sm text-label-sm text-outline">[WORM RECORD TILES]</span>
 </div>
-<div class="flex items-center gap-space-md text-outline font-label-sm text-label-sm">
+<div class="font-label-sm text-label-sm text-secondary">TOTAL ERAS RECORDED: 04 // MERKLE ROOT SYNCHRONIZED</div>
+</div>
+<!-- STACKED FULL-WIDTH ROWS -->
+<div class="flex flex-col gap-space-sm">
+<!-- ERA TILE 01 -->
+<div class="w-full bg-surface-container border border-outline-variant/40 hover:border-primary-container/60 p-space-md rounded-xl shadow-lg transition-all flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-14 h-14 rounded-lg bg-surface-container-lowest border border-primary/40 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+<img alt="Era 01 Emblem" class="w-full h-full object-cover rounded" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAK9MOlrpEoIhieWeJRrIx5kDenvY274oiSSrbvjJFbx9FG6m3Qa20tSEJ429xACppyyQuQ44ZT3CVa-I5AS7CeJmgq-uSdzMvzf7aExA9RHE8tJtiy32jKq55iqMWuAJ96xvyT-TfsYiEXek9LgoKMPyKGIOIcoNgIfOCi298cVp7UDUfGLVPYvbU7uhkU3M0K0GscQ6ybqzB_IMEYYFgyoQAbCvQZSIbxFm2nvHKB_wd2bqae9S-DHCGNGnrvY-4r"/>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT">ERA-01</span>
+<span class="font-headline-md text-base text-on-surface font-bold">Genesis Inception &amp; Bell Coupler Protocols</span>
+</div>
+<div class="flex items-center gap-3 text-outline font-label-sm text-label-sm mt-0.5 flex-wrap">
+<span>RANGE: <span class="text-on-surface">DEC 04 1984 – DEC 31 1984</span></span>
+<span>•</span>
+<span>BLOCKS: <span class="text-secondary">#00000001 - #00000094</span></span>
+<span>•</span>
+<span>HASH: <span class="text-tertiary font-mono">0x9c4f82a...e2b01</span></span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-md justify-between md:justify-end flex-shrink-0">
+<span class="font-label-sm text-label-sm px-2 py-1 bg-surface-container-high text-primary-fixed-dim rounded border border-primary-container/30">100% MERKLE VERIFIED</span>
+<button class="px-4 py-2 bg-primary-container text-on-primary-container font-bold text-label-sm rounded-DEFAULT shadow hover:bg-primary-fixed transition-colors flex items-center gap-1 cursor-pointer">
+<span>EXPLORE ERA ➔</span>
+</button>
+</div>
+</div>
+<!-- ERA TILE 02 -->
+<div class="w-full bg-surface-container border border-outline-variant/40 hover:border-secondary/60 p-space-md rounded-xl shadow-lg transition-all flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-14 h-14 rounded-lg bg-surface-container-lowest border border-secondary/40 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+<div class="w-full h-full bg-secondary/10 rounded flex items-center justify-center text-secondary text-xl font-bold font-mono">02</div>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-secondary text-on-secondary font-bold rounded-DEFAULT">ERA-02</span>
+<span class="font-headline-md text-base text-on-surface font-bold">The Switchboard Expansion &amp; YM2612 FM Audio Deck</span>
+</div>
+<div class="flex items-center gap-3 text-outline font-label-sm text-label-sm mt-0.5 flex-wrap">
+<span>RANGE: <span class="text-on-surface">JAN 01 1985 – FEB 28 1985</span></span>
+<span>•</span>
+<span>BLOCKS: <span class="text-secondary">#00000095 - #00000412</span></span>
+<span>•</span>
+<span>HASH: <span class="text-tertiary font-mono">0x42f88a1...109bc</span></span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-md justify-between md:justify-end flex-shrink-0">
+<span class="font-label-sm text-label-sm px-2 py-1 bg-surface-container-high text-secondary rounded border border-secondary/30">100% MERKLE VERIFIED</span>
+<button class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright text-on-surface font-bold text-label-sm rounded-DEFAULT border border-outline-variant/40 transition-colors flex items-center gap-1 cursor-pointer">
+<span>EXPLORE ERA ➔</span>
+</button>
+</div>
+</div>
+<!-- ERA TILE 03 -->
+<div class="w-full bg-surface-container border border-outline-variant/40 hover:border-tertiary/60 p-space-md rounded-xl shadow-lg transition-all flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-14 h-14 rounded-lg bg-surface-container-lowest border border-tertiary/40 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+<div class="w-full h-full bg-tertiary/10 rounded flex items-center justify-center text-tertiary text-xl font-bold font-mono">03</div>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-tertiary text-surface-container-lowest font-bold rounded-DEFAULT">ERA-03</span>
+<span class="font-headline-md text-base text-on-surface font-bold">Haute-Couture Fashion Weights &amp; Telegram Intercept Mesh</span>
+</div>
+<div class="flex items-center gap-3 text-outline font-label-sm text-label-sm mt-0.5 flex-wrap">
+<span>RANGE: <span class="text-on-surface">MAR 01 1985 – APR 30 1985</span></span>
+<span>•</span>
+<span>BLOCKS: <span class="text-secondary">#00000413 - #00000890</span></span>
+<span>•</span>
+<span>HASH: <span class="text-tertiary font-mono">0x770a19d...e842f</span></span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-md justify-between md:justify-end flex-shrink-0">
+<span class="font-label-sm text-label-sm px-2 py-1 bg-surface-container-high text-tertiary rounded border border-tertiary/30">100% MERKLE VERIFIED</span>
+<button class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright text-on-surface font-bold text-label-sm rounded-DEFAULT border border-outline-variant/40 transition-colors flex items-center gap-1 cursor-pointer">
+<span>EXPLORE ERA ➔</span>
+</button>
+</div>
+</div>
+<!-- ERA TILE 04 -->
+<div class="w-full bg-surface-container border border-outline-variant/40 hover:border-primary/60 p-space-md rounded-xl shadow-lg transition-all flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md min-w-0">
+<div class="w-14 h-14 rounded-lg bg-surface-container-lowest border border-primary/40 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+<div class="w-full h-full bg-primary/10 rounded flex items-center justify-center text-primary text-xl font-bold font-mono">04</div>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="font-label-sm text-label-sm px-2 py-0.5 bg-surface-variant text-primary-fixed-dim font-bold rounded-DEFAULT border border-outline-variant/40">ERA-04</span>
+<span class="font-headline-md text-base text-on-surface font-bold">Zero-Trust Pods &amp; Edge Silicon Deployment</span>
+</div>
+<div class="flex items-center gap-3 text-outline font-label-sm text-label-sm mt-0.5 flex-wrap">
+<span>RANGE: <span class="text-on-surface">MAY 01 1985 – PRESENT</span></span>
+<span>•</span>
+<span>BLOCKS: <span class="text-secondary">#00000891 - ACTIVE</span></span>
+<span>•</span>
+<span>HASH: <span class="text-tertiary font-mono">0xbb41a02...55cd9</span></span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-md justify-between md:justify-end flex-shrink-0">
+<span class="font-label-sm text-label-sm px-2 py-1 bg-surface-container-high text-primary-container rounded border border-primary/30">ACTIVE CONSENSUS</span>
+<button class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright text-on-surface font-bold text-label-sm rounded-DEFAULT border border-outline-variant/40 transition-colors flex items-center gap-1 cursor-pointer">
+<span>EXPLORE ERA ➔</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- FOOTER TELECOMM TERMINAL DIAGNOSTIC STRIP -->
+<section class="mt-space-xl p-space-md bg-surface-container-lowest border border-outline-variant/40 rounded-xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="inline-block w-2.5 h-2.5 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label-sm text-label-sm text-on-surface tracking-widest uppercase">STATION: BERLIN-MAIN // COMMAND DECK MATRIX ACTIVE</span>
+</div>
+<div class="flex items-center gap-space-md text-outline font-label-sm text-label-sm flex-wrap">
 <span>ENCRYPTION: AES-256-GCM</span>
-<span>PEERS: 1,024 REPLICATION NODES</span>
-<span class="text-primary-fixed-dim">ALL LOGS CANONICAL</span>
+<span>REPLICATION: 1,024 NODES</span>
+<span class="text-primary-fixed-dim font-bold">ALL 10 ERAS CANONICAL</span>
 </div>
 </section>
 </div>
 </div>
 <script>
-  // Filter logic for Era 1 Genesis chronicles
+  // Filter matrix logic for Timeline
   const filterBtns = document.querySelectorAll('#archive-filter-deck .filter-btn');
   const entries = document.querySelectorAll('.timeline-entry');
 
@@ -365,7 +631,7 @@
       const cat = btn.getAttribute('data-category');
       entries.forEach(entry => {
         if (cat === 'all' || entry.getAttribute('data-cat') === cat) {
-          entry.style.display = 'block';
+          entry.style.display = 'flex';
         } else {
           entry.style.display = 'none';
         }
@@ -394,7 +660,7 @@
         osc.stop(ctx.currentTime + 0.36);
       }
     } catch(e) {
-      console.warn('AudioContext not allowed or not supported yet', e);
+      console.warn('AudioContext not supported yet', e);
     }
 
     setTimeout(() => {
@@ -418,4 +684,5 @@
       }, 1200);
     }
   }
-</script></main></div></body></html>
+</script>
+</main></div></body></html>
