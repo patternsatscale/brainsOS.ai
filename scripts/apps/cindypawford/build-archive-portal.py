@@ -205,6 +205,13 @@ def render_timeline_entry(entry):
     pr_meta = entry.get("pr_metadata", {})
     pr_num = pr_meta.get("pr_number")
     pr_url = f"https://github.com/patternsatscale/CindyPawford-Online/pull/{pr_num}" if pr_num else None
+    is_pr = "true" if pr_num is not None else "false"
+
+    type_indicator = ""
+    if cat == "new-era":
+        type_indicator = '<span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-primary-container/20 text-primary border border-primary/40 uppercase tracking-wider font-bold">★ CANONICAL ERA</span>'
+    elif pr_num is not None:
+        type_indicator = '<span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>'
 
     if block:
         if pr_url:
@@ -239,7 +246,7 @@ def render_timeline_entry(entry):
 
     return f"""
     <!-- TIMELINE ENTRY: {date_disp} -->
-    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="{cat}">
+    <div class="timeline-entry flex flex-col sm:flex-row items-start gap-space-md relative" data-cat="{cat}" data-is-pr="{is_pr}">
       <!-- Date Stamp Pill -->
       <div class="sm:w-32 flex-shrink-0 flex sm:flex-col sm:items-end items-center gap-1 sm:pr-space-md z-10">
         <div class="px-2 py-1 bg-surface-container-high border {date_border_class} rounded text-center shadow-md">
@@ -256,6 +263,7 @@ def render_timeline_entry(entry):
             <div class="flex items-center gap-space-xs">
               <span class="font-label-sm text-label-sm px-2 py-0.5 rounded-DEFAULT {badge_pill_class}">{badge}</span>
               {f'<span class="font-label-sm text-label-sm text-tertiary font-mono">{subbadge}</span>' if subbadge else ''}
+              {type_indicator}
             </div>
             {block_html}
           </div>
@@ -374,8 +382,10 @@ def render_scoreboard(eras, entries):
         </a>
         """)
 
+    # Strictly isolate recent PRs to CindyPawford-Online pull requests
+    pr_entries = [e for e in entries if e.get("pr_metadata", {}).get("pr_number") is not None]
     pr_rows = []
-    for idx, e in enumerate(entries):
+    for idx, e in enumerate(pr_entries):
         rank_str = f"{idx + 1:02d}"
         title = html.escape(e.get("title", "Pull Request"))
         date = html.escape(e.get("date_display", ""))
@@ -439,7 +449,7 @@ def render_scoreboard(eras, entries):
       <!-- RECENT PULL REQUESTS SUBSECTION -->
       <div class="flex flex-col gap-1.5 pt-1 border-t border-outline-variant/20">
         <div class="flex items-center justify-between pt-1">
-          <span class="font-label-sm text-[10px] text-outline tracking-wider uppercase">RECENT PULL REQUESTS ({len(entries)} MERGED)</span>
+          <span class="font-label-sm text-[10px] text-outline tracking-wider uppercase">RECENT PULL REQUESTS ({len(pr_entries)} MERGED)</span>
           <a href="https://github.com/patternsatscale/CindyPawford-Online/pulls" target="_blank" rel="noopener noreferrer" class="font-label-sm text-[10px] text-primary hover:underline flex items-center gap-0.5">
             <span>VIEW ALL</span>
             <span class="material-symbols-outlined text-[10px]">open_in_new</span>
@@ -770,7 +780,9 @@ def build_portal():
                 </div>
                 <div class="flex items-center gap-2 flex-wrap" id="archive-filter-deck">
                   <button class="filter-btn active font-label-sm text-label-sm px-3 py-1.5 bg-primary-container text-on-primary-container font-bold rounded-DEFAULT shadow-md transition-all cursor-pointer" data-category="all">[ALL EVENTS]</button>
-                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="new-era">[★ NEW ERAS]</button>
+                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="new-era">[★ CANONICAL ERAS (WEEKLY/WIPES)]</button>
+                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-secondary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="pr">[📦 ALL PULL REQUESTS]</button>
+                  <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="release">[🚀 ROOM EXPANSIONS &amp; RELEASES]</button>
                   <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-secondary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="protocol">[⚡ PROTOCOL &amp; CIPS]</button>
                   <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-error hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="anomaly">[⚠ ANOMALIES &amp; INCIDENTS]</button>
                   <button class="filter-btn font-label-sm text-label-sm px-3 py-1.5 bg-surface-container text-on-surface-variant hover:text-tertiary hover:bg-surface-bright rounded-DEFAULT transition-all cursor-pointer border border-outline-variant/30" data-category="media">[♬ AUDIO &amp; MEDIA]</button>
@@ -895,7 +907,16 @@ def build_portal():
 
             const cat = btn.getAttribute('data-category');
             entries.forEach(entry => {{
-              if (cat === 'all' || entry.getAttribute('data-cat') === cat) {{
+              const entryCat = entry.getAttribute('data-cat');
+              const isPr = entry.getAttribute('data-is-pr') === 'true';
+
+              if (cat === 'all') {{
+                entry.style.display = 'flex';
+              }} else if (cat === 'pr') {{
+                entry.style.display = isPr ? 'flex' : 'none';
+              }} else if (cat === 'new-era') {{
+                entry.style.display = entryCat === 'new-era' ? 'flex' : 'none';
+              }} else if (entryCat === cat) {{
                 entry.style.display = 'flex';
               }} else {{
                 entry.style.display = 'none';

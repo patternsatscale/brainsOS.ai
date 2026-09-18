@@ -79,8 +79,8 @@ jobs:
 
       - name: Ingest Merged PR into Digital Museum Logbook
         run: |
-          echo "--> Running automated PR-to-logbook ingestion..."
-          python3 scripts/apps/cindypawford/ingest-pr-logbook.py || echo "[WARN] PR ingestion non-fatal fallback."
+          echo "--> Running automated PR-to-logbook ingestion from CindyPawford-Online..."
+          python3 scripts/apps/cindypawford/ingest-pr-logbook.py --auto-scan || echo "[WARN] PR ingestion non-fatal fallback."
           python3 scripts/apps/cindypawford/build-archive-portal.py
 
       - name: Install SST Dependencies & Providers
