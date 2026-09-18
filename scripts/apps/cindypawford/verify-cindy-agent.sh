@@ -393,13 +393,35 @@ assert not valid_bad, 'Syntax check failed to reject invalid JavaScript!'
 "
 log_success "Quality Gate passed: Markdown fences and conversational chatter stripped, JS syntax validated."
 
-# 8e. Verify titan-subagents plugin files
+# 8e. Verify titan-subagents plugin files and configuration
 PLUGIN_DIR="${WORK_DIR}/plugins/titan-subagents"
 if [ -f "${PLUGIN_DIR}/plugin.yaml" ] && [ -f "${PLUGIN_DIR}/__init__.py" ]; then
   log_success "Verified titan-subagents plugin scaffolded in workspace: ${PLUGIN_DIR}."
 else
   log_error "Missing titan-subagents plugin in workspace!"
   exit 1
+fi
+
+if grep -q "titan-subagents" "${WORK_DIR}/config.yaml"; then
+  log_success "Verified titan-subagents enabled in ${WORK_DIR}/config.yaml."
+else
+  log_error "titan-subagents plugin not enabled in ${WORK_DIR}/config.yaml!"
+  exit 1
+fi
+
+# 8f. Verify no duplicate workspace site clone exists and rules forbid deploy scripts
+if [ -d "${WORK_DIR}/site" ]; then
+  log_error "Detected obsolete duplicate repository clone at ${WORK_DIR}/site!"
+  exit 1
+else
+  log_success "Verified zero duplicate repository clones in workspace (canonical canvas is /app/html)."
+fi
+
+if grep -q "deploy-cindypawford-com.sh" "${MEM_DIR}/rules/ticket-workflow.md"; then
+  log_error "Detected forbidden host deploy script execution in ticket-workflow.md!"
+  exit 1
+else
+  log_success "Verified ticket-workflow.md respects Rule 4 and Operational Rule 2 (no host deploy script calls)."
 fi
 
 log_info "================================================================="

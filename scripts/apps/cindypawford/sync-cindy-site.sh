@@ -42,34 +42,7 @@ else
   fi
 fi
 
-# 2. Stage Latest Platform Shell
-mkdir -p "${SITE_DIR}/_platform"
-if [ -f "${SHELL_SRC}" ]; then
-  echo "--> Staging master shell.js -> ${SITE_DIR}/_platform/shell.js..."
-  cp "${SHELL_SRC}" "${SITE_DIR}/_platform/shell.js"
-fi
-
-# 3. Stage Runtime Configuration Fallback
-echo "--> Staging runtime config -> ${SITE_DIR}/_platform/config.js..."
-cat << 'CONF' > "${SITE_DIR}/_platform/config.js"
-window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
-CONF
-
-# 4. Auto-Inject Script Tags into index.html
-if [ -f "${SITE_DIR}/index.html" ]; then
-  if ! grep -q "/_platform/config.js" "${SITE_DIR}/index.html"; then
-    echo "--> Injecting runtime config script into ${SITE_DIR}/index.html..."
-    sed -i.bak 's|</body>|  <script src="/_platform/config.js"></script>\
-</body>|' "${SITE_DIR}/index.html" && rm -f "${SITE_DIR}/index.html.bak"
-  fi
-  if ! grep -q "/_platform/shell.js" "${SITE_DIR}/index.html"; then
-    echo "--> Injecting platform shell script into ${SITE_DIR}/index.html..."
-    sed -i.bak 's|</body>|  <script src="/_platform/shell.js" defer></script>\
-</body>|' "${SITE_DIR}/index.html" && rm -f "${SITE_DIR}/index.html.bak"
-  fi
-fi
-
-# 5. Validate Site Syntax
+# 2. Validate Site Syntax
 if [ -f "${SITE_DIR}/app.js" ]; then
   echo "--> Validating app.js syntax..."
   node -c "${SITE_DIR}/app.js"

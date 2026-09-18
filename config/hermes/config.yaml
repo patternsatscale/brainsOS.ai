@@ -33,6 +33,7 @@ terminal:
 plugins:
   enabled:
     - hermes-okf
+    - titan-subagents
 
 platforms:
   api_server:

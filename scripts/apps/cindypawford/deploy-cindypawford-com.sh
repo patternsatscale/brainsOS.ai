@@ -66,28 +66,39 @@ else
   fi
 fi
 
-# 2. Ensure Platform Shell and Runtime Config are staged and injected
-echo "--> Ensuring Platform Shell and runtime configuration are staged..."
-mkdir -p "${SITE_DIR}/_platform"
+# 2. Stage Platform Shell and Runtime Config into isolated build directory (dist/site)
+BUILD_DIR="${INFRA_DIR}/dist/site"
+echo "--> Staging canvas and injecting Platform Shell into build directory: ${BUILD_DIR}..."
+rm -rf "${BUILD_DIR}"
+mkdir -p "${BUILD_DIR}"
+
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --exclude '.git' "${SITE_DIR}/" "${BUILD_DIR}/"
+else
+  cp -R "${SITE_DIR}/." "${BUILD_DIR}/"
+  rm -rf "${BUILD_DIR}/.git"
+fi
+
+mkdir -p "${BUILD_DIR}/_platform"
 if [ -f "${PLATFORM_SHELL_SRC}" ]; then
-  cp "${PLATFORM_SHELL_SRC}" "${SITE_DIR}/_platform/shell.js"
+  cp "${PLATFORM_SHELL_SRC}" "${BUILD_DIR}/_platform/shell.js"
 fi
 
 # Stage runtime config fallback for non-CloudFront / local environments
-cat << 'EOF' > "${SITE_DIR}/_platform/config.js"
+cat << 'EOF' > "${BUILD_DIR}/_platform/config.js"
 window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
 EOF
 
-# Auto-inject script tags into all HTML pages if not present
-for html_file in "${SITE_DIR}"/*.html; do
+# Auto-inject script tags into all HTML pages in BUILD_DIR if not present
+for html_file in "${BUILD_DIR}"/*.html; do
   [ -f "${html_file}" ] || continue
   if ! grep -q "/_platform/config.js" "${html_file}"; then
-    echo "--> Injecting runtime config script into ${html_file}..."
+    echo "--> Injecting runtime config script into $(basename "${html_file}")..."
     sed -i.bak 's|</body>|  <script src="/_platform/config.js"></script>\
 </body>|' "${html_file}" && rm -f "${html_file}.bak"
   fi
   if ! grep -q "/_platform/shell.js" "${html_file}"; then
-    echo "--> Injecting platform shell script into ${html_file}..."
+    echo "--> Injecting platform shell script into $(basename "${html_file}")..."
     sed -i.bak 's|</body>|  <script src="/_platform/shell.js" defer></script>\
 </body>|' "${html_file}" && rm -f "${html_file}.bak"
   fi

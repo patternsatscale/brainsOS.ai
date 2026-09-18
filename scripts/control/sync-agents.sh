@@ -664,6 +664,14 @@ for agent in manifest.get("agents", []):
         if "platforms" in cfg and "telegram" in cfg["platforms"]:
             cfg["platforms"]["telegram"]["enabled"] = tg_config.get("enabled", False)
             cfg["platforms"]["telegram"]["bot_name"] = tg_config.get("bot_name", f"@{agent_id}_bot")
+        # Ensure titan-subagents plugin is enabled if subagents are configured
+        if subagents:
+            if "plugins" not in cfg:
+                cfg["plugins"] = {"enabled": ["hermes-okf"]}
+            if "enabled" not in cfg["plugins"]:
+                cfg["plugins"]["enabled"] = ["hermes-okf"]
+            if "titan-subagents" not in cfg["plugins"]["enabled"]:
+                cfg["plugins"]["enabled"].append("titan-subagents")
         with open(dest_config, "w", encoding="utf-8") as df:
             yaml.safe_dump(cfg, df, sort_keys=False)
 
@@ -714,11 +722,17 @@ for target_idx in [
         f.write(index_content)
 EOF
 
-# 4. Enforce permissions (chmod 775)
+# 4. Enforce permissions (chmod 775 on workspaces/memories and preserve file executables)
 chmod -R 775 "${REPO_ROOT}/data/workspace" "${REPO_ROOT}/data/memories" 2>/dev/null || true
 if [ -d "${REPO_ROOT}/apps" ]; then
   find "${REPO_ROOT}/apps" -type d -exec chmod 775 {} + 2>/dev/null || true
-  find "${REPO_ROOT}/apps" -type f -exec chmod 664 {} + 2>/dev/null || true
+  chmod -R ug+rw "${REPO_ROOT}/apps" 2>/dev/null || true
+  if [ -d "${REPO_ROOT}/apps/cindypawford/infra/node_modules/.bin" ]; then
+    chmod +x "${REPO_ROOT}/apps/cindypawford/infra/node_modules/.bin/"* 2>/dev/null || true
+  fi
+  if [ -f "${REPO_ROOT}/apps/cindypawford/infra/node_modules/typescript/bin/tsc" ]; then
+    chmod +x "${REPO_ROOT}/apps/cindypawford/infra/node_modules/typescript/bin/tsc" 2>/dev/null || true
+  fi
 fi
 
 # 5. Provision Virtual Keys
