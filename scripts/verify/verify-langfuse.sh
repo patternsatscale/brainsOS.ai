@@ -142,6 +142,7 @@ log_info "Verifying DNS resolution for langfuse.titan.local..."
 # Check Python/host resolution
 HOST_RESOLVED_IP=$(python3 -c "
 import socket
+socket.setdefaulttimeout(2.0)
 try:
     print(socket.gethostbyname('langfuse.titan.local'))
 except Exception:
@@ -180,6 +181,14 @@ else
   log_info "To start locally:  ./scripts/setup/setup-langfuse.sh start"
   log_info "To start remotely: run ./scripts/setup/setup-langfuse.sh start on your remote laptop."
   ACTIVE_ENDPOINT=""
+fi
+
+if command -v docker >/dev/null 2>&1 && [ -n "${ACTIVE_ENDPOINT}" ]; then
+  for c in titan-langfuse-web titan-langfuse-worker titan-langfuse-clickhouse titan-langfuse-redis titan-langfuse-minio titan-langfuse-db; do
+    if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+      pass_check "Container '${c}': RUNNING."
+    fi
+  done
 fi
 
 # If active, test telemetry ingestion endpoint reachability

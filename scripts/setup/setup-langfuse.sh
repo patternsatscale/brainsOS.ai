@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Standalone Langfuse Observability Service Manager
+# Project Titan: Observability Plane Manager (Langfuse v4.38.0)
 # Automates provisioning, key generation, startup, and lifecycle management
-# for Langfuse on this machine or a remote laptop on the LAN.
+# for Langfuse distributed stack (Web, Worker, ClickHouse, Redis, MinIO, Postgres).
 # ==============================================================================
 
 set -euo pipefail
@@ -59,6 +59,9 @@ fi
 
 LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
 LANGFUSE_DB_DATA_DIR="${LANGFUSE_DB_DATA_DIR:-${REPO_ROOT}/data/langfuse_db}"
+LANGFUSE_CLICKHOUSE_DATA_DIR="${LANGFUSE_CLICKHOUSE_DATA_DIR:-${REPO_ROOT}/data/langfuse_clickhouse}"
+LANGFUSE_REDIS_DATA_DIR="${LANGFUSE_REDIS_DATA_DIR:-${REPO_ROOT}/data/langfuse_redis}"
+LANGFUSE_MINIO_DATA_DIR="${LANGFUSE_MINIO_DATA_DIR:-${REPO_ROOT}/data/langfuse_minio}"
 
 # Helper to run compose commands
 compose_cmd() {
@@ -73,9 +76,9 @@ compose_cmd() {
 # Action: Setup
 # ------------------------------------------------------------------------------
 setup_langfuse() {
-  log_info "Configuring Langfuse standalone environment..."
+  log_info "Configuring Langfuse v4.38.0 distributed observability environment..."
 
-  mkdir -p "${LANGFUSE_DB_DATA_DIR}"
+  mkdir -p "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}"
 
   if [ ! -f "${LANGFUSE_ENV_FILE}" ]; then
     log_info "Creating ${LANGFUSE_ENV_FILE} from template..."
@@ -84,33 +87,58 @@ setup_langfuse() {
     else
       touch "${LANGFUSE_ENV_FILE}"
     fi
-
-    # Generate cryptographically secure keys
-    log_info "Generating secure cryptographic keys for Langfuse..."
-    SEC_NEXTAUTH="$(openssl rand -base64 32)"
-    SEC_SALT="$(openssl rand -base64 32)"
-    SEC_ENCRYPT="$(openssl rand -hex 32)"
-    if [ -f "${LANGFUSE_DB_DATA_DIR}/PG_VERSION" ]; then
-      SEC_DB_PASS="${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}"
-    else
-      SEC_DB_PASS="$(openssl rand -hex 16)"
-    fi
-
-    # Safely write or replace in .env
-    sed -i.bak "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${SEC_NEXTAUTH}|" "${LANGFUSE_ENV_FILE}" 2>/dev/null || \
-      echo "NEXTAUTH_SECRET=${SEC_NEXTAUTH}" >> "${LANGFUSE_ENV_FILE}"
-    sed -i.bak "s|^SALT=.*|SALT=${SEC_SALT}|" "${LANGFUSE_ENV_FILE}" 2>/dev/null || \
-      echo "SALT=${SEC_SALT}" >> "${LANGFUSE_ENV_FILE}"
-    sed -i.bak "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=${SEC_ENCRYPT}|" "${LANGFUSE_ENV_FILE}" 2>/dev/null || \
-      echo "ENCRYPTION_KEY=${SEC_ENCRYPT}" >> "${LANGFUSE_ENV_FILE}"
-    sed -i.bak "s|^LANGFUSE_DB_PASSWORD=.*|LANGFUSE_DB_PASSWORD=${SEC_DB_PASS}|" "${LANGFUSE_ENV_FILE}" 2>/dev/null || \
-      echo "LANGFUSE_DB_PASSWORD=${SEC_DB_PASS}" >> "${LANGFUSE_ENV_FILE}"
-    rm -f "${LANGFUSE_ENV_FILE}.bak"
-
-    log_success "Generated new Langfuse security secrets in ${LANGFUSE_ENV_FILE}."
-  else
-    log_info "Langfuse environment file already exists at ${LANGFUSE_ENV_FILE}."
   fi
+
+  # Generate cryptographically secure keys
+  log_info "Verifying secure cryptographic keys and auto-initialization credentials..."
+  SEC_NEXTAUTH="${NEXTAUTH_SECRET:-$(openssl rand -base64 32)}"
+  SEC_SALT="${SALT:-$(openssl rand -base64 32)}"
+  SEC_ENCRYPT="${ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
+  SEC_DB_PASS="${LANGFUSE_DB_PASSWORD:-$(openssl rand -hex 16)}"
+  SEC_REDIS="${REDIS_AUTH:-$(openssl rand -hex 16)}"
+  SEC_MINIO="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
+
+  # Ensure API Keys exist (or auto-generate for zero-click fleet setup)
+  SEC_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-pk-lf-$(openssl rand -hex 16)}"
+  SEC_SECRET_KEY="${LANGFUSE_SECRET_KEY:-sk-lf-$(openssl rand -hex 16)}"
+  SEC_OTEL_AUTH="Basic $(echo -n "${SEC_PUBLIC_KEY}:${SEC_SECRET_KEY}" | base64)"
+
+  # Helper to set or update key-value in a file safely
+  update_env_var() {
+    local key="$1"
+    local val="$2"
+    local file="$3"
+    if grep -q "^${key}=" "${file}" 2>/dev/null; then
+      sed -i.bak "s|^${key}=.*|${key}=${val}|" "${file}" && rm -f "${file}.bak"
+    else
+      echo "${key}=${val}" >> "${file}"
+    fi
+  }
+
+  # Write keys to Langfuse .env
+  update_env_var "NEXTAUTH_SECRET" "${SEC_NEXTAUTH}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "SALT" "${SEC_SALT}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "ENCRYPTION_KEY" "${SEC_ENCRYPT}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_DB_PASSWORD" "${SEC_DB_PASS}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "REDIS_AUTH" "${SEC_REDIS}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "MINIO_ROOT_PASSWORD" "${SEC_MINIO}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${LANGFUSE_ENV_FILE}"
+
+  # Also ensure root .env has these keys for LiteLLM and Agent Fleet synchronization
+  if [ -f "${REPO_ROOT}/.env" ]; then
+    update_env_var "LANGFUSE_HOST" "http://langfuse.titan.local:${LANGFUSE_PORT}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_OTEL_AUTH" "${SEC_OTEL_AUTH}" "${REPO_ROOT}/.env"
+  fi
+
+  export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
+  export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
+  export LANGFUSE_SECRET_KEY="${SEC_SECRET_KEY}"
+  export LANGFUSE_OTEL_AUTH="${SEC_OTEL_AUTH}"
+
+  log_success "Langfuse v4.38.0 configuration synchronized."
 }
 
 # ------------------------------------------------------------------------------
@@ -119,12 +147,12 @@ setup_langfuse() {
 start_langfuse() {
   setup_langfuse
 
-  log_info "Starting Langfuse container stack (Web on :${LANGFUSE_PORT}, Postgres)..."
+  log_info "Starting Langfuse v4.38.0 stack (Web on :${LANGFUSE_PORT}, Worker, ClickHouse, Redis, MinIO, Postgres)..."
   compose_cmd up -d
 
   log_info "Waiting for Langfuse web service to report healthy on http://localhost:${LANGFUSE_PORT}..."
   READY=false
-  for i in {1..45}; do
+  for i in {1..90}; do
     STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${LANGFUSE_PORT}/api/public/health" || echo "000")
     if [ "${STATUS_CODE}" = "200" ]; then
       READY=true
@@ -134,23 +162,19 @@ start_langfuse() {
   done
 
   if [ "${READY}" = true ]; then
-    log_success "Langfuse is running and healthy!"
+    log_success "Langfuse v4.38.0 is running and healthy!"
     echo ""
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-    echo -e "${GREEN}${BOLD}Langfuse Observability Platform Ready${NC}"
+    echo -e "${GREEN}${BOLD}Langfuse v4.38.0 Observability Platform Ready${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-    echo -e "  - Web Dashboard:     ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} (or http://langfuse.titan.local:${LANGFUSE_PORT})"
+    echo -e "  - Web Dashboard:     ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} (or http://langfuse.titan.local)"
     echo -e "  - OTel Ingestion:    ${BOLD}http://localhost:${LANGFUSE_PORT}/api/public/otel${NC}"
-    echo -e "  - Data Directory:    ${LANGFUSE_DB_DATA_DIR}"
-    echo ""
-    echo -e "Next steps:"
-    echo -e "  1. Open ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} in your browser and create your admin account."
-    echo -e "  2. Create a new Project (e.g. 'Titan')."
-    echo -e "  3. Go to Project Settings -> API Keys -> Create new API Keys."
-    echo -e "  4. Run ${BOLD}./scripts/setup/setup-langfuse.sh keys${NC} to configure Titan's .env automatically."
+    echo -e "  - Public Key:        ${BOLD}${LANGFUSE_PUBLIC_KEY:-}${NC}"
+    echo -e "  - Admin Email:       ${BOLD}admin@titan.local${NC}"
+    echo -e "  - Admin Password:    ${BOLD}titan_admin_secret${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
   else
-    log_warn "Langfuse containers started, but /api/public/health did not return 200 within 45s."
+    log_warn "Langfuse containers started, but /api/public/health did not return 200 within 90s."
     log_info "Check service logs via: ./scripts/setup/setup-langfuse.sh logs"
   fi
 }
@@ -183,40 +207,24 @@ status_langfuse() {
 # Action: Logs
 # ------------------------------------------------------------------------------
 logs_langfuse() {
-  compose_cmd logs -f
+  compose_cmd logs -f "$@"
 }
 
 # ------------------------------------------------------------------------------
-# Action: Keys / Creds Generator
+# Action: Keys / Creds Display & Generator
 # ------------------------------------------------------------------------------
 generate_keys_helper() {
   echo -e "${BLUE}${BOLD}==============================================================================${NC}"
   echo -e "${BLUE}${BOLD}Project Titan: Langfuse API Key & Telemetry Header Helper${NC}"
   echo -e "${BLUE}${BOLD}==============================================================================${NC}"
-  echo "Paste the API keys generated from your Langfuse Web Console:"
-  echo ""
-
-  read -r -p "Enter Langfuse Public Key (pk-lf-...): " USER_PK
-  read -r -p "Enter Langfuse Secret Key (sk-lf-...): " USER_SK
-
-  if [ -z "${USER_PK}" ] || [ -z "${USER_SK}" ]; then
-    log_error "Both Public Key and Secret Key are required."
-    exit 1
+  if [ -n "${LANGFUSE_PUBLIC_KEY:-}" ] && [ -n "${LANGFUSE_SECRET_KEY:-}" ]; then
+    echo "Currently active credentials:"
+    echo "  LANGFUSE_HOST=http://langfuse.titan.local:${LANGFUSE_PORT}"
+    echo "  LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}"
+    echo "  LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}"
+    echo "  LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)}"
+    echo ""
   fi
-
-  # Compute Base64 Basic auth header: Basic <base64(pk:sk)>
-  BASE64_AUTH="Basic $(echo -n "${USER_PK}:${USER_SK}" | base64)"
-
-  echo ""
-  echo -e "${GREEN}${BOLD}Add the following lines to your Project Titan .env file on the GX10 appliance:${NC}"
-  echo "------------------------------------------------------------------------------"
-  echo "LANGFUSE_HOST=http://langfuse.titan.local:${LANGFUSE_PORT}"
-  echo "LANGFUSE_PUBLIC_KEY=${USER_PK}"
-  echo "LANGFUSE_SECRET_KEY=${USER_SK}"
-  echo "LANGFUSE_OTEL_AUTH=${BASE64_AUTH}"
-  echo "------------------------------------------------------------------------------"
-  echo ""
-  log_info "If running Langfuse on a separate laptop, also set LANGFUSE_HOST_IP=<laptop-ip> in Titan's .env."
 }
 
 case "${1:-status}" in
@@ -238,7 +246,8 @@ case "${1:-status}" in
     status_langfuse
     ;;
   logs)
-    logs_langfuse
+    shift || true
+    logs_langfuse "$@"
     ;;
   keys|creds)
     generate_keys_helper

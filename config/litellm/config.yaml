@@ -12,7 +12,7 @@ model_list:
       # Hardware serialization: Protects unified LPDDR5x memory bus on GB10 / Apple Silicon
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: os.environ/INFERENCE_NUM_CTX
+      num_ctx: 4096
 
   # Direct Model Name Aliases
   - model_name: qwen3.8:latest
@@ -21,7 +21,7 @@ model_list:
       api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: os.environ/INFERENCE_NUM_CTX
+      num_ctx: 4096
 
   - model_name: llama3.2:3b
     litellm_params:
@@ -29,7 +29,7 @@ model_list:
       api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: os.environ/INFERENCE_NUM_CTX
+      num_ctx: 4096
 
   - model_name: qwen2.5:latest
     litellm_params:
@@ -37,7 +37,7 @@ model_list:
       api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: os.environ/INFERENCE_NUM_CTX
+      num_ctx: 4096
 
   # Cindy Pawford Rotated Coding Model Alias
   - model_name: cindy-active-coding-model
@@ -46,14 +46,27 @@ model_list:
       api_base: http://127.0.0.1:11434
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: os.environ/INFERENCE_NUM_CTX
+      num_ctx: 4096
+
+  # Development / Fallback Model Alias (Local macOS & Lightweight Testing)
+  - model_name: gemma2:2b
+    litellm_params:
+      model: ollama_chat/gemma2:2b
+      api_base: http://127.0.0.1:11434
+      max_parallel_requests: 1
+      timeout: 300
+      num_ctx: 4096
 
 litellm_settings:
   drop_params: true
   set_verbose: false
   request_timeout: 300
-  success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS
-  failure_callback: os.environ/LITELLM_FAILURE_CALLBACKS
+  success_callback:
+    - langfuse
+    - otel
+  failure_callback:
+    - langfuse
+    - otel
 
 general_settings:
   # Master key for administrative control, dynamic model addition, and virtual key provisioning
