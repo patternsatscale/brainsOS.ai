@@ -14,10 +14,10 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 
 ``` text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ L7: Communications & UX                                                     │
+│ L7: Communications, UX & Operator IDE                                       │
 │     - Ingress Reverse Proxy: Caddy (*.titan.local, TLS, streaming SSE)      │
 │     - Messaging Daemons: titan-signal-cli (JSON-RPC daemon on :8080)        │
-│     - Human-in-the-Loop PKM: SilverBullet UI (:3000 -> /space)              │
+│     - Operator IDE & PKM: titan-code-server (:8443 -> editor.titan.local)   │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Core Units (Manifest-Driven Fleet: config/agents.yaml)            │
 │     - titan-agent-terrastella   (:8642 API, :9119 Dashboard, $50 Budget)    │
@@ -66,7 +66,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
     * `memories/`: Human-auditable OKF Markdown notes partitioned per agent (`memories/<agent_id>/`).
     * `litellm_db/`: LiteLLM PostgreSQL persistence (dynamic models, virtual keys, audit logs).
     * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per agent (`workspace/<agent_id>/`).
-  * **Human-in-the-Loop Governance:** SilverBullet functions as the interactive debugging console across all tenant memory trees. Human operators audit, rollback, or modify live agent memory structures directly through a web browser.
+  * **Human-in-the-Loop Governance & Operator IDE:** Titan Operator IDE (containerized VS Code / Code-Server) functions as the unified engineering console across Project Titan. Operators access a 4-root workspace (Project Titan repo, memory trees, agent scratchpads, and web app canvases), native terminal access with pre-installed Aider, Continue AI assistant with pre-configured LiteLLM and Agent endpoints, Markdown PKM extensions (Foam, Markdown All in One), and the `titan-chat` CLI helper, accessible via Caddy at `editor.titan.local` (and `code.titan.local`) behind HTTP Basic Auth.
   * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/control/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
   * **In-Transit Egress Credential Injection (Rule 10):** Agent containers hold zero ambient API tokens or GitHub secrets (`GH_TOKEN`, `GITHUB_TOKEN`) in their environment or filesystem. Git Smart HTTP and GitHub CLI traffic routes through Caddy (`https://github-proxy.titan.local`), which terminates internal TLS and injects fine-grained authorization headers in transit as traffic leaves the internal network.
 
@@ -180,7 +180,8 @@ Validate complete end-to-end functionality, storage isolation, and agent persist
 # Verify primary agent workspace persistence and LiteLLM mediation
 ./scripts/verify/verify-hermes.sh
 
-# Verify SilverBullet PKM UI and OKF memory plane synchronization
+# Verify Titan Operator IDE and OKF memory plane synchronization
+./scripts/verify/verify-editor.sh
 ./scripts/verify/verify-memories.sh
 
 # Verify Langfuse observability and OpenTelemetry ingestion
@@ -199,13 +200,13 @@ Once running, the following endpoints are accessible via your browser:
 | Endpoint | Ingress URL | Port | Default Credentials | Description |
 |---|---|---|---|---|
 | **Appliance Portal** | [http://titan.local](http://titan.local) | `80` / `443` | *None* | ASUS Ascent GX10 appliance dashboard & hub |
+| **Operator IDE** | [http://editor.titan.local](http://editor.titan.local) *(alias: [http://code.titan.local](http://code.titan.local))* | `8443` | `operator` / `${OPERATOR_PASSWORD}` | Containerized VS Code, Multi-Root Workspace, Aider, Continue & Foam PKM |
 | **Primary Agent UI** | [http://primary.titan.local](http://primary.titan.local) *(alias: [http://hermes.titan.local](http://hermes.titan.local))* | `9119` | `admin` / `titan_admin_secret` | Primary operations agent dashboard, channels & tool config |
 | **Primary Agent API** | [http://api.primary.titan.local/v1](http://api.primary.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
 | **Football Dan UI** | [http://football-dan.titan.local](http://football-dan.titan.local) | `9120` | `admin` / `titan_admin_secret` | Sports analytics agent dashboard & telemetry |
 | **Football Dan API** | [http://api.football-dan.titan.local/v1](http://api.football-dan.titan.local/v1) | `8643` | Bearer `${HERMES_FOOTBALL_DAN_KEY}` | Football Dan chat completions interface |
 | **Cindy Pawford UI** | [http://cindypawford.titan.local](http://cindypawford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Cindy Pawford supermodel CEO dashboard & atelier |
 | **Cindy Pawford API** | [http://api.cindypawford.titan.local/v1](http://api.cindypawford.titan.local/v1) | `8644` | Bearer `${HERMES_CINDY_LITELLM_KEY}` | Cindy Pawford chat completions interface |
-| **SilverBullet PKM UI** | [http://memory.titan.local](http://memory.titan.local) | `3000` | *None* | Human-in-the-loop OKF memory & rules inspector across all tenants |
 | **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing, key & budget proxy |
 | **Langfuse Observability** | [http://langfuse.titan.local:3001](http://langfuse.titan.local:3001) | `3001` | *Local account* | Distributed tracing, token telemetry & agent spans |
 
@@ -250,6 +251,9 @@ project-titan/
 │   ├── caddy/  
 │   │   ├── Caddyfile         # Main ingress reverse proxy configuration (*.titan.local)
 │   │   └── agents.caddy      # Auto-generated agent subdomain vhosts (sync-agents.sh)
+│   ├── editor/
+│   │   ├── titan.code-workspace # Multi-Root Workspace definition (Project Titan, Memories, Workspaces, Site)
+│   │   └── settings.json     # Operator IDE settings, markdown/foam PKM configs, and memory purity exclusions
 │   ├── litellm/  
 │   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
 │   ├── hermes/  
@@ -276,6 +280,10 @@ project-titan/
 │       ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
 │       └── tests/            # Dedicated pytest suite (100% test coverage)
 ├── docker/
+│   ├── editor/
+│   │   ├── Dockerfile        # Containerized VS Code (Code-Server), Aider, Continue, and PKM tooling
+│   │   ├── entrypoint.sh     # Extension installer & Multi-Root workspace initialization
+│   │   └── titan-chat        # Operator CLI helper for direct interactive agent chat
 │   ├── hermes/
 │   │   ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
 │   │   └── plugins/
@@ -303,6 +311,7 @@ project-titan/
     │   ├── setup-network.sh  # Static IP & local appliance domain (/etc/hosts) setup script
     │   ├── setup-hermes.sh   # Automated builder and validator for unprivileged Hermes container
     │   ├── setup-memories.sh # Idempotent provisioning & scaffolding manager for memory plane
+    │   ├── setup-editor.sh   # Automated builder & deployer for Titan Operator IDE (code-server)
     │   └── setup-langfuse.sh # Standalone decoupled service manager for Langfuse container stack
     ├── control/              # Runtime lifecycle, fleet management, and disaster recovery
     │   ├── start-control-plane.sh # Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
@@ -314,7 +323,8 @@ project-titan/
     ├── verify/               # Automated test harnesses and verification suites
     │   ├── verify-fleet.sh   # Multi-agent fleet verification harness (drift, routing, isolation)
     │   ├── verify-hermes.sh  # Automated verification harness for Hermes workspace persistence
-    │   ├── verify-memories.sh# Automated verification harness for SilverBullet & OKF sync
+    │   ├── verify-editor.sh  # Automated verification harness for Titan Operator IDE (security & tooling)
+    │   ├── verify-memories.sh# Automated verification harness for OKF memory synchronization
     │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
     │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
     │   └── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
@@ -370,14 +380,14 @@ Phase 0: Base Config
   * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `[agent].titan.local` (e.g. `primary.titan.local:9119`) and gateway API at `api.[agent].titan.local` (e.g. `api.primary.titan.local:8642`), preserving `hermes.titan.local` as an alias.
   * *Exit Criteria:* Hermes processing loops and dashboard are operational; Web Dashboard allows visual configuration of Signal and Telegram channels; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
 
-### Phase 3: Memory Mgmt (Flat-File OKF & PKM Interface)
+### Phase 3: Memory Mgmt (Flat-File OKF & Operator IDE Interface)
 
   * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/memories` on GX10, `./data/memories` on macOS) using unified permission access keys (`1000:1000`).
-  * Deploy the SilverBullet visual inspection workspace container mounting the same storage directory, accessible via Caddy at `memory.titan.local`.
+  * Deploy the Titan Operator IDE container (`titan-code-server`, #145 superseding SilverBullet) mounting a 4-root workspace (`/workspace/project-titan`, `/memories`, `/data/workspace`, `/apps/cindypawford/site`), accessible via Caddy at `editor.titan.local` behind HTTP Basic Auth.
   * Deploy the native `hermes-okf` plugin package (`docker/hermes/plugins/hermes-okf`) registering `read_okf_note`, `write_okf_note`, and `synthesize_active_rules` into Hermes Agent's tool registry.
   * Implement budget-aware dynamic rule injection and working memory scratchpad loading into Hermes reasoning loops.
   * Enforce hardware-adaptive context windows: safe 4,096 tokens on 16GB macOS workstations and 32,768 tokens on ASUS Ascent GX10 appliances.
-  * *Exit Criteria:* Bi-directional persistence and synchronization verified—content modifications applied inside SilverBullet propagate to active agent reasoning streams; memory purity audit asserts strictly human-auditable flat-file Markdown.
+  * *Exit Criteria:* Bi-directional persistence and synchronization verified—memory edits applied inside Operator IDE propagate to active agent reasoning streams; memory purity audit asserts strictly human-auditable flat-file Markdown (zero `.vscode/` pollution).
 
 ### Phase 4: Security (Hardening & Operational Readiness)
 
@@ -393,7 +403,7 @@ Phase 0: Base Config
   * **Langfuse Observability & OpenTelemetry Tracing (#19)**:
     * **Decoupled Architecture**: Langfuse v2 container stack (`docker/langfuse/docker-compose.yml`) is completely decoupled from the main Titan appliance cluster, allowing it to run on a separate developer laptop or workstation over the LAN.
     * **No Auto-Start by Default**: Controlled via `LANGFUSE_AUTO_START=false` in `.env`. The GX10 appliance runs all core planes (Inference, Control, Agent, Memory) without auto-starting Langfuse.
-    * **Standardized DNS & Dedicated Port**: Tracing endpoints target `langfuse.titan.local` on dedicated **port 3001** (eliminating conflict with SilverBullet on port 3000), mapped via `/etc/hosts` or Docker `extra_hosts` to the remote workstation IP (`LANGFUSE_HOST_IP`).
+    * **Standardized DNS & Dedicated Port**: Tracing endpoints target `langfuse.titan.local` on dedicated **port 3001** (mapped via `/etc/hosts` or Docker `extra_hosts` to the remote workstation IP `LANGFUSE_HOST_IP`).
     * **Dual Ingestion**:
       * **LiteLLM Gateway**: Native tracing callback (`langfuse`) and OpenTelemetry exporter capturing request metadata, token counts, model aliases, and latency.
       * **Hermes Agent**: Direct OTLP trace export via `http://langfuse.titan.local:3001/api/public/otel/v1/traces`.

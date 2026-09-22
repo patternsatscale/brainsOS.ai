@@ -67,7 +67,7 @@ http://api.football-dan.titan.local, https://api.football-dan.titan.local, http:
 # ------------------------------------------------------------------------------
 # Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindypawford.localhost, https://cindypawford.localhost, http://cindy-pawford.localhost, https://cindy-pawford.localhost {
+http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindypawford.localhost, https://cindypawford.localhost, http://cindy-pawford.localhost, https://cindy-pawford.localhost, http://cindypawford.com, https://cindypawford.com {
 	tls internal
 	encode gzip zstd
 	log {
@@ -82,7 +82,7 @@ http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindyp
 # ------------------------------------------------------------------------------
 # Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.cindypawford.titan.local, https://api.cindypawford.titan.local, http://api.cindypawford.localhost, https://api.cindypawford.localhost, http://api.cindy-pawford.localhost, https://api.cindy-pawford.localhost {
+http://api.cindypawford.titan.local, https://api.cindypawford.titan.local, http://api.cindypawford.localhost, https://api.cindypawford.localhost, http://api.cindy-pawford.localhost, https://api.cindy-pawford.localhost, http://api.cindypawford.com, https://api.cindypawford.com {
 	tls internal
 	encode gzip zstd
 	log {
