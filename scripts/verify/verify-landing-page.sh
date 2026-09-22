@@ -45,8 +45,16 @@ log_info "======================================================================
 # ------------------------------------------------------------------------------
 # 1. Fleet Manifest Synchronization & Zero Drift Check
 # ------------------------------------------------------------------------------
-log_info "Step 1: Checking fleet manifest synchronization and drift..."
-MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check || \
+if [ -z "${MANIFEST_FILE:-}" ]; then
+  if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml"
+  elif [ -f "${REPO_ROOT}/config/agents.override.yaml" ]; then
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.override.yaml"
+  else
+    MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
+  fi
+fi
+MANIFEST_FILE="${MANIFEST_FILE}" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check || \
   fail_check "Fleet manifest drift detected. Run sync-agents.sh."
 docker compose config -q || fail_check "Docker Compose topology configuration invalid."
 log_success "Fleet manifest and compose topology are 100% in sync with zero drift."
@@ -130,10 +138,10 @@ DAN_RESP=$(curl -s -I -H "Host: football-dan.titan.local" http://127.0.0.1:80)
 grep -i "Server: uvicorn" <<< "${DAN_RESP}" >/dev/null || fail_check "football-dan.titan.local did not route to uvicorn container."
 log_success "Routing: football-dan.titan.local -> titan-agent-football-dan:9120 (uvicorn) [PASS]"
 
-# 4d. SilverBullet PKM (Layer 5)
-MEM_RESP=$(curl -s -I -H "Host: memory.titan.local" http://127.0.0.1:80)
-grep -i "HTTP/1.1 200 OK" <<< "${MEM_RESP}" >/dev/null || fail_check "memory.titan.local did not return 200 OK."
-log_success "Routing: memory.titan.local -> titan-silverbullet:3000 [PASS]"
+# 4d. Titan Operator IDE (Layer 7 / Layer 5 Operator Console)
+EDITOR_RESP=$(curl -s -I -H "Host: editor.titan.local" http://127.0.0.1:80)
+grep -E "401 Unauthorized|200 OK|302 Found" <<< "${EDITOR_RESP}" >/dev/null || fail_check "editor.titan.local did not route to Operator IDE (expected 401/200/302)."
+log_success "Routing: editor.titan.local -> titan-code-server:8443 (Basic Auth Gate) [PASS]"
 
 # 4e. LiteLLM Gateway (Layer 4)
 PROXY_RESP=$(curl -s -I -H "Host: proxy.titan.local" http://127.0.0.1:80/ui)

@@ -22,6 +22,7 @@ data/control_plane/
 data/workspace/*
 !data/workspace/.gitkeep
 *.tar.gz
+*.vsix
 
 # Agent Public Web Canvas (cloned dedicated repositories)
 apps/cindypawford/site/
@@ -29,6 +30,7 @@ apps/cindypawford/site/
 # Local Volume Mounts & Caches
 data/litellm_db/
 data/postgres/
+data/langfuse_*/
 docker/langfuse/data/
 docker/langfuse/.env
 ollama_data/

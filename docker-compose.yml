@@ -40,6 +40,14 @@ services:
           - github-proxy.titan.local
           - github-proxy.titan.internal
           - github-proxy.localhost
+      titan-operator-net:
+        aliases:
+          - api.cindypawford.titan.local
+          - api.cindypawford.localhost
+          - api.cindypawford.com
+          - api.primary.titan.local
+          - api.terrastella.titan.local
+          - api.football-dan.titan.local
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
       - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
@@ -60,26 +68,40 @@ services:
     networks:
       - titan-internal
 
-  # Memory UX: SilverBullet PKM Web UI (Port 3000)
-  silverbullet:
-    image: zefhemel/silverbullet:latest
-    container_name: titan-silverbullet
+  # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
+  code-server:
+    build:
+      context: .
+      dockerfile: docker/editor/Dockerfile
+    image: titan-code-server:latest
+    container_name: titan-code-server
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     security_opt:
       - "no-new-privileges:true"
     ports:
-      - "127.0.0.1:${SILVERBULLET_PORT:-3000}:3000"
+      - "127.0.0.1:${CODE_SERVER_PORT:-8443}:8443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "litellm:host-gateway"
     volumes:
-      # Mounts the root OKF memories directory (inspects all tenant partitions)
-      - ${TITAN_DATA_DIR:-./data/memories}:/space
+      - ${TITAN_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}:/home/coder/.config
+      - ${TITAN_CODE_SERVER_DATA:-./data/control_plane/vscode_data}:/home/coder/.local/share/code-server
+      - .:/workspace/project-titan
+      - ${TITAN_DATA_DIR:-./data/memories}:/memories
+      - ${TITAN_WORKSPACE_DIR:-./data/workspace}:/data/workspace
+      - ./apps/cindypawford/site:/apps/cindypawford/site
+      - ./config/editor/titan.code-workspace:/workspace/titan.code-workspace:ro
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      - SB_HOSTNAME=0.0.0.0
-      - SB_PORT=3000
+      - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-none}
+      - PASSWORD=${CODE_SERVER_PASSWORD:-titan_operator_secret}
+      - OPENAI_API_BASE=http://litellm:4000/v1
+      - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}
+      - API_SERVER_KEY=${API_SERVER_KEY:-}
     networks:
-      - titan-ingress
+      - titan-operator-net
 
   # ============================================================================
   # L4: Routing & Security Plane
@@ -120,6 +142,11 @@ networks:
   # and routing to LiteLLM via host.docker.internal
   titan-internal:
     name: titan-internal
+    driver: bridge
+
+  # Operator IDE network: isolated from agent plane; connects Caddy to code-server
+  titan-operator-net:
+    name: titan-operator-net
     driver: bridge
 
   # LiteLLM control plane database network: isolated from agent plane

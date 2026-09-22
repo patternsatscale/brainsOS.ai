@@ -26,16 +26,29 @@ http://proxy.{$TITAN_DOMAIN:titan.local}, https://proxy.{$TITAN_DOMAIN:titan.loc
 }
 
 # ==============================================================================
-# Memory Plane Gateway (SilverBullet PKM)
+# Operator IDE: Containerized VS Code (Code-Server) Gateway
 # ==============================================================================
-http://memory.{$TITAN_DOMAIN:titan.local}, https://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost, https://memory.localhost {
+http://editor.{$TITAN_DOMAIN:titan.local}, https://editor.{$TITAN_DOMAIN:titan.local}, http://editor.localhost, https://editor.localhost, http://code.{$TITAN_DOMAIN:titan.local}, https://code.{$TITAN_DOMAIN:titan.local}, http://code.localhost, https://code.localhost {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy silverbullet:3000
+
+	basic_auth {
+		{$OPERATOR_USER:operator} {$OPERATOR_PASSWORD_HASH:$2a$14$KvMBACqSAtMM55IniTSXFuF7n9/ubBrFQrER.jMfpxVyetgEPZIeK}
+	}
+
+	reverse_proxy code-server:8443 {
+		flush_interval -1
+	}
+}
+
+# Legacy Memory Plane Redirect (SilverBullet -> Operator IDE)
+http://memory.{$TITAN_DOMAIN:titan.local}, https://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost, https://memory.localhost {
+	tls internal
+	redir https://editor.{$TITAN_DOMAIN:titan.local}{uri} permanent
 }
 
 # ==============================================================================
@@ -702,26 +715,26 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
         </div>
 
         <div class="grid-1">
-          <a href="http://memory.localhost" target="_blank" rel="noopener noreferrer" class="card card-memory" data-subdomain="memory">
+          <a href="http://editor.localhost" target="_blank" rel="noopener noreferrer" class="card card-memory" data-subdomain="editor">
             <div>
               <div class="card-header">
-                <span class="plane-tag tag-memory">Memory Plane</span>
-                <span class="port-indicator">:3000</span>
+                <span class="plane-tag tag-memory">Operator Console &amp; Memory</span>
+                <span class="port-indicator">:8443</span>
               </div>
               <div class="card-title">
-                <span>SilverBullet PKM &bull; Interactive Memory Console</span>
+                <span>Titan Operator IDE &bull; Containerized VS Code &amp; AI Pair Console</span>
               </div>
-              <p class="card-desc">Human-auditable Open Knowledge Format (OKF) markdown knowledge base. Enables human operators to inspect, audit, rollback, and curate live agent memories (/data/memories/&lt;agent_id&gt;), active rules, and live session logs.</p>
+              <p class="card-desc">Authoritative L7 Operator Management IDE (OpenVSCode / Code-Server) with Multi-Root Workspace layout (Repo root, /memories, /data/workspace, Cindy canvas), Aider pair-programming, and Goose agent integration routed strictly through LiteLLM.</p>
               <div class="meta-pills">
-                <span class="meta-pill">Format: <strong>Pure OKF Markdown</strong></span>
-                <span class="meta-pill">Isolation: <strong>Per-Tenant Partitions</strong></span>
-                <span class="meta-pill">Security: <strong>Zero SQLite / Binary Blobs</strong></span>
-                <span class="meta-pill">Package: <strong>packages/titan_memory</strong></span>
+                <span class="meta-pill">Console: <strong>VS Code Server</strong></span>
+                <span class="meta-pill">Workspace: <strong>Multi-Root</strong></span>
+                <span class="meta-pill">Pairing: <strong>Aider &amp; Goose</strong></span>
+                <span class="meta-pill">Isolation: <strong>Rule 9 Protected</strong></span>
               </div>
             </div>
             <div class="card-footer">
-              <span class="launch-btn" style="color: #7c3aed;"><span class="primary-link" style="color: #7c3aed;">memory.localhost</span> &rarr;</span>
-              <span class="external-badge">PKM Workspace &#x2197;</span>
+              <span class="launch-btn" style="color: #7c3aed;"><span class="primary-link" style="color: #7c3aed;">editor.localhost</span> &rarr;</span>
+              <span class="external-badge">Operator IDE &#x2197;</span>
             </div>
           </a>
         </div>
@@ -925,7 +938,7 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
       <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
         All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.titan.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
       </p>
-      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local memory.titan.local dgx.titan.local langfuse.titan.local github-proxy.titan.local" | sudo tee -a /etc/hosts</div>
+      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local editor.titan.local code.titan.local memory.titan.local dgx.titan.local langfuse.titan.local github-proxy.titan.local" | sudo tee -a /etc/hosts</div>
     </div>
 
     <footer>

@@ -105,6 +105,8 @@ agents:
     # L1: Communications & UX Ingress
     comms:
       subdomain: "cindypawford.titan.local"
+      extra_domains:
+        - "cindypawford.com"
       port: 8644
       dashboard_port: 9121
       signal:

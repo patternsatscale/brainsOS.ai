@@ -102,24 +102,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Pull & Verify Native ARM64 SilverBullet Image
-# ------------------------------------------------------------------------------
-if command -v docker >/dev/null 2>&1; then
-  ARCH="$(uname -m)"
-  DOCKER_PLATFORM="linux/amd64"
-  if [[ "${ARCH}" == "arm64" || "${ARCH}" == "aarch64" ]]; then
-    DOCKER_PLATFORM="linux/arm64"
-  fi
-
-  log_info "Ensuring native ${DOCKER_PLATFORM} image for SilverBullet (zefhemel/silverbullet:latest)..."
-  docker pull --platform "${DOCKER_PLATFORM}" zefhemel/silverbullet:latest >/dev/null 2>&1 || log_warn "Image pull warning (will pull on compose launch)."
-
-  IMAGE_ARCH=$(docker image inspect zefhemel/silverbullet:latest --format '{{.Architecture}}' 2>/dev/null || echo "unknown")
-  log_success "SilverBullet image verified: ${IMAGE_ARCH} architecture."
-fi
-
-# ------------------------------------------------------------------------------
-# 5. Verify Memory Plane Purity
+# 4. Verify Memory Plane Purity
 # ------------------------------------------------------------------------------
 log_info "Verifying memory plane purity in ${TARGET_MEMORIES_DIR}..."
 
@@ -136,6 +119,12 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find "${TARGET_MEMORIES_DIR}" -type f -print0)
 
+# Also ensure no .vscode directory was created in memories
+if find "${TARGET_MEMORIES_DIR}" -type d -name ".vscode" 2>/dev/null | grep -q ".vscode"; then
+  log_error "Purity violation: .vscode directory detected in memory plane!"
+  PURITY_VIOLATIONS=$((PURITY_VIOLATIONS + 1))
+fi
+
 if [ "${PURITY_VIOLATIONS}" -eq 0 ]; then
   log_success "Memory plane is 100% pure (human-auditable flat-file Markdown only)."
 else
@@ -143,5 +132,6 @@ else
   exit 1
 fi
 
-log_success "Memory Plane setup complete! Start service via: docker compose up -d silverbullet"
+log_success "Memory Plane setup complete! Inspect & curate memories via Titan Operator IDE:"
+log_info "  Launch editor via: ./scripts/setup/setup-editor.sh"
 echo ""

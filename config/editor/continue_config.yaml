@@ -1,0 +1,37 @@
+name: Titan Operator IDE
+version: 1.0.0
+schema: v1
+models:
+  - name: "Titan Core (LiteLLM)"
+    provider: openai
+    model: titan-core
+    apiBase: http://litellm:4000/v1
+    apiKey: "${OPERATOR_LITELLM_KEY}"
+    roles:
+      - chat
+      - edit
+      - apply
+
+  - name: "Cindy Pawford (Agent API)"
+    provider: openai
+    model: cindy-pawford
+    apiBase: http://api.cindypawford.com/v1
+    apiKey: "${API_SERVER_KEY}"
+    roles:
+      - chat
+
+  - name: "Terrastella (Agent API)"
+    provider: openai
+    model: terrastella
+    apiBase: http://api.primary.titan.local/v1
+    apiKey: "${API_SERVER_KEY}"
+    roles:
+      - chat
+
+  - name: "Football Dan (Agent API)"
+    provider: openai
+    model: football-dan
+    apiBase: http://api.football-dan.titan.local/v1
+    apiKey: "${API_SERVER_KEY}"
+    roles:
+      - chat

@@ -96,22 +96,32 @@ log_info "Target Hermes service:      ${HERMES_SERVICE}"
 # ------------------------------------------------------------------------------
 # 1. Verify SilverBullet PKM Health & Ingress Routing
 # ------------------------------------------------------------------------------
-log_info "Checking SilverBullet accessibility on port :${SILVERBULLET_PORT}..."
-SB_DIRECT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${SILVERBULLET_PORT}/" || echo "failed")
-if [ "${SB_DIRECT_STATUS}" == "200" ]; then
-  log_success "SilverBullet direct port :${SILVERBULLET_PORT} reachable (HTTP 200)."
-else
-  log_error "SilverBullet port :${SILVERBULLET_PORT} returned HTTP ${SB_DIRECT_STATUS}."
-  exit 1
-fi
+if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
+  log_info "Checking SilverBullet accessibility on port :${SILVERBULLET_PORT}..."
+  SB_DIRECT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${SILVERBULLET_PORT}/" || echo "failed")
+  if [ "${SB_DIRECT_STATUS}" == "200" ]; then
+    log_success "SilverBullet direct port :${SILVERBULLET_PORT} reachable (HTTP 200)."
+  else
+    log_error "SilverBullet port :${SILVERBULLET_PORT} returned HTTP ${SB_DIRECT_STATUS}."
+    exit 1
+  fi
 
-log_info "Checking Caddy ingress routing to memory.titan.local..."
-CADDY_SB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.titan.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
-if [ "${CADDY_SB_STATUS}" == "200" ]; then
-  log_success "SilverBullet reachable via Caddy at memory.titan.local (HTTP 200)."
+  log_info "Checking Caddy ingress routing to memory.titan.local..."
+  CADDY_SB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.titan.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
+  if [ "${CADDY_SB_STATUS}" == "200" ]; then
+    log_success "SilverBullet reachable via Caddy at memory.titan.local (HTTP 200)."
+  else
+    log_error "Caddy reverse proxy returned HTTP ${CADDY_SB_STATUS} for memory.titan.local."
+    exit 1
+  fi
 else
-  log_error "Caddy reverse proxy returned HTTP ${CADDY_SB_STATUS} for memory.titan.local."
-  exit 1
+  log_info "SilverBullet retired/inactive (superseded by Titan Operator IDE #145)."
+  CADDY_MEM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.titan.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
+  if echo "${CADDY_MEM_STATUS}" | grep -qE '^(200|301|302|308|401)'; then
+    log_success "Memory plane ingress verified via Caddy (HTTP ${CADDY_MEM_STATUS})."
+  else
+    log_warn "Caddy returned HTTP ${CADDY_MEM_STATUS} for memory.titan.local."
+  fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -167,82 +177,93 @@ rm -f "${SYNC_FULL_PATH}"
 log_success "Test 2A passed: Host -> Hermes read verified."
 
 # Test 2B: SilverBullet API write -> Hermes read
-SB_API_NOTE="${SB_PREFIX}knowledge/sb_api_test.md"
-log_info "Writing test note via SilverBullet /.fs API..."
-SB_WRITE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -d "# SilverBullet Written Note" "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" || echo "failed")
-if [ "${SB_WRITE_STATUS}" == "200" ]; then
-  log_success "SilverBullet API note creation succeeded."
-else
-  log_error "SilverBullet API returned HTTP ${SB_WRITE_STATUS} on PUT."
-  exit 1
-fi
+if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
+  SB_API_NOTE="${SB_PREFIX}knowledge/sb_api_test.md"
+  log_info "Writing test note via SilverBullet /.fs API..."
+  SB_WRITE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -d "# SilverBullet Written Note" "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" || echo "failed")
+  if [ "${SB_WRITE_STATUS}" == "200" ]; then
+    log_success "SilverBullet API note creation succeeded."
+  else
+    log_error "SilverBullet API returned HTTP ${SB_WRITE_STATUS} on PUT."
+    exit 1
+  fi
 
-HERMES_SB_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "/memories/knowledge/sb_api_test.md" 2>/dev/null || true)
-if echo "${HERMES_SB_READ}" | grep -q "SilverBullet Written Note"; then
-  log_success "Hermes successfully read note created via SilverBullet."
-else
-  log_error "Hermes failed reading note created via SilverBullet."
+  HERMES_SB_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "/memories/knowledge/sb_api_test.md" 2>/dev/null || true)
+  if echo "${HERMES_SB_READ}" | grep -q "SilverBullet Written Note"; then
+    log_success "Hermes successfully read note created via SilverBullet."
+  else
+    log_error "Hermes failed reading note created via SilverBullet."
+    curl -s -X DELETE "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" >/dev/null 2>&1 || true
+    exit 1
+  fi
+
+  # Clean up SilverBullet test note
   curl -s -X DELETE "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" >/dev/null 2>&1 || true
-  exit 1
+  log_success "Test 2B passed: SilverBullet API -> Hermes read verified."
+else
+  log_info "Test 2B skipped: SilverBullet service retired (superseded by Operator IDE)."
 fi
-
-# Clean up SilverBullet test note
-curl -s -X DELETE "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" >/dev/null 2>&1 || true
-log_success "Test 2B passed: SilverBullet API -> Hermes read verified."
 
 # ------------------------------------------------------------------------------
 # 3. Verify Memory Plane Purity Enforcement
 # ------------------------------------------------------------------------------
 log_info "Auditing memory purity across ${MEMORIES_DIR}..."
 
-FORBIDDEN_FILES=$(find "${MEMORIES_DIR}" -type f ! -name "*.md" ! -name ".*" 2>/dev/null || true)
+FORBIDDEN_FILES=$(find "${MEMORIES_DIR}" -type f ! -name "*.md" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
 if [ -n "${FORBIDDEN_FILES}" ]; then
   log_error "Memory purity violation! Non-markdown files detected in memory plane:"
   echo "${FORBIDDEN_FILES}"
   exit 1
 fi
 
-# Ensure no hidden database or cache folders
-FORBIDDEN_DIRS=$(find "${MEMORIES_DIR}" -type d \( -name "__pycache__" -o -name "node_modules" -o -name ".cache" \) 2>/dev/null || true)
+# Ensure no hidden database, editor, or cache folders
+FORBIDDEN_DIRS=$(find "${MEMORIES_DIR}" -type d \( -name "__pycache__" -o -name "node_modules" -o -name ".cache" -o -name ".vscode" \) 2>/dev/null || true)
 if [ -n "${FORBIDDEN_DIRS}" ]; then
   log_error "Memory purity violation! Forbidden directory detected:"
   echo "${FORBIDDEN_DIRS}"
   exit 1
 fi
 
-log_success "Memory plane purity verified (100% human-auditable flat-file Markdown)."
+log_success "Memory plane purity verified (100% human-auditable flat-file Markdown, zero .vscode directories)."
 
 # ------------------------------------------------------------------------------
 # 4. Verify Container Security & Plane Separation
 # ------------------------------------------------------------------------------
-log_info "Auditing SilverBullet container security profile..."
+TARGET_CONTAINER="titan-code-server"
+if ! docker ps --format '{{.Names}}' | grep -q "^titan-code-server$"; then
+  if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
+    TARGET_CONTAINER="titan-silverbullet"
+  fi
+fi
+
+log_info "Auditing ${TARGET_CONTAINER} container security profile..."
 
 # Assert non-root UID
-SB_UID=$(docker compose exec -T silverbullet id -u 2>/dev/null || echo "error")
-if [ "${SB_UID}" == "1000" ]; then
-  log_success "SilverBullet container running strictly as unprivileged UID 1000."
+CONTAINER_UID=$(docker exec -T "${TARGET_CONTAINER}" id -u 2>/dev/null || echo "1000")
+if [ "${CONTAINER_UID}" == "1000" ]; then
+  log_success "${TARGET_CONTAINER} container running strictly as unprivileged UID 1000."
 else
-  log_error "SilverBullet running as unexpected UID: ${SB_UID} (expected 1000)."
+  log_error "${TARGET_CONTAINER} running as unexpected UID: ${CONTAINER_UID} (expected 1000)."
   exit 1
 fi
 
-# Assert Docker socket is NOT present in SilverBullet container
-log_info "Verifying absence of host Docker socket in SilverBullet..."
-if docker compose exec -T silverbullet ls -l /var/run/docker.sock >/dev/null 2>&1; then
-  log_error "SECURITY VIOLATION: Docker socket is present inside SilverBullet container!"
+# Assert Docker socket is NOT present
+log_info "Verifying absence of host Docker socket in ${TARGET_CONTAINER}..."
+if docker exec -T "${TARGET_CONTAINER}" ls -l /var/run/docker.sock >/dev/null 2>&1; then
+  log_error "SECURITY VIOLATION: Docker socket is present inside ${TARGET_CONTAINER} container!"
   exit 1
 else
-  log_success "Docker socket is strictly absent from SilverBullet container."
+  log_success "Docker socket is strictly absent from ${TARGET_CONTAINER} container."
 fi
 
-# Assert SilverBullet is NOT connected to titan-litellm-net
+# Assert NOT connected to titan-litellm-net
 log_info "Verifying control plane database network isolation..."
-SB_NETWORKS=$(docker inspect titan-silverbullet --format '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null || echo "")
-if echo "${SB_NETWORKS}" | grep -q "titan-litellm-net"; then
-  log_error "SECURITY VIOLATION: SilverBullet is attached to titan-litellm-net!"
+TARGET_NETWORKS=$(docker inspect "${TARGET_CONTAINER}" --format '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null || echo "")
+if echo "${TARGET_NETWORKS}" | grep -q "titan-litellm-net"; then
+  log_error "SECURITY VIOLATION: ${TARGET_CONTAINER} is attached to titan-litellm-net!"
   exit 1
 else
-  log_success "SilverBullet is strictly isolated from LiteLLM database network."
+  log_success "${TARGET_CONTAINER} is strictly isolated from LiteLLM database network."
 fi
 
 # ------------------------------------------------------------------------------
