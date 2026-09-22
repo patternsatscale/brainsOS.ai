@@ -49,7 +49,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 │     - Development Workstation: Apple Silicon macOS (native ARM64 parity)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Cross-Cutting: Observability & Operational Safety                           │
-│     - Decoupled Langfuse v2 + OpenTelemetry distributed tracing             │
+│     - Decoupled Langfuse v4 + OpenTelemetry distributed tracing             │
 │     - Unified full-data backup (scripts/control/backup.sh)                  │
 │     - Granular single-tenant emergency kill-switch (scripts/control/stop)   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -289,7 +289,7 @@ project-titan/
 │   │   └── plugins/
 │   │       └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
 │   └── langfuse/
-│       ├── docker-compose.yml# Decoupled Langfuse v2 + PostgreSQL observability stack
+│       ├── docker-compose.yml# Decoupled Langfuse v4 distributed observability stack
 │       └── .env.example      # Standalone Langfuse environment template
 ├── docs/                     # Architectural tenets, specifications, and ticket walkthroughs
 │   ├── lab-work/             # Claude documentation, critique & project reporting (Rule 11)
@@ -326,6 +326,7 @@ project-titan/
     │   ├── verify-editor.sh  # Automated verification harness for Titan Operator IDE (security & tooling)
     │   ├── verify-memories.sh# Automated verification harness for OKF memory synchronization
     │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
+    │   ├── verify-agent-telemetry.sh # End-to-end multi-agent & LiteLLM telemetry verification suite
     │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
     │   └── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
     └── apps/                 # Application-specific operations and deployment tooling

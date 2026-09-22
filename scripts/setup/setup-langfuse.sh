@@ -79,6 +79,7 @@ setup_langfuse() {
   log_info "Configuring Langfuse v4.38.0 distributed observability environment..."
 
   mkdir -p "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}"
+  chmod 777 "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" 2>/dev/null || true
 
   if [ ! -f "${LANGFUSE_ENV_FILE}" ]; then
     log_info "Creating ${LANGFUSE_ENV_FILE} from template..."
@@ -101,7 +102,7 @@ setup_langfuse() {
   # Ensure API Keys exist (or auto-generate for zero-click fleet setup)
   SEC_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-pk-lf-$(openssl rand -hex 16)}"
   SEC_SECRET_KEY="${LANGFUSE_SECRET_KEY:-sk-lf-$(openssl rand -hex 16)}"
-  SEC_OTEL_AUTH="Basic $(echo -n "${SEC_PUBLIC_KEY}:${SEC_SECRET_KEY}" | base64)"
+  SEC_OTEL_AUTH="Basic $(echo -n "${SEC_PUBLIC_KEY}:${SEC_SECRET_KEY}" | base64 | tr -d '\r\n')"
 
   # Helper to set or update key-value in a file safely
   update_env_var() {
@@ -124,13 +125,17 @@ setup_langfuse() {
   update_env_var "MINIO_ROOT_PASSWORD" "${SEC_MINIO}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_DB_DATA_DIR" "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_CLICKHOUSE_DATA_DIR" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_REDIS_DATA_DIR" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_MINIO_DATA_DIR" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
 
   # Also ensure root .env has these keys for LiteLLM and Agent Fleet synchronization
   if [ -f "${REPO_ROOT}/.env" ]; then
     update_env_var "LANGFUSE_HOST" "http://langfuse.titan.local:${LANGFUSE_PORT}" "${REPO_ROOT}/.env"
     update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${REPO_ROOT}/.env"
     update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_OTEL_AUTH" "${SEC_OTEL_AUTH}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_OTEL_AUTH" "\"${SEC_OTEL_AUTH}\"" "${REPO_ROOT}/.env"
   fi
 
   export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
@@ -222,7 +227,7 @@ generate_keys_helper() {
     echo "  LANGFUSE_HOST=http://langfuse.titan.local:${LANGFUSE_PORT}"
     echo "  LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}"
     echo "  LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}"
-    echo "  LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)}"
+    echo "  LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')}"
     echo ""
   fi
 }

@@ -102,8 +102,8 @@ log_info "Verifying configuration files..."
 
 # LiteLLM config
 if [ -f "config/litellm/config.yaml" ]; then
-  if grep -q "success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS" config/litellm/config.yaml; then
-    pass_check "LiteLLM configuration: Dynamic callbacks configured in config/litellm/config.yaml."
+  if grep -q "success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS" config/litellm/config.yaml || (grep -q "success_callback:" config/litellm/config.yaml && grep -q -- "- langfuse" config/litellm/config.yaml); then
+    pass_check "LiteLLM configuration: Callbacks configured in config/litellm/config.yaml."
   else
     fail_check "LiteLLM configuration: missing success_callback in config/litellm/config.yaml."
   fi

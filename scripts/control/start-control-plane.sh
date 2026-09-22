@@ -335,8 +335,8 @@ start_services() {
     fi
 
     OTEL_EXPORTER_OTLP_ENDPOINT="${HOST_LANGFUSE_URL}/api/public/otel"
-    if [ -z "${LANGFUSE_OTEL_AUTH}" ]; then
-      LANGFUSE_OTEL_AUTH="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)"
+    if [ -z "${LANGFUSE_OTEL_AUTH}" ] || [ "${LANGFUSE_OTEL_AUTH}" = "Basic" ] || [[ "${LANGFUSE_OTEL_AUTH}" != *" "* ]]; then
+      LANGFUSE_OTEL_AUTH="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')"
     fi
     OTEL_EXPORTER_OTLP_HEADERS="Authorization=${LANGFUSE_OTEL_AUTH}"
     log_info "LiteLLM Observability: ENABLED (Langfuse & OTel -> ${HOST_LANGFUSE_URL})"

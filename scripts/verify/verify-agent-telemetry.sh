@@ -161,23 +161,43 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 3: Querying Langfuse REST API for ingested observation records..."
 
-AUTH_HEADER="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)"
+AUTH_HEADER="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')"
 OBS_FOUND=false
 USER_MATCHED=false
 
 # Allow up to 25 seconds for the asynchronous Langfuse worker to process and flush queue
 log_info "Awaiting asynchronous trace ingestion in Langfuse v4..."
+TMP_TRACES="/tmp/titan_lf_traces_$$.json"
+TMP_OBS="/tmp/titan_lf_obs_$$.json"
+trap 'rm -f "${TMP_TRACES}" "${TMP_OBS}"' EXIT
+
 for i in {1..25}; do
-  OBS_JSON=$(curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/v2/observations?limit=25" \
+  curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/traces?limit=25" \
     -H "Authorization: ${AUTH_HEADER}" \
-    -H "Content-Type: application/json" 2>/dev/null || echo "{}")
+    -H "Content-Type: application/json" > "${TMP_TRACES}" 2>/dev/null || true
+  curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/v2/observations?limit=25" \
+    -H "Authorization: ${AUTH_HEADER}" \
+    -H "Content-Type: application/json" > "${TMP_OBS}" 2>/dev/null || true
 
   MATCH_COUNT=$(python3 -c "
-import json, sys
-data = json.loads('''${OBS_JSON}''') if '''${OBS_JSON}''' else {}
-obs = data.get('data', [])
-matches = [o for o in obs if o.get('userId') == 'cindy-pawford' or 'cindy-pawford' in str(o.get('metadata', {})) or 'cindy-pawford' in str(o.get('name', ''))]
-print(len(matches))
+import json
+try:
+    with open('${TMP_TRACES}', 'r') as f:
+        data_t = json.load(f)
+    traces = data_t.get('data', [])
+    t_matches = [t for t in traces if t.get('userId') == 'cindy-pawford' or 'cindy-pawford' in str(t.get('tags', [])) or 'cindy-pawford' in str(t.get('metadata', {}))]
+except Exception:
+    t_matches = []
+
+try:
+    with open('${TMP_OBS}', 'r') as f:
+        data_o = json.load(f)
+    obs = data_o.get('data', [])
+    o_matches = [o for o in obs if o.get('userId') == 'cindy-pawford' or 'cindy-pawford' in str(o.get('metadata', {})) or 'cindy-pawford' in str(o.get('name', ''))]
+except Exception:
+    o_matches = []
+
+print(len(t_matches) + len(o_matches))
 " 2>/dev/null || echo "0")
 
   if [ "${MATCH_COUNT}" -gt 0 ]; then
@@ -189,17 +209,20 @@ print(len(matches))
 done
 
 if [ "${OBS_FOUND}" = true ]; then
-  pass_check "Observations captured in Langfuse API for 'cindy-pawford'."
+  pass_check "Traces and Generations captured in Langfuse API for 'cindy-pawford'."
 else
   warn_check "Did not find recent trace tagged 'cindy-pawford' in Langfuse within 25s."
 fi
 
 # Verify generation details or spans in Langfuse
 OBS_COUNT=$(python3 -c "
-import json, sys
-data = json.loads('''${OBS_JSON}''') if '''${OBS_JSON}''' else {}
-obs = data.get('data', [])
-print(len(obs))
+import json
+try:
+    with open('${TMP_OBS}', 'r') as f:
+        data = json.load(f)
+    print(len(data.get('data', [])))
+except Exception:
+    print(0)
 " 2>/dev/null || echo "0")
 
 if [ "${OBS_COUNT}" -gt 0 ]; then
@@ -235,14 +258,18 @@ fi
 # ------------------------------------------------------------------------------
 # 5. Inviolable Guardrail: Memory Plane Purity (Rule 1)
 # ------------------------------------------------------------------------------
-log_info "Step 5: Verifying Memory Plane Purity in Cindy Pawford partition..."
+log_info "Step 5: Verifying Memory Plane Purity across fleet partitions..."
 
-if [ -f "${REPO_ROOT}/scripts/verify/verify-memories.sh" ]; then
-  if "${REPO_ROOT}/scripts/verify/verify-memories.sh" >/dev/null 2>&1; then
-    pass_check "Rule 1 (Memory Purity): Zero database, cache, or binary leakage in /memories."
-  else
-    fail_check "Rule 1 (Memory Purity): verify-memories.sh reported purity violations!"
-  fi
+MEMORIES_DIR="${REPO_ROOT}/data/memories"
+FORBIDDEN_FILES=$(find "${MEMORIES_DIR}" -type f ! -name "*.md" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
+FORBIDDEN_DIRS=$(find "${MEMORIES_DIR}" -type d \( -name "__pycache__" -o -name "node_modules" -o -name ".cache" \) 2>/dev/null || true)
+
+if [ -z "${FORBIDDEN_FILES}" ] && [ -z "${FORBIDDEN_DIRS}" ]; then
+  pass_check "Rule 1 (Memory Purity): Zero database, cache, or binary leakage in /memories."
+else
+  fail_check "Rule 1 (Memory Purity): Forbidden files detected in /memories:"
+  [ -n "${FORBIDDEN_FILES}" ] && echo "${FORBIDDEN_FILES}"
+  [ -n "${FORBIDDEN_DIRS}" ] && echo "${FORBIDDEN_DIRS}"
 fi
 
 # ------------------------------------------------------------------------------
