@@ -129,6 +129,9 @@ setup_langfuse() {
   update_env_var "LANGFUSE_CLICKHOUSE_DATA_DIR" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_REDIS_DATA_DIR" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_MINIO_DATA_DIR" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME:-Titan Admin}\"" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}" "${LANGFUSE_ENV_FILE}"
 
   # Also ensure root .env has these keys for LiteLLM and Agent Fleet synchronization
   if [ -f "${REPO_ROOT}/.env" ]; then
@@ -136,6 +139,9 @@ setup_langfuse() {
     update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${REPO_ROOT}/.env"
     update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${REPO_ROOT}/.env"
     update_env_var "LANGFUSE_OTEL_AUTH" "\"${SEC_OTEL_AUTH}\"" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME:-Titan Admin}\"" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}" "${REPO_ROOT}/.env"
   fi
 
   export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
