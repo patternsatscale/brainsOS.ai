@@ -41,19 +41,19 @@ LANGFUSE_DIR="${REPO_ROOT}/docker/langfuse"
 LANGFUSE_ENV_FILE="${LANGFUSE_DIR}/.env"
 LANGFUSE_ENV_EXAMPLE="${LANGFUSE_DIR}/.env.example"
 
-# Load parent .env if present for project-level overrides
-if [ -f .env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . ./.env
-  set +a
-fi
-
-# Load langfuse-specific .env if present (takes precedence for Langfuse container)
+# Load langfuse-specific .env if present for defaults
 if [ -f "${LANGFUSE_ENV_FILE}" ]; then
   set -a
   # shellcheck disable=SC1090
   . "${LANGFUSE_ENV_FILE}"
+  set +a
+fi
+
+# Load parent .env if present for project-level overrides (root .env is authoritative)
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
   set +a
 fi
 
@@ -129,9 +129,23 @@ setup_langfuse() {
   update_env_var "LANGFUSE_CLICKHOUSE_DATA_DIR" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_REDIS_DATA_DIR" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_MINIO_DATA_DIR" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
-  update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}" "${LANGFUSE_ENV_FILE}"
-  update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME:-Titan Admin}\"" "${LANGFUSE_ENV_FILE}"
-  update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}" "${LANGFUSE_ENV_FILE}"
+  # Read user parameters from root .env if defined
+  if [ -f "${REPO_ROOT}/.env" ]; then
+    _ROOT_EMAIL=$(grep '^LANGFUSE_INIT_USER_EMAIL=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+    _ROOT_NAME=$(grep '^LANGFUSE_INIT_USER_NAME=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+    _ROOT_PASS=$(grep '^LANGFUSE_INIT_USER_PASSWORD=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+    [ -n "${_ROOT_EMAIL}" ] && LANGFUSE_INIT_USER_EMAIL="${_ROOT_EMAIL}"
+    [ -n "${_ROOT_NAME}" ] && LANGFUSE_INIT_USER_NAME="${_ROOT_NAME}"
+    [ -n "${_ROOT_PASS}" ] && LANGFUSE_INIT_USER_PASSWORD="${_ROOT_PASS}"
+  fi
+
+  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}"
+  LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-Titan Admin}"
+  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}"
+
+  update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME}\"" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${LANGFUSE_ENV_FILE}"
 
   # Also ensure root .env has these keys for LiteLLM and Agent Fleet synchronization
   if [ -f "${REPO_ROOT}/.env" ]; then
@@ -139,9 +153,9 @@ setup_langfuse() {
     update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${REPO_ROOT}/.env"
     update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${REPO_ROOT}/.env"
     update_env_var "LANGFUSE_OTEL_AUTH" "\"${SEC_OTEL_AUTH}\"" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME:-Titan Admin}\"" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME}\"" "${REPO_ROOT}/.env"
+    update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${REPO_ROOT}/.env"
   fi
 
   export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
@@ -173,6 +187,19 @@ start_langfuse() {
   done
 
   if [ "${READY}" = true ]; then
+    # Synchronize admin password into PostgreSQL if user already exists
+    if [ -n "${LANGFUSE_INIT_USER_PASSWORD}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL}" ]; then
+      USER_HASH=$(docker exec -i titan-langfuse-web node -e "
+        const p = process.argv[1];
+        const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
+        console.log(bcrypt.hashSync(p, 12));
+      " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
+      if [ -n "${USER_HASH}" ]; then
+        docker exec -i titan-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+          -c "UPDATE users SET password = '${USER_HASH}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';" >/dev/null 2>&1 || true
+      fi
+    fi
+
     log_success "Langfuse v4.38.0 is running and healthy!"
     echo ""
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
@@ -181,8 +208,8 @@ start_langfuse() {
     echo -e "  - Web Dashboard:     ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} (or http://langfuse.titan.local)"
     echo -e "  - OTel Ingestion:    ${BOLD}http://localhost:${LANGFUSE_PORT}/api/public/otel${NC}"
     echo -e "  - Public Key:        ${BOLD}${LANGFUSE_PUBLIC_KEY:-}${NC}"
-    echo -e "  - Admin Email:       ${BOLD}admin@titan.local${NC}"
-    echo -e "  - Admin Password:    ${BOLD}titan_admin_secret${NC}"
+    echo -e "  - Admin Email:       ${BOLD}${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}${NC}"
+    echo -e "  - Admin Password:    ${BOLD}${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
   else
     log_warn "Langfuse containers started, but /api/public/health did not return 200 within 90s."
