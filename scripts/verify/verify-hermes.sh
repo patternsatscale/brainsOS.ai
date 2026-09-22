@@ -154,9 +154,16 @@ fi
 log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
 SIGNAL_ABOUT=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about || echo "failed")
 if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
-  log_success "Signal-CLI daemon reachable on titan-internal network."
+  log_success "Signal-CLI daemon reachable on titan-internal network (REST API)."
 else
   log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
+  exit 1
+fi
+SIGNAL_NATIVE=$(docker compose exec -T "${HERMES_SERVICE}" curl -s -o /dev/null -w "%{http_code}" http://signal-cli:8080/api/v1/check || echo "failed")
+if [ "${SIGNAL_NATIVE}" == "200" ]; then
+  log_success "Signal native HTTP endpoint reachable from Hermes (/api/v1/check -> HTTP 200)."
+else
+  log_error "Failed to reach Signal native HTTP endpoint from Hermes container: HTTP ${SIGNAL_NATIVE}"
   exit 1
 fi
 
