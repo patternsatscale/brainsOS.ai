@@ -395,7 +395,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
       DYNAMIC_AGENT_DOMAINS="${DYNAMIC_AGENT_DOMAINS} ${sub} api.${sub}"
     done < <(grep -E '^[[:space:]]*subdomain:' "${REPO_ROOT}/config/agents.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
   fi
-  FLEET_DOMAINS="hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} github-proxy.${SELECTED_DOMAIN}${DYNAMIC_AGENT_DOMAINS}"
+  FLEET_DOMAINS="hermes.${SELECTED_DOMAIN} api.hermes.${SELECTED_DOMAIN} proxy.${SELECTED_DOMAIN} memory.${SELECTED_DOMAIN} github-proxy.${SELECTED_DOMAIN} efw.${SELECTED_DOMAIN} firewall.${SELECTED_DOMAIN}${DYNAMIC_AGENT_DOMAINS}"
   if is_gx10_hardware; then
     HOSTS_LINE="${SELECTED_HOSTS_IP} ${SELECTED_DOMAIN} ${FLEET_DOMAINS} dgx.${SELECTED_DOMAIN}"
   else
@@ -572,6 +572,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   echo -e "  - Control Plane:   http://proxy.${SELECTED_DOMAIN}"
   echo -e "  - Memory Plane:    http://memory.${SELECTED_DOMAIN}"
   echo -e "  - Observability:   http://langfuse.${SELECTED_DOMAIN}:3001"
+  echo -e "  - Egress Firewall: http://efw.${SELECTED_DOMAIN}"
   if is_gx10_hardware; then
     echo -e "  - Telemetry:       http://dgx.${SELECTED_DOMAIN}"
   fi

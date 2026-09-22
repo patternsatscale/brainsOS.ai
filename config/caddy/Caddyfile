@@ -127,6 +127,23 @@ http://github-proxy.{$TITAN_DOMAIN:titan.local}, https://github-proxy.{$TITAN_DO
 }
 
 # ==============================================================================
+# Security Hardening: Tool Egress Gateway & Inspection Proxy (Ticket #146)
+# Relays operator web traffic to mitmweb console for real-time flow and log audit
+# ==============================================================================
+http://efw.{$TITAN_DOMAIN:titan.local}, https://efw.{$TITAN_DOMAIN:titan.local}, http://efw.localhost, https://efw.localhost, http://firewall.{$TITAN_DOMAIN:titan.local}, https://firewall.{$TITAN_DOMAIN:titan.local}, http://firewall.localhost, https://firewall.localhost {
+	tls internal
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+
+	reverse_proxy tool-egress-proxy:8081 {
+		flush_interval -1
+	}
+}
+
+# ==============================================================================
 # Ingress Default / Portal Landing Page (HTTP & HTTPS)
 # ==============================================================================
 http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://localhost, https://localhost, :80, :443 {
@@ -750,7 +767,7 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
           </div>
         </div>
 
-        <div class="grid-1">
+        <div class="grid-2">
           <a href="http://proxy.localhost/ui" target="_blank" rel="noopener noreferrer" class="card card-control" data-subdomain="proxy" data-path="/ui">
             <div>
               <div class="card-header">
@@ -771,6 +788,30 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
             <div class="card-footer">
               <span class="launch-btn" style="color: #b45309;"><span class="primary-link" style="color: #b45309;">proxy.localhost/ui</span> &rarr;</span>
               <span class="external-badge">Admin UI &#x2197;</span>
+            </div>
+          </a>
+
+          <!-- Tool Egress Firewall & Inspection Proxy -->
+          <a href="http://efw.localhost" target="_blank" rel="noopener noreferrer" class="card card-security" data-subdomain="efw">
+            <div>
+              <div class="card-header">
+                <span class="plane-tag tag-security">Egress Firewall</span>
+                <span class="port-indicator">:8081 / :8082</span>
+              </div>
+              <div class="card-title">
+                <span>Tool Egress Inspection Proxy &bull; mitmweb Firewall</span>
+              </div>
+              <p class="card-desc">Dedicated outbound security gateway and inspection firewall intercepting, logging, and auditing agent tool traffic in real time while enforcing strict internal plane bypass (NO_PROXY).</p>
+              <div class="meta-pills">
+                <span class="meta-pill">Proxy: <strong>mitmproxy / mitmweb</strong></span>
+                <span class="meta-pill">Console: <strong>efw.titan.local</strong></span>
+                <span class="meta-pill">Inspection: <strong>Real-Time Flows &amp; Logs</strong></span>
+                <span class="meta-pill">Bypass: <strong>NO_PROXY Isolated</strong></span>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span class="launch-btn" style="color: #0284c7;"><span class="primary-link" style="color: #0284c7;">efw.localhost</span> &rarr;</span>
+              <span class="external-badge">Inspection Console &#x2197;</span>
             </div>
           </a>
         </div>
@@ -938,7 +979,7 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
       <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
         All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.titan.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
       </p>
-      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local editor.titan.local code.titan.local memory.titan.local dgx.titan.local langfuse.titan.local github-proxy.titan.local" | sudo tee -a /etc/hosts</div>
+      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local editor.titan.local code.titan.local memory.titan.local dgx.titan.local langfuse.titan.local github-proxy.titan.local efw.titan.local firewall.titan.local" | sudo tee -a /etc/hosts</div>
     </div>
 
     <footer>

@@ -180,6 +180,33 @@ for agent in enabled_agents:
         volume_lines.append(f"      # In-Transit Caddy Internal PKI CA Mount")
         volume_lines.append(f"      - caddy_data:/etc/ssl/caddy:ro")
 
+    # L4: Tool Egress Gateway & Inspection Proxy Configuration
+    egress_config = agent.get("egress", {})
+    egress_enabled = egress_config.get("enabled", True)
+    egress_env_lines = []
+    depends_lines = [
+        f"    depends_on:",
+        f"      - signal-cli",
+    ]
+    if egress_enabled:
+        http_proxy = egress_config.get("http_proxy", "http://titan-tool-egress-proxy:8082")
+        https_proxy = egress_config.get("https_proxy", "http://titan-tool-egress-proxy:8082")
+        no_proxy = egress_config.get("no_proxy", "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal")
+        egress_env_lines = [
+            f"      - HTTP_PROXY={http_proxy}",
+            f"      - HTTPS_PROXY={https_proxy}",
+            f"      - http_proxy={http_proxy}",
+            f"      - https_proxy={https_proxy}",
+            f"      - NO_PROXY={no_proxy}",
+            f"      - no_proxy={no_proxy}",
+            f"      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
+            f"      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+            f"      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt",
+        ]
+        volume_lines.append(f"      # Tool Egress Proxy CA Certificate Mount (Read-Only)")
+        volume_lines.append(f"      - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro")
+        depends_lines.append(f"      - tool-egress-proxy")
+
     compose_lines.extend([
         f"  # --------------------------------------------------------------------------",
         f"  # L2: Agent Core Unit: {name} ({agent_id})",
@@ -238,10 +265,9 @@ for agent in enabled_agents:
         f"      - LANGFUSE_OTEL_AUTH=${{LANGFUSE_OTEL_AUTH:-}}",
         f"      - OTEL_SERVICE_NAME=hermes-{agent_id}",
         f"      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-{agent_id},agent.id={agent_id}",
-    ] + git_env_lines + [
+    ] + git_env_lines + egress_env_lines + [
         f"    command: [\"sleep\", \"infinity\"]",
-        f"    depends_on:",
-        f"      - signal-cli",
+    ] + depends_lines + [
         f"    networks:",
         f"      - titan-ingress",
         f"      - titan-internal",
@@ -249,13 +275,22 @@ for agent in enabled_agents:
     ])
 
 has_caddy_volume = any(a.get("git") for a in enabled_agents)
-if has_caddy_volume:
+has_egress_volume = any(a.get("egress", {}).get("enabled", True) for a in enabled_agents)
+if has_caddy_volume or has_egress_volume:
     compose_lines.extend([
         "volumes:",
-        "  caddy_data:",
-        "    name: titan_caddy_data",
-        "",
     ])
+    if has_caddy_volume:
+        compose_lines.extend([
+            "  caddy_data:",
+            "    name: titan_caddy_data",
+        ])
+    if has_egress_volume:
+        compose_lines.extend([
+            "  tool_egress_proxy_data:",
+            "    name: titan_tool_egress_proxy_data",
+        ])
+    compose_lines.append("")
 
 # 2. Render config/caddy/agents.caddy
 caddy_lines = [
