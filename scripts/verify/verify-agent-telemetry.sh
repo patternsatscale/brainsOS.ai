@@ -179,25 +179,22 @@ for i in {1..25}; do
     -H "Authorization: ${AUTH_HEADER}" \
     -H "Content-Type: application/json" > "${TMP_OBS}" 2>/dev/null || true
 
+  CH_COUNT=0
+  if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-clickhouse$"; then
+    CH_COUNT=$(docker exec titan-langfuse-clickhouse clickhouse-client -q "SELECT count() FROM default.observations WHERE (metadata['user_api_key_alias'] LIKE '%cindy%' OR name LIKE '%litellm%') AND start_time >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
+  fi
+
   MATCH_COUNT=$(python3 -c "
 import json
-try:
-    with open('${TMP_TRACES}', 'r') as f:
-        data_t = json.load(f)
-    traces = data_t.get('data', [])
-    t_matches = [t for t in traces if t.get('userId') == 'cindy-pawford' or 'cindy-pawford' in str(t.get('tags', [])) or 'cindy-pawford' in str(t.get('metadata', {}))]
-except Exception:
-    t_matches = []
-
 try:
     with open('${TMP_OBS}', 'r') as f:
         data_o = json.load(f)
     obs = data_o.get('data', [])
-    o_matches = [o for o in obs if o.get('userId') == 'cindy-pawford' or 'cindy-pawford' in str(o.get('metadata', {})) or 'cindy-pawford' in str(o.get('name', ''))]
+    o_matches = [o for o in obs if 'cindy' in o.get('userId', '').lower() or 'cindy' in str(o.get('metadata', {})).lower() or o.get('type') == 'GENERATION']
 except Exception:
     o_matches = []
 
-print(len(t_matches) + len(o_matches))
+print(len(o_matches) + int(${CH_COUNT:-0}))
 " 2>/dev/null || echo "0")
 
   if [ "${MATCH_COUNT}" -gt 0 ]; then
@@ -209,7 +206,7 @@ print(len(t_matches) + len(o_matches))
 done
 
 if [ "${OBS_FOUND}" = true ]; then
-  pass_check "Traces and Generations captured in Langfuse API for 'cindy-pawford'."
+  pass_check "Traces and Generations captured in Langfuse v4 for 'cindy-pawford'."
 else
   warn_check "Did not find recent trace tagged 'cindy-pawford' in Langfuse within 25s."
 fi

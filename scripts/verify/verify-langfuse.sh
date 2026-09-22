@@ -224,6 +224,23 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+# 6. Preconfigured LLM Gateway & Fleet Agent Connections in Langfuse
+# ------------------------------------------------------------------------------
+if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
+  log_info "Checking preconfigured LLM & Agent connections in Langfuse..."
+  if docker exec titan-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='titan' AND provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
+    pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.titan.local/v1) preconfigured for project 'titan'."
+  else
+    warn_check "Langfuse LLM Connection: 'LiteLLM' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
+  fi
+  if docker exec titan-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='titan' AND provider='Cindy-Pawford';" 2>/dev/null | grep -q "Cindy-Pawford"; then
+    pass_check "Langfuse Agent Connection: 'Cindy-Pawford' (http://api.cindypawford.titan.local/v1) preconfigured for project 'titan'."
+  else
+    warn_check "Langfuse Agent Connection: 'Cindy-Pawford' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
+  fi
+fi
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo ""

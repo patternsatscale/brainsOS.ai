@@ -104,16 +104,32 @@ setup_langfuse() {
   SEC_SECRET_KEY="${LANGFUSE_SECRET_KEY:-sk-lf-$(openssl rand -hex 16)}"
   SEC_OTEL_AUTH="Basic $(echo -n "${SEC_PUBLIC_KEY}:${SEC_SECRET_KEY}" | base64 | tr -d '\r\n')"
 
-  # Helper to set or update key-value in a file safely
+  # Helper to set or update key-value in a file safely (pure python3 avoids regex/delimiter issues)
   update_env_var() {
     local key="$1"
     local val="$2"
     local file="$3"
-    if grep -q "^${key}=" "${file}" 2>/dev/null; then
-      sed -i.bak "s|^${key}=.*|${key}=${val}|" "${file}" && rm -f "${file}.bak"
-    else
-      echo "${key}=${val}" >> "${file}"
-    fi
+    python3 -c "
+import sys
+key, val, file_path = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+except FileNotFoundError:
+    lines = []
+found = False
+new_lines = []
+for line in lines:
+    if line.startswith(f'{key}='):
+        new_lines.append(f'{key}={val}\n')
+        found = True
+    else:
+        new_lines.append(line)
+if not found:
+    new_lines.append(f'{key}={val}\n')
+with open(file_path, 'w') as f:
+    f.writelines(new_lines)
+" "${key}" "${val}" "${file}"
   }
 
   # Write keys to Langfuse .env
@@ -129,7 +145,7 @@ setup_langfuse() {
   update_env_var "LANGFUSE_CLICKHOUSE_DATA_DIR" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_REDIS_DATA_DIR" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_MINIO_DATA_DIR" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
-  # Read user parameters from root .env if defined
+  # Read user parameters strictly from root .env as the SOURCE OF TRUTH (root .env is NEVER modified)
   if [ -f "${REPO_ROOT}/.env" ]; then
     _ROOT_EMAIL=$(grep '^LANGFUSE_INIT_USER_EMAIL=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
     _ROOT_NAME=$(grep '^LANGFUSE_INIT_USER_NAME=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
@@ -143,20 +159,10 @@ setup_langfuse() {
   LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-Titan Admin}"
   LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}"
 
+  # Propagate to container-specific env file (docker/langfuse/.env)
   update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME}\"" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${LANGFUSE_ENV_FILE}"
-
-  # Also ensure root .env has these keys for LiteLLM and Agent Fleet synchronization
-  if [ -f "${REPO_ROOT}/.env" ]; then
-    update_env_var "LANGFUSE_HOST" "http://langfuse.titan.local:${LANGFUSE_PORT}" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_OTEL_AUTH" "\"${SEC_OTEL_AUTH}\"" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME}\"" "${REPO_ROOT}/.env"
-    update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${REPO_ROOT}/.env"
-  fi
 
   export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
   export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
@@ -164,6 +170,223 @@ setup_langfuse() {
   export LANGFUSE_OTEL_AUTH="${SEC_OTEL_AUTH}"
 
   log_success "Langfuse v4.38.0 configuration synchronized."
+  sync_user_password
+}
+
+# ------------------------------------------------------------------------------
+# Action: Password Synchronization
+# ------------------------------------------------------------------------------
+sync_user_password() {
+  if [ -n "${LANGFUSE_INIT_USER_PASSWORD:-}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL:-}" ] && \
+     docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-web$" && \
+     docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
+    log_info "Synchronizing Langfuse admin password in database from root .env..."
+    local user_hash
+    user_hash=$(docker exec -i titan-langfuse-web node -e "
+      const p = process.argv[1];
+      const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
+      console.log(bcrypt.hashSync(p, 12));
+    " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
+    if [ -n "${user_hash}" ]; then
+      docker exec -i titan-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+        -c "UPDATE users SET password = '${user_hash}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';" >/dev/null 2>&1 || true
+      log_success "Langfuse admin user password synchronized in PostgreSQL."
+    fi
+  fi
+  sync_llm_connection
+}
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Action: LLM Gateway & Fleet Agent Preconfigured Connections
+# ------------------------------------------------------------------------------
+sync_llm_connection() {
+  if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-web$" && \
+     docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
+    log_info "Synchronizing preconfigured LLM & Agent connections in Langfuse project 'titan'..."
+    local litellm_key="${LITELLM_MASTER_KEY:-sk-supergr00vyd00d!!!}"
+    if [ -f "${REPO_ROOT}/.env" ]; then
+      local _k
+      _k=$(grep '^LITELLM_MASTER_KEY=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+      [ -n "${_k}" ] && litellm_key="${_k}"
+    fi
+
+    local agent_key="${API_SERVER_KEY:-}"
+    if [ -f "${REPO_ROOT}/.env" ]; then
+      local _ak
+      _ak=$(grep '^API_SERVER_KEY=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+      [ -n "${_ak}" ] && agent_key="${_ak}"
+    fi
+    [ -z "${agent_key}" ] && agent_key="sk-titan-agent-key"
+
+    docker exec -i titan-langfuse-web node -e "
+      const crypto = require('crypto');
+      const { PrismaClient } = require('/app/node_modules/.pnpm/@prisma+client@6.19.3_@typescript+typescript6@6.0.2_prisma@6.19.3_@typescript+typescript6@6.0.2_magicast@0.5.2_/node_modules/@prisma/client');
+      const prisma = new PrismaClient();
+
+      const keyHex = process.env.ENCRYPTION_KEY;
+      function encrypt(text) {
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(keyHex, 'hex'), iv);
+        let enc = cipher.update(text, 'utf8', 'hex');
+        enc += cipher.final('hex');
+        const authTag = cipher.getAuthTag();
+        return iv.toString('hex') + ':' + enc + ':' + authTag.toString('hex');
+      }
+
+      const litellmKey = process.argv[1];
+      const displayLiteLLMKey = '...' + litellmKey.slice(-4);
+      const encLiteLLMKey = encrypt(litellmKey);
+
+      const agentKey = process.argv[2];
+      const displayAgentKey = '...' + agentKey.slice(-4);
+      const encAgentKey = encrypt(agentKey);
+
+      async function main() {
+        // 1. LiteLLM Gateway Connection (via Caddy L7 proxy)
+        const litellmRecord = await prisma.llmApiKeys.upsert({
+          where: {
+            projectId_provider: {
+              projectId: 'titan',
+              provider: 'LiteLLM'
+            }
+          },
+          create: {
+            id: 'cl_titan_litellm_connection',
+            projectId: 'titan',
+            provider: 'LiteLLM',
+            adapter: 'openai',
+            displaySecretKey: displayLiteLLMKey,
+            secretKey: encLiteLLMKey,
+            baseURL: 'http://proxy.titan.local/v1',
+            customModels: ['titan-core', 'qwen3.8:latest', 'llama3.2:3b', 'qwen2.5:latest', 'gemma2:2b'],
+            withDefaultModels: false,
+            extraHeaderKeys: []
+          },
+          update: {
+            adapter: 'openai',
+            displaySecretKey: displayLiteLLMKey,
+            secretKey: encLiteLLMKey,
+            baseURL: 'http://proxy.titan.local/v1',
+            customModels: ['titan-core', 'qwen3.8:latest', 'llama3.2:3b', 'qwen2.5:latest', 'gemma2:2b'],
+            withDefaultModels: false
+          }
+        });
+
+        // Set default playground model to LiteLLM / titan-core
+        await prisma.defaultLlmModel.upsert({
+          where: { projectId: 'titan' },
+          create: {
+            id: 'cl_titan_default_model',
+            projectId: 'titan',
+            llmApiKeyId: litellmRecord.id,
+            provider: 'LiteLLM',
+            adapter: 'openai',
+            model: 'titan-core'
+          },
+          update: {
+            llmApiKeyId: litellmRecord.id,
+            provider: 'LiteLLM',
+            adapter: 'openai',
+            model: 'titan-core'
+          }
+        });
+
+        // 2. Cindy Pawford Agent Connection (Agent-as-an-API via Caddy)
+        await prisma.llmApiKeys.upsert({
+          where: {
+            projectId_provider: {
+              projectId: 'titan',
+              provider: 'Cindy-Pawford'
+            }
+          },
+          create: {
+            id: 'cl_titan_cindy_connection',
+            projectId: 'titan',
+            provider: 'Cindy-Pawford',
+            adapter: 'openai',
+            displaySecretKey: displayAgentKey,
+            secretKey: encAgentKey,
+            baseURL: 'http://api.cindypawford.titan.local/v1',
+            customModels: ['hermes-agent', 'cindy-pawford'],
+            withDefaultModels: false,
+            extraHeaderKeys: []
+          },
+          update: {
+            adapter: 'openai',
+            displaySecretKey: displayAgentKey,
+            secretKey: encAgentKey,
+            baseURL: 'http://api.cindypawford.titan.local/v1',
+            customModels: ['hermes-agent', 'cindy-pawford'],
+            withDefaultModels: false
+          }
+        });
+
+        // 3. Terrastella Agent Connection
+        await prisma.llmApiKeys.upsert({
+          where: {
+            projectId_provider: {
+              projectId: 'titan',
+              provider: 'Terrastella'
+            }
+          },
+          create: {
+            id: 'cl_titan_terrastella_connection',
+            projectId: 'titan',
+            provider: 'Terrastella',
+            adapter: 'openai',
+            displaySecretKey: displayAgentKey,
+            secretKey: encAgentKey,
+            baseURL: 'http://api.terrastella.titan.local/v1',
+            customModels: ['hermes-agent', 'terrastella'],
+            withDefaultModels: false,
+            extraHeaderKeys: []
+          },
+          update: {
+            adapter: 'openai',
+            displaySecretKey: displayAgentKey,
+            secretKey: encAgentKey,
+            baseURL: 'http://api.terrastella.titan.local/v1',
+            customModels: ['hermes-agent', 'terrastella'],
+            withDefaultModels: false
+          }
+        });
+
+        // 4. Football Dan Agent Connection
+        await prisma.llmApiKeys.upsert({
+          where: {
+            projectId_provider: {
+              projectId: 'titan',
+              provider: 'Football-Dan'
+            }
+          },
+          create: {
+            id: 'cl_titan_football_dan_connection',
+            projectId: 'titan',
+            provider: 'Football-Dan',
+            adapter: 'openai',
+            displaySecretKey: displayAgentKey,
+            secretKey: encAgentKey,
+            baseURL: 'http://api.football-dan.titan.local/v1',
+            customModels: ['hermes-agent', 'football-dan'],
+            withDefaultModels: false,
+            extraHeaderKeys: []
+          },
+          update: {
+            adapter: 'openai',
+            displaySecretKey: displayAgentKey,
+            secretKey: encAgentKey,
+            baseURL: 'http://api.football-dan.titan.local/v1',
+            customModels: ['hermes-agent', 'football-dan'],
+            withDefaultModels: false
+          }
+        });
+      }
+
+      main().catch(e => { console.error('Error syncing LLM connection:', e.message); });
+    " "${litellm_key}" "${agent_key}" >/dev/null 2>&1 || true
+    log_success "LLM & Agent connections synchronized in Langfuse (LiteLLM: proxy.titan.local, Cindy: api.cindypawford.titan.local, Terrastella: api.terrastella.titan.local, Football Dan: api.football-dan.titan.local)."
+  fi
 }
 
 # ------------------------------------------------------------------------------
@@ -187,18 +410,7 @@ start_langfuse() {
   done
 
   if [ "${READY}" = true ]; then
-    # Synchronize admin password into PostgreSQL if user already exists
-    if [ -n "${LANGFUSE_INIT_USER_PASSWORD}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL}" ]; then
-      USER_HASH=$(docker exec -i titan-langfuse-web node -e "
-        const p = process.argv[1];
-        const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
-        console.log(bcrypt.hashSync(p, 12));
-      " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
-      if [ -n "${USER_HASH}" ]; then
-        docker exec -i titan-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
-          -c "UPDATE users SET password = '${USER_HASH}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';" >/dev/null 2>&1 || true
-      fi
-    fi
+    sync_user_password
 
     log_success "Langfuse v4.38.0 is running and healthy!"
     echo ""
@@ -209,7 +421,7 @@ start_langfuse() {
     echo -e "  - OTel Ingestion:    ${BOLD}http://localhost:${LANGFUSE_PORT}/api/public/otel${NC}"
     echo -e "  - Public Key:        ${BOLD}${LANGFUSE_PUBLIC_KEY:-}${NC}"
     echo -e "  - Admin Email:       ${BOLD}${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}${NC}"
-    echo -e "  - Admin Password:    ${BOLD}${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}${NC}"
+    echo -e "  - Admin Password:    ${BOLD}[Configured in .env]${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
   else
     log_warn "Langfuse containers started, but /api/public/health did not return 200 within 90s."
@@ -290,8 +502,11 @@ case "${1:-status}" in
   keys|creds)
     generate_keys_helper
     ;;
+  sync-password|sync)
+    setup_langfuse
+    ;;
   *)
-    echo "Usage: $0 {setup|start|stop|restart|status|logs|keys}"
+    echo "Usage: $0 {setup|start|stop|restart|status|logs|keys|sync-password}"
     exit 1
     ;;
 esac
