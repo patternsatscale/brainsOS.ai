@@ -15,9 +15,9 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ``` text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ L7: Communications, UX & Operator IDE                                       │
-│     - Ingress Reverse Proxy: Caddy (*.titan.local, TLS, streaming SSE)      │
-│     - Messaging Daemons: titan-signal-cli (JSON-RPC daemon on :8080)        │
-│     - Operator IDE & PKM: titan-code-server (:8443 -> editor.titan.local)   │
+│     - Ingress Reverse Proxy: titan-net-caddy (*.titan.local, TLS, streaming SSE) │
+│     - Messaging Daemons: titan-net-signal-cli (JSON-RPC daemon on :8080)    │
+│     - Operator IDE & PKM: titan-app-code-server (:8443 -> editor.titan.local)│
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Core Units (Manifest-Driven Fleet: config/agents.yaml)            │
 │     - titan-agent-terrastella   (:8642 API, :9119 Dashboard, $50 Budget)    │
@@ -33,8 +33,8 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 │ L4: Routing & Security Control Plane                                        │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
 │     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
-│     - Tool Egress Proxy: mitmweb (:8081/8082 -> efw.titan.local, flows/logs)│
-│     - Control Plane DB: titan-litellm-db (PostgreSQL 16, titan-litellm-net) │
+│     - Tool Egress Proxy: titan-net-egress-proxy (:8081/8082, flows & auth)  │
+│     - Control Plane DB: titan-infra-litellm-db (PostgreSQL, titan-litellm)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane                                                         │
 │     - Host Ollama / vLLM bound strictly to loopback (127.0.0.1:11434)       │
@@ -385,7 +385,7 @@ Phase 0: Base Config
 ### Phase 3: Memory Mgmt (Flat-File OKF & Operator IDE Interface)
 
   * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/memories` on GX10, `./data/memories` on macOS) using unified permission access keys (`1000:1000`).
-  * Deploy the Titan Operator IDE container (`titan-code-server`, #145 superseding SilverBullet) mounting a 4-root workspace (`/workspace/project-titan`, `/memories`, `/data/workspace`, `/apps/cindypawford/site`), accessible via Caddy at `editor.titan.local` behind HTTP Basic Auth.
+  * Deploy the Titan Operator IDE container (`titan-app-code-server`, #145 superseding SilverBullet) mounting a 4-root workspace (`/workspace/project-titan`, `/memories`, `/data/workspace`, `/apps/cindypawford/site`), accessible via Caddy at `editor.titan.local` behind HTTP Basic Auth.
   * Deploy the native `hermes-okf` plugin package (`docker/hermes/plugins/hermes-okf`) registering `read_okf_note`, `write_okf_note`, and `synthesize_active_rules` into Hermes Agent's tool registry.
   * Implement budget-aware dynamic rule injection and working memory scratchpad loading into Hermes reasoning loops.
   * Enforce hardware-adaptive context windows: safe 4,096 tokens on 16GB macOS workstations and 32,768 tokens on ASUS Ascent GX10 appliances.
@@ -396,13 +396,15 @@ Phase 0: Base Config
   * Configure automated cron scheduling for hourly host-side snapshots or localized Git tracking across the memory mount.
   * Enforce absolute network separation to guarantee the hardware appliance is unreachable from enterprise or corporate nodes.
   * Execute recovery test validations: simulate a runaway agent processing thread, apply immediate key revocation via `emergency-stop.sh`, and verify graceful degradation without impacting host states.
-  * **Tool Egress Gateway & Inspection Proxy (mitmproxy / mitmweb, #146)**:
-    * Deploys dedicated outbound inspection proxy container (`titan-tool-egress-proxy`) on `titan-internal` listening on port `8082`.
+  * **Tool Egress Gateway & In-Transit Credential Injection Proxy (mitmproxy / mitmweb, #146, #147)**:
+    * Deploys dedicated outbound inspection proxy container (`titan-net-egress-proxy`) on `titan-internal` listening on port `8082`.
     * Exposes `mitmweb` operator dashboard on loopback `127.0.0.1:8081` and accessible via Caddy at `efw.titan.local` (and `firewall.titan.local`).
     * Real-time flow capture and live connection logs auditing all outbound HTTP/HTTPS agent tool executions (REST calls, web scraping, external search).
     * Automated internal CA certificate distribution: mitmproxy root CA (`mitmproxy-ca-cert.pem`) mounted into agent containers and trusted via `/usr/local/share/ca-certificates/mitmproxy-ca.crt` (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`).
+    * Multi-Tenant In-Transit Credential Injection (`config/egress/addons/github_auth.py`): injects fine-grained Git Smart HTTP and GitHub API authorization headers in transit based on tenant container IP identity, while rejecting unauthorized tenant containers (`403 Forbidden`).
+    * Flow display credential redaction: masks injected tokens to `[INJECTED_CINDY_TOKEN]` within mitmweb memory flows and REST APIs.
     * Strict internal plane isolation (`NO_PROXY`): LiteLLM inference (`host.docker.internal:4000`), Signal messaging (`signal-cli:8080`), and local internal services bypass proxy interception completely (Rule 2).
-    * Dedicated verification test suite: `./scripts/verify/verify-tool-egress-proxy.sh`.
+    * Dedicated verification test suites: `./scripts/verify/verify-tool-egress-proxy.sh` and `./scripts/verify/verify-egress-token-injection.sh`.
   * *Exit Criteria:* Deterministic cluster reconstruction from bare config parameters via `docker compose down && docker compose up -d` with complete retention of memory trees; 100% of outbound tool traffic logged and visible in operator console with zero control plane leakage.
 
 ### Phase 5: Benchmarking (Evaluation, Optimization & Observability)

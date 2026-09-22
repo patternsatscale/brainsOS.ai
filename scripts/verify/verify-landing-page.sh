@@ -62,8 +62,8 @@ log_success "Fleet manifest and compose topology are 100% in sync with zero drif
 # ------------------------------------------------------------------------------
 # 2. Caddy Configuration Syntax Validation
 # ------------------------------------------------------------------------------
-log_info "Step 2: Validating Caddy configuration syntax..."
-docker exec titan-caddy caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 || \
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?caddy$' | head -n 1 || echo 'titan-net-caddy')"
+docker exec "${CADDY_CONTAINER}" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 || \
   fail_check "Caddyfile syntax validation failed."
 log_success "Caddyfile configuration syntax validated successfully."
 
@@ -141,7 +141,7 @@ log_success "Routing: football-dan.titan.local -> titan-agent-football-dan:9120 
 # 4d. Titan Operator IDE (Layer 7 / Layer 5 Operator Console)
 EDITOR_RESP=$(curl -s -I -H "Host: editor.titan.local" http://127.0.0.1:80)
 grep -E "401 Unauthorized|200 OK|302 Found" <<< "${EDITOR_RESP}" >/dev/null || fail_check "editor.titan.local did not route to Operator IDE (expected 401/200/302)."
-log_success "Routing: editor.titan.local -> titan-code-server:8443 (Basic Auth Gate) [PASS]"
+log_success "Routing: editor.titan.local -> titan-app-code-server:8443 (Basic Auth Gate) [PASS]"
 
 # 4e. LiteLLM Gateway (Layer 4)
 PROXY_RESP=$(curl -s -I -H "Host: proxy.titan.local" http://127.0.0.1:80/ui)

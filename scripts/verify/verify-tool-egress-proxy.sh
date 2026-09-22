@@ -57,9 +57,9 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-PROXY_CONTAINER="titan-tool-egress-proxy"
+PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'titan-net-egress-proxy')"
 AGENT_CONTAINER="titan-agent-terrastella"
-CADDY_CONTAINER="titan-caddy"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?caddy$' | head -n 1 || echo 'titan-net-caddy')"
 WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
 WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
 TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
@@ -78,7 +78,7 @@ if [ ! -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
   exit 1
 fi
 
-"${REPO_ROOT}/scripts/control/sync-agents.sh" --check
+MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check
 log_success "Fleet manifest drift check passed (manifest is 100% in sync)."
 
 docker compose config -q

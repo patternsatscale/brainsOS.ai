@@ -50,9 +50,9 @@ agents:
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
-      http_proxy: "http://titan-tool-egress-proxy:8082"
-      https_proxy: "http://titan-tool-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      http_proxy: "http://titan-net-egress-proxy:8082"
+      https_proxy: "http://titan-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -101,9 +101,9 @@ agents:
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
-      http_proxy: "http://titan-tool-egress-proxy:8082"
-      https_proxy: "http://titan-tool-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      http_proxy: "http://titan-net-egress-proxy:8082"
+      https_proxy: "http://titan-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -195,8 +195,6 @@ agents:
     git:
       user_name: "Cindy Pawford"
       user_email: "cindy@cindypawford.com"
-      token_env: "GITHUB_TOKEN_CINDY"
-      proxy_host: "github-proxy.titan.local"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -206,9 +204,9 @@ agents:
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
-      http_proxy: "http://titan-tool-egress-proxy:8082"
-      https_proxy: "http://titan-tool-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      http_proxy: "http://titan-net-egress-proxy:8082"
+      https_proxy: "http://titan-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:

@@ -166,19 +166,15 @@ for agent in enabled_agents:
     git_config = agent.get("git", {})
     git_env_lines = []
     if git_config:
-        proxy_host = git_config.get("proxy_host", "github-proxy.titan.local")
         git_user = git_config.get("user_name", f"Agent {agent_id}")
         git_email = git_config.get("user_email", f"{agent_id}@titan.local")
         git_env_lines = [
-            f"      - GH_HOST={proxy_host}",
             f"      - GIT_AUTHOR_NAME={git_user}",
             f"      - GIT_AUTHOR_EMAIL={git_email}",
             f"      - GIT_COMMITTER_NAME={git_user}",
             f"      - GIT_COMMITTER_EMAIL={git_email}",
             f"      - GIT_TERMINAL_PROMPT=0",
         ]
-        volume_lines.append(f"      # In-Transit Caddy Internal PKI CA Mount")
-        volume_lines.append(f"      - caddy_data:/etc/ssl/caddy:ro")
 
     # L4: Tool Egress Gateway & Inspection Proxy Configuration
     egress_config = agent.get("egress", {})
@@ -189,9 +185,9 @@ for agent in enabled_agents:
         f"      - signal-cli",
     ]
     if egress_enabled:
-        http_proxy = egress_config.get("http_proxy", "http://titan-tool-egress-proxy:8082")
-        https_proxy = egress_config.get("https_proxy", "http://titan-tool-egress-proxy:8082")
-        no_proxy = egress_config.get("no_proxy", "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal")
+        http_proxy = egress_config.get("http_proxy", "http://titan-net-egress-proxy:8082")
+        https_proxy = egress_config.get("https_proxy", "http://titan-net-egress-proxy:8082")
+        no_proxy = egress_config.get("no_proxy", "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal")
         egress_env_lines = [
             f"      - HTTP_PROXY={http_proxy}",
             f"      - HTTPS_PROXY={https_proxy}",
@@ -274,23 +270,14 @@ for agent in enabled_agents:
         "",
     ])
 
-has_caddy_volume = any(a.get("git") for a in enabled_agents)
 has_egress_volume = any(a.get("egress", {}).get("enabled", True) for a in enabled_agents)
-if has_caddy_volume or has_egress_volume:
+if has_egress_volume:
     compose_lines.extend([
         "volumes:",
+        "  tool_egress_proxy_data:",
+        "    name: titan_tool_egress_proxy_data",
+        "",
     ])
-    if has_caddy_volume:
-        compose_lines.extend([
-            "  caddy_data:",
-            "    name: titan_caddy_data",
-        ])
-    if has_egress_volume:
-        compose_lines.extend([
-            "  tool_egress_proxy_data:",
-            "    name: titan_tool_egress_proxy_data",
-        ])
-    compose_lines.append("")
 
 # 2. Render config/caddy/agents.caddy
 caddy_lines = [
@@ -666,13 +653,10 @@ for agent in manifest.get("agents", []):
         gitconfig_path = os.path.join(work_dir, ".gitconfig")
         u_name = git_conf.get("user_name", f"Agent {agent_id}")
         u_email = git_conf.get("user_email", f"{agent_id}@titan.local")
-        proxy_host = git_conf.get("proxy_host", "github-proxy.titan.local")
         with open(gitconfig_path, "w", encoding="utf-8") as gf:
             gf.write(
                 f"[user]\n\tname = {u_name}\n\temail = {u_email}\n"
-                f"[credential]\n\thelper = !gh auth git-credential\n"
                 f"[safe]\n\tdirectory = *\n"
-                f"[url \"https://{proxy_host}/\"]\n\tinsteadOf = https://github.com/\n"
                 f"[core]\n\taskPass = \"\"\n"
             )
 

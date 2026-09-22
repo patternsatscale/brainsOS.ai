@@ -81,50 +81,6 @@ http://langfuse.{$TITAN_DOMAIN:titan.local}, https://langfuse.{$TITAN_DOMAIN:tit
 	}
 }
 
-# ==============================================================================
-# Security Hardening: In-Transit GitHub Credential Injection Gateway (Ticket #93)
-# Relays GitHub CLI (gh) REST/GraphQL queries and Git Smart HTTP traffic,
-# injecting Authorization credentials in transit so agent containers hold zero secrets.
-# ==============================================================================
-http://github-proxy.{$TITAN_DOMAIN:titan.local}, https://github-proxy.{$TITAN_DOMAIN:titan.local}, http://github-proxy.titan.internal, https://github-proxy.titan.internal, http://github-proxy.localhost, https://github-proxy.localhost {
-	tls internal
-	encode gzip zstd
-	log {
-		output stdout
-		format console
-	}
-
-	# GitHub Enterprise / CLI GraphQL API: /api/graphql -> /graphql
-	handle /api/graphql* {
-		rewrite * /graphql
-		reverse_proxy https://api.github.com {
-			header_up Host api.github.com
-			header_up Authorization "Bearer {$GITHUB_TOKEN_CINDY}"
-			header_up X-Real-IP {remote_host}
-			flush_interval -1
-		}
-	}
-
-	# GitHub Enterprise / CLI REST API: /api/v3/* -> /*
-	handle_path /api/v3/* {
-		reverse_proxy https://api.github.com {
-			header_up Host api.github.com
-			header_up Authorization "Bearer {$GITHUB_TOKEN_CINDY}"
-			header_up X-Real-IP {remote_host}
-			flush_interval -1
-		}
-	}
-
-	# Git Smart HTTP Protocol (git-upload-pack, git-receive-pack, info/refs) & Web UI
-	handle {
-		reverse_proxy https://github.com {
-			header_up Host github.com
-			header_up Authorization "Basic {$GITHUB_BASIC_AUTH_CINDY}"
-			header_up X-Real-IP {remote_host}
-			flush_interval -1
-		}
-	}
-}
 
 # ==============================================================================
 # Security Hardening: Tool Egress Gateway & Inspection Proxy (Ticket #146)
@@ -946,26 +902,26 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
             </div>
           </a>
 
-          <!-- In-Transit GitHub Proxy -->
+          <!-- In-Transit GitHub Egress Gateway Proxy -->
           <div class="card-static card-security">
             <div>
               <div class="card-header">
-                <span class="plane-tag tag-security">Security Egress Gateway</span>
-                <span class="port-indicator">github-proxy.titan.local</span>
+                <span class="plane-tag tag-security">Egress Gateway Addon</span>
+                <span class="port-indicator">:8082 Proxy</span>
               </div>
               <div class="card-title">
                 <span>In-Transit GitHub Credential Proxy</span>
               </div>
-              <p class="card-desc">Caddy edge TLS reverse proxy terminating agent Git Smart HTTP and GitHub CLI queries, injecting fine-grained authorization credentials in transit so agent containers hold zero ambient secrets (Rule 10).</p>
+              <p class="card-desc">Tool Egress Gateway mitmproxy addon intercepting outbound agent Git Smart HTTP and GitHub API requests, injecting fine-grained credentials in transit based on tenant container IP with zero ambient secrets (Rule 10).</p>
               <div class="meta-pills">
                 <span class="meta-pill">Protocol: <strong>Git Smart HTTP &amp; GraphQL</strong></span>
                 <span class="meta-pill">Security: <strong>Zero Container Secrets</strong></span>
-                <span class="meta-pill">Proxy: <strong>Edge Authorization Header Injection</strong></span>
+                <span class="meta-pill">Proxy: <strong>In-Transit Addon Injection</strong></span>
               </div>
             </div>
             <div class="card-footer" style="color: #0369a1;">
-              <span>Enforced by Pre-Commit CI &amp; Container Isolation</span>
-              <span class="external-badge">Edge Proxy</span>
+              <span>Enforced by Egress Gateway &amp; Container Isolation</span>
+              <span class="external-badge">Egress Addon</span>
             </div>
           </div>
         </div>
@@ -979,7 +935,7 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
       <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
         All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.titan.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
       </p>
-      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local editor.titan.local code.titan.local memory.titan.local dgx.titan.local langfuse.titan.local github-proxy.titan.local efw.titan.local firewall.titan.local" | sudo tee -a /etc/hosts</div>
+      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local editor.titan.local code.titan.local memory.titan.local dgx.titan.local langfuse.titan.local efw.titan.local firewall.titan.local" | sudo tee -a /etc/hosts</div>
     </div>
 
     <footer>
