@@ -47,6 +47,13 @@ agents:
       budget_monthly_usd: 50.00
       virtual_key: "HERMES_LITELLM_KEY"
 
+    # L4: Tool Egress Inspection Proxy & Gateway
+    egress:
+      enabled: true
+      http_proxy: "http://titan-tool-egress-proxy:8082"
+      https_proxy: "http://titan-tool-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+
     # Cross-Cutting: Observability & Evaluation
     observability:
       otel_tracing: true
@@ -90,6 +97,13 @@ agents:
     routing:
       budget_monthly_usd: 25.00
       virtual_key: "HERMES_FOOTBALL_DAN_KEY"
+
+    # L4: Tool Egress Inspection Proxy & Gateway
+    egress:
+      enabled: true
+      http_proxy: "http://titan-tool-egress-proxy:8082"
+      https_proxy: "http://titan-tool-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -188,6 +202,13 @@ agents:
     routing:
       budget_monthly_usd: 25.00
       virtual_key: "HERMES_CINDY_LITELLM_KEY"
+
+    # L4: Tool Egress Inspection Proxy & Gateway
+    egress:
+      enabled: true
+      http_proxy: "http://titan-tool-egress-proxy:8082"
+      https_proxy: "http://titan-tool-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:

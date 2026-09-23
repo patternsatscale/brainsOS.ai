@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+
+# ==============================================================================
+# Project Titan: Tool Egress Proxy CA Trust Boot Hook
+# Automatically trusts mitmproxy's root certificate authority on boot
+# so curl, Python (requests, httpx, urllib), Node, etc. trust intercepted
+# outbound HTTPS traffic without disabling TLS verification.
+# ==============================================================================
+
+MITMPROXY_CA_CERT="/etc/ssl/mitmproxy/mitmproxy-ca-cert.pem"
+TARGET_CERT="/usr/local/share/ca-certificates/mitmproxy-ca.crt"
+
+# Wait up to 10 seconds for mitmproxy CA cert if proxy is still generating it
+for i in $(seq 1 10); do
+    if [ -f "${MITMPROXY_CA_CERT}" ]; then
+        break
+    fi
+    sleep 1
+done
+
+if [ -f "${MITMPROXY_CA_CERT}" ]; then
+    mkdir -p /usr/local/share/ca-certificates
+    cp "${MITMPROXY_CA_CERT}" "${TARGET_CERT}"
+    chmod 644 "${TARGET_CERT}"
+    update-ca-certificates >/dev/null 2>&1 || true
+fi

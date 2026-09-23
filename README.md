@@ -33,6 +33,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 │ L4: Routing & Security Control Plane                                        │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
 │     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
+│     - Tool Egress Proxy: mitmweb (:8081/8082 -> efw.titan.local, flows/logs)│
 │     - Control Plane DB: titan-litellm-db (PostgreSQL 16, titan-litellm-net) │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane                                                         │
@@ -395,7 +396,14 @@ Phase 0: Base Config
   * Configure automated cron scheduling for hourly host-side snapshots or localized Git tracking across the memory mount.
   * Enforce absolute network separation to guarantee the hardware appliance is unreachable from enterprise or corporate nodes.
   * Execute recovery test validations: simulate a runaway agent processing thread, apply immediate key revocation via `emergency-stop.sh`, and verify graceful degradation without impacting host states.
-  * *Exit Criteria:* Deterministic cluster reconstruction from bare config parameters via `docker compose down && docker compose up -d` with complete retention of memory trees.
+  * **Tool Egress Gateway & Inspection Proxy (mitmproxy / mitmweb, #146)**:
+    * Deploys dedicated outbound inspection proxy container (`titan-tool-egress-proxy`) on `titan-internal` listening on port `8082`.
+    * Exposes `mitmweb` operator dashboard on loopback `127.0.0.1:8081` and accessible via Caddy at `efw.titan.local` (and `firewall.titan.local`).
+    * Real-time flow capture and live connection logs auditing all outbound HTTP/HTTPS agent tool executions (REST calls, web scraping, external search).
+    * Automated internal CA certificate distribution: mitmproxy root CA (`mitmproxy-ca-cert.pem`) mounted into agent containers and trusted via `/usr/local/share/ca-certificates/mitmproxy-ca.crt` (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`).
+    * Strict internal plane isolation (`NO_PROXY`): LiteLLM inference (`host.docker.internal:4000`), Signal messaging (`signal-cli:8080`), and local internal services bypass proxy interception completely (Rule 2).
+    * Dedicated verification test suite: `./scripts/verify/verify-tool-egress-proxy.sh`.
+  * *Exit Criteria:* Deterministic cluster reconstruction from bare config parameters via `docker compose down && docker compose up -d` with complete retention of memory trees; 100% of outbound tool traffic logged and visible in operator console with zero control plane leakage.
 
 ### Phase 5: Benchmarking (Evaluation, Optimization & Observability)
 
