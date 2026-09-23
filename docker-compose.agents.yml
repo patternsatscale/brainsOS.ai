@@ -273,9 +273,9 @@ services:
     networks:
       titan-operator-net:
         aliases:
-          - api.terrastella.titan.local
-          - api.marvin.titan.local
           - api.bawtford.titan.local
+          - api.marvin.titan.local
+          - api.terrastella.titan.local
 
 volumes:
   tool_egress_proxy_data:

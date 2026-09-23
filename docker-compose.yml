@@ -17,7 +17,10 @@ services:
 
   # Ingress Gateway: Caddy Reverse Proxy (Ports 80/443)
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: ./docker/caddy
+      dockerfile: Dockerfile
+    image: titan-caddy:latest
     container_name: titan-net-caddy
     restart: unless-stopped
     ports:
@@ -29,12 +32,18 @@ services:
       - ./config/caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
+      - ${HOME}/.aws:/root/.aws:ro
     networks:
       titan-ingress:
       titan-internal:
       titan-operator-net:
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
+      - AWS_ACCESS_KEY_ID=${TITAN_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${TITAN_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_REGION=${TITAN_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
+      - ACME_EMAIL=${ACME_EMAIL:-}
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:

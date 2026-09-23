@@ -250,8 +250,9 @@ project-titan/
 ├── config/  
 │   ├── agents.yaml           # Declarative multi-agent fleet manifest (L1–L7 layer definitions)
 │   ├── caddy/  
-│   │   ├── Caddyfile         # Main ingress reverse proxy configuration (*.titan.local)
-│   │   └── agents.caddy      # Auto-generated agent subdomain vhosts (sync-agents.sh)
+│   │   ├── Caddyfile         # Main ingress reverse proxy configuration (*.titan.local / *.titan.<domain>)
+│   │   ├── agents.caddy      # Auto-generated agent subdomain vhosts (sync-agents.sh)
+│   │   └── tls_policy.caddy  # Auto-generated TLS policy snippet (Route 53 ACME or internal CA)
 │   ├── editor/
 │   │   ├── titan.code-workspace # Multi-Root Workspace definition (Project Titan, Memories, Workspaces, Site)
 │   │   └── settings.json     # Operator IDE settings, markdown/foam PKM configs, and memory purity exclusions
@@ -267,6 +268,11 @@ project-titan/
 │   │       └── web-developer/
 │   │           └── SOUL.md   # Website builder sub-agent clean software engineering persona
 │   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
+├── infra/                    # Decoupled SST v3 (Ion) Platform Cloud Infrastructure (DNS, ACME IAM, SES)
+│   ├── sst.config.ts         # SST platform root configuration (zero hardcoded domains)
+│   ├── src/                  # Modular cloud components (dns.ts, ses.ts)
+│   ├── package.json          # SST Ion dependencies and typecheck scripts
+│   └── README.md             # Platform cloud architecture and local CLI deployment guide
 ├── apps/
 │   └── cindypawford/
 │       ├── archive/          # Immutable Digital Museum Vault (2024 Genesis era, sealed snapshots, eras.json)
@@ -281,6 +287,10 @@ project-titan/
 │       ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
 │       └── tests/            # Dedicated pytest suite (100% test coverage)
 ├── docker/
+│   ├── caddy/
+│   │   ├── Dockerfile        # Custom Caddy multi-stage build with Route 53 ACME DNS-01 plugin
+│   │   └── README.md         # Ingress reverse proxy & ACME DNS-01 wildcard SSL architecture guide
+
 │   ├── editor/
 │   │   ├── Dockerfile        # Containerized VS Code (Code-Server), Aider, Continue, and PKM tooling
 │   │   ├── entrypoint.sh     # Extension installer & Multi-Root workspace initialization
@@ -313,7 +323,8 @@ project-titan/
     │   ├── setup-hermes.sh   # Automated builder and validator for unprivileged Hermes container
     │   ├── setup-memories.sh # Idempotent provisioning & scaffolding manager for memory plane
     │   ├── setup-editor.sh   # Automated builder & deployer for Titan Operator IDE (code-server)
-    │   └── setup-langfuse.sh # Standalone decoupled service manager for Langfuse container stack
+    │   ├── setup-langfuse.sh # Standalone decoupled service manager for Langfuse container stack
+    │   └── deploy-infra.sh   # Operator CLI deployment tool for infra/ SST platform cloud resources
     ├── control/              # Runtime lifecycle, fleet management, and disaster recovery
     │   ├── start-control-plane.sh # Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
     │   ├── emergency-stop.sh # Granular key revocation & process freeze (targeted or full-fleet)
@@ -329,7 +340,8 @@ project-titan/
     │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
     │   ├── verify-agent-telemetry.sh # End-to-end multi-agent & LiteLLM telemetry verification suite
     │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
-    │   └── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
+    │   ├── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
+    │   └── verify-dns-ssl.sh # Split-horizon DNS, Caddy Route 53 ACME, and SSL verification suite
     └── apps/                 # Application-specific operations and deployment tooling
         └── cindypawford/     # Autonomous fashion designer application suite
             ├── deploy-cindypawford-com.sh   # Direct-to-production deployment tool

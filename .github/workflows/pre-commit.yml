@@ -78,6 +78,15 @@ jobs:
           docker compose config -q
           echo "✓ docker-compose.yml passed topology validation"
 
+      - name: Validate Platform Cloud Infrastructure Types (infra/)
+        run: |
+          echo "Validating TypeScript types in infra/..."
+          cd infra
+          npm ci || npm install
+          npx sst install
+          npm run typecheck
+          echo "✓ infra/ TypeScript constructs validated"
+
       - name: Verify Control Plane Database Isolation & Guardrails
         run: |
           echo "Validating strict database isolation guardrails..."
