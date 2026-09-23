@@ -51,19 +51,25 @@ HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
 API_SERVER_KEY="${API_SERVER_KEY:-}"
 TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
-DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
-WORKSPACE_PATH="${TITAN_WORKSPACE_DIR:-./data/workspace}"
+DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
+WORKSPACE_PATH="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-./data/agent_workspaces}}"
 
 if [[ "$WORKSPACE_PATH" != /* ]]; then
   HOST_WORKSPACE="${REPO_ROOT}/${WORKSPACE_PATH#./}"
 else
   HOST_WORKSPACE="${WORKSPACE_PATH}"
 fi
+if [ ! -d "${HOST_WORKSPACE}" ] && [ -d "${REPO_ROOT}/data/workspace" ]; then
+  HOST_WORKSPACE="${REPO_ROOT}/data/workspace"
+fi
 
 if [[ "$DATA_DIR" != /* ]]; then
   HOST_MEMORIES="${REPO_ROOT}/${DATA_DIR#./}"
 else
   HOST_MEMORIES="${DATA_DIR}"
+fi
+if [ ! -d "${HOST_MEMORIES}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
+  HOST_MEMORIES="${REPO_ROOT}/data/memories"
 fi
 
 if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then

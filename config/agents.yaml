@@ -41,9 +41,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/terrastella"
+      path: "./data/agent_memories/terrastella"
     workspace:
-      path: "./data/workspace/terrastella"
+      path: "./data/agent_workspaces/terrastella"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -92,9 +92,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/football-dan"
+      path: "./data/agent_memories/football-dan"
     workspace:
-      path: "./data/workspace/football-dan"
+      path: "./data/agent_workspaces/football-dan"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -187,9 +187,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/memories/cindy-pawford"
+      path: "./data/agent_memories/cindy-pawford"
     workspace:
-      path: "./data/workspace/cindy-pawford"
+      path: "./data/agent_workspaces/cindy-pawford"
       site_path: "./apps/cindypawford/site"
       canvas_mount: "/app/html"
       repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"

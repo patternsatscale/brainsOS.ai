@@ -33,13 +33,6 @@ services:
       titan-ingress:
       titan-internal:
       titan-operator-net:
-        aliases:
-          - api.cindypawford.titan.local
-          - api.cindypawford.localhost
-          - api.cindypawford.com
-          - api.primary.titan.local
-          - api.terrastella.titan.local
-          - api.football-dan.titan.local
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
 
@@ -57,7 +50,7 @@ services:
       - SIGNAL_NATIVE_HTTP_PORT=8082
       - SIGNAL_REST_API_PORT=8084
     volumes:
-      - ${TITAN_WORKSPACE_DIR:-./data/workspace}/signal:/home/.local/share/signal-cli
+      - ${TITAN_COMMS_DIR:-./data/comms}/signal:/home/.local/share/signal-cli
       - ./docker/signal/entrypoint.sh:/entrypoint-titan.sh:ro
       - ./docker/signal/gateway_proxy.py:/usr/local/bin/gateway_proxy.py:ro
     networks:
@@ -87,10 +80,13 @@ services:
       - ${TITAN_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}:/home/coder/.config
       - ${TITAN_CODE_SERVER_DATA:-./data/control_plane/vscode_data}:/home/coder/.local/share/code-server
       - .:/workspace/project-titan
-      - ${TITAN_DATA_DIR:-./data/memories}:/memories
-      - ${TITAN_WORKSPACE_DIR:-./data/workspace}:/data/workspace
+      - ${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}:/memories
+      - ${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-./data/agent_workspaces}}:/data/workspace
+      - ${TITAN_COMMS_DIR:-./data/comms}:/data/comms
       - ./apps/cindypawford/site:/apps/cindypawford/site
       - ./config/editor/titan.code-workspace:/workspace/titan.code-workspace:ro
+      - ./docker/editor/entrypoint.sh:/usr/local/bin/titan-editor-entrypoint.sh:ro
+      - ./data/control_plane/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
@@ -99,6 +95,11 @@ services:
       - OPENAI_API_BASE=http://litellm:4000/v1
       - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}
       - API_SERVER_KEY=${API_SERVER_KEY:-}
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/caddy/root.crt
+      - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
     networks:
       - titan-operator-net
 

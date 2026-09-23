@@ -71,6 +71,8 @@ fi
 export MANIFEST_FILE
 OUTPUT_COMPOSE="${REPO_ROOT}/docker-compose.agents.yml"
 OUTPUT_CADDY="${REPO_ROOT}/config/caddy/agents.caddy"
+OUTPUT_CONTINUE="${REPO_ROOT}/config/editor/continue_config.yaml"
+OUTPUT_CONTINUE_JSON="${REPO_ROOT}/config/editor/continue_config.json"
 
 # Ensure python3 with yaml is available
 PYTHON_BIN="python3"
@@ -97,6 +99,7 @@ render_manifest() {
   MANIFEST_FILE="${MANIFEST_FILE}" ${PYTHON_BIN} - << 'EOF'
 import os
 import sys
+import json
 import yaml
 
 repo_root = os.getcwd()
@@ -137,8 +140,8 @@ for agent in enabled_agents:
     tg_token_env = tg_config.get("token_env", f"TELEGRAM_BOT_TOKEN_{agent_id.upper().replace('-', '_')}")
     tg_users_env = tg_config.get("allowed_users_env", f"TELEGRAM_ALLOWED_USERS_{agent_id.upper().replace('-', '_')}")
 
-    mem_path = agent.get("memory", {}).get("path", f"./data/memories/{agent_id}")
-    work_path = agent.get("workspace", {}).get("path", f"./data/workspace/{agent_id}")
+    mem_path = agent.get("memory", {}).get("path", f"./data/agent_memories/{agent_id}")
+    work_path = agent.get("workspace", {}).get("path", f"./data/agent_workspaces/{agent_id}")
     site_path = agent.get("workspace", {}).get("site_path")
     canvas_mount = agent.get("workspace", {}).get("canvas_mount", "/app/html")
     key_name = agent.get("routing", {}).get("virtual_key", f"HERMES_{agent_id.upper().replace('-', '_')}_KEY")
@@ -275,6 +278,24 @@ for agent in enabled_agents:
         "",
     ])
 
+# Dynamic Ingress Gateway network aliases for Operator IDE reachability
+caddy_aliases = []
+for a in enabled_agents:
+    sub = a.get("comms", {}).get("subdomain") or f"{a['id']}.titan.local"
+    caddy_aliases.append(f"api.{sub}")
+
+compose_lines.extend([
+    "  # --------------------------------------------------------------------------",
+    "  # L7: Ingress Gateway Network Aliases for Operator IDE Reachability",
+    "  # --------------------------------------------------------------------------",
+    "  caddy:",
+    "    networks:",
+    "      titan-operator-net:",
+    "        aliases:",
+] + [f"          - {alias}" for alias in caddy_aliases] + [
+    "",
+])
+
 has_egress_volume = any(a.get("egress", {}).get("enabled", True) for a in enabled_agents)
 if has_egress_volume:
     compose_lines.extend([
@@ -350,8 +371,42 @@ for idx, agent in enumerate(enabled_agents):
         f"",
     ])
 
+# 3. Render config/editor/continue_config.yaml
+continue_models = [
+    {
+        "name": "Titan Core (LiteLLM)",
+        "provider": "openai",
+        "model": "titan-core",
+        "apiBase": "http://litellm:4000/v1",
+        "apiKey": "${OPERATOR_LITELLM_KEY}",
+        "roles": ["chat", "edit", "apply"]
+    }
+]
+
+for agent in enabled_agents:
+    agent_id = agent["id"]
+    agent_name = agent.get("name", agent_id).split(" - ")[0]
+    subdomain = agent.get("comms", {}).get("subdomain", f"{agent_id}.titan.local")
+    continue_models.append({
+        "name": f"{agent_name} (Agent API)",
+        "provider": "openai",
+        "model": "hermes-agent",
+        "apiBase": f"http://api.{subdomain}/v1",
+        "apiKey": "${API_SERVER_KEY}",
+        "roles": ["chat"]
+    })
+
+continue_cfg = {
+    "name": "Titan Operator IDE",
+    "version": "1.0.0",
+    "schema": "v1",
+    "models": continue_models
+}
+
 rendered_compose = "\n".join(compose_lines).strip() + "\n"
 rendered_caddy = "\n".join(caddy_lines).strip() + "\n"
+rendered_continue = yaml.safe_dump(continue_cfg, sort_keys=False)
+rendered_continue_json = json.dumps(continue_cfg, indent=2) + "\n"
 
 # Output separator for bash parsing
 print("__START_COMPOSE__")
@@ -360,6 +415,12 @@ print("__END_COMPOSE__")
 print("__START_CADDY__")
 sys.stdout.write(rendered_caddy)
 print("__END_CADDY__")
+print("__START_CONTINUE__")
+sys.stdout.write(rendered_continue)
+print("__END_CONTINUE__")
+print("__START_CONTINUE_JSON__")
+sys.stdout.write(rendered_continue_json)
+print("__END_CONTINUE_JSON__")
 EOF
 }
 
@@ -372,6 +433,8 @@ if [ "${MODE}" = "--check" ]; then
   RENDERED_OUTPUT=$(render_manifest)
   EXPECTED_COMPOSE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_COMPOSE__/,/__END_COMPOSE__/p' | sed '1d;$d')
   EXPECTED_CADDY=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CADDY__/,/__END_CADDY__/p' | sed '1d;$d')
+  EXPECTED_CONTINUE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE__/,/__END_CONTINUE__/p' | sed '1d;$d')
+  EXPECTED_CONTINUE_JSON=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE_JSON__/,/__END_CONTINUE_JSON__/p' | sed '1d;$d')
 
   DRIFT_DETECTED=0
 
@@ -395,6 +458,30 @@ if [ "${MODE}" = "--check" ]; then
     if [ "${ACTUAL_CADDY}" != "${EXPECTED_CADDY}" ]; then
       log_error "Drift detected in ${OUTPUT_CADDY}!"
       diff -u <(echo "${ACTUAL_CADDY}") <(echo "${EXPECTED_CADDY}") || true
+      DRIFT_DETECTED=1
+    fi
+  fi
+
+  if [ ! -f "${OUTPUT_CONTINUE}" ]; then
+    log_error "Missing file: ${OUTPUT_CONTINUE}"
+    DRIFT_DETECTED=1
+  else
+    ACTUAL_CONTINUE=$(cat "${OUTPUT_CONTINUE}")
+    if [ "${ACTUAL_CONTINUE}" != "${EXPECTED_CONTINUE}" ]; then
+      log_error "Drift detected in ${OUTPUT_CONTINUE}!"
+      diff -u <(echo "${ACTUAL_CONTINUE}") <(echo "${EXPECTED_CONTINUE}") || true
+      DRIFT_DETECTED=1
+    fi
+  fi
+
+  if [ ! -f "${OUTPUT_CONTINUE_JSON}" ]; then
+    log_error "Missing file: ${OUTPUT_CONTINUE_JSON}"
+    DRIFT_DETECTED=1
+  else
+    ACTUAL_CONTINUE_JSON=$(cat "${OUTPUT_CONTINUE_JSON}")
+    if [ "${ACTUAL_CONTINUE_JSON}" != "${EXPECTED_CONTINUE_JSON}" ]; then
+      log_error "Drift detected in ${OUTPUT_CONTINUE_JSON}!"
+      diff -u <(echo "${ACTUAL_CONTINUE_JSON}") <(echo "${EXPECTED_CONTINUE_JSON}") || true
       DRIFT_DETECTED=1
     fi
   fi
@@ -497,6 +584,8 @@ log_info "Synchronizing Project Titan Multi-Agent Fleet from ${MANIFEST_FILE}...
 RENDERED_OUTPUT=$(render_manifest)
 EXPECTED_COMPOSE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_COMPOSE__/,/__END_COMPOSE__/p' | sed '1d;$d')
 EXPECTED_CADDY=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CADDY__/,/__END_CADDY__/p' | sed '1d;$d')
+EXPECTED_CONTINUE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE__/,/__END_CONTINUE__/p' | sed '1d;$d')
+EXPECTED_CONTINUE_JSON=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE_JSON__/,/__END_CONTINUE_JSON__/p' | sed '1d;$d')
 
 # 1. Write docker-compose.agents.yml
 echo "${EXPECTED_COMPOSE}" > "${OUTPUT_COMPOSE}"
@@ -507,7 +596,13 @@ mkdir -p "${REPO_ROOT}/config/caddy"
 echo "${EXPECTED_CADDY}" > "${OUTPUT_CADDY}"
 log_success "Rendered Caddy ingress configuration at ${OUTPUT_CADDY}."
 
-# 3. Scaffold host storage partitions & permissions for each agent
+# 3. Write config/editor/continue_config.yaml & continue_config.json
+mkdir -p "$(dirname "${OUTPUT_CONTINUE}")"
+echo "${EXPECTED_CONTINUE}" > "${OUTPUT_CONTINUE}"
+echo "${EXPECTED_CONTINUE_JSON}" > "${OUTPUT_CONTINUE_JSON}"
+log_success "Rendered Continue configuration at ${OUTPUT_CONTINUE} and ${OUTPUT_CONTINUE_JSON}."
+
+# 4. Scaffold host storage partitions & permissions for each agent
 MANIFEST_FILE="${MANIFEST_FILE}" ${PYTHON_BIN} - << 'EOF'
 import os
 import shutil
@@ -523,12 +618,37 @@ enabled_agents = [a for a in manifest.get("agents", []) if a.get("enabled", True
 
 for agent in manifest.get("agents", []):
     agent_id = agent["id"]
-    mem_rel = agent.get("memory", {}).get("path", f"./data/memories/agents/{agent_id}")
-    work_rel = agent.get("workspace", {}).get("path", f"./data/workspace/{agent_id}")
+    mem_rel = agent.get("memory", {}).get("path", f"./data/agent_memories/{agent_id}")
+    work_rel = agent.get("workspace", {}).get("path", f"./data/agent_workspaces/{agent_id}")
     site_rel = agent.get("workspace", {}).get("site_path")
 
     mem_dir = os.path.abspath(os.path.join(repo_root, mem_rel.lstrip("./")))
     work_dir = os.path.abspath(os.path.join(repo_root, work_rel.lstrip("./")))
+
+    # Automated migration from previous agent identity if renaming
+    migrate_from = agent.get("migrate_from")
+    if migrate_from:
+        old_mem = os.path.abspath(os.path.join(repo_root, "data", "agent_memories", migrate_from))
+        if not os.path.exists(old_mem):
+            old_mem = os.path.abspath(os.path.join(repo_root, "data", "memories", migrate_from))
+        old_work = os.path.abspath(os.path.join(repo_root, "data", "agent_workspaces", migrate_from))
+        if not os.path.exists(old_work):
+            old_work = os.path.abspath(os.path.join(repo_root, "data", "workspace", migrate_from))
+        old_persona_dir = os.path.abspath(os.path.join(repo_root, "config", "hermes", migrate_from))
+        new_persona_dir = os.path.abspath(os.path.join(repo_root, "config", "hermes", agent_id))
+
+        if os.path.exists(old_persona_dir) and not os.path.exists(new_persona_dir):
+            print(f"[INFO] Migrating Hermes persona from '{migrate_from}' to '{agent_id}'...")
+            shutil.copytree(old_persona_dir, new_persona_dir, symlinks=True)
+
+        if os.path.exists(old_mem) and (not os.path.exists(mem_dir) or not os.listdir(mem_dir)):
+            print(f"[INFO] Migrating memory partition from '{migrate_from}' to '{agent_id}'...")
+            shutil.copytree(old_mem, mem_dir, dirs_exist_ok=True, symlinks=True, ignore=shutil.ignore_patterns(".cache", "*.sock"))
+
+        if os.path.exists(old_work) and (not os.path.exists(work_dir) or not os.listdir(work_dir)):
+            print(f"[INFO] Migrating workspace partition from '{migrate_from}' to '{agent_id}'...")
+            shutil.copytree(old_work, work_dir, dirs_exist_ok=True, symlinks=True, ignore=shutil.ignore_patterns(".cache", "*.sock"))
+
     os.makedirs(mem_dir, exist_ok=True)
     os.makedirs(work_dir, exist_ok=True)
 
@@ -767,7 +887,8 @@ for target_idx in [
         f.write(index_content)
 EOF
 
-# 4. Enforce permissions (chmod 775 on workspaces/memories and preserve file executables)
+# 4. Enforce permissions (chmod 775 on workspaces/memories/comms and preserve file executables)
+chmod -R 775 "${REPO_ROOT}/data/agent_workspaces" "${REPO_ROOT}/data/agent_memories" "${REPO_ROOT}/data/comms" 2>/dev/null || true
 chmod -R 775 "${REPO_ROOT}/data/workspace" "${REPO_ROOT}/data/memories" 2>/dev/null || true
 if [ -d "${REPO_ROOT}/apps" ]; then
   find "${REPO_ROOT}/apps" -type d -exec chmod 775 {} + 2>/dev/null || true

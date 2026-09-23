@@ -27,12 +27,12 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/terrastella:/memories
+      - ./data/agent_memories/terrastella:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
-      - ./data/workspace/terrastella:/opt/data
-      - ./data/workspace/terrastella:/workspace
+      - ./data/agent_workspaces/terrastella:/opt/data
+      - ./data/agent_workspaces/terrastella:/workspace
       # Tool Egress Proxy CA Certificate Mount (Read-Only)
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     working_dir: /opt/data
@@ -88,14 +88,14 @@ services:
       - titan-internal
 
   # --------------------------------------------------------------------------
-  # L2: Agent Core Unit: Football Dan - Sports Analytics (football-dan)
+  # L2: Agent Core Unit: Marvin - Sports Analytics (marvin)
   # --------------------------------------------------------------------------
-  agent-football-dan:
+  agent-marvin:
     build:
       context: .
       dockerfile: docker/hermes/Dockerfile
     image: titan-hermes:latest
-    container_name: titan-agent-football-dan
+    container_name: titan-agent-marvin
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -109,12 +109,12 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/football-dan:/memories
+      - ./data/agent_memories/marvin:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
-      - ./data/workspace/football-dan:/opt/data
-      - ./data/workspace/football-dan:/workspace
+      - ./data/agent_workspaces/marvin:/opt/data
+      - ./data/agent_workspaces/marvin:/workspace
       # Tool Egress Proxy CA Certificate Mount (Read-Only)
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     working_dir: /opt/data
@@ -126,9 +126,9 @@ services:
       - HERMES_DASHBOARD_PORT=9120
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_FOOTBALL_DAN_KEY:-sk-titan-football-dan-key}
-      - CUSTOM_API_KEY=${HERMES_FOOTBALL_DAN_KEY:-sk-titan-football-dan-key}
-      - OPENAI_API_KEY=${HERMES_FOOTBALL_DAN_KEY:-sk-titan-football-dan-key}
+      - HERMES_LITELLM_KEY=${HERMES_MARVIN_KEY:-sk-titan-marvin-key}
+      - CUSTOM_API_KEY=${HERMES_MARVIN_KEY:-sk-titan-marvin-key}
+      - OPENAI_API_KEY=${HERMES_MARVIN_KEY:-sk-titan-marvin-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
@@ -141,17 +141,17 @@ services:
       - API_SERVER_PORT=8643
       - API_SERVER_KEY=${API_SERVER_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
-      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_FOOTBALL_DAN:-${SIGNAL_ACCOUNT:-}}
-      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_FOOTBALL_DAN:-${SIGNAL_ALLOWED_USERS:-}}
-      - TELEGRAM_BOT_NAME=@FootballDan_bot
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_FOOTBALL_DAN:-${TELEGRAM_BOT_TOKEN:-}}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_FOOTBALL_DAN:-${TELEGRAM_ALLOWED_USERS:-}}
+      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_MARVIN:-${SIGNAL_ACCOUNT:-}}
+      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_MARVIN:-${SIGNAL_ALLOWED_USERS:-}}
+      - TELEGRAM_BOT_NAME=@Marvin_bot
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_MARVIN:-${TELEGRAM_BOT_TOKEN:-}}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_MARVIN:-${TELEGRAM_ALLOWED_USERS:-}}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-http://langfuse.titan.local:${LANGFUSE_PORT:-3001}}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
-      - OTEL_SERVICE_NAME=hermes-football-dan
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-football-dan,agent.id=football-dan
+      - OTEL_SERVICE_NAME=hermes-marvin
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-marvin,agent.id=marvin
       - HTTP_PROXY=http://titan-net-egress-proxy:8082
       - HTTPS_PROXY=http://titan-net-egress-proxy:8082
       - http_proxy=http://titan-net-egress-proxy:8082
@@ -170,14 +170,14 @@ services:
       - titan-internal
 
   # --------------------------------------------------------------------------
-  # L2: Agent Core Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford)
+  # L2: Agent Core Unit: Bawtford - Creative Director & Supermodel CEO (bawtford)
   # --------------------------------------------------------------------------
-  agent-cindy-pawford:
+  agent-bawtford:
     build:
       context: .
       dockerfile: docker/hermes/Dockerfile
     image: titan-hermes:latest
-    container_name: titan-agent-cindy-pawford
+    container_name: titan-agent-bawtford
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -191,12 +191,12 @@ services:
       - "langfuse.titan.local:${LANGFUSE_HOST_IP:-host-gateway}"
     volumes:
       # L3: Memory Plane (pure OKF markdown)
-      - ./data/memories/cindy-pawford:/memories
+      - ./data/agent_memories/bawtford:/memories
       # Read-only configuration
       - ./config/hermes:/app/config:ro
       # L3: Unprivileged Workspace Sandbox
-      - ./data/workspace/cindy-pawford:/opt/data
-      - ./data/workspace/cindy-pawford:/workspace
+      - ./data/agent_workspaces/bawtford:/opt/data
+      - ./data/agent_workspaces/bawtford:/workspace
       # Dedicated Public HTML Canvas
       - ./apps/cindypawford/site:/app/html
       # Masked / Read-Only Protected Path
@@ -212,9 +212,9 @@ services:
       - HERMES_DASHBOARD_PORT=9121
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}
-      - CUSTOM_API_KEY=${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}
-      - OPENAI_API_KEY=${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}
+      - HERMES_LITELLM_KEY=${HERMES_BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
+      - CUSTOM_API_KEY=${HERMES_BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
+      - OPENAI_API_KEY=${HERMES_BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
@@ -227,21 +227,21 @@ services:
       - API_SERVER_PORT=8644
       - API_SERVER_KEY=${API_SERVER_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
-      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_CINDY_PAWFORD:-${SIGNAL_ACCOUNT:-}}
-      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_CINDY_PAWFORD:-${SIGNAL_ALLOWED_USERS:-}}
-      - TELEGRAM_BOT_NAME=@CindyPawfordBot
+      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_BAWTFORD:-${SIGNAL_ACCOUNT:-}}
+      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_BAWTFORD:-${SIGNAL_ALLOWED_USERS:-}}
+      - TELEGRAM_BOT_NAME=@BawtfordBot
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_CINDY:-${TELEGRAM_BOT_TOKEN:-}}
       - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_CINDY:-${TELEGRAM_ALLOWED_USERS:-}}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-http://langfuse.titan.local:${LANGFUSE_PORT:-3001}}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
-      - OTEL_SERVICE_NAME=hermes-cindy-pawford
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-cindy-pawford,agent.id=cindy-pawford
-      - GIT_AUTHOR_NAME=Cindy Pawford
-      - GIT_AUTHOR_EMAIL=cindy@cindypawford.com
-      - GIT_COMMITTER_NAME=Cindy Pawford
-      - GIT_COMMITTER_EMAIL=cindy@cindypawford.com
+      - OTEL_SERVICE_NAME=hermes-bawtford
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-bawtford,agent.id=bawtford
+      - GIT_AUTHOR_NAME=Bawtford
+      - GIT_AUTHOR_EMAIL=bawtford@cindypawford.com
+      - GIT_COMMITTER_NAME=Bawtford
+      - GIT_COMMITTER_EMAIL=bawtford@cindypawford.com
       - GIT_TERMINAL_PROMPT=0
       - HTTP_PROXY=http://titan-net-egress-proxy:8082
       - HTTPS_PROXY=http://titan-net-egress-proxy:8082
@@ -259,6 +259,17 @@ services:
     networks:
       - titan-ingress
       - titan-internal
+
+  # --------------------------------------------------------------------------
+  # L7: Ingress Gateway Network Aliases for Operator IDE Reachability
+  # --------------------------------------------------------------------------
+  caddy:
+    networks:
+      titan-operator-net:
+        aliases:
+          - api.terrastella.titan.local
+          - api.marvin.titan.local
+          - api.bawtford.titan.local
 
 volumes:
   tool_egress_proxy_data:

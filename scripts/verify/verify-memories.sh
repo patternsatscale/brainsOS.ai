@@ -45,12 +45,15 @@ SILVERBULLET_PORT="${SILVERBULLET_PORT:-3000}"
 CADDY_PORT="${CADDY_HTTP_PORT:-80}"
 HERMES_PORT="${HERMES_PORT:-8642}"
 API_SERVER_KEY="${API_SERVER_KEY:-}"
-DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
+DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
 else
   MEMORIES_DIR="${DATA_DIR}"
+fi
+if [ ! -d "${MEMORIES_DIR}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
+  MEMORIES_DIR="${REPO_ROOT}/data/memories"
 fi
 
 if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then

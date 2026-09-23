@@ -72,6 +72,14 @@ log_info "  - Data:   ${DATA_DIR}"
 # Ensure canvas site directory exists
 mkdir -p "${REPO_ROOT}/apps/cindypawford/site"
 
+# Ensure Caddy root CA certificate is exported for in-container SSL trust
+mkdir -p "${REPO_ROOT}/data/control_plane"
+touch "${REPO_ROOT}/data/control_plane/caddy_root.crt"
+chmod 664 "${REPO_ROOT}/data/control_plane/caddy_root.crt" 2>/dev/null || true
+if [ -x "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" --export-only >/dev/null 2>&1 || true
+fi
+
 # ------------------------------------------------------------------------------
 # 2. Register Operator Virtual Key in LiteLLM Control Plane Database
 # ------------------------------------------------------------------------------

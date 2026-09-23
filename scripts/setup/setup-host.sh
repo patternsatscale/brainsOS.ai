@@ -316,8 +316,8 @@ if [ -f "${REPO_ROOT}/scripts/setup/setup-memories.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-memories.sh"
 fi
 
-DATA_DIR=$(grep -E '^TITAN_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/memories")
-DATA_DIR="${DATA_DIR:-./data/memories}"
+DATA_DIR=$(grep -E '^(TITAN_AGENT_MEMORIES_DIR|TITAN_DATA_DIR)=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
+DATA_DIR="${DATA_DIR:-./data/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -327,6 +327,7 @@ fi
 
 mkdir -p "${REPO_ROOT}/data/backups"
 mkdir -p "${REPO_ROOT}/data/control_plane"
+mkdir -p "${REPO_ROOT}/data/comms"
 
 # LiteLLM Dedicated Control Plane Database Storage (isolated from memories)
 DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/litellm_db")
@@ -351,8 +352,8 @@ else
 fi
 
 # Hermes Agent Runtime Workspace Storage (tools, caches, packages, isolated from memories)
-WORKSPACE_DIR=$(grep -E '^TITAN_WORKSPACE_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/workspace")
-WORKSPACE_DIR="${WORKSPACE_DIR:-./data/workspace}"
+WORKSPACE_DIR=$(grep -E '^(TITAN_AGENT_WORKSPACES_DIR|TITAN_WORKSPACE_DIR)=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_workspaces")
+WORKSPACE_DIR="${WORKSPACE_DIR:-./data/agent_workspaces}"
 
 if [[ "$WORKSPACE_DIR" != /* ]]; then
   TARGET_WORKSPACE_DIR="${REPO_ROOT}/${WORKSPACE_DIR#./}"
@@ -372,11 +373,11 @@ else
   chmod 775 "${TARGET_WORKSPACE_DIR}" || true
 fi
 
-if [ ! -f "${REPO_ROOT}/data/workspace/.gitkeep" ]; then
-  touch "${REPO_ROOT}/data/workspace/.gitkeep"
-fi
+touch "${REPO_ROOT}/data/agent_memories/.gitkeep" 2>/dev/null || true
+touch "${REPO_ROOT}/data/agent_workspaces/.gitkeep" 2>/dev/null || true
+touch "${REPO_ROOT}/data/comms/.gitkeep" 2>/dev/null || true
 
-log_success "Storage layout (memories, database, workspace) initialized."
+log_success "Storage layout (agent_memories, database, agent_workspaces, comms) initialized."
 
 # ------------------------------------------------------------------------------
 # 6. Native Model Seeding

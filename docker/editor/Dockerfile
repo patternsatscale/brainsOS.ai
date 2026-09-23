@@ -13,6 +13,7 @@ RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
       python3 \
       python3-pip \
+      python3-yaml \
       python3-venv \
       bzip2 \
       curl \

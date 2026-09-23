@@ -78,15 +78,16 @@ log_success "Docker daemon verified."
 if [ -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
   "${REPO_ROOT}/scripts/control/sync-agents.sh"
 else
-  MEMORIES_DIR="${TITAN_DATA_DIR:-${REPO_ROOT}/data/memories}"
+  MEMORIES_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-${REPO_ROOT}/data/agent_memories}}"
   mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
-  WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
-  mkdir -p "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
-  chmod 775 "${WORKSPACE_DIR}" "${WORKSPACE_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
+  WORKSPACE_DIR="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/agent_workspaces}}"
+  COMMS_DIR="${TITAN_COMMS_DIR:-${REPO_ROOT}/data/comms}"
+  mkdir -p "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
+  chmod 775 "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
 fi
 
 # Clean up any legacy hermes_okf.py skill copies to maintain zero technical debt
-WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
+WORKSPACE_DIR="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/agent_workspaces}}"
 if [ -f "${WORKSPACE_DIR}/skills/hermes_okf.py" ]; then
   rm -f "${WORKSPACE_DIR}/skills/hermes_okf.py"
   log_info "Removed legacy skill copy at ${WORKSPACE_DIR}/skills/hermes_okf.py."

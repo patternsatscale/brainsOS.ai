@@ -216,88 +216,95 @@ done
 # ------------------------------------------------------------------------------
 log_info "Step 4: Verifying cross-tenant storage isolation (Rule 1 & Rule 4)..."
 
-# Test 1: Write marker note into primary agent memory
-TEST_MARKER="marker_primary_$(date +%s)"
-docker exec "${PRIMARY_CONTAINER}" bash -c "echo '${TEST_MARKER}' > /memories/knowledge/isolation_test.md"
+SECONDARY_AGENT_ID=$(echo "${ENABLED_AGENTS}" | tr ' ' '\n' | grep -v "^${PRIMARY_AGENT_ID}$" | head -n 1 || echo "")
+if [ -n "${SECONDARY_AGENT_ID}" ]; then
+  SECONDARY_CONTAINER="titan-agent-${SECONDARY_AGENT_ID}"
 
-# Test 2: Verify Agent football-dan CANNOT see primary agent marker
-if docker exec titan-agent-football-dan test -f /memories/knowledge/isolation_test.md 2>/dev/null; then
-  log_error "Isolation breach: football-dan container can access ${PRIMARY_CONTAINER} /memories!"
-  exit 1
-fi
-log_success "Verified: Agent 'football-dan' cannot access Agent '${PRIMARY_AGENT_ID}' memory partition."
+  # Test 1: Write marker note into primary agent memory
+  TEST_MARKER="marker_primary_$(date +%s)"
+  docker exec "${PRIMARY_CONTAINER}" bash -c "echo '${TEST_MARKER}' > /memories/knowledge/isolation_test.md"
 
-# Test 3: Verify primary agent CANNOT see Agent football-dan workspace
-FB_MARKER="marker_football_$(date +%s)"
-docker exec titan-agent-football-dan bash -c "echo '${FB_MARKER}' > /workspace/fb_isolated.txt"
-
-if docker exec "${PRIMARY_CONTAINER}" test -f /workspace/fb_isolated.txt 2>/dev/null; then
-  log_error "Isolation breach: ${PRIMARY_CONTAINER} can access football-dan container /workspace!"
-  exit 1
-fi
-log_success "Verified: Agent '${PRIMARY_AGENT_ID}' cannot access Agent 'football-dan' workspace partition."
-
-# Clean up isolation test files
-docker exec "${PRIMARY_CONTAINER}" rm -f /memories/knowledge/isolation_test.md 2>/dev/null || true
-docker exec titan-agent-football-dan rm -f /workspace/fb_isolated.txt 2>/dev/null || true
-
-# ------------------------------------------------------------------------------
-# 5. Hardware Concurrency & Serialization via LiteLLM
-# ------------------------------------------------------------------------------
-log_info "Step 5: Verifying hardware serialization through LiteLLM (Rule 3)..."
-
-if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
-  log_info "LiteLLM gateway is online; issuing concurrent completion probes across agents..."
-
-  PRIMARY_KEY="${HERMES_LITELLM_KEY:-sk-titan-${PRIMARY_AGENT_ID}-key}"
-  FOOTBALL_KEY="${HERMES_FOOTBALL_DAN_KEY:-sk-titan-football-dan-key}"
-
-  # Issue concurrent health / models requests with different keys
-  REQ1=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${PRIMARY_KEY}" "http://127.0.0.1:${LITELLM_PORT}/models" || echo "failed")
-  REQ2=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${FOOTBALL_KEY}" "http://127.0.0.1:${LITELLM_PORT}/models" || echo "failed")
-
-  if [ "${REQ1}" = "200" ] && [ "${REQ2}" = "200" ]; then
-    log_success "Concurrent requests with distinct virtual keys handled cleanly by LiteLLM."
-  else
-    log_warn "LiteLLM concurrent probe returned HTTP ${REQ1} / ${REQ2} (acceptable if offline)."
-  fi
-else
-  log_info "LiteLLM gateway is not active; skipping live concurrency probe."
-fi
-
-# ------------------------------------------------------------------------------
-# 6. Targeted Emergency Stop & Granular Revocation Test
-# ------------------------------------------------------------------------------
-log_info "Step 6: Testing targeted single-tenant emergency stop..."
-
-if [ -x "${REPO_ROOT}/scripts/control/emergency-stop.sh" ]; then
-  # Target only football-dan
-  "${REPO_ROOT}/scripts/control/emergency-stop.sh" football-dan
-
-  # Assert football-dan is paused or stopped
-  FB_STATE=$(docker inspect titan-agent-football-dan --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
-  if [ "${FB_STATE}" = "paused" ] || [ "${FB_STATE}" = "exited" ]; then
-    log_success "Targeted emergency stop successfully paused/stopped titan-agent-football-dan (State: ${FB_STATE})."
-  else
-    log_error "Targeted stop failed: titan-agent-football-dan is in state '${FB_STATE}'."
+  # Test 2: Verify Secondary Agent CANNOT see primary agent marker
+  if docker exec "${SECONDARY_CONTAINER}" test -f /memories/knowledge/isolation_test.md 2>/dev/null; then
+    log_error "Isolation breach: ${SECONDARY_AGENT_ID} container can access ${PRIMARY_CONTAINER} /memories!"
     exit 1
   fi
+  log_success "Verified: Agent '${SECONDARY_AGENT_ID}' cannot access Agent '${PRIMARY_AGENT_ID}' memory partition."
 
-  # Assert primary agent was NOT stopped
-  PRIMARY_STATE=$(docker inspect "${PRIMARY_CONTAINER}" --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
-  if [ "${PRIMARY_STATE}" = "running" ]; then
-    log_success "Non-targeted agent '${PRIMARY_CONTAINER}' remained RUNNING without interruption."
-  else
-    log_error "Blast radius failure: non-targeted agent '${PRIMARY_CONTAINER}' was affected (State: ${PRIMARY_STATE})."
+  # Test 3: Verify primary agent CANNOT see Secondary Agent workspace
+  SEC_MARKER="marker_${SECONDARY_AGENT_ID}_$(date +%s)"
+  docker exec "${SECONDARY_CONTAINER}" bash -c "echo '${SEC_MARKER}' > /workspace/sec_isolated.txt"
+
+  if docker exec "${PRIMARY_CONTAINER}" test -f /workspace/sec_isolated.txt 2>/dev/null; then
+    log_error "Isolation breach: ${PRIMARY_CONTAINER} can access ${SECONDARY_AGENT_ID} container /workspace!"
     exit 1
   fi
+  log_success "Verified: Agent '${PRIMARY_AGENT_ID}' cannot access Agent '${SECONDARY_AGENT_ID}' workspace partition."
 
-  # Restore football-dan
-  docker unpause titan-agent-football-dan 2>/dev/null || docker compose start agent-football-dan 2>/dev/null || true
-  log_info "Restored football-dan container."
+  # Clean up isolation test files
+  docker exec "${PRIMARY_CONTAINER}" rm -f /memories/knowledge/isolation_test.md 2>/dev/null || true
+  docker exec "${SECONDARY_CONTAINER}" rm -f /workspace/sec_isolated.txt 2>/dev/null || true
+
+  # ------------------------------------------------------------------------------
+  # 5. Hardware Concurrency & Serialization via LiteLLM
+  # ------------------------------------------------------------------------------
+  log_info "Step 5: Verifying hardware serialization through LiteLLM (Rule 3)..."
+
+  if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
+    log_info "LiteLLM gateway is online; issuing concurrent completion probes across agents..."
+
+    PRIMARY_KEY="${HERMES_LITELLM_KEY:-sk-titan-${PRIMARY_AGENT_ID}-key}"
+    SEC_KEY="sk-titan-${SECONDARY_AGENT_ID}-key"
+
+    # Issue concurrent health / models requests with different keys
+    REQ1=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${PRIMARY_KEY}" "http://127.0.0.1:${LITELLM_PORT}/models" || echo "failed")
+    REQ2=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${SEC_KEY}" "http://127.0.0.1:${LITELLM_PORT}/models" || echo "failed")
+
+    if [ "${REQ1}" = "200" ] && [ "${REQ2}" = "200" ]; then
+      log_success "Concurrent requests with distinct virtual keys handled cleanly by LiteLLM."
+    else
+      log_warn "LiteLLM concurrent probe returned HTTP ${REQ1} / ${REQ2} (acceptable if offline)."
+    fi
+  else
+    log_info "LiteLLM gateway is not active; skipping live concurrency probe."
+  fi
+
+  # ------------------------------------------------------------------------------
+  # 6. Targeted Emergency Stop & Granular Revocation Test
+  # ------------------------------------------------------------------------------
+  log_info "Step 6: Testing targeted single-tenant emergency stop..."
+
+  if [ -x "${REPO_ROOT}/scripts/control/emergency-stop.sh" ]; then
+    # Target only secondary agent
+    "${REPO_ROOT}/scripts/control/emergency-stop.sh" "${SECONDARY_AGENT_ID}"
+
+    # Assert secondary agent is paused or stopped
+    SEC_STATE=$(docker inspect "${SECONDARY_CONTAINER}" --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
+    if [ "${SEC_STATE}" = "paused" ] || [ "${SEC_STATE}" = "exited" ]; then
+      log_success "Targeted emergency stop successfully paused/stopped ${SECONDARY_CONTAINER} (State: ${SEC_STATE})."
+    else
+      log_error "Targeted stop failed: ${SECONDARY_CONTAINER} is in state '${SEC_STATE}'."
+      exit 1
+    fi
+
+    # Assert primary agent was NOT stopped
+    PRIMARY_STATE=$(docker inspect "${PRIMARY_CONTAINER}" --format '{{.State.Status}}' 2>/dev/null || echo "stopped")
+    if [ "${PRIMARY_STATE}" = "running" ]; then
+      log_success "Non-targeted agent '${PRIMARY_CONTAINER}' remained RUNNING without interruption."
+    else
+      log_error "Blast radius failure: non-targeted agent '${PRIMARY_CONTAINER}' was affected (State: ${PRIMARY_STATE})."
+      exit 1
+    fi
+
+    # Restore secondary agent
+    docker unpause "${SECONDARY_CONTAINER}" 2>/dev/null || docker compose start "agent-${SECONDARY_AGENT_ID}" 2>/dev/null || true
+    log_info "Restored ${SECONDARY_CONTAINER} container."
+  else
+    log_error "scripts/control/emergency-stop.sh not found."
+    exit 1
+  fi
 else
-  log_error "scripts/control/emergency-stop.sh not found."
-  exit 1
+  log_warn "No secondary agent found in enabled agents; skipping cross-tenant isolation probe."
 fi
 
 echo ""

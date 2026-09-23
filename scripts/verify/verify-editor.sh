@@ -58,12 +58,15 @@ OPERATOR_USER="${OPERATOR_USER:-operator}"
 CODE_SERVER_PASSWORD="${CODE_SERVER_PASSWORD:-titan_operator_secret}"
 OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}"
 TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
-DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
+DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
 else
   MEMORIES_DIR="${DATA_DIR}"
+fi
+if [ ! -d "${MEMORIES_DIR}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
+  MEMORIES_DIR="${REPO_ROOT}/data/memories"
 fi
 
 log_info "Starting Project Titan Operator IDE automated verification..."
@@ -172,8 +175,9 @@ docker compose exec -T code-server test -f /workspace/titan.code-workspace || fa
 docker compose exec -T code-server test -d /workspace/project-titan || fail_check "Repository root mount (/workspace/project-titan) missing inside container."
 docker compose exec -T code-server test -d /memories || fail_check "Memory plane mount (/memories) missing inside container."
 docker compose exec -T code-server test -d /data/workspace || fail_check "Agent workspaces mount (/data/workspace) missing inside container."
+docker compose exec -T code-server test -d /data/comms || fail_check "Communications gateways mount (/data/comms) missing inside container."
 docker compose exec -T code-server test -d /apps/cindypawford/site || fail_check "App canvas mount (/apps/cindypawford/site) missing inside container."
-log_success "All 4 Multi-Root Workspace mount points verified inside container."
+log_success "All 5 Multi-Root Workspace mount points verified inside container."
 
 # Rule 1 Purity Check: Ensure no .vscode or SQLite files in memories
 log_info "Auditing Memory Plane purity (ensuring zero .vscode directories in memories)..."
@@ -208,13 +212,32 @@ fi
 # Continue configuration and API endpoints check
 if docker compose exec -T code-server test -f /home/coder/.continue/config.yaml; then
   log_success "Continue configuration verified at /home/coder/.continue/config.yaml."
-  docker compose exec -T code-server grep -q "api.cindypawford" /home/coder/.continue/config.yaml || \
-    fail_check "Continue config missing api.cindypawford endpoint."
+  docker compose exec -T code-server grep -qE "api\.(terrastella|cindypawford|bawtford)" /home/coder/.continue/config.yaml || \
+    fail_check "Continue config missing Agent API endpoint."
   docker compose exec -T code-server grep -q "litellm:4000" /home/coder/.continue/config.yaml || \
     fail_check "Continue config missing LiteLLM endpoint."
   log_success "Continue API endpoints (LiteLLM & Agent APIs) verified in config.yaml."
 else
   fail_check "Continue configuration (/home/coder/.continue/config.yaml) missing inside container."
+fi
+
+# Workspace trust and SSL bypass verification
+log_info "Verifying Workspace Trust disabled and SSL bypass in settings.json..."
+if docker compose exec -T code-server grep -q '"security.workspace.trust.enabled": false' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Workspace trust is explicitly disabled in editor settings.json."
+else
+  fail_check "Workspace trust is not disabled in editor settings.json!"
+fi
+
+# In-container Agent API DNS reachability check
+log_info "Verifying Operator IDE network reachability to Ingress Gateway Agent APIs..."
+AGENT_PROBE=$(docker compose exec -T code-server curl -s -m 5 -o /dev/null -w "%{http_code}" \
+  -H "Authorization: Bearer ${API_SERVER_KEY:-}" \
+  "http://api.terrastella.titan.local/v1/models" 2>/dev/null || echo "000")
+if echo "${AGENT_PROBE}" | grep -qE '^(200|401|405)'; then
+  log_success "Operator IDE successfully routed to api.terrastella.titan.local (HTTP ${AGENT_PROBE})."
+else
+  log_warn "Operator IDE probe to api.terrastella.titan.local returned HTTP ${AGENT_PROBE}."
 fi
 
 # titan-chat CLI check

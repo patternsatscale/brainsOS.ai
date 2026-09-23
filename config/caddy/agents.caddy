@@ -35,61 +35,61 @@ http://api.terrastella.titan.local, https://api.terrastella.titan.local, http://
 }
 
 # ------------------------------------------------------------------------------
-# Agent Unit: Football Dan - Sports Analytics (football-dan) - Dashboard & Console
+# Agent Unit: Marvin - Sports Analytics (marvin) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://football-dan.titan.local, https://football-dan.titan.local, http://football-dan.localhost, https://football-dan.localhost {
+http://marvin.titan.local, https://marvin.titan.local, http://marvin.localhost, https://marvin.localhost {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy titan-agent-football-dan:9120 {
+	reverse_proxy titan-agent-marvin:9120 {
 		flush_interval -1
 	}
 }
 
 # ------------------------------------------------------------------------------
-# Agent Unit: Football Dan - Sports Analytics (football-dan) - OpenAI-Compatible API
+# Agent Unit: Marvin - Sports Analytics (marvin) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.football-dan.titan.local, https://api.football-dan.titan.local, http://api.football-dan.localhost, https://api.football-dan.localhost {
+http://api.marvin.titan.local, https://api.marvin.titan.local, http://api.marvin.localhost, https://api.marvin.localhost {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy titan-agent-football-dan:8643 {
+	reverse_proxy titan-agent-marvin:8643 {
 		flush_interval -1
 	}
 }
 
 # ------------------------------------------------------------------------------
-# Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford) - Dashboard & Console
+# Agent Unit: Bawtford - Creative Director & Supermodel CEO (bawtford) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://cindypawford.titan.local, https://cindypawford.titan.local, http://cindypawford.localhost, https://cindypawford.localhost, http://cindy-pawford.localhost, https://cindy-pawford.localhost, http://cindypawford.com, https://cindypawford.com {
+http://bawtford.titan.local, https://bawtford.titan.local, http://bawtford.localhost, https://bawtford.localhost, http://cindypawford.com, https://cindypawford.com {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy titan-agent-cindy-pawford:9121 {
+	reverse_proxy titan-agent-bawtford:9121 {
 		flush_interval -1
 	}
 }
 
 # ------------------------------------------------------------------------------
-# Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO (cindy-pawford) - OpenAI-Compatible API
+# Agent Unit: Bawtford - Creative Director & Supermodel CEO (bawtford) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.cindypawford.titan.local, https://api.cindypawford.titan.local, http://api.cindypawford.localhost, https://api.cindypawford.localhost, http://api.cindy-pawford.localhost, https://api.cindy-pawford.localhost, http://api.cindypawford.com, https://api.cindypawford.com {
+http://api.bawtford.titan.local, https://api.bawtford.titan.local, http://api.bawtford.localhost, https://api.bawtford.localhost, http://api.cindypawford.com, https://api.cindypawford.com {
 	tls internal
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy titan-agent-cindy-pawford:8644 {
+	reverse_proxy titan-agent-bawtford:8644 {
 		flush_interval -1
 	}
 }

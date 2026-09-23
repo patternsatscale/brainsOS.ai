@@ -43,6 +43,9 @@ class GitHubAuthAddon:
             "titan-agent-cindy-pawford",
             "agent-cindy-pawford",
             "cindy-pawford",
+            "titan-agent-bawtford",
+            "agent-bawtford",
+            "bawtford",
         ]
         for host in hostnames:
             try:

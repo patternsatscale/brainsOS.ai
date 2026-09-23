@@ -13,11 +13,19 @@
       "path": "/data/workspace"
     },
     {
+      "name": "Communications Gateways (Signal & Email)",
+      "path": "/data/comms"
+    },
+    {
       "name": "Cindy Pawford (App Canvas)",
       "path": "/apps/cindypawford/site"
     }
   ],
   "settings": {
+    "security.workspace.trust.enabled": false,
+    "security.workspace.trust.startupPrompt": "never",
+    "security.workspace.trust.emptyWindow": true,
+    "http.proxyStrictSSL": false,
     "telemetry.telemetryLevel": "off",
     "workbench.startupEditor": "none",
     "files.autoSave": "afterDelay",
@@ -36,7 +44,28 @@
       "**/bower_components": true,
       "**/*.code-search": true,
       "**/data/litellm_db": true,
-      "**/data/postgres": true
+      "**/data/postgres": true,
+      "**/data/langfuse_*": true,
+      "**/data/langfuse_clickhouse": true,
+      "**/data/langfuse_postgres": true
+    },
+    "files.watcherExclude": {
+      "**/.git/objects/**": true,
+      "**/.git/subtree-cache/**": true,
+      "**/node_modules/**": true,
+      "**/.cache/**": true,
+      "**/data/litellm_db/**": true,
+      "**/data/postgres/**": true,
+      "**/data/langfuse_*/**": true,
+      "**/data/langfuse_clickhouse/**": true,
+      "**/data/langfuse_postgres/**": true,
+      "**/data/control_plane/**": true,
+      "**/data/workspace/**": true,
+      "**/data/agent_workspaces/**": true,
+      "**/data/comms/**": true,
+      "**/.venv/**": true,
+      "**/dist/**": true,
+      "**/build/**": true
     },
     "foam.openDailyNote.directory": "daily-notes",
     "foam.openDailyNote.filenameFormat": "yyyy-mm-dd",

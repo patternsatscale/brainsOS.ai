@@ -53,7 +53,7 @@ log_info "Initializing Project Titan Memory Plane from ${REPO_ROOT}..."
 # ------------------------------------------------------------------------------
 # 1. Resolve Target Memories Directory
 # ------------------------------------------------------------------------------
-DATA_DIR="${TITAN_DATA_DIR:-./data/memories}"
+DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"

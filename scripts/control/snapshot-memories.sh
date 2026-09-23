@@ -33,8 +33,8 @@ fi
 
 # Read data dir from .env if available
 cd "${REPO_ROOT}"
-DATA_DIR=$(grep -E '^TITAN_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/memories")
-DATA_DIR="${DATA_DIR:-./data/memories}"
+DATA_DIR=$(grep -E '^(TITAN_AGENT_MEMORIES_DIR|TITAN_DATA_DIR)=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
+DATA_DIR="${DATA_DIR:-./data/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"

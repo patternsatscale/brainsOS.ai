@@ -46,7 +46,17 @@ http://editor.{$TITAN_DOMAIN:titan.local}, https://editor.{$TITAN_DOMAIN:titan.l
 }
 
 # Legacy Memory Plane Redirect (SilverBullet -> Operator IDE)
-http://memory.{$TITAN_DOMAIN:titan.local}, https://memory.{$TITAN_DOMAIN:titan.local}, http://memory.localhost, https://memory.localhost {
+http://memory.localhost {
+	redir http://editor.localhost{uri} permanent
+}
+https://memory.localhost {
+	tls internal
+	redir https://editor.localhost{uri} permanent
+}
+http://memory.{$TITAN_DOMAIN:titan.local} {
+	redir http://editor.{$TITAN_DOMAIN:titan.local}{uri} permanent
+}
+https://memory.{$TITAN_DOMAIN:titan.local} {
 	tls internal
 	redir https://editor.{$TITAN_DOMAIN:titan.local}{uri} permanent
 }
