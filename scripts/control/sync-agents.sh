@@ -203,6 +203,7 @@ for agent in enabled_agents:
         volume_lines.append(f"      - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro")
         depends_lines.append(f"      - tool-egress-proxy")
 
+
     compose_lines.extend([
         f"  # --------------------------------------------------------------------------",
         f"  # L2: Agent Core Unit: {name} ({agent_id})",
