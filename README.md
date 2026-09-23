@@ -49,7 +49,7 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 │     - Development Workstation: Apple Silicon macOS (native ARM64 parity)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Cross-Cutting: Observability & Operational Safety                           │
-│     - Decoupled Langfuse v2 + OpenTelemetry distributed tracing             │
+│     - Decoupled Langfuse v4 + OpenTelemetry distributed tracing             │
 │     - Unified full-data backup (scripts/control/backup.sh)                  │
 │     - Granular single-tenant emergency kill-switch (scripts/control/stop)   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -289,7 +289,7 @@ project-titan/
 │   │   └── plugins/
 │   │       └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
 │   └── langfuse/
-│       ├── docker-compose.yml# Decoupled Langfuse v2 + PostgreSQL observability stack
+│       ├── docker-compose.yml# Decoupled Langfuse v4 distributed observability stack
 │       └── .env.example      # Standalone Langfuse environment template
 ├── docs/                     # Architectural tenets, specifications, and ticket walkthroughs
 │   ├── lab-work/             # Claude documentation, critique & project reporting (Rule 11)
@@ -326,6 +326,7 @@ project-titan/
     │   ├── verify-editor.sh  # Automated verification harness for Titan Operator IDE (security & tooling)
     │   ├── verify-memories.sh# Automated verification harness for OKF memory synchronization
     │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
+    │   ├── verify-agent-telemetry.sh # End-to-end multi-agent & LiteLLM telemetry verification suite
     │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
     │   └── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
     └── apps/                 # Application-specific operations and deployment tooling
@@ -400,8 +401,8 @@ Phase 0: Base Config
 
   * Benchmark Ollama vs. vLLM vs. SGLang on native ARM64 / DGX OS to evaluate prefill speed and KV-cache memory pressure.
   * Measure context scaling performance across 4k, 8k, 16k, 32k, and 64k token windows.
-  * **Langfuse Observability & OpenTelemetry Tracing (#19)**:
-    * **Decoupled Architecture**: Langfuse v2 container stack (`docker/langfuse/docker-compose.yml`) is completely decoupled from the main Titan appliance cluster, allowing it to run on a separate developer laptop or workstation over the LAN.
+  * **Langfuse Observability & OpenTelemetry Tracing (#19, #120)**:
+    * **Decoupled Architecture**: Production Langfuse v4 container stack (`docker/langfuse/docker-compose.yml`) featuring ClickHouse OLAP analytics, Redis ingestion queue, MinIO S3 object storage, PostgreSQL transactional database, and asynchronous background worker, completely decoupled from the main Titan appliance cluster, allowing it to run locally or on a separate developer workstation over the LAN.
     * **No Auto-Start by Default**: Controlled via `LANGFUSE_AUTO_START=false` in `.env`. The GX10 appliance runs all core planes (Inference, Control, Agent, Memory) without auto-starting Langfuse.
     * **Standardized DNS & Dedicated Port**: Tracing endpoints target `langfuse.titan.local` on dedicated **port 3001** (mapped via `/etc/hosts` or Docker `extra_hosts` to the remote workstation IP `LANGFUSE_HOST_IP`).
     * **Dual Ingestion**:
@@ -411,7 +412,7 @@ Phase 0: Base Config
       * Setup & start: `./scripts/setup/setup-langfuse.sh setup && ./scripts/setup/setup-langfuse.sh start`
       * Service status & logs: `./scripts/setup/setup-langfuse.sh status` / `./scripts/setup/setup-langfuse.sh logs`
       * Key helper: `./scripts/setup/setup-langfuse.sh keys` (prompts for keys and generates Base64 `LANGFUSE_OTEL_AUTH`)
-      * Verification: `./scripts/verify/verify-langfuse.sh`
+      * Verification: `./scripts/verify/verify-langfuse.sh` and `./scripts/verify/verify-agent-telemetry.sh`
   * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies; dual OTel/LiteLLM trace ingestion validated.
 
 ---

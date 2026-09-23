@@ -232,7 +232,12 @@ for agent in enabled_agents:
         f"      - TELEGRAM_BOT_NAME={tg_bot}",
         f"      - TELEGRAM_BOT_TOKEN=${{{tg_token_env}:-${{TELEGRAM_BOT_TOKEN:-}}}}",
         f"      - TELEGRAM_ALLOWED_USERS=${{{tg_users_env}:-${{TELEGRAM_ALLOWED_USERS:-}}}}",
+        f"      - LANGFUSE_HOST=${{LANGFUSE_HOST:-http://langfuse.titan.local:${{LANGFUSE_PORT:-3001}}}}",
+        f"      - LANGFUSE_PUBLIC_KEY=${{LANGFUSE_PUBLIC_KEY:-}}",
+        f"      - LANGFUSE_SECRET_KEY=${{LANGFUSE_SECRET_KEY:-}}",
         f"      - LANGFUSE_OTEL_AUTH=${{LANGFUSE_OTEL_AUTH:-}}",
+        f"      - OTEL_SERVICE_NAME=hermes-{agent_id}",
+        f"      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-{agent_id},agent.id={agent_id}",
     ] + git_env_lines + [
         f"    command: [\"sleep\", \"infinity\"]",
         f"    depends_on:",
@@ -663,6 +668,12 @@ for agent in manifest.get("agents", []):
         default_model = agent.get("models", {}).get("default")
         if default_model and "model" in cfg:
             cfg["model"]["default"] = default_model
+        # Seed per-agent OpenTelemetry resource attributes for Langfuse service distinction
+        if "monitoring" in cfg:
+            if "resource_attributes" not in cfg["monitoring"]:
+                cfg["monitoring"]["resource_attributes"] = {}
+            cfg["monitoring"]["resource_attributes"]["service.name"] = f"hermes-{agent_id}"
+            cfg["monitoring"]["resource_attributes"]["agent.id"] = agent_id
         # Seed per-agent Telegram platform settings
         tg_config = agent.get("comms", {}).get("telegram", {})
         if "platforms" in cfg and "telegram" in cfg["platforms"]:

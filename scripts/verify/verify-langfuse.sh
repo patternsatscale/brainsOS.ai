@@ -102,8 +102,8 @@ log_info "Verifying configuration files..."
 
 # LiteLLM config
 if [ -f "config/litellm/config.yaml" ]; then
-  if grep -q "success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS" config/litellm/config.yaml; then
-    pass_check "LiteLLM configuration: Dynamic callbacks configured in config/litellm/config.yaml."
+  if grep -q "success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS" config/litellm/config.yaml || (grep -q "success_callback:" config/litellm/config.yaml && grep -q -- "- langfuse" config/litellm/config.yaml); then
+    pass_check "LiteLLM configuration: Callbacks configured in config/litellm/config.yaml."
   else
     fail_check "LiteLLM configuration: missing success_callback in config/litellm/config.yaml."
   fi
@@ -142,6 +142,7 @@ log_info "Verifying DNS resolution for langfuse.titan.local..."
 # Check Python/host resolution
 HOST_RESOLVED_IP=$(python3 -c "
 import socket
+socket.setdefaulttimeout(2.0)
 try:
     print(socket.gethostbyname('langfuse.titan.local'))
 except Exception:
@@ -182,6 +183,14 @@ else
   ACTIVE_ENDPOINT=""
 fi
 
+if command -v docker >/dev/null 2>&1 && [ -n "${ACTIVE_ENDPOINT}" ]; then
+  for c in titan-langfuse-web titan-langfuse-worker titan-langfuse-clickhouse titan-langfuse-redis titan-langfuse-minio titan-langfuse-db; do
+    if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
+      pass_check "Container '${c}': RUNNING."
+    fi
+  done
+fi
+
 # If active, test telemetry ingestion endpoint reachability
 if [ -n "${ACTIVE_ENDPOINT}" ]; then
   log_info "Testing telemetry ingestion endpoint reachability at ${ACTIVE_ENDPOINT}/api/public/ingestion..."
@@ -212,6 +221,23 @@ else
   warn_check "Langfuse API Keys not set in .env (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)."
   log_info "LiteLLM tracing will remain in standby until keys are configured."
   log_info "Run ./scripts/setup/setup-langfuse.sh keys to generate and export keys."
+fi
+
+# ------------------------------------------------------------------------------
+# 6. Preconfigured LLM Gateway & Fleet Agent Connections in Langfuse
+# ------------------------------------------------------------------------------
+if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
+  log_info "Checking preconfigured LLM & Agent connections in Langfuse..."
+  if docker exec titan-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='titan' AND provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
+    pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.titan.local/v1) preconfigured for project 'titan'."
+  else
+    warn_check "Langfuse LLM Connection: 'LiteLLM' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
+  fi
+  if docker exec titan-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='titan' AND provider='Cindy-Pawford';" 2>/dev/null | grep -q "Cindy-Pawford"; then
+    pass_check "Langfuse Agent Connection: 'Cindy-Pawford' (http://api.cindypawford.titan.local/v1) preconfigured for project 'titan'."
+  else
+    warn_check "Langfuse Agent Connection: 'Cindy-Pawford' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
+  fi
 fi
 
 # ------------------------------------------------------------------------------

@@ -194,8 +194,8 @@ stop_services() {
     log_success "Host Ollama stopped."
   fi
 
-  # Stop local Langfuse stack if LANGFUSE_AUTO_START is enabled or containers are active
-  if [[ "${LANGFUSE_AUTO_START}" =~ ^(true|1|yes)$ ]] || (command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'titan-langfuse'); then
+  # Stop local Langfuse stack only if explicitly requested (e.g., STOP_LANGFUSE=true)
+  if [[ "${STOP_LANGFUSE:-false}" =~ ^(true|1|yes)$ ]]; then
     log_info "Stopping local Langfuse container stack..."
     "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" stop 2>/dev/null || true
   fi
@@ -325,14 +325,21 @@ start_services() {
   OTEL_EXPORTER_OTLP_HEADERS=""
 
   if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && [ -n "${LANGFUSE_SECRET_KEY}" ]; then
-    LITELLM_SUCCESS_CALLBACKS='["langfuse", "otel"]'
-    LITELLM_FAILURE_CALLBACKS='["langfuse", "otel"]'
-    OTEL_EXPORTER_OTLP_ENDPOINT="${LANGFUSE_HOST}/api/public/otel"
-    if [ -z "${LANGFUSE_OTEL_AUTH}" ]; then
-      LANGFUSE_OTEL_AUTH="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64)"
+    LITELLM_SUCCESS_CALLBACKS="langfuse,otel"
+    LITELLM_FAILURE_CALLBACKS="langfuse,otel"
+    
+    # Resolve host-level endpoint: if LANGFUSE_HOST points to titan.local and does not resolve natively on host, use loopback
+    HOST_LANGFUSE_URL="${LANGFUSE_HOST}"
+    if [[ "${HOST_LANGFUSE_URL}" == *"langfuse.titan.local"* ]] && ! curl -s -m 1 "${HOST_LANGFUSE_URL}/api/public/health" >/dev/null 2>&1; then
+      HOST_LANGFUSE_URL="http://127.0.0.1:${LANGFUSE_PORT}"
+    fi
+
+    OTEL_EXPORTER_OTLP_ENDPOINT="${HOST_LANGFUSE_URL}/api/public/otel"
+    if [ -z "${LANGFUSE_OTEL_AUTH}" ] || [ "${LANGFUSE_OTEL_AUTH}" = "Basic" ] || [[ "${LANGFUSE_OTEL_AUTH}" != *" "* ]]; then
+      LANGFUSE_OTEL_AUTH="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')"
     fi
     OTEL_EXPORTER_OTLP_HEADERS="Authorization=${LANGFUSE_OTEL_AUTH}"
-    log_info "LiteLLM Observability: ENABLED (Langfuse & OTel -> ${LANGFUSE_HOST})"
+    log_info "LiteLLM Observability: ENABLED (Langfuse & OTel -> ${HOST_LANGFUSE_URL})"
   else
     log_info "LiteLLM Observability: STANDBY (LANGFUSE_PUBLIC_KEY unset)"
   fi
@@ -350,7 +357,8 @@ start_services() {
     DATABASE_URL="${DATABASE_URL}" \
     LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
     LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
-    LANGFUSE_HOST="${LANGFUSE_HOST}" \
+    LANGFUSE_HOST="${HOST_LANGFUSE_URL:-${LANGFUSE_HOST}}" \
+    LANGFUSE_BASE_URL="${HOST_LANGFUSE_URL:-${LANGFUSE_HOST}}" \
     LITELLM_SUCCESS_CALLBACKS="${LITELLM_SUCCESS_CALLBACKS}" \
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
@@ -367,7 +375,7 @@ start_services() {
 
     # Wait for LiteLLM
     READY=false
-    for i in {1..60}; do
+    for i in {1..90}; do
       if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
         READY=true
         break

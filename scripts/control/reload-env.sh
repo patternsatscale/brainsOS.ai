@@ -116,6 +116,22 @@ if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
         -c "ALTER USER \"${LF_DB_USER}\" WITH PASSWORD '${LF_DB_PASS}';" >/dev/null 2>&1 || true
       log_success "Langfuse database password synchronized."
     fi
+
+    # Synchronize Langfuse Web admin user password if updated
+    LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-}"
+    LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}"
+    if [ -n "${LF_ADMIN_PASS}" ] && docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-web$"; then
+      LF_HASH=$(docker exec -i titan-langfuse-web node -e "
+        const p = process.argv[1];
+        const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
+        console.log(bcrypt.hashSync(p, 12));
+      " "${LF_ADMIN_PASS}" 2>/dev/null || true)
+      if [ -n "${LF_HASH}" ]; then
+        docker exec -i titan-langfuse-db psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
+          -c "UPDATE users SET password = '${LF_HASH}', updated_at = NOW() WHERE email = '${LF_ADMIN_EMAIL}';" >/dev/null 2>&1 || true
+        log_success "Langfuse admin user password synchronized."
+      fi
+    fi
   fi
 else
   log_info "Step 2/5: Langfuse database is not running locally (skipping)."
