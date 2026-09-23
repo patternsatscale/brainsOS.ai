@@ -18,7 +18,7 @@ services:
   # Ingress Gateway: Caddy Reverse Proxy (Ports 80/443)
   caddy:
     image: caddy:2-alpine
-    container_name: titan-caddy
+    container_name: titan-net-caddy
     restart: unless-stopped
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
@@ -31,15 +31,7 @@ services:
       - caddy_config:/config
     networks:
       titan-ingress:
-        aliases:
-          - github-proxy.titan.local
-          - github-proxy.titan.internal
-          - github-proxy.localhost
       titan-internal:
-        aliases:
-          - github-proxy.titan.local
-          - github-proxy.titan.internal
-          - github-proxy.localhost
       titan-operator-net:
         aliases:
           - api.cindypawford.titan.local
@@ -50,13 +42,11 @@ services:
           - api.football-dan.titan.local
     environment:
       - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
-      - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
-      - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
     image: bbernhard/signal-cli-rest-api:latest
-    container_name: titan-signal-cli
+    container_name: titan-net-signal-cli
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -66,7 +56,11 @@ services:
     volumes:
       - ${TITAN_WORKSPACE_DIR:-./data/workspace}/signal:/home/.local/share/signal-cli
     networks:
-      - titan-internal
+      titan-internal:
+        aliases:
+          - titan-net-signal-cli
+          - titan-signal-cli
+          - signal-cli
 
   # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
   code-server:
@@ -74,7 +68,7 @@ services:
       context: .
       dockerfile: docker/editor/Dockerfile
     image: titan-code-server:latest
-    container_name: titan-code-server
+    container_name: titan-app-code-server
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     security_opt:
@@ -111,7 +105,7 @@ services:
   # ============================================================================
   tool-egress-proxy:
     image: mitmproxy/mitmproxy:latest
-    container_name: titan-tool-egress-proxy
+    container_name: titan-net-egress-proxy
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -120,6 +114,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}
+      - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
+      - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
     command:
       - "mitmweb"
       - "--web-host"
@@ -133,11 +129,15 @@ services:
       - "--set"
       - "web_password=${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
       - "--no-web-open-browser"
+      - "-s"
+      - "/addons/github_auth.py"
     volumes:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
+      - ./config/egress/addons:/addons:ro
     networks:
       titan-internal:
         aliases:
+          - titan-net-egress-proxy
           - titan-tool-egress-proxy
           - tool-egress-proxy
           - efw
@@ -151,7 +151,7 @@ services:
   # ============================================================================
   litellm-db:
     image: postgres:16-alpine
-    container_name: titan-litellm-db
+    container_name: titan-infra-litellm-db
     restart: unless-stopped
     ports:
       - "127.0.0.1:${LITELLM_DB_PORT:-5432}:5432"

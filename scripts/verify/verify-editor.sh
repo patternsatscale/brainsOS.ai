@@ -78,12 +78,13 @@ log_success "Docker Compose configuration is valid."
 # ------------------------------------------------------------------------------
 # 2. Verify Container Runtime Health & Direct Port Accessibility
 # ------------------------------------------------------------------------------
-log_info "Step 2: Checking titan-code-server container status..."
-CONTAINER_STATUS=$(docker inspect --format '{{.State.Status}}' titan-code-server 2>/dev/null || echo "missing")
+CONTAINER_NAME="$(docker ps --format '{{.Names}}' | grep -E '^titan-(app-)?code-server$' | head -n 1 || echo 'titan-app-code-server')"
+log_info "Step 2: Checking ${CONTAINER_NAME} container status..."
+CONTAINER_STATUS=$(docker inspect --format '{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "missing")
 if [ "${CONTAINER_STATUS}" != "running" ]; then
-  fail_check "titan-code-server container is not running (status: ${CONTAINER_STATUS}). Run ./scripts/setup/setup-editor.sh"
+  fail_check "${CONTAINER_NAME} container is not running (status: ${CONTAINER_STATUS}). Run ./scripts/setup/setup-editor.sh"
 fi
-log_success "titan-code-server container is running."
+log_success "${CONTAINER_NAME} container is running."
 
 log_info "Testing direct port :${CODE_SERVER_PORT} responsiveness..."
 DIRECT_HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${CODE_SERVER_PORT}/" || echo "000")

@@ -19,13 +19,14 @@ RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends gh git ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
-    git config --system credential.helper '!gh auth git-credential' && \
-    git config --system url."https://github-proxy.titan.local/".insteadOf "https://github.com/" && \
-    git config --system core.askPass ""
+    git config --system core.askPass "" && \
+    mkdir -p /etc/skel/.config/gh /root/.config/gh /home/hermes/.config/gh && \
+    printf 'github.com:\n    user: x-access-token\n    oauth_token: in-transit-placeholder\n    git_protocol: https\n' | tee /etc/skel/.config/gh/hosts.yml /root/.config/gh/hosts.yml /home/hermes/.config/gh/hosts.yml >/dev/null && \
+    chown -R hermes:hermes /home/hermes/.config
 
-# Install Caddy PKI trust boot hook for in-transit proxy credential injection
-COPY docker/hermes/00-caddy-ca /etc/cont-init.d/00-caddy-ca
-RUN chmod +x /etc/cont-init.d/00-caddy-ca
+# Install Tool Egress Proxy CA trust boot hook
+COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca
+RUN chmod +x /etc/cont-init.d/01-tool-egress-ca
 
 # Install Tool Egress Proxy CA trust boot hook
 COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca

@@ -78,19 +78,20 @@ cd "${REPO_ROOT}"
 # ------------------------------------------------------------------------------
 log_info "Step 1/5: Checking LiteLLM database credentials..."
 
-if docker ps --format '{{.Names}}' | grep -q "^titan-litellm-db$"; then
+DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(infra-)?litellm-db$' | head -n 1 || true)"
+if [ -n "${DB_CONTAINER}" ]; then
   LITELLM_DB_USER="${LITELLM_DB_USER:-litellm}"
   LITELLM_DB_NAME="${LITELLM_DB_NAME:-litellm}"
   LITELLM_DB_PASSWORD="${LITELLM_DB_PASSWORD:-titan_litellm_secret_change_me}"
 
-  log_info "Synchronizing database password for user '${LITELLM_DB_USER}' in titan-litellm-db..."
+  log_info "Synchronizing database password for user '${LITELLM_DB_USER}' in ${DB_CONTAINER}..."
   # Execute ALTER USER inside the container via local socket (trust/peer auth)
-  if docker exec titan-litellm-db psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
+  if docker exec "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
       -c "ALTER USER \"${LITELLM_DB_USER}\" WITH PASSWORD '${LITELLM_DB_PASSWORD}';" >/dev/null 2>&1; then
     log_success "LiteLLM database password synchronized with .env (Zero data loss)."
   else
     # Fallback to postgres superuser if user lacks ALTER privilege
-    if docker exec titan-litellm-db psql -U postgres \
+    if docker exec "${DB_CONTAINER}" psql -U postgres \
         -c "ALTER USER \"${LITELLM_DB_USER}\" WITH PASSWORD '${LITELLM_DB_PASSWORD}';" >/dev/null 2>&1; then
       log_success "LiteLLM database password synchronized via postgres role."
     else
@@ -98,7 +99,7 @@ if docker ps --format '{{.Names}}' | grep -q "^titan-litellm-db$"; then
     fi
   fi
 else
-  log_info "titan-litellm-db container is not running; will be started during control plane restart."
+  log_info "LiteLLM database container is not running; will be started during control plane restart."
 fi
 
 # ------------------------------------------------------------------------------
@@ -154,7 +155,7 @@ log_info "Step 4/5: Restarting control plane (LiteLLM, Ollama, Langfuse)..."
 # 5. Reload Caddy Ingress Gateway
 # ------------------------------------------------------------------------------
 log_info "Step 5/5: Reloading Caddy ingress proxy..."
-if docker ps --format '{{.Names}}' | grep -q "^titan-caddy$"; then
+if docker ps --format '{{.Names}}' | grep -qE '^titan-(net-)?caddy$'; then
   docker compose restart caddy >/dev/null 2>&1
   log_success "Caddy ingress reloaded."
 fi

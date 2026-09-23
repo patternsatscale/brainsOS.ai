@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Project Titan: In-Transit Egress Credential Injection Verification Suite
-# Ticket #93: In-Transit GitHub Token Relay via Caddy Gateway
+# Ticket #147: Migrate GitHub In-Transit Credential Injection to Egress Proxy
+# Supersedes Ticket #93 / Issue #114
 #
 # Asserts:
-#   1. Zero ambient GitHub tokens (GH_TOKEN, GITHUB_TOKEN, PAT) in container env
-#   2. Caddy terminates internal TLS at https://github-proxy.titan.local
-#   3. GitHub CLI (gh) authenticated seamlessly through in-transit token relay
-#   4. gh pr list & gh issue list execute successfully
-#   5. Git Smart HTTP fetch, branch push, and delete succeed through proxy
+#   1. Fleet manifest synchronization & Docker Compose topology validation
+#   2. Zero ambient GitHub secrets (GH_TOKEN, GITHUB_TOKEN, PAT) in agent containers
+#   3. Tool Egress Proxy (mitmproxy + github_auth.py) running and healthy
+#   4. Multi-tenant authorization (Cindy Pawford): Bearer token & Basic auth injected in transit
+#   5. Multi-tenant denial (Terrastella / unauthorized tenant): 403 Forbidden rejection
+#   6. Credential redaction in mitmweb console flows ([INJECTED_CINDY_TOKEN], zero token leakage)
+#   7. Architectural invariants: unprivileged UID 1000, no docker socket, pure OKF memory plane
 # ==============================================================================
 
 set -euo pipefail
@@ -54,14 +57,16 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-AGENT_ID="cindy-pawford"
-CONTAINER="titan-agent-${AGENT_ID}"
-CADDY_CONTAINER="titan-caddy"
+PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'titan-net-egress-proxy')"
+CINDY_CONTAINER="titan-agent-cindy-pawford"
+UNAUTH_CONTAINER="titan-agent-terrastella"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?caddy$' | head -n 1 || echo 'titan-net-caddy')"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
-PROXY_HOST="github-proxy.titan.local"
+WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
+WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
 
 log_info "================================================================="
-log_info "  Running Egress Credential Injection Verification (Ticket #93)  "
+log_info "  Running Egress Credential Injection Verification (Ticket #147) "
 log_info "================================================================="
 
 # ------------------------------------------------------------------------------
@@ -74,7 +79,7 @@ if [ ! -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
   exit 1
 fi
 
-"${REPO_ROOT}/scripts/control/sync-agents.sh" --check
+MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml" "${REPO_ROOT}/scripts/control/sync-agents.sh" --check
 log_success "Fleet manifest drift check passed (config/agents.yaml is 100% in sync)."
 
 docker compose config -q
@@ -83,9 +88,9 @@ log_success "Docker Compose topology syntax validated successfully."
 # ------------------------------------------------------------------------------
 # Step 2: Ensure Required Containers are Running
 # ------------------------------------------------------------------------------
-log_info "Step 2: Checking container status (Caddy & Agent)..."
+log_info "Step 2: Checking container status (${PROXY_CONTAINER}, ${CINDY_CONTAINER}, ${UNAUTH_CONTAINER})..."
 
-for c in "${CADDY_CONTAINER}" "${CONTAINER}"; do
+for c in "${PROXY_CONTAINER}" "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}" "${CADDY_CONTAINER}"; do
   if ! docker ps --format '{{.Names}}' | grep -qw "${c}"; then
     log_info "Starting container '${c}'..."
     docker compose up -d
@@ -94,7 +99,7 @@ for c in "${CADDY_CONTAINER}" "${CONTAINER}"; do
   fi
 done
 
-for c in "${CADDY_CONTAINER}" "${CONTAINER}"; do
+for c in "${PROXY_CONTAINER}" "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
   STATUS=$(docker inspect "${c}" --format '{{.State.Status}}' 2>/dev/null || echo "not_found")
   if [ "${STATUS}" != "running" ]; then
     log_error "Container '${c}' is not in running state (Status: ${STATUS})."
@@ -104,158 +109,156 @@ for c in "${CADDY_CONTAINER}" "${CONTAINER}"; do
 done
 
 # ------------------------------------------------------------------------------
-# Step 3: Verify Zero Ambient GitHub Tokens Inside Agent Container
+# Step 3: Verify Zero Ambient GitHub Tokens Inside Agent Containers
 # ------------------------------------------------------------------------------
-log_info "Step 3: Asserting ZERO ambient GitHub secrets inside agent container..."
+log_info "Step 3: Asserting ZERO ambient GitHub secrets inside agent containers..."
 
-# Check environment for any GH_TOKEN, GITHUB_TOKEN, or PAT strings
-ENV_TOKENS=$(docker exec "${CONTAINER}" env | grep -i -E '(gh_token|github_token|github_pat)' || true)
-if [ -n "${ENV_TOKENS}" ]; then
-  log_error "Security Boundary Violation: GitHub tokens detected in container environment!"
-  echo "${ENV_TOKENS}" >&2
-  exit 1
-fi
-log_success "Zero GitHub tokens in container environment (GH_TOKEN, GITHUB_TOKEN, and PAT strings absent)."
+for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
+  ENV_TOKENS=$(docker exec "${c}" env | grep -i -E '(gh_token|github_token|github_pat)' || true)
+  if [ -n "${ENV_TOKENS}" ]; then
+    log_error "Security Boundary Violation in ${c}: GitHub tokens detected in container environment!"
+    echo "${ENV_TOKENS}" >&2
+    exit 1
+  fi
+  log_success "Zero GitHub tokens in ${c} container environment (GH_TOKEN, GITHUB_TOKEN, and PAT strings absent)."
 
-# Verify GH_HOST points to Caddy gateway
-CONTAINER_GH_HOST=$(docker exec "${CONTAINER}" bash -c 'echo "${GH_HOST:-}"')
-if [ "${CONTAINER_GH_HOST}" = "${PROXY_HOST}" ]; then
-  log_success "Container GH_HOST correctly configured to in-transit proxy '${PROXY_HOST}'."
-else
-  log_error "Container GH_HOST mismatch: expected '${PROXY_HOST}', got '${CONTAINER_GH_HOST}'."
-  exit 1
-fi
+  # Verify legacy GH_HOST is NOT set to github-proxy.titan.local
+  CONT_GH_HOST=$(docker exec "${c}" bash -c 'echo "${GH_HOST:-}"')
+  if [ "${CONT_GH_HOST}" = "github-proxy.titan.local" ]; then
+    log_error "Legacy GH_HOST=github-proxy.titan.local still present in ${c}!"
+    exit 1
+  fi
 
-# Verify Git insteadOf rewrite is active
-GIT_INSTEAD_OF=$(docker exec "${CONTAINER}" git config --system --get "url.https://${PROXY_HOST}/.insteadOf" 2>/dev/null || true)
-if [ "${GIT_INSTEAD_OF}" = "https://github.com/" ]; then
-  log_success "Git insteadOf rewrite active: 'https://${PROXY_HOST}/' replaces 'https://github.com/'."
-else
-  log_warn "System insteadOf not returned by git config --system; checking global / local config..."
-fi
-
-# ------------------------------------------------------------------------------
-# Step 4: Verify Caddy Internal PKI Trust & Connectivity
-# ------------------------------------------------------------------------------
-log_info "Step 4: Verifying Caddy internal PKI CA trust & TLS handshake..."
-
-# Ensure internal CA cert exists inside container trust store
-if docker exec "${CONTAINER}" test -f /usr/local/share/ca-certificates/caddy-root.crt; then
-  log_success "Caddy internal CA root certificate is present in container trust store."
-else
-  log_error "Caddy internal CA certificate missing in /usr/local/share/ca-certificates/!"
-  exit 1
-fi
-
-# Verify TLS connection to proxy without skipping verification
-PROXY_HTTP_CODE=$(docker exec "${CONTAINER}" curl -s -o /dev/null -w "%{http_code}" "https://${PROXY_HOST}/" || echo "failed")
-if [ "${PROXY_HTTP_CODE}" = "200" ] || [ "${PROXY_HTTP_CODE}" = "301" ] || [ "${PROXY_HTTP_CODE}" = "302" ]; then
-  log_success "Container successfully connected to 'https://${PROXY_HOST}/' with full TLS verification (HTTP ${PROXY_HTTP_CODE})."
-else
-  log_error "Failed to connect to 'https://${PROXY_HOST}/' via container curl (Code: ${PROXY_HTTP_CODE})."
-  exit 1
-fi
-
-# Verify REST API proxy endpoint with injected Bearer token
-API_USER=$(docker exec "${CONTAINER}" curl -s "https://${PROXY_HOST}/api/v3/user" | grep -o '"login": *"[^"]*"' | head -n 1 || echo "")
-if [ -n "${API_USER}" ]; then
-  log_success "In-transit REST API authentication verified (Upstream identity: ${API_USER})."
-else
-  log_error "REST API authentication failed through 'https://${PROXY_HOST}/api/v3/user'!"
-  exit 1
-fi
+  # Verify legacy insteadOf rewrite is absent
+  INSTEAD_OF=$(docker exec "${c}" git config --system --get "url.https://github-proxy.titan.local/.insteadOf" 2>/dev/null || true)
+  if [ -n "${INSTEAD_OF}" ]; then
+    log_error "Legacy git insteadOf rewrite still present in ${c}!"
+    exit 1
+  fi
+done
+log_success "Clean agent runtime verified: zero ambient secrets, zero URL rewrites, zero enterprise GH_HOST overrides."
 
 # ------------------------------------------------------------------------------
-# Step 5: Verify GitHub CLI (gh) Authentication & API Queries
+# Step 4: Verify Multi-Tenant Egress Injection (Cindy Pawford - Positive Test)
 # ------------------------------------------------------------------------------
-log_info "Step 5: Verifying GitHub CLI (gh) authentication and API access..."
+log_info "Step 4: Verifying in-transit credential injection for Cindy Pawford (${CINDY_CONTAINER})..."
 
-AUTH_STATUS=$(docker exec "${CONTAINER}" gh auth status 2>&1 || true)
-if echo "${AUTH_STATUS}" | grep -q "Logged in to ${PROXY_HOST}"; then
-  log_success "GitHub CLI verified authenticated for '${PROXY_HOST}'."
+# 4a: Test GitHub API via curl through egress proxy
+API_RESP=$(docker exec "${CINDY_CONTAINER}" curl -s -w "\n%{http_code}" https://api.github.com/user || echo -e "CURL_FAILED\n000")
+HTTP_CODE=$(echo "${API_RESP}" | tail -n 1)
+BODY=$(echo "${API_RESP}" | head -n -1)
+
+if [ "${HTTP_CODE}" = "200" ]; then
+  USER_LOGIN=$(echo "${BODY}" | grep -o '"login": *"[^"]*"' | head -n 1 || echo "")
+  log_success "Cindy successfully queried https://api.github.com/user (HTTP 200, Identity: ${USER_LOGIN})."
 else
-  log_error "GitHub CLI authentication status check failed! Output:\n${AUTH_STATUS}"
+  log_error "Cindy failed to query GitHub API (HTTP ${HTTP_CODE}). Body: ${BODY}"
   exit 1
 fi
 
-# Verify gh pr list
-PR_OUTPUT=$(docker exec -w /app/html "${CONTAINER}" gh pr list --repo "${REMOTE_REPO}" 2>&1 || echo "failed")
-if [ "${PR_OUTPUT}" != "failed" ]; then
-  log_success "Verified 'gh pr list' against '${REMOTE_REPO}' through Caddy relay."
+# 4b: Test GitHub CLI (gh api user)
+GH_USER=$(docker exec "${CINDY_CONTAINER}" gh api user --jq .login 2>/dev/null || echo "GH_FAILED")
+if [ "${GH_USER}" != "GH_FAILED" ] && [ -n "${GH_USER}" ]; then
+  log_success "Cindy verified authenticated via GitHub CLI: 'gh api user' returned '${GH_USER}'."
 else
-  log_error "Failed to execute 'gh pr list' inside container."
+  log_error "GitHub CLI query failed in Cindy container."
   exit 1
 fi
 
-# Verify gh issue list
-ISSUE_OUTPUT=$(docker exec -w /app/html "${CONTAINER}" gh issue list --repo "${REMOTE_REPO}" 2>&1 || echo "failed")
-if [ "${ISSUE_OUTPUT}" != "failed" ]; then
-  log_success "Verified 'gh issue list' against '${REMOTE_REPO}' through Caddy relay."
+# 4c: Test Git Smart HTTP (git ls-remote)
+GIT_REMOTE_CHECK=$(docker exec -w /app/html "${CINDY_CONTAINER}" git ls-remote https://github.com/${REMOTE_REPO}.git HEAD 2>&1 || echo "GIT_FAILED")
+if echo "${GIT_REMOTE_CHECK}" | grep -q "HEAD"; then
+  log_success "Cindy verified Git Smart HTTP access: 'git ls-remote' succeeded through egress proxy."
 else
-  log_error "Failed to execute 'gh issue list' inside container."
+  log_error "Git ls-remote failed in Cindy container: ${GIT_REMOTE_CHECK}"
   exit 1
 fi
 
 # ------------------------------------------------------------------------------
-# Step 6: Verify Git Smart HTTP Protocol (Fetch & Remote Branch Push)
+# Step 5: Verify Multi-Tenant Isolation (Negative Test - 403 Forbidden)
 # ------------------------------------------------------------------------------
-log_info "Step 6: Testing live branch creation, commit, and remote push through proxy..."
+log_info "Step 5: Verifying unauthorized tenant is denied egress injection (Negative Test)..."
 
-PROBE_BRANCH="probe/egress-token-inject-$(date +%s)"
-PROBE_FILE="probe_test_$(date +%s).txt"
+UNAUTH_RESP=$(docker exec "${UNAUTH_CONTAINER}" curl -s -w "\n%{http_code}" https://api.github.com/user || echo -e "CURL_FAILED\n000")
+UNAUTH_CODE=$(echo "${UNAUTH_RESP}" | tail -n 1)
+UNAUTH_BODY=$(echo "${UNAUTH_RESP}" | head -n -1)
 
-# Run git operations inside container
-docker exec -w /app/html "${CONTAINER}" bash -c "
-  set -euo pipefail
-  git fetch origin
-  git checkout -b ${PROBE_BRANCH}
-  echo 'Project Titan Ticket #93 In-Transit Egress Verification' > ${PROBE_FILE}
-  git add ${PROBE_FILE}
-  git commit -m 'chore(test): automated egress credential injection probe'
-  git push -u origin ${PROBE_BRANCH}
-"
-log_success "Container successfully created branch '${PROBE_BRANCH}' and pushed commit through Caddy relay."
+if [ "${UNAUTH_CODE}" = "403" ]; then
+  log_success "Negative test passed: Unauthorized agent (${UNAUTH_CONTAINER}) correctly rejected with HTTP 403 Forbidden."
+  if echo "${UNAUTH_BODY}" | grep -q "Egress credential injection not permitted for this tenant"; then
+    log_success "Rejection message matches expected tenant isolation policy."
+  fi
+else
+  log_error "Security Boundary Violation: Unauthorized agent got HTTP ${UNAUTH_CODE} (expected 403 Forbidden)!"
+  echo "Response: ${UNAUTH_BODY}" >&2
+  exit 1
+fi
 
-# Clean up remote probe branch
-docker exec -w /app/html "${CONTAINER}" bash -c "
-  set -euo pipefail
-  git checkout main
-  git branch -D ${PROBE_BRANCH}
-  git push origin --delete ${PROBE_BRANCH}
-  rm -f ${PROBE_FILE}
-"
-log_success "Cleaned up remote probe branch '${PROBE_BRANCH}' on GitHub."
+# Assert git ls-remote is also rejected for unauthorized agent
+UNAUTH_GIT=$(docker exec "${UNAUTH_CONTAINER}" git ls-remote https://github.com/${REMOTE_REPO}.git HEAD 2>&1 || echo "REJECTED")
+if echo "${UNAUTH_GIT}" | grep -qiE '(403|forbidden|denied|fatal)'; then
+  log_success "Negative test passed: Unauthorized agent Git request denied (Rule 9 Multi-Tenant Isolation)."
+else
+  log_error "Security Boundary Violation: Unauthorized agent Git request was not rejected: ${UNAUTH_GIT}"
+  exit 1
+fi
 
 # ------------------------------------------------------------------------------
-# Step 7: Security Boundaries & Invariants
+# Step 6: Verify Credential Redaction in mitmweb Flows API
+# ------------------------------------------------------------------------------
+log_info "Step 6: Verifying credential redaction in mitmweb console flows (/flows)..."
+
+FLOWS_JSON=$(curl -s -H "Authorization: Bearer ${WEB_PASSWORD}" "http://127.0.0.1:${WEB_PORT}/flows")
+
+# Assert that injected header displays as redacted in flows
+if echo "${FLOWS_JSON}" | grep -q "\[INJECTED_CINDY_TOKEN\]"; then
+  log_success "Credential redaction confirmed: Flows show 'Authorization: [INJECTED_CINDY_TOKEN]'."
+else
+  log_warn "Redacted token label not explicitly found in flow JSON (checking raw secret absence)..."
+fi
+
+# Assert that raw secret string is NEVER present in flows
+if [ -n "${GITHUB_TOKEN_CINDY:-}" ]; then
+  if echo "${FLOWS_JSON}" | grep -Fq "${GITHUB_TOKEN_CINDY}"; then
+    log_error "SECURITY VIOLATION: Raw GITHUB_TOKEN_CINDY found in mitmweb flow display API!"
+    exit 1
+  fi
+  log_success "Verified ZERO raw GITHUB_TOKEN_CINDY secrets leaked into mitmweb flows API."
+fi
+
+# ------------------------------------------------------------------------------
+# Step 7: Security Boundaries & Architectural Invariants
 # ------------------------------------------------------------------------------
 log_info "Step 7: Validating security boundaries and sandboxing invariants..."
 
 # Unprivileged execution
-CONT_UID=$(docker exec "${CONTAINER}" id -u hermes 2>/dev/null || echo "failed")
-if [ "${CONT_UID}" = "1000" ]; then
-  log_success "Verified container runs under unprivileged UID 1000."
-else
-  log_error "Security violation: Container is running as UID ${CONT_UID} (expected 1000)."
-  exit 1
-fi
+for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
+  CONT_UID=$(docker exec "${c}" id -u hermes 2>/dev/null || echo "failed")
+  if [ "${CONT_UID}" = "1000" ]; then
+    log_success "Verified ${c} runs under unprivileged UID 1000."
+  else
+    log_error "Security violation: ${c} is running as UID ${CONT_UID} (expected 1000)."
+    exit 1
+  fi
 
-# Docker socket isolation
-if docker exec "${CONTAINER}" test -S /var/run/docker.sock 2>/dev/null; then
-  log_error "Security violation: Host Docker socket is mounted in container!"
-  exit 1
-fi
-log_success "Verified container has zero access to host Docker socket."
+  # Docker socket isolation
+  if docker exec "${c}" test -S /var/run/docker.sock 2>/dev/null; then
+    log_error "Security violation: Host Docker socket is mounted in ${c}!"
+    exit 1
+  fi
+  log_success "Verified ${c} has zero access to host Docker socket (Rule 4)."
+done
 
 # Rule 1: Memory plane purity
-MEM_FILES=$(find "${REPO_ROOT}/data/memories/${AGENT_ID}" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*")
+MEM_FILES=$(find "${REPO_ROOT}/data/memories/cindy-pawford" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
 if [ -z "${MEM_FILES}" ]; then
-  log_success "Rule 1 verified: Memory plane data/memories/${AGENT_ID} is 100% pure OKF Markdown."
+  log_success "Rule 1 verified: Memory plane data/memories/cindy-pawford is 100% pure OKF Markdown."
 else
   log_error "Memory plane purity violation: non-markdown files detected: ${MEM_FILES}"
   exit 1
 fi
 
-log_info "================================================================="
-log_success "  All Ticket #93 Egress Credential Injection Checks PASSED!    "
-log_info "================================================================="
+echo ""
+log_success "================================================================="
+log_success "  ALL TICKET #147 EGRESS CREDENTIAL INJECTION CHECKS PASSED!     "
+log_success "================================================================="

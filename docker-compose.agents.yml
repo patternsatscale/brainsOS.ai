@@ -70,12 +70,12 @@ services:
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
       - OTEL_SERVICE_NAME=hermes-terrastella
       - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-terrastella,agent.id=terrastella
-      - HTTP_PROXY=http://titan-tool-egress-proxy:8082
-      - HTTPS_PROXY=http://titan-tool-egress-proxy:8082
-      - http_proxy=http://titan-tool-egress-proxy:8082
-      - https_proxy=http://titan-tool-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - HTTP_PROXY=http://titan-net-egress-proxy:8082
+      - HTTPS_PROXY=http://titan-net-egress-proxy:8082
+      - http_proxy=http://titan-net-egress-proxy:8082
+      - https_proxy=http://titan-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
@@ -152,12 +152,12 @@ services:
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
       - OTEL_SERVICE_NAME=hermes-football-dan
       - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-football-dan,agent.id=football-dan
-      - HTTP_PROXY=http://titan-tool-egress-proxy:8082
-      - HTTPS_PROXY=http://titan-tool-egress-proxy:8082
-      - http_proxy=http://titan-tool-egress-proxy:8082
-      - https_proxy=http://titan-tool-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - HTTP_PROXY=http://titan-net-egress-proxy:8082
+      - HTTPS_PROXY=http://titan-net-egress-proxy:8082
+      - http_proxy=http://titan-net-egress-proxy:8082
+      - https_proxy=http://titan-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
@@ -201,8 +201,6 @@ services:
       - ./apps/cindypawford/site:/app/html
       # Masked / Read-Only Protected Path
       - ./apps/cindypawford/site/.github:/app/html/.github:ro
-      # In-Transit Caddy Internal PKI CA Mount
-      - caddy_data:/etc/ssl/caddy:ro
       # Tool Egress Proxy CA Certificate Mount (Read-Only)
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     working_dir: /opt/data
@@ -240,18 +238,17 @@ services:
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
       - OTEL_SERVICE_NAME=hermes-cindy-pawford
       - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-cindy-pawford,agent.id=cindy-pawford
-      - GH_HOST=github-proxy.titan.local
       - GIT_AUTHOR_NAME=Cindy Pawford
       - GIT_AUTHOR_EMAIL=cindy@cindypawford.com
       - GIT_COMMITTER_NAME=Cindy Pawford
       - GIT_COMMITTER_EMAIL=cindy@cindypawford.com
       - GIT_TERMINAL_PROMPT=0
-      - HTTP_PROXY=http://titan-tool-egress-proxy:8082
-      - HTTPS_PROXY=http://titan-tool-egress-proxy:8082
-      - http_proxy=http://titan-tool-egress-proxy:8082
-      - https_proxy=http://titan-tool-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - HTTP_PROXY=http://titan-net-egress-proxy:8082
+      - HTTPS_PROXY=http://titan-net-egress-proxy:8082
+      - http_proxy=http://titan-net-egress-proxy:8082
+      - https_proxy=http://titan-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
@@ -264,7 +261,5 @@ services:
       - titan-internal
 
 volumes:
-  caddy_data:
-    name: titan_caddy_data
   tool_egress_proxy_data:
     name: titan_tool_egress_proxy_data

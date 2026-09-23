@@ -229,8 +229,8 @@ log_success "Memory plane purity verified (100% human-auditable flat-file Markdo
 # ------------------------------------------------------------------------------
 # 4. Verify Container Security & Plane Separation
 # ------------------------------------------------------------------------------
-TARGET_CONTAINER="titan-code-server"
-if ! docker ps --format '{{.Names}}' | grep -q "^titan-code-server$"; then
+TARGET_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(app-)?code-server$' | head -n 1 || echo 'titan-app-code-server')"
+if ! docker ps --format '{{.Names}}' | grep -qE '^titan-(app-)?code-server$'; then
   if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
     TARGET_CONTAINER="titan-silverbullet"
   fi

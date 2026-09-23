@@ -90,14 +90,14 @@ jobs:
           fi
 
           # 2. Database container must NOT share networks with Hermes (titan-ingress or titan-internal)
-          DB_NETWORKS=$(docker compose config | awk '/container_name: titan-litellm-db/,/container_name:/' | grep -E 'titan-ingress|titan-internal' || true)
+          DB_NETWORKS=$(docker compose config | awk '/container_name: titan-(infra-)?litellm-db/,/container_name:/' | grep -E 'titan-ingress|titan-internal' || true)
           if [ -n "${DB_NETWORKS}" ]; then
             echo "::error::Database container is attached to Hermes-accessible networks: ${DB_NETWORKS}"
             exit 1
           fi
 
           # 3. Database port must be bound strictly to 127.0.0.1
-          DB_PORTS=$(docker compose config | awk '/container_name: titan-litellm-db/,/container_name:/' | grep -E '0\.0\.0\.0.*5432|:[0-9]+:5432' || true)
+          DB_PORTS=$(docker compose config | awk '/container_name: titan-(infra-)?litellm-db/,/container_name:/' | grep -E '0\.0\.0\.0.*5432|:[0-9]+:5432' || true)
           if [ -n "${DB_PORTS}" ]; then
             echo "::error::Database port is not strictly bound to loopback 127.0.0.1: ${DB_PORTS}"
             exit 1
