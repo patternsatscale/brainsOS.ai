@@ -58,6 +58,40 @@ _TOOLS = (
 )
 
 
+def _telemetry_llm_request_middleware(request: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+    """Ensure LLM request carries agent identity, session ID, and trace metadata into LiteLLM/Langfuse."""
+    import os
+    agent_id = os.environ.get("HERMES_AGENT_ID") or os.environ.get("AGENT_ID") or "hermes"
+    context_id = kwargs.get("context_id") or "default"
+    session_id = f"titan-{agent_id}-{context_id}"
+
+    # 1. Attribute to Agent in Langfuse (userId)
+    if not request.get("user"):
+        request["user"] = agent_id
+
+    # 2. Attach x-litellm-session-id header for LiteLLM Langfuse tracking (sessionId)
+    extra_headers = request.setdefault("extra_headers", {})
+    if "x-litellm-session-id" not in extra_headers:
+        extra_headers["x-litellm-session-id"] = session_id
+
+    # 3. Attach metadata
+    metadata = request.setdefault("metadata", {})
+    metadata.setdefault("session_id", session_id)
+    metadata.setdefault("agent_id", agent_id)
+    metadata.setdefault("project", "titan")
+    metadata.setdefault("plane", "agent")
+
+    # 4. Attach multi-dimensional tags
+    tags = metadata.setdefault("tags", [])
+    if isinstance(tags, list):
+        if agent_id not in tags:
+            tags.append(agent_id)
+        if "titan" not in tags:
+            tags.append("titan")
+
+    return request
+
+
 def register(ctx: Any) -> None:
     """Register tools with Hermes Agent plugin loader."""
     logger.info("Registering hermes-okf plugin tools...")
@@ -73,6 +107,23 @@ def register(ctx: Any) -> None:
             )
         except Exception as e:
             logger.warning("Failed to register tool %s: %s", name, e)
+
+    # Register LLM request middleware for Langfuse session and agent tracking
+    if hasattr(ctx, "register_middleware"):
+        try:
+            ctx.register_middleware("llm_request", _telemetry_llm_request_middleware)
+            logger.info("Registered hermes-okf llm_request telemetry middleware with ctx.")
+        except Exception as e:
+            logger.warning("Failed to register llm_request middleware with ctx: %s", e)
+
+    try:
+        import hermes_cli.middleware as hermes_mw
+        if hasattr(hermes_mw, "LLM_REQUEST_MIDDLEWARE"):
+            if _telemetry_llm_request_middleware not in hermes_mw.LLM_REQUEST_MIDDLEWARE:
+                hermes_mw.LLM_REQUEST_MIDDLEWARE.append(_telemetry_llm_request_middleware)
+                logger.info("Hooked _telemetry_llm_request_middleware into hermes_cli.middleware.LLM_REQUEST_MIDDLEWARE.")
+    except Exception:
+        pass
 
 
 # Pluggable MemoryProvider implementation for upstream plugins.memory discovery

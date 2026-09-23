@@ -204,6 +204,16 @@ if [ -n "${ACTIVE_ENDPOINT}" ]; then
   else
     warn_check "Langfuse ingestion endpoint returned unexpected status: HTTP ${INGEST_PROBE}."
   fi
+
+  # Check sessions REST endpoint (enabled in dual mode)
+  if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && [ -n "${LANGFUSE_SECRET_KEY}" ]; then
+    SESSIONS_PROBE=$(curl -s -o /dev/null -w "%{http_code}" -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" "${ACTIVE_ENDPOINT}/api/public/sessions" 2>/dev/null || echo "000")
+    if [ "${SESSIONS_PROBE}" = "200" ]; then
+      pass_check "Langfuse sessions endpoint: ACTIVE on ${ACTIVE_ENDPOINT}/api/public/sessions (HTTP 200)."
+    else
+      warn_check "Langfuse sessions endpoint returned status HTTP ${SESSIONS_PROBE}."
+    fi
+  fi
 fi
 
 # ------------------------------------------------------------------------------

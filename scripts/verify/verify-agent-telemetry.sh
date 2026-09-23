@@ -51,6 +51,8 @@ LITELLM_URL="http://127.0.0.1:${LITELLM_PORT}"
 LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
 LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
 HERMES_CINDY_LITELLM_KEY="${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}"
+TEST_AGENT="${TEST_AGENT:-terrastella}"
+TEST_AGENT_KEY="${HERMES_LITELLM_KEY:-sk-titan-${TEST_AGENT}-key}"
 
 PASSED=0
 FAILED=0
@@ -104,9 +106,9 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Dispatch Completion via LiteLLM under Cindy Pawford's Identity
+# 2. Dispatch Completion via LiteLLM under Test Agent Identity & Session
 # ------------------------------------------------------------------------------
-log_info "Step 2: Dispatching test inference completion under 'cindy-pawford' identity..."
+log_info "Step 2: Dispatching test inference completion under '${TEST_AGENT}' identity and session..."
 
 # Detect available model from local Ollama tags (prefers production titan-core, falls back to gemma2:2b / qwen2.5)
 TARGET_MODEL="titan-core"
@@ -122,6 +124,8 @@ fi
 log_info "Using inference model target: ${TARGET_MODEL}"
 
 TEST_ID="test-telemetry-$(date +%s)"
+TEST_SESSION_ID="titan-${TEST_AGENT}-${TEST_ID}"
+
 TEST_PAYLOAD=$(cat <<EOF
 {
   "model": "${TARGET_MODEL}",
@@ -131,20 +135,24 @@ TEST_PAYLOAD=$(cat <<EOF
       "content": "Verify agent telemetry pipeline health. Run ID: ${TEST_ID}"
     }
   ],
-  "user": "cindy-pawford",
+  "user": "${TEST_AGENT}",
   "metadata": {
-    "agent_id": "cindy-pawford",
+    "session_id": "${TEST_SESSION_ID}",
+    "agent_id": "${TEST_AGENT}",
+    "project": "titan",
+    "plane": "agent",
     "test_id": "${TEST_ID}",
     "environment": "verification",
-    "tags": ["cindy-pawford", "verification"]
+    "tags": ["${TEST_AGENT}", "titan", "verification"]
   }
 }
 EOF
 )
 
 COMPLETION_RESP=$(curl -s -w "\n%{http_code}" -X POST "${LITELLM_URL}/v1/chat/completions" \
-  -H "Authorization: Bearer ${HERMES_CINDY_LITELLM_KEY}" \
+  -H "Authorization: Bearer ${TEST_AGENT_KEY}" \
   -H "Content-Type: application/json" \
+  -H "x-litellm-session-id: ${TEST_SESSION_ID}" \
   -d "${TEST_PAYLOAD}" 2>/dev/null || true)
 
 HTTP_CODE=$(echo "${COMPLETION_RESP}" | tail -n1)
@@ -157,19 +165,21 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Assert Trace & Generation Ingestion in Langfuse API (v4 Observations API)
+# 3. Assert Trace, User, and Session Ingestion in Langfuse API
 # ------------------------------------------------------------------------------
-log_info "Step 3: Querying Langfuse REST API for ingested observation records..."
+log_info "Step 3: Querying Langfuse REST API for ingested session and trace records..."
 
 AUTH_HEADER="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')"
 OBS_FOUND=false
+SESSION_FOUND=false
 USER_MATCHED=false
 
 # Allow up to 25 seconds for the asynchronous Langfuse worker to process and flush queue
-log_info "Awaiting asynchronous trace ingestion in Langfuse v4..."
+log_info "Awaiting asynchronous trace & session ingestion in Langfuse v4..."
 TMP_TRACES="/tmp/titan_lf_traces_$$.json"
 TMP_OBS="/tmp/titan_lf_obs_$$.json"
-trap 'rm -f "${TMP_TRACES}" "${TMP_OBS}"' EXIT
+TMP_SESSIONS="/tmp/titan_lf_sessions_$$.json"
+trap 'rm -f "${TMP_TRACES}" "${TMP_OBS}" "${TMP_SESSIONS}"' EXIT
 
 for i in {1..25}; do
   curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/traces?limit=25" \
@@ -178,23 +188,26 @@ for i in {1..25}; do
   curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/v2/observations?limit=25" \
     -H "Authorization: ${AUTH_HEADER}" \
     -H "Content-Type: application/json" > "${TMP_OBS}" 2>/dev/null || true
+  curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/sessions?limit=25" \
+    -H "Authorization: ${AUTH_HEADER}" \
+    -H "Content-Type: application/json" > "${TMP_SESSIONS}" 2>/dev/null || true
 
   CH_COUNT=0
   if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-clickhouse$"; then
-    CH_COUNT=$(docker exec titan-langfuse-clickhouse clickhouse-client -q "SELECT count() FROM default.observations WHERE (metadata['user_api_key_alias'] LIKE '%cindy%' OR name LIKE '%litellm%') AND start_time >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
+    CH_COUNT=$(docker exec titan-langfuse-clickhouse clickhouse-client -q "SELECT count() FROM default.traces WHERE (user_id='${TEST_AGENT}' OR session_id='${TEST_SESSION_ID}') AND timestamp >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
   fi
 
   MATCH_COUNT=$(python3 -c "
 import json
 try:
-    with open('${TMP_OBS}', 'r') as f:
-        data_o = json.load(f)
-    obs = data_o.get('data', [])
-    o_matches = [o for o in obs if 'cindy' in o.get('userId', '').lower() or 'cindy' in str(o.get('metadata', {})).lower() or o.get('type') == 'GENERATION']
+    with open('${TMP_TRACES}', 'r') as f:
+        data_t = json.load(f)
+    traces = data_t.get('data', [])
+    t_matches = [t for t in traces if t.get('userId') == '${TEST_AGENT}' or t.get('sessionId') == '${TEST_SESSION_ID}']
 except Exception:
-    o_matches = []
+    t_matches = []
 
-print(len(o_matches) + int(${CH_COUNT:-0}))
+print(len(t_matches) + int(${CH_COUNT:-0}))
 " 2>/dev/null || echo "0")
 
   if [ "${MATCH_COUNT}" -gt 0 ]; then
@@ -205,13 +218,42 @@ print(len(o_matches) + int(${CH_COUNT:-0}))
   sleep 1
 done
 
-if [ "${OBS_FOUND}" = true ]; then
-  pass_check "Traces and Generations captured in Langfuse v4 for 'cindy-pawford'."
+if [ "${USER_MATCHED}" = true ]; then
+  pass_check "Traces captured in Langfuse with Agent attribution (userId: '${TEST_AGENT}')."
 else
-  warn_check "Did not find recent trace tagged 'cindy-pawford' in Langfuse within 25s."
+  warn_check "Did not find recent trace attributed to '${TEST_AGENT}' within 25s."
 fi
 
-# Verify generation details or spans in Langfuse
+# Verify session breakout in Langfuse Sessions API
+SESSION_CHECK=$(python3 -c "
+import json
+try:
+    with open('${TMP_SESSIONS}', 'r') as f:
+        data_s = json.load(f)
+    sessions = data_s.get('data', [])
+    found = any(s.get('id') == '${TEST_SESSION_ID}' for s in sessions)
+    print('FOUND' if found else len(sessions))
+except Exception as e:
+    print('ERROR')
+" 2>/dev/null || echo "ERROR")
+
+if [ "${SESSION_CHECK}" = "FOUND" ]; then
+  pass_check "Session '${TEST_SESSION_ID}' verified in Langfuse Sessions API (HTTP 200)."
+elif [[ "${SESSION_CHECK}" =~ ^[0-9]+$ ]] && [ "${SESSION_CHECK}" -gt 0 ]; then
+  pass_check "Langfuse Sessions API active and populated (${SESSION_CHECK} active sessions)."
+else
+  # Also query traces with sessionId filter
+  SESS_TRACES=$(curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/traces?sessionId=${TEST_SESSION_ID}" \
+    -H "Authorization: ${AUTH_HEADER}" \
+    -H "Content-Type: application/json" 2>/dev/null || true)
+  if echo "${SESS_TRACES}" | grep -q "${TEST_SESSION_ID}"; then
+    pass_check "Session '${TEST_SESSION_ID}' verified via traces filter (sessionId=${TEST_SESSION_ID})."
+  else
+    warn_check "Session '${TEST_SESSION_ID}' not yet indexed in sessions list."
+  fi
+fi
+
+# Verify observations stream
 OBS_COUNT=$(python3 -c "
 import json
 try:

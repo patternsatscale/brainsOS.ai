@@ -238,6 +238,8 @@ for agent in enabled_agents:
         f"    environment:",
         f"      - PUID=${{PUID:-1000}}",
         f"      - PGID=${{PGID:-1000}}",
+        f"      - HERMES_AGENT_ID={agent_id}",
+        f"      - AGENT_ID={agent_id}",
         f"      - HERMES_DASHBOARD=1",
         f"      - HERMES_PORT={port}",
         f"      - HERMES_DASHBOARD_PORT={dash_port}",
@@ -268,7 +270,7 @@ for agent in enabled_agents:
         f"      - LANGFUSE_SECRET_KEY=${{LANGFUSE_SECRET_KEY:-}}",
         f"      - LANGFUSE_OTEL_AUTH=${{LANGFUSE_OTEL_AUTH:-}}",
         f"      - OTEL_SERVICE_NAME=hermes-{agent_id}",
-        f"      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-{agent_id},agent.id={agent_id}",
+        f"      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-{agent_id},agent.id={agent_id},session.id=titan-{agent_id}-default",
     ] + git_env_lines + egress_env_lines + [
         f"    command: [\"sleep\", \"infinity\"]",
     ] + depends_lines + [
@@ -545,14 +547,20 @@ for agent in manifest.get("agents", []):
     except Exception:
         pass
 
+    key_payload = {
+        "key": key_val,
+        "key_alias": f"titan-agent-{agent_id}",
+        "user_id": agent_id,
+        "max_budget": budget,
+        "models": [],
+        "metadata": {
+            "agent_id": agent_id,
+            "project": "titan"
+        }
+    }
     if not key_exists:
         gen_url = f"{litellm_url}/key/generate"
-        payload = json.dumps({
-            "key": key_val,
-            "key_alias": f"titan-agent-{agent_id}",
-            "max_budget": budget,
-            "models": []
-        }).encode("utf-8")
+        payload = json.dumps(key_payload).encode("utf-8")
         gen_req = urllib.request.Request(
             gen_url,
             data=payload,
@@ -567,7 +575,21 @@ for agent in manifest.get("agents", []):
         except Exception as e:
             print(f"[WARN] Failed to provision key for '{agent_id}': {e}")
     else:
-        print(f"[INFO] Virtual key for agent '{agent_id}' is already registered in LiteLLM DB.")
+        update_url = f"{litellm_url}/key/update"
+        payload = json.dumps(key_payload).encode("utf-8")
+        update_req = urllib.request.Request(
+            update_url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {master_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        try:
+            with urllib.request.urlopen(update_req) as resp:
+                print(f"[INFO] Synchronized virtual key identity and metadata for agent '{agent_id}' in LiteLLM DB.")
+        except Exception:
+            print(f"[INFO] Virtual key for agent '{agent_id}' is already registered in LiteLLM DB.")
 EOF
 }
 
@@ -818,6 +840,12 @@ for agent in manifest.get("agents", []):
                 cfg["monitoring"]["resource_attributes"] = {}
             cfg["monitoring"]["resource_attributes"]["service.name"] = f"hermes-{agent_id}"
             cfg["monitoring"]["resource_attributes"]["agent.id"] = agent_id
+            cfg["monitoring"]["resource_attributes"]["session.id"] = f"titan-{agent_id}-default"
+        # Seed default session header into custom provider
+        if "providers" in cfg and "custom" in cfg["providers"]:
+            if "extra_headers" not in cfg["providers"]["custom"]:
+                cfg["providers"]["custom"]["extra_headers"] = {}
+            cfg["providers"]["custom"]["extra_headers"]["x-litellm-session-id"] = f"titan-{agent_id}-default"
         # Seed per-agent Telegram platform settings
         tg_config = agent.get("comms", {}).get("telegram", {})
         if "platforms" in cfg and "telegram" in cfg["platforms"]:

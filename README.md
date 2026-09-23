@@ -412,19 +412,25 @@ Phase 0: Base Config
 
   * Benchmark Ollama vs. vLLM vs. SGLang on native ARM64 / DGX OS to evaluate prefill speed and KV-cache memory pressure.
   * Measure context scaling performance across 4k, 8k, 16k, 32k, and 64k token windows.
-  * **Langfuse Observability & OpenTelemetry Tracing (#19, #120)**:
+  * **Langfuse Observability & OpenTelemetry Tracing (#19, #120, #154)**:
     * **Decoupled Architecture**: Production Langfuse v4 container stack (`docker/langfuse/docker-compose.yml`) featuring ClickHouse OLAP analytics, Redis ingestion queue, MinIO S3 object storage, PostgreSQL transactional database, and asynchronous background worker, completely decoupled from the main Titan appliance cluster, allowing it to run locally or on a separate developer workstation over the LAN.
+    * **Dual Write Mode (`LANGFUSE_MIGRATION_V4_WRITE_MODE=dual`)**: Enables both PostgreSQL v3 tables and ClickHouse v4 columnar analytics, ensuring compatibility with LiteLLM Python SDK ingestion while activating the REST `/api/public/sessions` and `/api/public/traces` endpoints.
+    * **3-Tier Hierarchy (Titan &rarr; Agent &rarr; AgentSession)**:
+      * **Project**: Scoped to `titan` workspace.
+      * **Agent (`User` / `userId`)**: Virtual key binding (`user_id: <agent_id>`) and request body attribute (`user: <agent_id>`) break out each agent in the Langfuse Users view with per-agent metrics.
+      * **AgentSession (`Session` / `sessionId`)**: Deterministic format `titan-<agent_id>-<context_id>` propagated via `x-litellm-session-id` header and `metadata.session_id`, populating the Langfuse Sessions view with full trace trees and turn replay.
+      * **Metadata & Tags**: Comprehensive metadata (`agent_id`, `model`, `plane: agent`, etc.) and multi-dimensional tags (`[<agent_id>, "titan", "hermes"]`) preserved on all traces.
     * **No Auto-Start by Default**: Controlled via `LANGFUSE_AUTO_START=false` in `.env`. The GX10 appliance runs all core planes (Inference, Control, Agent, Memory) without auto-starting Langfuse.
     * **Standardized DNS & Dedicated Port**: Tracing endpoints target `langfuse.titan.local` on dedicated **port 3001** (mapped via `/etc/hosts` or Docker `extra_hosts` to the remote workstation IP `LANGFUSE_HOST_IP`).
     * **Dual Ingestion**:
       * **LiteLLM Gateway**: Native tracing callback (`langfuse`) and OpenTelemetry exporter capturing request metadata, token counts, model aliases, and latency.
-      * **Hermes Agent**: Direct OTLP trace export via `http://langfuse.titan.local:3001/api/public/otel/v1/traces`.
+      * **Hermes Agent**: Direct OTLP trace export via `http://langfuse.titan.local:3001/api/public/otel/v1/traces` and request middleware for session/identity propagation.
     * **Standalone Lifecycle Management**:
       * Setup & start: `./scripts/setup/setup-langfuse.sh setup && ./scripts/setup/setup-langfuse.sh start`
       * Service status & logs: `./scripts/setup/setup-langfuse.sh status` / `./scripts/setup/setup-langfuse.sh logs`
       * Key helper: `./scripts/setup/setup-langfuse.sh keys` (prompts for keys and generates Base64 `LANGFUSE_OTEL_AUTH`)
       * Verification: `./scripts/verify/verify-langfuse.sh` and `./scripts/verify/verify-agent-telemetry.sh`
-  * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies; dual OTel/LiteLLM trace ingestion validated.
+  * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies; dual OTel/LiteLLM trace ingestion validated; session-level trace breakout and agent attribution verified in Langfuse v4.
 
 ---
 
