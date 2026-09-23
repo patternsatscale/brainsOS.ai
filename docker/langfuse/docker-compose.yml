@@ -172,7 +172,7 @@ services:
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-clickhouse}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
     volumes:
-      - ${LANGFUSE_CLICKHOUSE_DATA_DIR:-../../data/langfuse_clickhouse}:/var/lib/clickhouse
+      - ${LANGFUSE_CLICKHOUSE_DATA_DIR:-../../data/telemetry/clickhouse}:/var/lib/clickhouse
     ports:
       - "127.0.0.1:8123:8123"
       - "127.0.0.1:9000:9000"
@@ -195,7 +195,7 @@ services:
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_AUTH:-myredissecret} --maxmemory-policy noeviction
     volumes:
-      - ${LANGFUSE_REDIS_DATA_DIR:-../../data/langfuse_redis}:/data
+      - ${LANGFUSE_REDIS_DATA_DIR:-../../data/telemetry/redis}:/data
     ports:
       - "127.0.0.1:6379:6379"
     networks:
@@ -220,7 +220,7 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minio}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-miniosecret}
     volumes:
-      - ${LANGFUSE_MINIO_DATA_DIR:-../../data/langfuse_minio}:/data
+      - ${LANGFUSE_MINIO_DATA_DIR:-../../data/telemetry/minio}:/data
     ports:
       - "9090:9000"
       - "127.0.0.1:9091:9001"
@@ -246,7 +246,7 @@ services:
       POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
       POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}
     volumes:
-      - ${LANGFUSE_DB_DATA_DIR:-../../data/langfuse_db}:/var/lib/postgresql/data
+      - ${LANGFUSE_DB_DATA_DIR:-../../data/telemetry/postgres}:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:${LANGFUSE_DB_PORT:-5433}:5432"
     networks:

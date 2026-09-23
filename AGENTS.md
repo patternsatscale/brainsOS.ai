@@ -8,7 +8,7 @@ This document establishes the mandatory protocol for AI agents (and human develo
 - **Development Workstation**: **macOS (Apple Silicon)** providing native ARM64 container parity.
 - **Portability Rules**:
   - All Docker images must run natively on ARM64 without emulation.
-  - Storage paths are parameterized via `.env`: `./data/memories` for local macOS development, `/data/titan/memories` on the production GX10.
+  - Storage paths are parameterized via `.env`: `./data/agent_memories` for local macOS development, `/data/titan/agent_memories` on the production GX10.
   - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup/setup-host.sh`).
 - **Architectural Reference**: Agents must consult [README.md](file:///Users/pats/Development/project_titan/README.md) for full plane topology and system specifications.
 - **Out of Scope**: `docs/lab-work/` is the documentation and critique area and is **excluded from all coding work** — do not read it for requirements, write to it, or include it in a ticket's scope. See Rule 11.
@@ -179,7 +179,7 @@ Agents must never violate the following zero-trust operational boundaries:
 
 ### Rule 9: Multi-Tenant Partitioning & Manifest Drift Prevention
 - **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/agents.yaml`. Direct manual edits to `docker-compose.agents.yml` or `config/caddy/agents.caddy` are strictly forbidden; all changes must flow through `./scripts/control/sync-agents.sh`.
-- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/workspace/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/memories/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
+- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/agent_workspaces/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/agent_memories/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
 - **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/titan_memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
 - **Automated Drift Enforcement**: The CI pipeline (`.github/workflows/pre-commit.yml`) and verification suites (`./scripts/verify/verify-fleet.sh`) enforce zero drift via `./scripts/control/sync-agents.sh --check` on every commit and PR.
 

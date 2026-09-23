@@ -58,10 +58,10 @@ if [ -f .env ]; then
 fi
 
 LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
-LANGFUSE_DB_DATA_DIR="${LANGFUSE_DB_DATA_DIR:-${REPO_ROOT}/data/langfuse_db}"
-LANGFUSE_CLICKHOUSE_DATA_DIR="${LANGFUSE_CLICKHOUSE_DATA_DIR:-${REPO_ROOT}/data/langfuse_clickhouse}"
-LANGFUSE_REDIS_DATA_DIR="${LANGFUSE_REDIS_DATA_DIR:-${REPO_ROOT}/data/langfuse_redis}"
-LANGFUSE_MINIO_DATA_DIR="${LANGFUSE_MINIO_DATA_DIR:-${REPO_ROOT}/data/langfuse_minio}"
+LANGFUSE_DB_DATA_DIR="${LANGFUSE_DB_DATA_DIR:-${REPO_ROOT}/data/telemetry/postgres}"
+LANGFUSE_CLICKHOUSE_DATA_DIR="${LANGFUSE_CLICKHOUSE_DATA_DIR:-${REPO_ROOT}/data/telemetry/clickhouse}"
+LANGFUSE_REDIS_DATA_DIR="${LANGFUSE_REDIS_DATA_DIR:-${REPO_ROOT}/data/telemetry/redis}"
+LANGFUSE_MINIO_DATA_DIR="${LANGFUSE_MINIO_DATA_DIR:-${REPO_ROOT}/data/telemetry/minio}"
 
 # Helper to run compose commands
 compose_cmd() {

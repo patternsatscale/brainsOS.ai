@@ -56,7 +56,9 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
     "**/data/postgres": true,
     "**/data/langfuse_*": true,
     "**/data/langfuse_clickhouse": true,
-    "**/data/langfuse_postgres": true
+    "**/data/langfuse_postgres": true,
+    "**/data/telemetry": true,
+    "**/data/control_plane/litellm_db": true
   },
   "files.watcherExclude": {
     "**/.git/objects/**": true,
@@ -69,7 +71,11 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
     "**/data/langfuse_clickhouse/**": true,
     "**/data/langfuse_postgres/**": true,
     "**/data/control_plane/**": true,
+    "**/data/control_plane/litellm_db/**": true,
     "**/data/workspace/**": true,
+    "**/data/agent_workspaces/**": true,
+    "**/data/comms/**": true,
+    "**/data/telemetry/**": true,
     "**/.venv/**": true,
     "**/dist/**": true,
     "**/build/**": true
@@ -101,7 +107,11 @@ d["files.watcherExclude"] = {
     "**/data/langfuse_clickhouse/**": True,
     "**/data/langfuse_postgres/**": True,
     "**/data/control_plane/**": True,
+    "**/data/control_plane/litellm_db/**": True,
     "**/data/workspace/**": True,
+    "**/data/agent_workspaces/**": True,
+    "**/data/comms/**": True,
+    "**/data/telemetry/**": True,
     "**/.venv/**": True,
     "**/dist/**": True,
     "**/build/**": True
@@ -114,7 +124,9 @@ d["search.exclude"] = {
     "**/data/postgres": True,
     "**/data/langfuse_*": True,
     "**/data/langfuse_clickhouse": True,
-    "**/data/langfuse_postgres": True
+    "**/data/langfuse_postgres": True,
+    "**/data/telemetry": True,
+    "**/data/control_plane/litellm_db": True
 }
 with open(p, "w", encoding="utf-8") as f:
     json.dump(d, f, indent=2)

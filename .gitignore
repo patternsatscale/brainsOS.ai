@@ -20,7 +20,10 @@ data/memories/*
 
 # Snapshots, Runtime State & Backups
 data/backups/
-data/control_plane/
+data/control_plane/*
+!data/control_plane/.gitkeep
+data/telemetry/*
+!data/telemetry/.gitkeep
 data/comms/*
 !data/comms/.gitkeep
 data/agent_workspaces/*

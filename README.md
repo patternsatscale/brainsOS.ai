@@ -27,8 +27,8 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
 │     - Standalone Package: packages/titan_memory/ (OKF Engine & Vector SPI)  │
-│     - Partitioned Memories: ./data/memories/<id> (Pure Markdown)            │
-│     - Tenant Workspaces:   ./data/workspace/<id> (Tools, Caches, DBs)       │
+│     - Partitioned Memories: ./data/agent_memories/<id> (Pure Markdown)      │
+│     - Tenant Workspaces:   ./data/agent_workspaces/<id> (Tools, Caches, DBs)│
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing & Security Control Plane                                        │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
@@ -80,8 +80,8 @@ Project Titan transforms a dedicated bare-metal system into a transactional blac
   * **Hardware Serialization:** To safely manage model execution on the GB10 chip without thrashing the unified LPDDR5x memory bus (~273 GB/s peak bandwidth), LiteLLM serializes request scheduling via `max_parallel_requests: 1` or `2`.
   * **Host OS Protection:** Core NVIDIA stack dependencies (`linux-nvidia-hwe-24.04`, `nvidia-container-toolkit`) are held explicitly using `apt-mark hold` to isolate baseline configurations from breaking up-stream package modifications.
   * **Storage Path Conventions:**
-    * **Development (macOS & standard clones):** Uses relative paths inside the repository root (`./data/memories`, `./data/workspace`, `./data/litellm_db`).
-    * **Production Appliance (ASUS Ascent GX10):** Can optionally bind to dedicated NVMe mount paths (`/data/titan/memories`, `/data/titan/workspace`, `/data/titan/litellm_db`) configured via `.env`.
+    * **Development (macOS & standard clones):** Uses relative paths inside the repository root (`./data/agent_memories`, `./data/agent_workspaces`, `./data/control_plane/litellm_db`, `./data/telemetry`).
+    * **Production Appliance (ASUS Ascent GX10):** Can optionally bind to dedicated NVMe mount paths (`/data/titan/agent_memories`, `/data/titan/agent_workspaces`, `/data/titan/control_plane/litellm_db`) configured via `.env`.
 
 -----
 
@@ -118,8 +118,8 @@ cd project-titan
 cp .env.example .env
 ```
 *Review `.env` parameters if needed:*
-- `TITAN_DATA_DIR`: Set to `./data/memories` (development) or `/data/titan/memories` (production GX10).
-- `TITAN_WORKSPACE_DIR`: Set to `./data/workspace` (development) or `/data/titan/workspace` (production GX10).
+- `TITAN_DATA_DIR`: Set to `./data/agent_memories` (development) or `/data/titan/agent_memories` (production GX10).
+- `TITAN_WORKSPACE_DIR`: Set to `./data/agent_workspaces` (development) or `/data/titan/agent_workspaces` (production GX10).
 - `PUID` and `PGID`: Set to `1000:1000` (default non-root user).
 
 #### 2. Run Idempotent Host Baseline Setup
@@ -385,7 +385,7 @@ Phase 0: Base Config
 
 ### Phase 3: Memory Mgmt (Flat-File OKF & Operator IDE Interface)
 
-  * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/memories` on GX10, `./data/memories` on macOS) using unified permission access keys (`1000:1000`).
+  * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/agent_memories` on GX10, `./data/agent_memories` on macOS) using unified permission access keys (`1000:1000`).
   * Deploy the Titan Operator IDE container (`titan-app-code-server`, #145 superseding SilverBullet) mounting a 4-root workspace (`/workspace/project-titan`, `/memories`, `/data/workspace`, `/apps/cindypawford/site`), accessible via Caddy at `editor.titan.local` behind HTTP Basic Auth.
   * Deploy the native `hermes-okf` plugin package (`docker/hermes/plugins/hermes-okf`) registering `read_okf_note`, `write_okf_note`, and `synthesize_active_rules` into Hermes Agent's tool registry.
   * Implement budget-aware dynamic rule injection and working memory scratchpad loading into Hermes reasoning loops.
