@@ -28,9 +28,6 @@ RUN apt-get update -qq && \
 COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca
 RUN chmod +x /etc/cont-init.d/01-tool-egress-ca
 
-# Install Tool Egress Proxy CA trust boot hook
-COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca
-RUN chmod +x /etc/cont-init.d/01-tool-egress-ca
 
 # Switch to /opt/data
 WORKDIR /opt/data

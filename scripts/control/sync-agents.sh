@@ -126,7 +126,11 @@ for agent in enabled_agents:
     runtime = agent.get("runtime", "hermes")
     port = agent.get("comms", {}).get("port", 8642)
     dash_port = agent.get("comms", {}).get("dashboard_port", 9119)
-    signal_enabled = agent.get("comms", {}).get("signal", {}).get("enabled", False)
+    sig_config = agent.get("comms", {}).get("signal", {})
+    signal_enabled = sig_config.get("enabled", False)
+    sig_http_url = sig_config.get("http_url", "http://signal-cli:8080")
+    sig_account_env = sig_config.get("account_env", f"SIGNAL_ACCOUNT_{agent_id.upper().replace('-', '_')}")
+    sig_users_env = sig_config.get("allowed_users_env", f"SIGNAL_ALLOWED_USERS_{agent_id.upper().replace('-', '_')}")
     tg_config = agent.get("comms", {}).get("telegram", {})
     telegram_enabled = tg_config.get("enabled", False)
     tg_bot = tg_config.get("bot_name", tg_config.get("bot_profile", f"@{agent_id}_bot"))
@@ -250,9 +254,9 @@ for agent in enabled_agents:
         f"      - API_SERVER_HOST=0.0.0.0",
         f"      - API_SERVER_PORT={port}",
         f"      - API_SERVER_KEY=${{API_SERVER_KEY:-}}",
-        f"      - SIGNAL_HTTP_URL=http://signal-cli:8080",
-        f"      - SIGNAL_ACCOUNT=${{SIGNAL_ACCOUNT:-}}",
-        f"      - SIGNAL_ALLOWED_USERS=${{SIGNAL_ALLOWED_USERS:-}}",
+        f"      - SIGNAL_HTTP_URL={sig_http_url}",
+        f"      - SIGNAL_ACCOUNT=${{SIGNAL_ACCOUNT:-}}" if sig_account_env == "SIGNAL_ACCOUNT" else f"      - SIGNAL_ACCOUNT=${{{sig_account_env}:-${{SIGNAL_ACCOUNT:-}}}}",
+        f"      - SIGNAL_ALLOWED_USERS=${{SIGNAL_ALLOWED_USERS:-}}" if sig_users_env == "SIGNAL_ALLOWED_USERS" else f"      - SIGNAL_ALLOWED_USERS=${{{sig_users_env}:-${{SIGNAL_ALLOWED_USERS:-}}}}",
         f"      - TELEGRAM_BOT_NAME={tg_bot}",
         f"      - TELEGRAM_BOT_TOKEN=${{{tg_token_env}:-${{TELEGRAM_BOT_TOKEN:-}}}}",
         f"      - TELEGRAM_ALLOWED_USERS=${{{tg_users_env}:-${{TELEGRAM_ALLOWED_USERS:-}}}}",
@@ -699,6 +703,12 @@ for agent in manifest.get("agents", []):
         if "platforms" in cfg and "telegram" in cfg["platforms"]:
             cfg["platforms"]["telegram"]["enabled"] = tg_config.get("enabled", False)
             cfg["platforms"]["telegram"]["bot_name"] = tg_config.get("bot_name", f"@{agent_id}_bot")
+        # Seed per-agent Signal platform settings
+        sig_config = agent.get("comms", {}).get("signal", {})
+        if "platforms" in cfg and "signal" in cfg["platforms"]:
+            cfg["platforms"]["signal"]["enabled"] = sig_config.get("enabled", False)
+            if sig_config.get("http_url"):
+                cfg["platforms"]["signal"]["http_url"] = sig_config.get("http_url")
         # Ensure titan-subagents plugin is enabled if subagents are configured
         if subagents:
             if "plugins" not in cfg:

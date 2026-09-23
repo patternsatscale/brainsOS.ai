@@ -48,13 +48,18 @@ services:
     image: bbernhard/signal-cli-rest-api:latest
     container_name: titan-net-signal-cli
     restart: unless-stopped
+    entrypoint: ["/entrypoint-titan.sh"]
     security_opt:
       - "no-new-privileges:true"
     environment:
       - MODE=json-rpc
       - PORT=8080
+      - SIGNAL_NATIVE_HTTP_PORT=8082
+      - SIGNAL_REST_API_PORT=8084
     volumes:
       - ${TITAN_WORKSPACE_DIR:-./data/workspace}/signal:/home/.local/share/signal-cli
+      - ./docker/signal/entrypoint.sh:/entrypoint-titan.sh:ro
+      - ./docker/signal/gateway_proxy.py:/usr/local/bin/gateway_proxy.py:ro
     networks:
       titan-internal:
         aliases:

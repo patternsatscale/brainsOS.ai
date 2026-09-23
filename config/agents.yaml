@@ -21,6 +21,9 @@ agents:
       dashboard_port: 9119
       signal:
         enabled: true
+        http_url: "http://signal-cli:8080"
+        account_env: "SIGNAL_ACCOUNT"
+        allowed_users_env: "SIGNAL_ALLOWED_USERS"
       telegram:
         enabled: false
         bot_name: "@Terrastella_bot"

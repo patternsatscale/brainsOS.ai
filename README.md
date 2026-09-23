@@ -379,8 +379,9 @@ Phase 0: Base Config
   * Enforce outbound internet egress on `titan-internal` while strictly eliminating the host Docker socket (`/var/run/docker.sock`) and isolating the control plane database (`titan-litellm-db`).
   * Route outbound agent queries strictly to `http://proxy.local:4000/v1` authenticated via virtual proxy key, isolating host infrastructure names from agent context (Rule 7).
   * Deploy a companion `signal-cli` daemon service on `titan-internal` persisting registration state in `/workspace/signal`.
+  * Implement operator onboarding workflow (`./scripts/setup/link-signal.sh`), terminal QR device linking, multi-protocol gateway proxy (port 8080 multiplexing `/v1/*` REST and `/api/v1/*` native SSE/JSON-RPC), and strict operator whitelisting (`SIGNAL_ALLOWED_USERS`, #144).
   * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `[agent].titan.local` (e.g. `primary.titan.local:9119`) and gateway API at `api.[agent].titan.local` (e.g. `api.primary.titan.local:8642`), preserving `hermes.titan.local` as an alias.
-  * *Exit Criteria:* Hermes processing loops and dashboard are operational; Web Dashboard allows visual configuration of Signal and Telegram channels; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
+  * *Exit Criteria:* Hermes processing loops and dashboard are operational; Signal and Telegram operator gateways configured; strict operator whitelisting enforced; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
 
 ### Phase 3: Memory Mgmt (Flat-File OKF & Operator IDE Interface)
 
