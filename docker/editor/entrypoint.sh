@@ -20,13 +20,21 @@ bind-addr: 0.0.0.0:8443
 auth: ${CODE_SERVER_AUTH}
 password: ${PASSWORD:-titan_operator_secret}
 cert: false
+disable-telemetry: true
+disable-update-check: true
+disable-workspace-trust: true
 EOF
 
-# 3. Scaffolding default VS Code User settings.json
+# 3. Scaffolding default VS Code User settings.json with explicit workspace trust & SSL security bypass
 mkdir -p /home/coder/.local/share/code-server/User
-if [ ! -f /home/coder/.local/share/code-server/User/settings.json ]; then
-  cat << 'EOF' > /home/coder/.local/share/code-server/User/settings.json
+SETTINGS_FILE="/home/coder/.local/share/code-server/User/settings.json"
+if [ ! -f "${SETTINGS_FILE}" ]; then
+  cat << 'EOF' > "${SETTINGS_FILE}"
 {
+  "security.workspace.trust.enabled": false,
+  "security.workspace.trust.startupPrompt": "never",
+  "security.workspace.trust.emptyWindow": true,
+  "http.proxyStrictSSL": false,
   "telemetry.telemetryLevel": "off",
   "workbench.startupEditor": "none",
   "files.autoSave": "afterDelay",
@@ -45,15 +53,86 @@ if [ ! -f /home/coder/.local/share/code-server/User/settings.json ]; then
     "**/bower_components": true,
     "**/*.code-search": true,
     "**/data/litellm_db": true,
-    "**/data/postgres": true
+    "**/data/postgres": true,
+    "**/data/langfuse_*": true,
+    "**/data/langfuse_clickhouse": true,
+    "**/data/langfuse_postgres": true
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.cache/**": true,
+    "**/data/litellm_db/**": true,
+    "**/data/postgres/**": true,
+    "**/data/langfuse_*/**": true,
+    "**/data/langfuse_clickhouse/**": true,
+    "**/data/langfuse_postgres/**": true,
+    "**/data/control_plane/**": true,
+    "**/data/workspace/**": true,
+    "**/.venv/**": true,
+    "**/dist/**": true,
+    "**/build/**": true
   }
 }
 EOF
+else
+  # Ensure existing settings have workspace trust disabled, SSL bypass, and file watcher exclusions
+  python3 - << 'EOF' || true
+import json, os
+p = "/home/coder/.local/share/code-server/User/settings.json"
+try:
+    with open(p, "r", encoding="utf-8") as f:
+        d = json.load(f)
+except Exception:
+    d = {}
+d["security.workspace.trust.enabled"] = False
+d["security.workspace.trust.startupPrompt"] = "never"
+d["security.workspace.trust.emptyWindow"] = True
+d["http.proxyStrictSSL"] = False
+d["files.watcherExclude"] = {
+    "**/.git/objects/**": True,
+    "**/.git/subtree-cache/**": True,
+    "**/node_modules/**": True,
+    "**/.cache/**": True,
+    "**/data/litellm_db/**": True,
+    "**/data/postgres/**": True,
+    "**/data/langfuse_*/**": True,
+    "**/data/langfuse_clickhouse/**": True,
+    "**/data/langfuse_postgres/**": True,
+    "**/data/control_plane/**": True,
+    "**/data/workspace/**": True,
+    "**/.venv/**": True,
+    "**/dist/**": True,
+    "**/build/**": True
+}
+d["search.exclude"] = {
+    "**/node_modules": True,
+    "**/bower_components": True,
+    "**/*.code-search": True,
+    "**/data/litellm_db": True,
+    "**/data/postgres": True,
+    "**/data/langfuse_*": True,
+    "**/data/langfuse_clickhouse": True,
+    "**/data/langfuse_postgres": True
+}
+with open(p, "w", encoding="utf-8") as f:
+    json.dump(d, f, indent=2)
+EOF
 fi
 
-# 4. Scaffolding Continue AI extension configuration
+# 4. Scaffolding Continue AI extension configuration (dynamically synced from fleet manifest)
 mkdir -p /home/coder/.continue
-cat << EOF > /home/coder/.continue/config.yaml
+OP_KEY="${OPENAI_API_KEY:-${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}}"
+API_KEY="${API_SERVER_KEY:-}"
+
+SRC_CONTINUE_YAML="/workspace/project-titan/config/editor/continue_config.yaml"
+SRC_CONTINUE_JSON="/workspace/project-titan/config/editor/continue_config.json"
+
+if [ -f "${SRC_CONTINUE_YAML}" ]; then
+  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_YAML}" > /home/coder/.continue/config.yaml
+else
+  cat << EOF > /home/coder/.continue/config.yaml
 name: Titan Operator IDE
 version: 1.0.0
 schema: v1
@@ -62,36 +141,17 @@ models:
     provider: openai
     model: titan-core
     apiBase: http://litellm:4000/v1
-    apiKey: "${OPENAI_API_KEY:-sk-titan-operator-virtual-key}"
+    apiKey: "${OP_KEY}"
     roles:
       - chat
       - edit
       - apply
-
-  - name: "Cindy Pawford (Agent API)"
-    provider: openai
-    model: cindy-pawford
-    apiBase: http://api.cindypawford.com/v1
-    apiKey: "${API_SERVER_KEY:-}"
-    roles:
-      - chat
-
-  - name: "Terrastella (Agent API)"
-    provider: openai
-    model: terrastella
-    apiBase: http://api.primary.titan.local/v1
-    apiKey: "${API_SERVER_KEY:-}"
-    roles:
-      - chat
-
-  - name: "Football Dan (Agent API)"
-    provider: openai
-    model: football-dan
-    apiBase: http://api.football-dan.titan.local/v1
-    apiKey: "${API_SERVER_KEY:-}"
-    roles:
-      - chat
 EOF
+fi
+
+if [ -f "${SRC_CONTINUE_JSON}" ]; then
+  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_JSON}" > /home/coder/.continue/config.json
+fi
 
 # 5. Scaffolding Aider CLI configuration
 if [ ! -f /home/coder/.aider.conf.yml ]; then
@@ -102,5 +162,17 @@ model: openai/titan-core
 EOF
 fi
 
+# 6. Export CA environment variables into user shell
+CADDY_ROOT_CA="/etc/ssl/caddy/root.crt"
+if [ -f "${CADDY_ROOT_CA}" ]; then
+  grep -q "NODE_EXTRA_CA_CERTS" /home/coder/.bashrc 2>/dev/null || cat << EOF >> /home/coder/.bashrc
+export NODE_EXTRA_CA_CERTS="${CADDY_ROOT_CA}"
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+export SSL_CERT_FILE="${CADDY_ROOT_CA}"
+export REQUESTS_CA_BUNDLE="${CADDY_ROOT_CA}"
+export CURL_CA_BUNDLE="${CADDY_ROOT_CA}"
+EOF
+fi
+
 # Launch upstream entrypoint with multi-root workspace
-exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" /workspace/titan.code-workspace "$@"
+exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust /workspace/titan.code-workspace "$@"

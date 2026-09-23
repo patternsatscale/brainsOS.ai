@@ -18,27 +18,27 @@ This workspace mounts the host filesystem (`/memories`) using the **Open Knowled
 
 - **Session Logs**: [[agents/terrastella/logs/|logs/]]
 
-### 2. [[agents/football-dan/SOUL|Football Dan - Sports Analytics]]
+### 2. [[agents/marvin/SOUL|Marvin - Sports Analytics]]
 
-- **Soul & Persona**: [[agents/football-dan/SOUL|SOUL.md]]
+- **Soul & Persona**: [[agents/marvin/SOUL|SOUL.md]]
 
-- **Knowledge Base**: [[agents/football-dan/knowledge/|knowledge/]]
+- **Knowledge Base**: [[agents/marvin/knowledge/|knowledge/]]
 
-- **Operator Rules**: [[agents/football-dan/rules/|rules/]]
+- **Operator Rules**: [[agents/marvin/rules/|rules/]]
 
-- **Session Logs**: [[agents/football-dan/logs/|logs/]]
+- **Session Logs**: [[agents/marvin/logs/|logs/]]
 
-### 3. [[agents/cindy-pawford/SOUL|Cindy Pawford - Creative Director & Supermodel CEO]]
+### 3. [[agents/bawtford/SOUL|Bawtford - Creative Director & Supermodel CEO]]
 
-- **Soul & Persona**: [[agents/cindy-pawford/SOUL|SOUL.md]]
+- **Soul & Persona**: [[agents/bawtford/SOUL|SOUL.md]]
 
-  - **Sub-Agent (web-developer)**: [[agents/cindy-pawford/subagents/web-developer/SOUL|Website Builder Sub-Agent]]
+  - **Sub-Agent (web-developer)**: [[agents/bawtford/subagents/web-developer/SOUL|Website Builder Sub-Agent]]
 
-- **Knowledge Base**: [[agents/cindy-pawford/knowledge/|knowledge/]]
+- **Knowledge Base**: [[agents/bawtford/knowledge/|knowledge/]]
 
-- **Operator Rules**: [[agents/cindy-pawford/rules/|rules/]]
+- **Operator Rules**: [[agents/bawtford/rules/|rules/]]
 
-- **Session Logs**: [[agents/cindy-pawford/logs/|logs/]]
+- **Session Logs**: [[agents/bawtford/logs/|logs/]]
 
 ---
 

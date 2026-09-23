@@ -39,7 +39,7 @@ jobs:
       - name: Verify Memory Plane Purity
         run: |
           echo "Ensuring no live memory notes are committed..."
-          LIVE_MEMORIES=$(git ls-files data/memories/ | grep -v 'data/memories/\.gitkeep$' || true)
+          LIVE_MEMORIES=$(git ls-files data/agent_memories/ data/memories/ | grep -vE 'data/(agent_memories|memories)/\.gitkeep$' || true)
           if [ -n "${LIVE_MEMORIES}" ]; then
             echo "::error::Live memory files found in repository tracking: ${LIVE_MEMORIES}"
             echo "The memory plane is reserved for human-auditable runtime OKF notes and must be git-ignored."
@@ -49,11 +49,11 @@ jobs:
 
       - name: Verify Agent Workspace Hygiene
         run: |
-          echo "Ensuring no live agent workspace state is committed..."
-          LIVE_WORKSPACE=$(git ls-files data/workspace/ | grep -v 'data/workspace/\.gitkeep$' || true)
+          echo "Ensuring no live agent workspace state or comms data is committed..."
+          LIVE_WORKSPACE=$(git ls-files data/agent_workspaces/ data/workspace/ data/comms/ | grep -vE 'data/(agent_workspaces|workspace|comms)/\.gitkeep$' || true)
           if [ -n "${LIVE_WORKSPACE}" ]; then
-            echo "::error::Live workspace files found in repository tracking: ${LIVE_WORKSPACE}"
-            echo "The agent workspace is reserved for runtime packages, tools, and Signal credentials and must be git-ignored."
+            echo "::error::Live workspace or comms files found in repository tracking: ${LIVE_WORKSPACE}"
+            echo "The agent workspace and comms planes are reserved for runtime packages, tools, and credentials and must be git-ignored."
             exit 1
           fi
           echo "Agent workspace tracking is clean."

@@ -43,8 +43,13 @@ SIGNAL_CONTAINER="titan-net-signal-cli"
 HERMES_CONTAINER="titan-agent-terrastella"
 HERMES_SERVICE="agent-terrastella"
 SIGNAL_SERVICE="signal-cli"
-WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
-SIGNAL_STORAGE="${WORKSPACE_DIR}/signal"
+COMMS_DIR="${TITAN_COMMS_DIR:-${REPO_ROOT}/data/comms}"
+WORKSPACE_DIR="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/agent_workspaces}}"
+if [ -d "${COMMS_DIR}/signal" ] || [ ! -d "${REPO_ROOT}/data/workspace/signal" ]; then
+    SIGNAL_STORAGE="${COMMS_DIR}/signal"
+else
+    SIGNAL_STORAGE="${REPO_ROOT}/data/workspace/signal"
+fi
 
 # ------------------------------------------------------------------------------
 # 1. Daemon Running & Health Check

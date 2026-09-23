@@ -13,12 +13,18 @@ config/agents.local.yaml
 config/agents.override.yaml
 
 # Live Agent Memories (Keep root gitkeep, live notes remain git-ignored)
+data/agent_memories/*
+!data/agent_memories/.gitkeep
 data/memories/*
 !data/memories/.gitkeep
 
 # Snapshots, Runtime State & Backups
 data/backups/
 data/control_plane/
+data/comms/*
+!data/comms/.gitkeep
+data/agent_workspaces/*
+!data/agent_workspaces/.gitkeep
 data/workspace/*
 !data/workspace/.gitkeep
 *.tar.gz

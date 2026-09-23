@@ -168,7 +168,7 @@ sudo ./scripts/setup/setup-network.sh --skip-ip -y
 ```
 *Or manually append to `/etc/hosts`:*
 ```text
-127.0.0.1 titan.local primary.titan.local api.primary.titan.local football-dan.titan.local api.football-dan.titan.local cindypawford.titan.local api.cindypawford.titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local langfuse.titan.local
+127.0.0.1 titan.local terrastella.titan.local api.terrastella.titan.local marvin.titan.local api.marvin.titan.local football-dan.titan.local api.football-dan.titan.local cindypawford.titan.local api.cindypawford.titan.local proxy.titan.local memory.titan.local langfuse.titan.local editor.titan.local code.titan.local
 ```
 *(Note: If accessing this Linux appliance remotely from another machine on your LAN, replace `127.0.0.1` with the appliance's actual static LAN IP).*
 
@@ -202,10 +202,10 @@ Once running, the following endpoints are accessible via your browser:
 |---|---|---|---|---|
 | **Appliance Portal** | [http://titan.local](http://titan.local) | `80` / `443` | *None* | ASUS Ascent GX10 appliance dashboard & hub |
 | **Operator IDE** | [http://editor.titan.local](http://editor.titan.local) *(alias: [http://code.titan.local](http://code.titan.local))* | `8443` | `operator` / `${OPERATOR_PASSWORD}` | Containerized VS Code, Multi-Root Workspace, Aider, Continue & Foam PKM |
-| **Primary Agent UI** | [http://primary.titan.local](http://primary.titan.local) *(alias: [http://hermes.titan.local](http://hermes.titan.local))* | `9119` | `admin` / `titan_admin_secret` | Primary operations agent dashboard, channels & tool config |
-| **Primary Agent API** | [http://api.primary.titan.local/v1](http://api.primary.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
-| **Football Dan UI** | [http://football-dan.titan.local](http://football-dan.titan.local) | `9120` | `admin` / `titan_admin_secret` | Sports analytics agent dashboard & telemetry |
-| **Football Dan API** | [http://api.football-dan.titan.local/v1](http://api.football-dan.titan.local/v1) | `8643` | Bearer `${HERMES_FOOTBALL_DAN_KEY}` | Football Dan chat completions interface |
+| **Terrastella UI (Primary)** | [http://terrastella.titan.local](http://terrastella.titan.local) | `9119` | `admin` / `titan_admin_secret` | Primary operations agent dashboard, channels & tool config |
+| **Terrastella API (Primary)** | [http://api.terrastella.titan.local/v1](http://api.terrastella.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
+| **Marvin UI** | [http://marvin.titan.local](http://marvin.titan.local) | `9120` | `admin` / `titan_admin_secret` | Sports analytics agent dashboard & telemetry |
+| **Marvin API** | [http://api.marvin.titan.local/v1](http://api.marvin.titan.local/v1) | `8643` | Bearer `${HERMES_MARVIN_KEY}` | Sports analytics chat completions interface |
 | **Cindy Pawford UI** | [http://cindypawford.titan.local](http://cindypawford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Cindy Pawford supermodel CEO dashboard & atelier |
 | **Cindy Pawford API** | [http://api.cindypawford.titan.local/v1](http://api.cindypawford.titan.local/v1) | `8644` | Bearer `${HERMES_CINDY_LITELLM_KEY}` | Cindy Pawford chat completions interface |
 | **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing, key & budget proxy |
@@ -364,7 +364,7 @@ Phase 0: Base Config
   * Execute package pinning (`apt-mark hold`) across hardware drivers and runtime toolkits on DGX OS.
   * Configure local directory layouts under `/data/titan/memories` and seed environment schemas.
   * Deploy the reverse proxy container (Caddy/Traefik) running inside an isolated Docker bridge network.
-  * *Exit Criteria:* Validated local network routing across `primary.titan.local` (and `[agent].titan.local`) and `proxy.titan.local` endpoints to mockup responses.
+  * *Exit Criteria:* Validated local network routing across `terrastella.titan.local` (and `[agent].titan.local`) and `proxy.titan.local` endpoints to mockup responses.
 
 ### Phase 1: Control Plane (Inference & LiteLLM Gateway)
 
@@ -380,7 +380,7 @@ Phase 0: Base Config
   * Route outbound agent queries strictly to `http://proxy.local:4000/v1` authenticated via virtual proxy key, isolating host infrastructure names from agent context (Rule 7).
   * Deploy a companion `signal-cli` daemon service on `titan-internal` persisting registration state in `/workspace/signal`.
   * Implement operator onboarding workflow (`./scripts/setup/link-signal.sh`), terminal QR device linking, multi-protocol gateway proxy (port 8080 multiplexing `/v1/*` REST and `/api/v1/*` native SSE/JSON-RPC), and strict operator whitelisting (`SIGNAL_ALLOWED_USERS`, #144).
-  * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `[agent].titan.local` (e.g. `primary.titan.local:9119`) and gateway API at `api.[agent].titan.local` (e.g. `api.primary.titan.local:8642`), preserving `hermes.titan.local` as an alias.
+  * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `[agent].titan.local` (e.g. `terrastella.titan.local:9119`) and gateway API at `api.[agent].titan.local` (e.g. `api.terrastella.titan.local:8642`).
   * *Exit Criteria:* Hermes processing loops and dashboard are operational; Signal and Telegram operator gateways configured; strict operator whitelisting enforced; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
 
 ### Phase 3: Memory Mgmt (Flat-File OKF & Operator IDE Interface)

@@ -59,8 +59,9 @@ resolve_path() {
   fi
 }
 
-MEMORIES_DIR=$(resolve_path "${TITAN_DATA_DIR:-}" "./data/memories")
-WORKSPACE_DIR=$(resolve_path "${TITAN_WORKSPACE_DIR:-}" "./data/workspace")
+MEMORIES_DIR=$(resolve_path "${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-}}" "./data/agent_memories")
+WORKSPACE_DIR=$(resolve_path "${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-}}" "./data/agent_workspaces")
+COMMS_DIR=$(resolve_path "${TITAN_COMMS_DIR:-}" "./data/comms")
 DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "./data/litellm_db")
 DATA_ROOT="${REPO_ROOT}/data"
 BACKUP_DIR="${DATA_ROOT}/backups"
@@ -87,6 +88,7 @@ show_help() {
   echo "Target Data Planes:"
   echo "  - Memories Plane:  ${MEMORIES_DIR}"
   echo "  - Workspace Plane: ${WORKSPACE_DIR}"
+  echo "  - Comms Plane:     ${COMMS_DIR}"
   echo "  - Database Plane:  ${DB_DIR}"
   echo "  - Backup Storage:  ${BACKUP_DIR}"
   echo ""
@@ -132,23 +134,34 @@ create_backup() {
   log_info "Packaging planes:"
   log_info "  - Memories:  ${MEMORIES_DIR}"
   log_info "  - Workspace: ${WORKSPACE_DIR}"
+  log_info "  - Comms:     ${COMMS_DIR}"
   log_info "  - Database:  ${DB_DIR}"
 
   mkdir -p "${staging_dir}/memories"
   mkdir -p "${staging_dir}/workspace"
+  mkdir -p "${staging_dir}/comms"
   mkdir -p "${staging_dir}/litellm_db"
 
   # 1. Copy memories if present
   if [ -d "${MEMORIES_DIR}" ]; then
     cp -a "${MEMORIES_DIR}/." "${staging_dir}/memories/" 2>/dev/null || true
+  elif [ -d "${REPO_ROOT}/data/memories" ]; then
+    cp -a "${REPO_ROOT}/data/memories/." "${staging_dir}/memories/" 2>/dev/null || true
   fi
 
   # 2. Copy workspace if present
   if [ -d "${WORKSPACE_DIR}" ]; then
     cp -a "${WORKSPACE_DIR}/." "${staging_dir}/workspace/" 2>/dev/null || true
+  elif [ -d "${REPO_ROOT}/data/workspace" ]; then
+    cp -a "${REPO_ROOT}/data/workspace/." "${staging_dir}/workspace/" 2>/dev/null || true
   fi
 
-  # 3. Copy database if present and readable
+  # 3. Copy comms if present
+  if [ -d "${COMMS_DIR}" ]; then
+    cp -a "${COMMS_DIR}/." "${staging_dir}/comms/" 2>/dev/null || true
+  fi
+
+  # 4. Copy database if present and readable
   if [ -d "${DB_DIR}" ]; then
     cp -a "${DB_DIR}/." "${staging_dir}/litellm_db/" 2>/dev/null || true
   fi
@@ -162,6 +175,7 @@ create_backup() {
   "planes": {
     "memories": "${MEMORIES_DIR}",
     "workspace": "${WORKSPACE_DIR}",
+    "comms": "${COMMS_DIR}",
     "litellm_db": "${DB_DIR}"
   }
 }
@@ -226,6 +240,7 @@ restore_backup() {
   echo -e "${YELLOW}${BOLD}WARNING: Restoring data will overwrite existing files in:${NC}"
   echo "  - ${MEMORIES_DIR}"
   echo "  - ${WORKSPACE_DIR}"
+  echo "  - ${COMMS_DIR}"
   echo "  - ${DB_DIR}"
   echo ""
 
@@ -253,6 +268,13 @@ restore_backup() {
     cp -a "${extract_dir}/workspace/." "${WORKSPACE_DIR}/" 2>/dev/null || true
     chmod 775 "${WORKSPACE_DIR}" || true
     log_success "Restored workspace plane."
+  fi
+
+  if [ -d "${extract_dir}/comms" ]; then
+    mkdir -p "${COMMS_DIR}"
+    cp -a "${extract_dir}/comms/." "${COMMS_DIR}/" 2>/dev/null || true
+    chmod 775 "${COMMS_DIR}" || true
+    log_success "Restored communications plane."
   fi
 
   if [ -d "${extract_dir}/litellm_db" ]; then

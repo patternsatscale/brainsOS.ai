@@ -38,9 +38,12 @@ set +a
 
 SIGNAL_CONTAINER="titan-net-signal-cli"
 HERMES_CONTAINER="titan-agent-terrastella"
-DEFAULT_DEVICE_NAME="Titan-Operator"
-WORKSPACE_DIR="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}"
-SIGNAL_STORAGE="${WORKSPACE_DIR}/signal"
+COMMS_DIR="${TITAN_COMMS_DIR:-${REPO_ROOT}/data/comms}"
+if [ -d "${COMMS_DIR}/signal" ] || [ ! -d "${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}/signal" ]; then
+    SIGNAL_STORAGE="${COMMS_DIR}/signal"
+else
+    SIGNAL_STORAGE="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}/signal"
+fi
 
 # ------------------------------------------------------------------------------
 # 1. Prerequisite & Permission Validation
