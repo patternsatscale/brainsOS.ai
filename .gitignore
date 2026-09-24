@@ -68,3 +68,7 @@ Thumbs.db
 # Logs
 *.log
 /logs/
+
+# Local Automation & Skills (Host-Local Only)
+local-cron/
+scripts/local-cron/

@@ -163,6 +163,7 @@ with open(file_path, 'w') as f:
   update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_USER_NAME" "\"${LANGFUSE_INIT_USER_NAME}\"" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_MIGRATION_V4_WRITE_MODE" "${LANGFUSE_MIGRATION_V4_WRITE_MODE:-dual}" "${LANGFUSE_ENV_FILE}"
 
   export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
   export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
@@ -219,6 +220,19 @@ sync_llm_connection() {
     fi
     [ -z "${agent_key}" ] && agent_key="sk-titan-agent-key"
 
+    local manifest="${REPO_ROOT}/config/agents.yaml"
+    if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
+      manifest="${REPO_ROOT}/config/agents.local.yaml"
+    fi
+    local agents_json
+    agents_json=$(python3 -c "
+import yaml, json
+with open('${manifest}') as f:
+    d = yaml.safe_load(f)
+res = [{'id': a['id'], 'name': a.get('name', a['id']), 'subdomain': a.get('comms', {}).get('subdomain', f\"{a['id']}.titan.local\")} for a in d.get('agents', []) if a.get('enabled', True)]
+print(json.dumps(res))
+" 2>/dev/null || echo "[]")
+
     docker exec -i titan-langfuse-web node -e "
       const crypto = require('crypto');
       const { PrismaClient } = require('/app/node_modules/.pnpm/@prisma+client@6.19.3_@typescript+typescript6@6.0.2_prisma@6.19.3_@typescript+typescript6@6.0.2_magicast@0.5.2_/node_modules/@prisma/client');
@@ -241,6 +255,8 @@ sync_llm_connection() {
       const agentKey = process.argv[2];
       const displayAgentKey = '...' + agentKey.slice(-4);
       const encAgentKey = encrypt(agentKey);
+
+      const agents = JSON.parse(process.argv[3] || '[]');
 
       async function main() {
         // 1. LiteLLM Gateway Connection (via Caddy L7 proxy)
@@ -292,100 +308,45 @@ sync_llm_connection() {
           }
         });
 
-        // 2. Cindy Pawford Agent Connection (Agent-as-an-API via Caddy)
-        await prisma.llmApiKeys.upsert({
-          where: {
-            projectId_provider: {
+        // 2. Dynamic Fleet Agent Connections (Agent-as-an-API via Caddy)
+        for (const a of agents) {
+          const cleanId = a.id.replace(/-/g, '_');
+          await prisma.llmApiKeys.upsert({
+            where: {
+              projectId_provider: {
+                projectId: 'titan',
+                provider: a.id
+              }
+            },
+            create: {
+              id: \`cl_titan_\${cleanId}_connection\`,
               projectId: 'titan',
-              provider: 'Cindy-Pawford'
+              provider: a.id,
+              adapter: 'openai',
+              displaySecretKey: displayAgentKey,
+              secretKey: encAgentKey,
+              baseURL: \`http://api.\${a.subdomain}/v1\`,
+              customModels: ['hermes-agent', a.id],
+              withDefaultModels: false,
+              extraHeaderKeys: []
+            },
+            update: {
+              adapter: 'openai',
+              displaySecretKey: displayAgentKey,
+              secretKey: encAgentKey,
+              baseURL: \`http://api.\${a.subdomain}/v1\`,
+              customModels: ['hermes-agent', a.id],
+              withDefaultModels: false
             }
-          },
-          create: {
-            id: 'cl_titan_cindy_connection',
-            projectId: 'titan',
-            provider: 'Cindy-Pawford',
-            adapter: 'openai',
-            displaySecretKey: displayAgentKey,
-            secretKey: encAgentKey,
-            baseURL: 'http://api.cindypawford.titan.local/v1',
-            customModels: ['hermes-agent', 'cindy-pawford'],
-            withDefaultModels: false,
-            extraHeaderKeys: []
-          },
-          update: {
-            adapter: 'openai',
-            displaySecretKey: displayAgentKey,
-            secretKey: encAgentKey,
-            baseURL: 'http://api.cindypawford.titan.local/v1',
-            customModels: ['hermes-agent', 'cindy-pawford'],
-            withDefaultModels: false
-          }
-        });
-
-        // 3. Terrastella Agent Connection
-        await prisma.llmApiKeys.upsert({
-          where: {
-            projectId_provider: {
-              projectId: 'titan',
-              provider: 'Terrastella'
-            }
-          },
-          create: {
-            id: 'cl_titan_terrastella_connection',
-            projectId: 'titan',
-            provider: 'Terrastella',
-            adapter: 'openai',
-            displaySecretKey: displayAgentKey,
-            secretKey: encAgentKey,
-            baseURL: 'http://api.terrastella.titan.local/v1',
-            customModels: ['hermes-agent', 'terrastella'],
-            withDefaultModels: false,
-            extraHeaderKeys: []
-          },
-          update: {
-            adapter: 'openai',
-            displaySecretKey: displayAgentKey,
-            secretKey: encAgentKey,
-            baseURL: 'http://api.terrastella.titan.local/v1',
-            customModels: ['hermes-agent', 'terrastella'],
-            withDefaultModels: false
-          }
-        });
-
-        // 4. Football Dan Agent Connection
-        await prisma.llmApiKeys.upsert({
-          where: {
-            projectId_provider: {
-              projectId: 'titan',
-              provider: 'Football-Dan'
-            }
-          },
-          create: {
-            id: 'cl_titan_football_dan_connection',
-            projectId: 'titan',
-            provider: 'Football-Dan',
-            adapter: 'openai',
-            displaySecretKey: displayAgentKey,
-            secretKey: encAgentKey,
-            baseURL: 'http://api.football-dan.titan.local/v1',
-            customModels: ['hermes-agent', 'football-dan'],
-            withDefaultModels: false,
-            extraHeaderKeys: []
-          },
-          update: {
-            adapter: 'openai',
-            displaySecretKey: displayAgentKey,
-            secretKey: encAgentKey,
-            baseURL: 'http://api.football-dan.titan.local/v1',
-            customModels: ['hermes-agent', 'football-dan'],
-            withDefaultModels: false
-          }
-        });
+          });
+        }
       }
 
       main().catch(e => { console.error('Error syncing LLM connection:', e.message); });
-    " "${litellm_key}" "${agent_key}" >/dev/null 2>&1 || true
-    log_success "LLM & Agent connections synchronized in Langfuse (LiteLLM: proxy.titan.local, Cindy: api.cindypawford.titan.local, Terrastella: api.terrastella.titan.local, Football Dan: api.football-dan.titan.local)."
+    " "${litellm_key}" "${agent_key}" "${agents_json}" >/dev/null 2>&1 || true
+    local agent_names
+    agent_names=$(echo "${agents_json}" | python3 -c "import json, sys; print(', '.join([a['id'] for a in json.load(sys.stdin)]))" 2>/dev/null || echo "fleet agents")
+    log_success "LLM & Agent connections synchronized in Langfuse (LiteLLM: proxy.titan.local, agents: ${agent_names})."
   fi
 }
 
