@@ -62,7 +62,10 @@ resolve_path() {
 MEMORIES_DIR=$(resolve_path "${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-}}" "./data/agent_memories")
 WORKSPACE_DIR=$(resolve_path "${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-}}" "./data/agent_workspaces")
 COMMS_DIR=$(resolve_path "${TITAN_COMMS_DIR:-}" "./data/comms")
-DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "./data/litellm_db")
+DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "./data/control_plane/litellm_db")
+if [ ! -d "${DB_DIR}" ] && [ -d "${REPO_ROOT}/data/litellm_db" ]; then
+  DB_DIR="${REPO_ROOT}/data/litellm_db"
+fi
 DATA_ROOT="${REPO_ROOT}/data"
 BACKUP_DIR="${DATA_ROOT}/backups"
 MAX_BACKUPS="${MAX_BACKUPS:-14}"

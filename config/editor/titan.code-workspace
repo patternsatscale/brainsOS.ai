@@ -47,7 +47,9 @@
       "**/data/postgres": true,
       "**/data/langfuse_*": true,
       "**/data/langfuse_clickhouse": true,
-      "**/data/langfuse_postgres": true
+      "**/data/langfuse_postgres": true,
+      "**/data/telemetry": true,
+      "**/data/control_plane/litellm_db": true
     },
     "files.watcherExclude": {
       "**/.git/objects/**": true,
@@ -60,9 +62,11 @@
       "**/data/langfuse_clickhouse/**": true,
       "**/data/langfuse_postgres/**": true,
       "**/data/control_plane/**": true,
+      "**/data/control_plane/litellm_db/**": true,
       "**/data/workspace/**": true,
       "**/data/agent_workspaces/**": true,
       "**/data/comms/**": true,
+      "**/data/telemetry/**": true,
       "**/.venv/**": true,
       "**/dist/**": true,
       "**/build/**": true

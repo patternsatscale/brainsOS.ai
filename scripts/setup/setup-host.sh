@@ -328,10 +328,11 @@ fi
 mkdir -p "${REPO_ROOT}/data/backups"
 mkdir -p "${REPO_ROOT}/data/control_plane"
 mkdir -p "${REPO_ROOT}/data/comms"
+mkdir -p "${REPO_ROOT}/data/telemetry"
 
 # LiteLLM Dedicated Control Plane Database Storage (isolated from memories)
-DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/litellm_db")
-DB_DATA_DIR="${DB_DATA_DIR:-./data/litellm_db}"
+DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/control_plane/litellm_db")
+DB_DATA_DIR="${DB_DATA_DIR:-./data/control_plane/litellm_db}"
 
 if [[ "$DB_DATA_DIR" != /* ]]; then
   TARGET_DB_DIR="${REPO_ROOT}/${DB_DATA_DIR#./}"
@@ -376,8 +377,9 @@ fi
 touch "${REPO_ROOT}/data/agent_memories/.gitkeep" 2>/dev/null || true
 touch "${REPO_ROOT}/data/agent_workspaces/.gitkeep" 2>/dev/null || true
 touch "${REPO_ROOT}/data/comms/.gitkeep" 2>/dev/null || true
+touch "${REPO_ROOT}/data/telemetry/.gitkeep" 2>/dev/null || true
 
-log_success "Storage layout (agent_memories, database, agent_workspaces, comms) initialized."
+log_success "Storage layout (agent_memories, agent_workspaces, comms, control_plane, telemetry) initialized."
 
 # ------------------------------------------------------------------------------
 # 6. Native Model Seeding

@@ -166,7 +166,7 @@ services:
       POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
       POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-titan_litellm_secret_change_me}
     volumes:
-      - ${LITELLM_DB_DATA_DIR:-./data/litellm_db}:/var/lib/postgresql/data
+      - ${LITELLM_DB_DATA_DIR:-./data/control_plane/litellm_db}:/var/lib/postgresql/data
     networks:
       - titan-litellm-net
     healthcheck:

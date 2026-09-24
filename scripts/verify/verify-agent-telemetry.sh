@@ -257,7 +257,10 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 5: Verifying Memory Plane Purity across fleet partitions..."
 
-MEMORIES_DIR="${REPO_ROOT}/data/memories"
+MEMORIES_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-${REPO_ROOT}/data/agent_memories}}"
+if [ ! -d "${MEMORIES_DIR}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
+  MEMORIES_DIR="${REPO_ROOT}/data/memories"
+fi
 FORBIDDEN_FILES=$(find "${MEMORIES_DIR}" -type f ! -name "*.md" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
 FORBIDDEN_DIRS=$(find "${MEMORIES_DIR}" -type d \( -name "__pycache__" -o -name "node_modules" -o -name ".cache" \) 2>/dev/null || true)
 

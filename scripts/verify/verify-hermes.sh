@@ -405,14 +405,17 @@ fi
 # ------------------------------------------------------------------------------
 # 10. Git Secret Hygiene Verification
 # ------------------------------------------------------------------------------
-log_info "Step 10: Checking Git status for uncommitted runtime workspace files..."
-UNTRACKED_WORKSPACE=$(git ls-files -o --exclude-standard data/workspace/ | grep -v 'data/workspace/\.gitkeep$' || true)
-TRACKED_WORKSPACE=$(git ls-files data/workspace/ | grep -v 'data/workspace/\.gitkeep$' || true)
+WS_CHECK_DIR="data/agent_workspaces/"
+if [ ! -d "${WS_CHECK_DIR}" ] && [ -d "data/workspace/" ]; then
+  WS_CHECK_DIR="data/workspace/"
+fi
+UNTRACKED_WORKSPACE=$(git ls-files -o --exclude-standard "${WS_CHECK_DIR}" 2>/dev/null | grep -v "${WS_CHECK_DIR}\.gitkeep$" || true)
+TRACKED_WORKSPACE=$(git ls-files "${WS_CHECK_DIR}" 2>/dev/null | grep -v "${WS_CHECK_DIR}\.gitkeep$" || true)
 if [ -n "${UNTRACKED_WORKSPACE}" ] || [ -n "${TRACKED_WORKSPACE}" ]; then
   log_error "Untracked or tracked live workspace files detected: ${UNTRACKED_WORKSPACE} ${TRACKED_WORKSPACE}"
   exit 1
 fi
-log_success "Git tracking is clean: data/workspace/* properly ignored."
+log_success "Git tracking is clean: ${WS_CHECK_DIR}* properly ignored."
 
 echo ""
 echo -e "${GREEN}${BOLD}=================================================================${NC}"

@@ -878,10 +878,15 @@ index_lines.append("---\n")
 index_lines.append("> [!NOTE]\n> **Memory Purity Enforcement**: Only Markdown (`.md`) files are allowed in this space. Binary files, SQLite databases, package caches, and virtualenvs are strictly barred to ensure zero-trust human auditability.\n")
 index_content = "\n".join(index_lines)
 
-for target_idx in [
-    os.path.join(repo_root, "data", "memories", "index.md"),
-    os.path.join(repo_root, "config", "memories", "index.md")
-]:
+targets = [os.path.join(repo_root, "config", "memories", "index.md")]
+if os.path.exists(os.path.join(repo_root, "data", "agent_memories")):
+    targets.append(os.path.join(repo_root, "data", "agent_memories", "index.md"))
+elif os.path.exists(os.path.join(repo_root, "data", "memories")):
+    targets.append(os.path.join(repo_root, "data", "memories", "index.md"))
+else:
+    targets.append(os.path.join(repo_root, "data", "agent_memories", "index.md"))
+
+for target_idx in targets:
     os.makedirs(os.path.dirname(target_idx), exist_ok=True)
     with open(target_idx, "w", encoding="utf-8") as f:
         f.write(index_content)
