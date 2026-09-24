@@ -1,0 +1,7 @@
+.sst
+node_modules
+dist
+sst-env.d.ts
+.env
+.env.*
+!.env.example

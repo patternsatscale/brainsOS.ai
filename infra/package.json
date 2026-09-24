@@ -1,0 +1,17 @@
+{
+  "name": "titan-infra",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "sst deploy",
+    "diff": "sst diff",
+    "dev": "sst dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "sst": "3.3.27",
+    "typescript": "^5.8.2"
+  }
+}

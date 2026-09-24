@@ -36,6 +36,9 @@ fi
 
 cd "${REPO_ROOT}"
 
+CALLER_TITAN_DOMAIN="${TITAN_DOMAIN:-}"
+CALLER_ACME_DNS_PROVIDER="${ACME_DNS_PROVIDER:-}"
+
 # Load environment variables
 if [ -f .env ]; then
   set -a
@@ -46,6 +49,11 @@ elif [ -f .env.example ]; then
   . ./.env.example
   set +a
 fi
+
+[ -n "${CALLER_TITAN_DOMAIN}" ] && TITAN_DOMAIN="${CALLER_TITAN_DOMAIN}"
+[ -n "${CALLER_ACME_DNS_PROVIDER}" ] && ACME_DNS_PROVIDER="${CALLER_ACME_DNS_PROVIDER}"
+export TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+export ACME_DNS_PROVIDER="${ACME_DNS_PROVIDER:-}"
 
 if [ -n "${GITHUB_TOKEN_CINDY:-}" ] && [ -z "${GITHUB_BASIC_AUTH_CINDY:-}" ]; then
   GITHUB_BASIC_AUTH_CINDY="$(printf 'x-access-token:%s' "${GITHUB_TOKEN_CINDY}" | base64 | tr -d '\r\n')"
@@ -71,6 +79,7 @@ fi
 export MANIFEST_FILE
 OUTPUT_COMPOSE="${REPO_ROOT}/docker-compose.agents.yml"
 OUTPUT_CADDY="${REPO_ROOT}/config/caddy/agents.caddy"
+OUTPUT_TLS="${REPO_ROOT}/config/caddy/tls_policy.caddy"
 OUTPUT_CONTINUE="${REPO_ROOT}/config/editor/continue_config.yaml"
 OUTPUT_CONTINUE_JSON="${REPO_ROOT}/config/editor/continue_config.json"
 
@@ -96,7 +105,7 @@ MODE="${1:-sync}"
 # Core Generator in Python
 # ------------------------------------------------------------------------------
 render_manifest() {
-  MANIFEST_FILE="${MANIFEST_FILE}" ${PYTHON_BIN} - << 'EOF'
+  MANIFEST_FILE="${MANIFEST_FILE}" TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}" ACME_DNS_PROVIDER="${ACME_DNS_PROVIDER:-}" ${PYTHON_BIN} - << 'EOF'
 import os
 import sys
 import json
@@ -111,6 +120,8 @@ with open(manifest_path, "r", encoding="utf-8") as f:
 manifest_rel = os.path.relpath(manifest_path, repo_root)
 agents = manifest.get("agents", [])
 enabled_agents = [a for a in agents if a.get("enabled", True)]
+titan_domain = os.environ.get("TITAN_DOMAIN", "titan.local")
+acme_dns_provider = os.environ.get("ACME_DNS_PROVIDER", "")
 
 # 1. Render docker-compose.agents.yml
 compose_lines = [
@@ -284,7 +295,10 @@ for agent in enabled_agents:
 caddy_aliases = []
 for a in enabled_agents:
     sub = a.get("comms", {}).get("subdomain") or f"{a['id']}.titan.local"
-    caddy_aliases.append(f"api.{sub}")
+    sub_prefix = sub.split(".")[0]
+    caddy_aliases.append(f"api.{sub_prefix}.{titan_domain}")
+    if titan_domain != "titan.local":
+        caddy_aliases.append(f"api.{sub_prefix}.titan.local")
 
 compose_lines.extend([
     "  # --------------------------------------------------------------------------",
@@ -294,7 +308,7 @@ compose_lines.extend([
     "    networks:",
     "      titan-operator-net:",
     "        aliases:",
-] + [f"          - {alias}" for alias in caddy_aliases] + [
+] + [f"          - {alias}" for alias in sorted(set(caddy_aliases))] + [
     "",
 ])
 
@@ -326,25 +340,55 @@ for idx, agent in enumerate(enabled_agents):
 
     # Clean host routing - zero legacy debt
     sub_prefix = subdomain.split(".")[0]
-    host_list = [f"http://{subdomain}", f"https://{subdomain}", f"http://{sub_prefix}.localhost", f"https://{sub_prefix}.localhost"]
-    api_host_list = [f"http://api.{subdomain}", f"https://api.{subdomain}", f"http://api.{sub_prefix}.localhost", f"https://api.{sub_prefix}.localhost"]
+    agent_domain = f"{sub_prefix}.{titan_domain}"
 
-    if agent_id != sub_prefix:
-        host_list.extend([f"http://{agent_id}.localhost", f"https://{agent_id}.localhost"])
-        api_host_list.extend([f"http://api.{agent_id}.localhost", f"https://api.{agent_id}.localhost"])
-
+    # Public domain routes using titan_tls (Route 53 ACME or internal)
+    public_hosts = [f"http://{agent_domain}", f"https://{agent_domain}"]
     for extra in agent.get("comms", {}).get("extra_domains", []):
-        host_list.extend([f"http://{extra}", f"https://{extra}"])
-        api_host_list.extend([f"http://api.{extra}", f"https://api.{extra}"])
+        public_hosts.extend([f"http://{extra}", f"https://{extra}"])
 
-    hosts_str = ", ".join(host_list)
-    api_hosts_str = ", ".join(api_host_list)
+    # Localhost and .titan.local routes strictly using internal CA (never sent to ACME)
+    localhost_hosts = [f"http://{sub_prefix}.localhost", f"https://{sub_prefix}.localhost"]
+    if titan_domain != "titan.local":
+        localhost_hosts.extend([f"http://{sub_prefix}.titan.local", f"https://{sub_prefix}.titan.local"])
+    if agent_id != sub_prefix:
+        localhost_hosts.extend([f"http://{agent_id}.localhost", f"https://{agent_id}.localhost"])
+
+    # Public API routes using titan_tls
+    public_api_hosts = [f"http://api.{agent_domain}", f"https://api.{agent_domain}"]
+    for extra in agent.get("comms", {}).get("extra_domains", []):
+        public_api_hosts.extend([f"http://api.{extra}", f"https://api.{extra}"])
+
+    # Localhost and .titan.local API routes strictly using internal CA
+    localhost_api_hosts = [f"http://api.{sub_prefix}.localhost", f"https://api.{sub_prefix}.localhost"]
+    if titan_domain != "titan.local":
+        localhost_api_hosts.extend([f"http://api.{sub_prefix}.titan.local", f"https://api.{sub_prefix}.titan.local"])
+    if agent_id != sub_prefix:
+        localhost_api_hosts.extend([f"http://api.{agent_id}.localhost", f"https://api.{agent_id}.localhost"])
+
+
+    hosts_str = ", ".join(public_hosts)
+    local_hosts_str = ", ".join(localhost_hosts)
+    api_hosts_str = ", ".join(public_api_hosts)
+    local_api_hosts_str = ", ".join(localhost_api_hosts)
 
     caddy_lines.extend([
         f"# ------------------------------------------------------------------------------",
         f"# Agent Unit: {name} ({agent_id}) - Dashboard & Console",
         f"# ------------------------------------------------------------------------------",
         f"{hosts_str} {{",
+        f"	import titan_tls",
+        f"	encode gzip zstd",
+        f"	log {{",
+        f"		output stdout",
+        f"		format console",
+        f"	}}",
+        f"	reverse_proxy titan-agent-{agent_id}:{dash_port} {{",
+        f"		flush_interval -1",
+        f"	}}",
+        f"}}",
+        f"",
+        f"{local_hosts_str} {{",
         f"	tls internal",
         f"	encode gzip zstd",
         f"	log {{",
@@ -360,6 +404,18 @@ for idx, agent in enumerate(enabled_agents):
         f"# Agent Unit: {name} ({agent_id}) - OpenAI-Compatible API",
         f"# ------------------------------------------------------------------------------",
         f"{api_hosts_str} {{",
+        f"	import titan_tls",
+        f"	encode gzip zstd",
+        f"	log {{",
+        f"		output stdout",
+        f"		format console",
+        f"	}}",
+        f"	reverse_proxy titan-agent-{agent_id}:{port} {{",
+        f"		flush_interval -1",
+        f"	}}",
+        f"}}",
+        f"",
+        f"{local_api_hosts_str} {{",
         f"	tls internal",
         f"	encode gzip zstd",
         f"	log {{",
@@ -389,11 +445,13 @@ for agent in enabled_agents:
     agent_id = agent["id"]
     agent_name = agent.get("name", agent_id).split(" - ")[0]
     subdomain = agent.get("comms", {}).get("subdomain", f"{agent_id}.titan.local")
+    sub_prefix = subdomain.split(".")[0]
+    api_host = f"api.{sub_prefix}.{titan_domain}"
     continue_models.append({
         "name": f"{agent_name} (Agent API)",
         "provider": "openai",
         "model": "hermes-agent",
-        "apiBase": f"http://api.{subdomain}/v1",
+        "apiBase": f"http://{api_host}/v1",
         "apiKey": "${API_SERVER_KEY}",
         "roles": ["chat"]
     })
@@ -404,6 +462,25 @@ continue_cfg = {
     "schema": "v1",
     "models": continue_models
 }
+
+tls_lines = [
+    "# ==============================================================================",
+    "# Project Titan: TLS Policy Snippet",
+    "# Auto-generated by scripts/control/sync-agents.sh from environment configuration.",
+    "# DO NOT EDIT DIRECTLY. Make changes in .env and re-run sync.",
+    "# ==============================================================================",
+    "(titan_tls) {",
+]
+if acme_dns_provider.lower() == "route53" and not titan_domain.endswith(".local") and titan_domain != "localhost":
+    tls_lines.extend([
+        "	tls {",
+        "		dns route53",
+        "	}",
+    ])
+else:
+    tls_lines.append("	tls internal")
+tls_lines.append("}")
+rendered_tls_policy = "\n".join(tls_lines).strip() + "\n"
 
 rendered_compose = "\n".join(compose_lines).strip() + "\n"
 rendered_caddy = "\n".join(caddy_lines).strip() + "\n"
@@ -417,6 +494,9 @@ print("__END_COMPOSE__")
 print("__START_CADDY__")
 sys.stdout.write(rendered_caddy)
 print("__END_CADDY__")
+print("__START_TLS__")
+sys.stdout.write(rendered_tls_policy)
+print("__END_TLS__")
 print("__START_CONTINUE__")
 sys.stdout.write(rendered_continue)
 print("__END_CONTINUE__")
@@ -435,6 +515,7 @@ if [ "${MODE}" = "--check" ]; then
   RENDERED_OUTPUT=$(render_manifest)
   EXPECTED_COMPOSE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_COMPOSE__/,/__END_COMPOSE__/p' | sed '1d;$d')
   EXPECTED_CADDY=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CADDY__/,/__END_CADDY__/p' | sed '1d;$d')
+  EXPECTED_TLS=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_TLS__/,/__END_TLS__/p' | sed '1d;$d')
   EXPECTED_CONTINUE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE__/,/__END_CONTINUE__/p' | sed '1d;$d')
   EXPECTED_CONTINUE_JSON=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE_JSON__/,/__END_CONTINUE_JSON__/p' | sed '1d;$d')
 
@@ -460,6 +541,18 @@ if [ "${MODE}" = "--check" ]; then
     if [ "${ACTUAL_CADDY}" != "${EXPECTED_CADDY}" ]; then
       log_error "Drift detected in ${OUTPUT_CADDY}!"
       diff -u <(echo "${ACTUAL_CADDY}") <(echo "${EXPECTED_CADDY}") || true
+      DRIFT_DETECTED=1
+    fi
+  fi
+
+  if [ ! -f "${OUTPUT_TLS}" ]; then
+    log_error "Missing file: ${OUTPUT_TLS}"
+    DRIFT_DETECTED=1
+  else
+    ACTUAL_TLS=$(cat "${OUTPUT_TLS}")
+    if [ "${ACTUAL_TLS}" != "${EXPECTED_TLS}" ]; then
+      log_error "Drift detected in ${OUTPUT_TLS}!"
+      diff -u <(echo "${ACTUAL_TLS}") <(echo "${EXPECTED_TLS}") || true
       DRIFT_DETECTED=1
     fi
   fi
@@ -606,6 +699,7 @@ log_info "Synchronizing Project Titan Multi-Agent Fleet from ${MANIFEST_FILE}...
 RENDERED_OUTPUT=$(render_manifest)
 EXPECTED_COMPOSE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_COMPOSE__/,/__END_COMPOSE__/p' | sed '1d;$d')
 EXPECTED_CADDY=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CADDY__/,/__END_CADDY__/p' | sed '1d;$d')
+EXPECTED_TLS=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_TLS__/,/__END_TLS__/p' | sed '1d;$d')
 EXPECTED_CONTINUE=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE__/,/__END_CONTINUE__/p' | sed '1d;$d')
 EXPECTED_CONTINUE_JSON=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE_JSON__/,/__END_CONTINUE_JSON__/p' | sed '1d;$d')
 
@@ -613,10 +707,11 @@ EXPECTED_CONTINUE_JSON=$(echo "${RENDERED_OUTPUT}" | sed -n '/__START_CONTINUE_J
 echo "${EXPECTED_COMPOSE}" > "${OUTPUT_COMPOSE}"
 log_success "Rendered agent compose topology at ${OUTPUT_COMPOSE}."
 
-# 2. Write config/caddy/agents.caddy
+# 2. Write config/caddy/agents.caddy and tls_policy.caddy
 mkdir -p "${REPO_ROOT}/config/caddy"
 echo "${EXPECTED_CADDY}" > "${OUTPUT_CADDY}"
-log_success "Rendered Caddy ingress configuration at ${OUTPUT_CADDY}."
+echo "${EXPECTED_TLS}" > "${OUTPUT_TLS}"
+log_success "Rendered Caddy ingress configuration at ${OUTPUT_CADDY} and ${OUTPUT_TLS}."
 
 # 3. Write config/editor/continue_config.yaml & continue_config.json
 mkdir -p "$(dirname "${OUTPUT_CONTINUE}")"

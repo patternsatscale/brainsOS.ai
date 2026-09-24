@@ -7,7 +7,19 @@
 # ------------------------------------------------------------------------------
 # Agent Unit: Terrastella - Primary Operations Agent (terrastella) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://terrastella.titan.local, https://terrastella.titan.local, http://terrastella.localhost, https://terrastella.localhost {
+http://terrastella.titan.local, https://terrastella.titan.local {
+	import titan_tls
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy titan-agent-terrastella:9119 {
+		flush_interval -1
+	}
+}
+
+http://terrastella.localhost, https://terrastella.localhost {
 	tls internal
 	encode gzip zstd
 	log {
@@ -22,7 +34,19 @@ http://terrastella.titan.local, https://terrastella.titan.local, http://terraste
 # ------------------------------------------------------------------------------
 # Agent Unit: Terrastella - Primary Operations Agent (terrastella) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.terrastella.titan.local, https://api.terrastella.titan.local, http://api.terrastella.localhost, https://api.terrastella.localhost {
+http://api.terrastella.titan.local, https://api.terrastella.titan.local {
+	import titan_tls
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy titan-agent-terrastella:8642 {
+		flush_interval -1
+	}
+}
+
+http://api.terrastella.localhost, https://api.terrastella.localhost {
 	tls internal
 	encode gzip zstd
 	log {
@@ -37,7 +61,19 @@ http://api.terrastella.titan.local, https://api.terrastella.titan.local, http://
 # ------------------------------------------------------------------------------
 # Agent Unit: Marvin - Sports Analytics (marvin) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://marvin.titan.local, https://marvin.titan.local, http://marvin.localhost, https://marvin.localhost {
+http://marvin.titan.local, https://marvin.titan.local {
+	import titan_tls
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy titan-agent-marvin:9120 {
+		flush_interval -1
+	}
+}
+
+http://marvin.localhost, https://marvin.localhost {
 	tls internal
 	encode gzip zstd
 	log {
@@ -52,7 +88,19 @@ http://marvin.titan.local, https://marvin.titan.local, http://marvin.localhost, 
 # ------------------------------------------------------------------------------
 # Agent Unit: Marvin - Sports Analytics (marvin) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.marvin.titan.local, https://api.marvin.titan.local, http://api.marvin.localhost, https://api.marvin.localhost {
+http://api.marvin.titan.local, https://api.marvin.titan.local {
+	import titan_tls
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy titan-agent-marvin:8643 {
+		flush_interval -1
+	}
+}
+
+http://api.marvin.localhost, https://api.marvin.localhost {
 	tls internal
 	encode gzip zstd
 	log {
@@ -67,7 +115,19 @@ http://api.marvin.titan.local, https://api.marvin.titan.local, http://api.marvin
 # ------------------------------------------------------------------------------
 # Agent Unit: Bawtford - Creative Director & Supermodel CEO (bawtford) - Dashboard & Console
 # ------------------------------------------------------------------------------
-http://bawtford.titan.local, https://bawtford.titan.local, http://bawtford.localhost, https://bawtford.localhost, http://cindypawford.com, https://cindypawford.com {
+http://bawtford.titan.local, https://bawtford.titan.local, http://cindypawford.com, https://cindypawford.com {
+	import titan_tls
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy titan-agent-bawtford:9121 {
+		flush_interval -1
+	}
+}
+
+http://bawtford.localhost, https://bawtford.localhost {
 	tls internal
 	encode gzip zstd
 	log {
@@ -82,7 +142,19 @@ http://bawtford.titan.local, https://bawtford.titan.local, http://bawtford.local
 # ------------------------------------------------------------------------------
 # Agent Unit: Bawtford - Creative Director & Supermodel CEO (bawtford) - OpenAI-Compatible API
 # ------------------------------------------------------------------------------
-http://api.bawtford.titan.local, https://api.bawtford.titan.local, http://api.bawtford.localhost, https://api.bawtford.localhost, http://api.cindypawford.com, https://api.cindypawford.com {
+http://api.bawtford.titan.local, https://api.bawtford.titan.local, http://api.cindypawford.com, https://api.cindypawford.com {
+	import titan_tls
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy titan-agent-bawtford:8644 {
+		flush_interval -1
+	}
+}
+
+http://api.bawtford.localhost, https://api.bawtford.localhost {
 	tls internal
 	encode gzip zstd
 	log {
