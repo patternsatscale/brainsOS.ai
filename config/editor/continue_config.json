@@ -19,7 +19,7 @@
       "name": "Terrastella (Agent API)",
       "provider": "openai",
       "model": "hermes-agent",
-      "apiBase": "http://api.terrastella.titan.local/v1",
+      "apiBase": "http://api.terrastella.titan.local.patternsatscale.com/v1",
       "apiKey": "${API_SERVER_KEY}",
       "roles": [
         "chat"
@@ -29,7 +29,7 @@
       "name": "Marvin (Agent API)",
       "provider": "openai",
       "model": "hermes-agent",
-      "apiBase": "http://api.marvin.titan.local/v1",
+      "apiBase": "http://api.marvin.titan.local.patternsatscale.com/v1",
       "apiKey": "${API_SERVER_KEY}",
       "roles": [
         "chat"
@@ -39,7 +39,7 @@
       "name": "Bawtford (Agent API)",
       "provider": "openai",
       "model": "hermes-agent",
-      "apiBase": "http://api.bawtford.titan.local/v1",
+      "apiBase": "http://api.bawtford.titan.local.patternsatscale.com/v1",
       "apiKey": "${API_SERVER_KEY}",
       "roles": [
         "chat"

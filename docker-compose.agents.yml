@@ -61,8 +61,8 @@ services:
       - API_SERVER_PORT=8642
       - API_SERVER_KEY=${API_SERVER_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
-      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
-      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
+      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_TERRASTELLA:-${SIGNAL_ACCOUNT:-}}
+      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_TERRASTELLA:-${SIGNAL_ALLOWED_USERS:-}}
       - TELEGRAM_BOT_NAME=@Terrastella_bot
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_TERRASTELLA:-${TELEGRAM_BOT_TOKEN:-}}
       - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_TERRASTELLA:-${TELEGRAM_ALLOWED_USERS:-}}
@@ -233,8 +233,8 @@ services:
       - API_SERVER_PORT=8644
       - API_SERVER_KEY=${API_SERVER_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
-      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_BAWTFORD:-${SIGNAL_ACCOUNT:-}}
-      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_BAWTFORD:-${SIGNAL_ALLOWED_USERS:-}}
+      - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
+      - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
       - TELEGRAM_BOT_NAME=@BawtfordBot
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_CINDY:-${TELEGRAM_BOT_TOKEN:-}}
       - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS_CINDY:-${TELEGRAM_ALLOWED_USERS:-}}
@@ -274,8 +274,11 @@ services:
       titan-operator-net:
         aliases:
           - api.bawtford.titan.local
+          - api.bawtford.titan.local.patternsatscale.com
           - api.marvin.titan.local
+          - api.marvin.titan.local.patternsatscale.com
           - api.terrastella.titan.local
+          - api.terrastella.titan.local.patternsatscale.com
 
 volumes:
   tool_egress_proxy_data:

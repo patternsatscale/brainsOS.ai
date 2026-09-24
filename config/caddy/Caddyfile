@@ -62,6 +62,31 @@ http://editor.localhost, https://editor.localhost, http://code.localhost, https:
 	import editor_backend
 }
 
+# ==============================================================================
+# Communications Plane: SnappyMail Webmail Client Gateway (Ticket #156)
+# ==============================================================================
+(snappymail_backend) {
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy snappymail:8888 {
+		flush_interval -1
+	}
+}
+
+http://mail.{$TITAN_DOMAIN:titan.local}, https://mail.{$TITAN_DOMAIN:titan.local} {
+	import titan_tls
+	import snappymail_backend
+}
+
+http://mail.localhost, https://mail.localhost {
+	tls internal
+	import snappymail_backend
+}
+
+
 # Legacy Memory Plane Redirect (SilverBullet -> Operator IDE)
 http://memory.localhost {
 	redir http://editor.localhost{uri} permanent

@@ -69,6 +69,48 @@ services:
           - titan-signal-cli
           - signal-cli
 
+  # Communications & Mail Plane: Postfix + Dovecot Mail Engine (Ticket #156)
+  mail-server:
+    build:
+      context: ./docker/mail
+      dockerfile: Dockerfile
+    image: titan-mail-server:latest
+    container_name: titan-net-mail-server
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${MAIL_SMTP_PORT:-10025}:25"
+      - "127.0.0.1:${MAIL_IMAP_PORT:-10143}:143"
+    volumes:
+      - ${TITAN_COMMS_DIR:-./data/comms}/email/vmail:/var/mail/vmail
+      - ${TITAN_COMMS_DIR:-./data/comms}/email/config:/etc/mail-titan
+    networks:
+      titan-internal:
+        aliases:
+          - titan-net-mail-server
+          - titan-mail-server
+          - mail-server
+          - mail
+
+  # Communications & UX Plane: SnappyMail Webmail Client (Ticket #156)
+  snappymail:
+    image: djmaze/snappymail:latest
+    container_name: titan-net-snappymail
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${SNAPPYMAIL_PORT:-8888}:8888"
+    volumes:
+      - ${TITAN_COMMS_DIR:-./data/comms}/email/snappymail:/var/lib/snappymail
+    networks:
+      - titan-ingress
+      - titan-internal
+    environment:
+      - HTTP_PORT=8888
+
+
   # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
   code-server:
     build:

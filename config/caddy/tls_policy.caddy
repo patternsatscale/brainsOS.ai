@@ -4,5 +4,7 @@
 # DO NOT EDIT DIRECTLY. Make changes in .env and re-run sync.
 # ==============================================================================
 (titan_tls) {
-	tls internal
+	tls {
+		dns route53
+	}
 }

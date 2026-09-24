@@ -1,0 +1,39 @@
+# Project Titan: Lightweight Postfix SMTP Engine
+# Footprint: ~15MB RAM, local delivery to Dovecot LMTP
+
+compatibility_level = 3.9
+
+myhostname = mail.titan.local
+mydomain = titan.local
+myorigin = $mydomain
+mydestination = localhost
+
+inet_interfaces = all
+inet_protocols = ipv4
+
+# Trust Docker bridge networks
+mynetworks = 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+
+# Recipient restrictions
+smtpd_recipient_restrictions =
+    permit_mynetworks,
+    permit_sasl_authenticated,
+    reject_unauth_destination
+
+# Virtual Mailbox domains (delivered via Dovecot LMTP)
+virtual_mailbox_domains = titan.local
+virtual_transport = lmtp:inet:127.0.0.1:24
+virtual_mailbox_maps = lmdb:/etc/mail-titan/vmailbox
+virtual_alias_maps = lmdb:/etc/mail-titan/virtual
+
+# SASL authentication via Dovecot
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = inet:127.0.0.1:12345
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_security_options = noanonymous
+
+# Logging and Limits
+smtpd_banner = $myhostname ESMTP Titan Mail Server
+message_size_limit = 20971520
+mailbox_size_limit = 0
+maillog_file = /dev/stdout
