@@ -151,11 +151,26 @@ for agent in enabled_agents:
     tg_token_env = tg_config.get("token_env", f"TELEGRAM_BOT_TOKEN_{agent_id.upper().replace('-', '_')}")
     tg_users_env = tg_config.get("allowed_users_env", f"TELEGRAM_ALLOWED_USERS_{agent_id.upper().replace('-', '_')}")
 
+    mail_config = agent.get("comms", {}).get("email", {})
+    mail_address = mail_config.get("address", f"{agent_id}@titan.local")
+    mail_user_env = mail_config.get("user_env", f"{agent_id.upper().replace('-', '_')}_MAIL_USER")
+    mail_pass_env = mail_config.get("password_env", f"{agent_id.upper().replace('-', '_')}_MAIL_PASSWORD")
+    default_pass = f"titan_{agent_id.lower().replace('-', '_')}_mail_secret_change_me"
+    mail_env_lines = [
+        f"      - AGENT_MAIL_USER=${{{mail_user_env}:-{mail_address}}}",
+        f"      - AGENT_MAIL_PASSWORD=${{{mail_pass_env}:-{default_pass}}}",
+        f"      - TITAN_MAIL_SMTP_HOST=mail-server",
+        f"      - TITAN_MAIL_SMTP_PORT=25",
+        f"      - TITAN_MAIL_IMAP_HOST=mail-server",
+        f"      - TITAN_MAIL_IMAP_PORT=143",
+    ]
+
     mem_path = agent.get("memory", {}).get("path", f"./data/agent_memories/{agent_id}")
     work_path = agent.get("workspace", {}).get("path", f"./data/agent_workspaces/{agent_id}")
     site_path = agent.get("workspace", {}).get("site_path")
     canvas_mount = agent.get("workspace", {}).get("canvas_mount", "/app/html")
-    key_name = agent.get("routing", {}).get("virtual_key", f"HERMES_{agent_id.upper().replace('-', '_')}_KEY")
+    key_name = agent.get("routing", {}).get("virtual_key", f"{agent_id.upper().replace('-', '_')}_LITELLM_KEY")
+    api_key_name = agent.get("comms", {}).get("api_key_env", f"HERMES_API_{agent_id.upper().replace('-', '_')}_KEY")
 
     volume_lines = [
         f"      # L3: Memory Plane (pure OKF markdown)",
@@ -201,11 +216,12 @@ for agent in enabled_agents:
     depends_lines = [
         f"    depends_on:",
         f"      - signal-cli",
+        f"      - mail-server",
     ]
     if egress_enabled:
         http_proxy = egress_config.get("http_proxy", "http://titan-net-egress-proxy:8082")
         https_proxy = egress_config.get("https_proxy", "http://titan-net-egress-proxy:8082")
-        no_proxy = egress_config.get("no_proxy", "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal")
+        no_proxy = egress_config.get("no_proxy", "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal")
         egress_env_lines = [
             f"      - HTTP_PROXY={http_proxy}",
             f"      - HTTPS_PROXY={https_proxy}",
@@ -262,6 +278,8 @@ for agent in enabled_agents:
         f"      - OPENAI_BASE_URL=http://proxy.local:${{LITELLM_PORT:-4000}}/v1",
         f"      - PROXY_URL=http://proxy.local:${{LITELLM_PORT:-4000}}/v1",
         f"      - LITELLM_URL=http://proxy.local:${{LITELLM_PORT:-4000}}/v1",
+        f"      - HERMES_STREAM_STALE_TIMEOUT=600",
+        f"      - HERMES_STREAM_READ_TIMEOUT=600",
         f"      - MEMORY_DIR=/memories",
         f"      - WORKSPACE_DIR={workspace_dir_env}",
         f"      - HERMES_WRITE_SAFE_ROOT={write_safe_root}",
@@ -269,7 +287,7 @@ for agent in enabled_agents:
         f"      - HERMES_GATEWAY_BOOTSTRAP_STATE=running",
         f"      - API_SERVER_HOST=0.0.0.0",
         f"      - API_SERVER_PORT={port}",
-        f"      - API_SERVER_KEY=${{API_SERVER_KEY:-}}",
+        f"      - API_SERVER_KEY=${{{api_key_name}:-}}",
         f"      - SIGNAL_HTTP_URL={sig_http_url}",
         f"      - SIGNAL_ACCOUNT=${{SIGNAL_ACCOUNT:-}}" if sig_account_env == "SIGNAL_ACCOUNT" else f"      - SIGNAL_ACCOUNT=${{{sig_account_env}:-${{SIGNAL_ACCOUNT:-}}}}",
         f"      - SIGNAL_ALLOWED_USERS=${{SIGNAL_ALLOWED_USERS:-}}" if sig_users_env == "SIGNAL_ALLOWED_USERS" else f"      - SIGNAL_ALLOWED_USERS=${{{sig_users_env}:-${{SIGNAL_ALLOWED_USERS:-}}}}",
@@ -282,7 +300,7 @@ for agent in enabled_agents:
         f"      - LANGFUSE_OTEL_AUTH=${{LANGFUSE_OTEL_AUTH:-}}",
         f"      - OTEL_SERVICE_NAME=hermes-{agent_id}",
         f"      - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-{agent_id},agent.id={agent_id},session.id=titan-{agent_id}-default",
-    ] + git_env_lines + egress_env_lines + [
+    ] + git_env_lines + mail_env_lines + egress_env_lines + [
         f"    command: [\"sleep\", \"infinity\"]",
     ] + depends_lines + [
         f"    networks:",
@@ -447,12 +465,13 @@ for agent in enabled_agents:
     subdomain = agent.get("comms", {}).get("subdomain", f"{agent_id}.titan.local")
     sub_prefix = subdomain.split(".")[0]
     api_host = f"api.{sub_prefix}.{titan_domain}"
+    api_key_name = agent.get("comms", {}).get("api_key_env", f"HERMES_API_{agent_id.upper().replace('-', '_')}_KEY")
     continue_models.append({
         "name": f"{agent_name} (Agent API)",
         "provider": "openai",
         "model": "hermes-agent",
         "apiBase": f"http://{api_host}/v1",
-        "apiKey": "${API_SERVER_KEY}",
+        "apiKey": f"${{{api_key_name}}}",
         "roles": ["chat"]
     })
 
@@ -627,7 +646,7 @@ litellm_url = "${LITELLM_URL}"
 for agent in manifest.get("agents", []):
     agent_id = agent["id"]
     budget = float(agent.get("routing", {}).get("budget_monthly_usd", 25.0))
-    key_name = agent.get("routing", {}).get("virtual_key", f"HERMES_{agent_id.upper().replace('-', '_')}_KEY")
+    key_name = agent.get("routing", {}).get("virtual_key", f"{agent_id.upper().replace('-', '_')}_LITELLM_KEY")
     key_val = os.environ.get(key_name, f"sk-titan-{agent_id}-key")
 
     check_url = f"{litellm_url}/key/info?key={key_val}"
@@ -839,6 +858,14 @@ for agent in manifest.get("agents", []):
                 shutil.rmtree(dest_plugin)
             shutil.copytree(src_plugin, dest_plugin)
 
+    # Scaffold titan-mail plugin into workspace
+    src_mail_plugin = os.path.join(repo_root, "docker", "hermes", "plugins", "titan-mail")
+    dest_mail_plugin = os.path.join(work_dir, "plugins", "titan-mail")
+    if os.path.exists(src_mail_plugin):
+        if os.path.exists(dest_mail_plugin):
+            shutil.rmtree(dest_mail_plugin)
+        shutil.copytree(src_mail_plugin, dest_mail_plugin)
+
     # Seed initial Hermes working memory files if not present
     ws_memories_dir = os.path.join(work_dir, "memories")
     mem_file = os.path.join(ws_memories_dir, "MEMORY.md")
@@ -960,6 +987,26 @@ for agent in manifest.get("agents", []):
                 cfg["plugins"]["enabled"] = ["hermes-okf"]
             if "titan-subagents" not in cfg["plugins"]["enabled"]:
                 cfg["plugins"]["enabled"].append("titan-subagents")
+        # Ensure titan-mail plugin is enabled
+        if "plugins" not in cfg:
+            cfg["plugins"] = {"enabled": ["hermes-okf"]}
+        if "enabled" not in cfg["plugins"]:
+            cfg["plugins"]["enabled"] = ["hermes-okf"]
+        if "titan-mail" not in cfg["plugins"]["enabled"]:
+            cfg["plugins"]["enabled"].append("titan-mail")
+        # Ensure email platform gateway auto-reply is disabled
+        if "platforms" not in cfg:
+            cfg["platforms"] = {}
+        if "email" not in cfg["platforms"]:
+            cfg["platforms"]["email"] = {}
+        cfg["platforms"]["email"]["enabled"] = False
+        # Ensure tool_search dynamic deferral is disabled so model directly sees all tools
+        if "tools" not in cfg:
+            cfg["tools"] = {}
+        if "tool_search" not in cfg["tools"]:
+            cfg["tools"]["tool_search"] = {"enabled": "off"}
+        else:
+            cfg["tools"]["tool_search"]["enabled"] = "off"
         with open(dest_config, "w", encoding="utf-8") as df:
             yaml.safe_dump(cfg, df, sort_keys=False)
 

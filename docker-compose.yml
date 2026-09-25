@@ -85,6 +85,10 @@ services:
     volumes:
       - ${TITAN_COMMS_DIR:-./data/comms}/email/vmail:/var/mail/vmail
       - ${TITAN_COMMS_DIR:-./data/comms}/email/config:/etc/mail-titan
+    environment:
+      - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
+      - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
+      - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
     networks:
       titan-internal:
         aliases:
@@ -145,7 +149,9 @@ services:
       - PASSWORD=${CODE_SERVER_PASSWORD:-titan_operator_secret}
       - OPENAI_API_BASE=http://litellm:4000/v1
       - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}
-      - API_SERVER_KEY=${API_SERVER_KEY:-}
+      - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
+      - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
+      - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_EXTRA_CA_CERTS=/etc/ssl/caddy/root.crt
       - SSL_CERT_FILE=/etc/ssl/caddy/root.crt

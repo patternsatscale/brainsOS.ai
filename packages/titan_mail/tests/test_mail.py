@@ -85,6 +85,34 @@ class TestTitanMailClient(unittest.TestCase):
         body_searched = admin_client.search_messages(query="RFC threading")
         self.assertTrue(len(body_searched) >= 1)
 
+        # 6. Read specific message by Message-ID using read_message()
+        single_msg = admin_client.read_message(message_id=msg_id)
+        self.assertIsNotNone(single_msg)
+        self.assertEqual(single_msg["message_id"], msg_id)
+        self.assertEqual(single_msg["subject"], subject)
+
+        # 7. Reply with RFC threading headers (In-Reply-To, References)
+        reply_subject = f"Re: {subject}"
+        reply_body = "Directive confirmed. Executing instructions."
+        reply_msg_id = admin_client.send_mail(
+            to="terrastella@titan.local",
+            subject=reply_subject,
+            body=reply_body,
+            in_reply_to=msg_id,
+            references=msg_id,
+        )
+        self.assertTrue(reply_msg_id.startswith("<") and reply_msg_id.endswith("@titan.local>"))
+
+        time.sleep(1.5)
+
+        # Agent reads reply and verifies threading headers
+        agent_msgs = agent_client.fetch_messages(folder="INBOX", limit=5)
+        reply_matches = [m for m in agent_msgs if m["subject"] == reply_subject]
+        self.assertTrue(len(reply_matches) >= 1)
+        self.assertEqual(reply_matches[-1]["in_reply_to"], msg_id)
+        self.assertEqual(reply_matches[-1]["references"], msg_id)
+
 
 if __name__ == "__main__":
     unittest.main()
+

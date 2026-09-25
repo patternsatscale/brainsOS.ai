@@ -10,9 +10,16 @@ FROM nousresearch/hermes-agent:latest
 COPY packages/titan_memory /opt/hermes/packages/titan_memory
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/titan_memory
 
+# Install standalone titan-mail package (Communications Plane)
+COPY packages/titan_mail /opt/hermes/packages/titan_mail
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/titan_mail
+
 # Install native Titan OKF memory plugin
 COPY docker/hermes/plugins/hermes-okf /opt/hermes/plugins/hermes-okf
 RUN ln -sf /opt/hermes/plugins/hermes-okf /opt/hermes/plugins/memory/hermes-okf
+
+# Install native Titan Mail plugin & tools
+COPY docker/hermes/plugins/titan-mail /opt/hermes/plugins/titan-mail
 
 # Install GitHub CLI (gh), Git tooling, and configure safe container defaults
 RUN apt-get update -qq && \

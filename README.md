@@ -203,11 +203,11 @@ Once running, the following endpoints are accessible via your browser:
 | **Appliance Portal** | [http://titan.local](http://titan.local) | `80` / `443` | *None* | ASUS Ascent GX10 appliance dashboard & hub |
 | **Operator IDE** | [http://editor.titan.local](http://editor.titan.local) *(alias: [http://code.titan.local](http://code.titan.local))* | `8443` | `operator` / `${OPERATOR_PASSWORD}` | Containerized VS Code, Multi-Root Workspace, Aider, Continue & Foam PKM |
 | **Terrastella UI (Primary)** | [http://terrastella.titan.local](http://terrastella.titan.local) | `9119` | `admin` / `titan_admin_secret` | Primary operations agent dashboard, channels & tool config |
-| **Terrastella API (Primary)** | [http://api.terrastella.titan.local/v1](http://api.terrastella.titan.local/v1) | `8642` | Bearer `${HERMES_LITELLM_KEY}` | OpenAI-compatible chat completions interface |
+| **Terrastella API (Primary)** | [http://api.terrastella.titan.local/v1](http://api.terrastella.titan.local/v1) | `8642` | Bearer `${HERMES_API_TERRASTELLA_KEY}` (outbound: `${TERRASTELLA_LITELLM_KEY}`) | OpenAI-compatible chat completions interface |
 | **Marvin UI** | [http://marvin.titan.local](http://marvin.titan.local) | `9120` | `admin` / `titan_admin_secret` | Sports analytics agent dashboard & telemetry |
-| **Marvin API** | [http://api.marvin.titan.local/v1](http://api.marvin.titan.local/v1) | `8643` | Bearer `${HERMES_MARVIN_KEY}` | Sports analytics chat completions interface |
-| **Cindy Pawford UI** | [http://cindypawford.titan.local](http://cindypawford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Cindy Pawford supermodel CEO dashboard & atelier |
-| **Cindy Pawford API** | [http://api.cindypawford.titan.local/v1](http://api.cindypawford.titan.local/v1) | `8644` | Bearer `${HERMES_CINDY_LITELLM_KEY}` | Cindy Pawford chat completions interface |
+| **Marvin API** | [http://api.marvin.titan.local/v1](http://api.marvin.titan.local/v1) | `8643` | Bearer `${HERMES_API_MARVIN_KEY}` (outbound: `${MARVIN_LITELLM_KEY}`) | Sports analytics chat completions interface |
+| **Bawtford UI** | [http://bawtford.titan.local](http://bawtford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Bawtford supermodel CEO dashboard & atelier |
+| **Bawtford API** | [http://api.bawtford.titan.local/v1](http://api.bawtford.titan.local/v1) | `8644` | Bearer `${HERMES_API_BAWTFORD_KEY}` (outbound: `${BAWTFORD_LITELLM_KEY}`) | Bawtford chat completions interface |
 | **SnappyMail Webmail** | [http://mail.titan.local](http://mail.titan.local) *(alias: [http://mail.localhost](http://mail.localhost))* | `8888` / `80` | `admin@titan.local` / `${ADMIN_MAIL_PASSWORD}` | Internal email client with shared `Agent Fleet` mailboxes |
 | **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing, key & budget proxy |
 | **Langfuse Observability** | [http://langfuse.titan.local:3001](http://langfuse.titan.local:3001) | `3001` | *Local account* | Distributed tracing, token telemetry & agent spans |
@@ -356,8 +356,8 @@ project-titan/
     │   ├── verify-agent-telemetry.sh # End-to-end multi-agent & LiteLLM telemetry verification suite
     │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
     │   ├── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
-    │   ├── verify-dns-ssl.sh # Split-horizon DNS, Caddy Route 53 ACME, and SSL verification suite
-    │   └── verify-mail.sh    # Automated internal mail, SnappyMail, and shared mailbox test suite
+    │   ├── verify-mail.sh    # Automated internal mail, SnappyMail, and shared mailbox test suite
+    │   └── verify-agent-email.sh # Automated agent reactive email webhooks & Hermes tool test suite
 
     └── apps/                 # Application-specific operations and deployment tooling
         └── cindypawford/     # Autonomous fashion designer application suite

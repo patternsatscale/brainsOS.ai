@@ -19,11 +19,14 @@ agents:
       subdomain: "terrastella.titan.local"
       port: 8642
       dashboard_port: 9119
-      signal:
+      api_key_env: "HERMES_API_TERRASTELLA_KEY"
+      email:
         enabled: true
-        http_url: "http://signal-cli:8080"
-        account_env: "SIGNAL_ACCOUNT"
-        allowed_users_env: "SIGNAL_ALLOWED_USERS"
+        address: "terrastella@titan.local"
+        user_env: "TERRASTELLA_MAIL_USER"
+        password_env: "TERRASTELLA_MAIL_PASSWORD"
+      signal:
+        enabled: false
       telegram:
         enabled: false
         bot_name: "@Terrastella_bot"
@@ -48,42 +51,48 @@ agents:
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
       budget_monthly_usd: 50.00
-      virtual_key: "HERMES_LITELLM_KEY"
+      virtual_key: "TERRASTELLA_LITELLM_KEY"
 
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
       http_proxy: "http://titan-net-egress-proxy:8082"
       https_proxy: "http://titan-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
       otel_tracing: true
 
   # ----------------------------------------------------------------------------
-  # Agent Unit: Football Dan - Sports Analytics
+  # Agent Unit: Marvin - Sports Analytics
   # ----------------------------------------------------------------------------
-  - id: "football-dan"
-    name: "Football Dan - Sports Analytics"
+  - id: "marvin"
+    name: "Marvin - Sports Analytics"
     enabled: true
 
     # L1: Communications & UX Ingress
     comms:
-      subdomain: "football-dan.titan.local"
+      subdomain: "marvin.titan.local"
       port: 8643
       dashboard_port: 9120
+      api_key_env: "HERMES_API_MARVIN_KEY"
+      email:
+        enabled: true
+        address: "marvin@titan.local"
+        user_env: "MARVIN_MAIL_USER"
+        password_env: "MARVIN_MAIL_PASSWORD"
       signal:
         enabled: false
       telegram:
         enabled: false
-        bot_name: "@FootballDan_bot"
-        token_env: "TELEGRAM_BOT_TOKEN_FOOTBALL_DAN"
-        allowed_users_env: "TELEGRAM_ALLOWED_USERS_FOOTBALL_DAN"
+        bot_name: "@Marvin_bot"
+        token_env: "TELEGRAM_BOT_TOKEN_MARVIN"
+        allowed_users_env: "TELEGRAM_ALLOWED_USERS_MARVIN"
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/football-dan/SOUL.md"
+    persona: "config/hermes/marvin/SOUL.md"
     models:
       default: "titan-core"
       available:
@@ -92,51 +101,61 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/football-dan"
+      path: "./data/agent_memories/marvin"
     workspace:
-      path: "./data/agent_workspaces/football-dan"
+      path: "./data/agent_workspaces/marvin"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
       budget_monthly_usd: 25.00
-      virtual_key: "HERMES_FOOTBALL_DAN_KEY"
+      virtual_key: "MARVIN_LITELLM_KEY"
 
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
       http_proxy: "http://titan-net-egress-proxy:8082"
       https_proxy: "http://titan-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
       otel_tracing: true
 
   # ----------------------------------------------------------------------------
-  # Agent Unit: Cindy Pawford - Creative Director & Supermodel CEO
+  # Agent Unit: Bawtford - Creative Director & Supermodel CEO
   # ----------------------------------------------------------------------------
-  - id: "cindy-pawford"
-    name: "Cindy Pawford - Creative Director & Supermodel CEO"
+  - id: "bawtford"
+    name: "Bawtford - Creative Director & Supermodel CEO"
+    migrate_from: "cindy-pawford"
     enabled: true
 
     # L1: Communications & UX Ingress
     comms:
-      subdomain: "cindypawford.titan.local"
+      subdomain: "bawtford.titan.local"
       extra_domains:
         - "cindypawford.com"
       port: 8644
       dashboard_port: 9121
+      api_key_env: "HERMES_API_BAWTFORD_KEY"
+      email:
+        enabled: true
+        address: "bawtford@titan.local"
+        user_env: "BAWTFORD_MAIL_USER"
+        password_env: "BAWTFORD_MAIL_PASSWORD"
       signal:
-        enabled: false
+        enabled: true
+        http_url: "http://signal-cli:8080"
+        account_env: "SIGNAL_ACCOUNT"
+        allowed_users_env: "SIGNAL_ALLOWED_USERS"
       telegram:
         enabled: true
-        bot_name: "@CindyPawfordBot"
+        bot_name: "@BawtfordBot"
         token_env: "TELEGRAM_BOT_TOKEN_CINDY"
         allowed_users_env: "TELEGRAM_ALLOWED_USERS_CINDY"
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/cindy-pawford/SOUL.md"
+    persona: "config/hermes/bawtford/SOUL.md"
     models:
       default: "titan-core"
       available:
@@ -151,7 +170,7 @@ agents:
         name: "Website Builder Sub-Agent"
         tool_name: "build_website_feature"
         description: "Builds or updates HTML5, CSS, and JavaScript features on the public canvas (/app/html) under a clean software engineering persona without conversational artifacts."
-        persona: "config/hermes/cindy-pawford/web-developer/SOUL.md"
+        persona: "config/hermes/bawtford/web-developer/SOUL.md"
         model: "cindy-active-coding-model"
         target_dir: "/app/html"
         parameters:
@@ -187,29 +206,29 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/cindy-pawford"
+      path: "./data/agent_memories/bawtford"
     workspace:
-      path: "./data/agent_workspaces/cindy-pawford"
+      path: "./data/agent_workspaces/bawtford"
       site_path: "./apps/cindypawford/site"
       canvas_mount: "/app/html"
       repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
       protected_paths:
         - ".github"
     git:
-      user_name: "Cindy Pawford"
-      user_email: "cindy@cindypawford.com"
+      user_name: "Bawtford"
+      user_email: "bawtford@cindypawford.com"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
       budget_monthly_usd: 25.00
-      virtual_key: "HERMES_CINDY_LITELLM_KEY"
+      virtual_key: "BAWTFORD_LITELLM_KEY"
 
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
       http_proxy: "http://titan-net-egress-proxy:8082"
       https_proxy: "http://titan-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:

@@ -48,7 +48,7 @@ fi
 
 HERMES_PORT="${HERMES_PORT:-8642}"
 HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
-API_SERVER_KEY="${API_SERVER_KEY:-}"
+API_SERVER_KEY="${HERMES_API_TERRASTELLA_KEY:-${API_SERVER_KEY:-}}"
 TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
@@ -395,7 +395,7 @@ else
 fi
 
 log_info "Step 9: Verifying Gateway reachability via proxy.local from Hermes..."
-GATEWAY_HEALTH=$(docker compose exec -T "${HERMES_SERVICE}" curl -s -H "Authorization: Bearer ${HERMES_LITELLM_KEY}" http://proxy.local:4000/health || echo "failed")
+GATEWAY_HEALTH=$(docker compose exec -T "${HERMES_SERVICE}" curl -s -H "Authorization: Bearer ${TERRASTELLA_LITELLM_KEY:-${HERMES_LITELLM_KEY:-}}" http://proxy.local:4000/health || echo "failed")
 if echo "${GATEWAY_HEALTH}" | grep -q "healthy"; then
   log_success "Inference gateway reachable via proxy.local:4000 with virtual key."
 else

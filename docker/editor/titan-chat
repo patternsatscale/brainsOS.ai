@@ -11,24 +11,27 @@ PROMPT="$*"
 
 if [ -z "${AGENT}" ] || [ -z "${PROMPT}" ]; then
   echo "Usage: titan-chat <agent-name> <message>"
-  echo "Available agents: cindy (or cindy-pawford), terrastella, football-dan"
+  echo "Available agents: terrastella, marvin, bawtford"
   exit 1
 fi
 
 case "${AGENT}" in
-  cindy|cindy-pawford|cindypawford)
-    API_URL="http://api.cindypawford.titan.local/v1/chat/completions"
-    FALLBACK_URL="http://host.docker.internal:8644/v1/chat/completions"
-    MODEL="hermes-agent"
-    ;;
   terrastella)
     API_URL="http://api.terrastella.titan.local/v1/chat/completions"
     FALLBACK_URL="http://host.docker.internal:8642/v1/chat/completions"
+    AUTH_KEY="${HERMES_API_TERRASTELLA_KEY:-}"
     MODEL="hermes-agent"
     ;;
-  dan|football-dan)
-    API_URL="http://api.football-dan.titan.local/v1/chat/completions"
+  marvin)
+    API_URL="http://api.marvin.titan.local/v1/chat/completions"
     FALLBACK_URL="http://host.docker.internal:8643/v1/chat/completions"
+    AUTH_KEY="${HERMES_API_MARVIN_KEY:-}"
+    MODEL="hermes-agent"
+    ;;
+  bawtford|cindy|cindy-pawford)
+    API_URL="http://api.bawtford.titan.local/v1/chat/completions"
+    FALLBACK_URL="http://host.docker.internal:8644/v1/chat/completions"
+    AUTH_KEY="${HERMES_API_BAWTFORD_KEY:-}"
     MODEL="hermes-agent"
     ;;
   *)
@@ -45,7 +48,7 @@ fi
 
 echo "Connecting to ${AGENT} via ${TARGET_URL}..."
 curl -s -X POST "${TARGET_URL}" \
-  -H "Authorization: Bearer ${API_SERVER_KEY:-}" \
+  -H "Authorization: Bearer ${AUTH_KEY}" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg model "${MODEL}" --arg content "${PROMPT}" '{model: $model, messages: [{role: "user", content: $content}]}')" \
   | jq -r '.choices[0].message.content // .error.message // .'

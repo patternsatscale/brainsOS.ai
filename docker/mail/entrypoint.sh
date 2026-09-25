@@ -62,6 +62,21 @@ for user in $(cut -d: -f1 /etc/mail-titan/users); do
     chmod -R 770 "/var/mail/vmail/$name"
 done
 
+# Compile default Sieve script and ensure webhook dispatcher permissions
+if [ -f /etc/dovecot/sieve/default.sieve ]; then
+    sievec /etc/dovecot/sieve/default.sieve /etc/dovecot/sieve/default.svbin 2>/dev/null || true
+    chmod 644 /etc/dovecot/sieve/default.* 2>/dev/null || true
+    chown -R vmail:vmail /etc/dovecot/sieve 2>/dev/null || true
+fi
+if [ -f /usr/lib/dovecot/sieve-pipe/agent-webhook.sh ]; then
+    chmod 755 /usr/lib/dovecot/sieve-pipe/agent-webhook.sh
+fi
+
+# Initialize Dovecot log file
+touch /var/log/dovecot.log
+chown dovecot:dovecot /var/log/dovecot.log 2>/dev/null || true
+tail -n 0 -F /var/log/dovecot.log &
+
 # Start Dovecot
 echo "[TITAN-MAIL] Starting Dovecot daemon..."
 /usr/sbin/dovecot

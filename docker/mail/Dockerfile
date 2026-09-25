@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     dovecot-pigeonhole-plugin \
     bash \
     curl \
+    python3 \
     ca-certificates
 
 # Ensure vmail user & group exist with UID/GID 5000
@@ -30,9 +31,10 @@ COPY dovecot/dovecot.conf /etc/dovecot/dovecot.conf
 COPY postfix/main.cf /etc/postfix/main.cf
 COPY postfix/master.cf /etc/postfix/master.cf
 COPY sieve/default.sieve /etc/dovecot/sieve/default.sieve
+COPY agent-webhook.sh /usr/lib/dovecot/sieve-pipe/agent-webhook.sh
 COPY entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /entrypoint.sh && \
+RUN chmod +x /entrypoint.sh /usr/lib/dovecot/sieve-pipe/agent-webhook.sh && \
     sievec /etc/dovecot/sieve/default.sieve /etc/dovecot/sieve/default.svbin 2>/dev/null || true
 
 EXPOSE 25 143 587

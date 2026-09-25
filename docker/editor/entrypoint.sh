@@ -142,7 +142,11 @@ SRC_CONTINUE_YAML="/workspace/project-titan/config/editor/continue_config.yaml"
 SRC_CONTINUE_JSON="/workspace/project-titan/config/editor/continue_config.json"
 
 if [ -f "${SRC_CONTINUE_YAML}" ]; then
-  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_YAML}" > /home/coder/.continue/config.yaml
+  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; \
+       s|\${HERMES_API_TERRASTELLA_KEY}|${HERMES_API_TERRASTELLA_KEY:-}|g; \
+       s|\${HERMES_API_MARVIN_KEY}|${HERMES_API_MARVIN_KEY:-}|g; \
+       s|\${HERMES_API_BAWTFORD_KEY}|${HERMES_API_BAWTFORD_KEY:-}|g; \
+       s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_YAML}" > /home/coder/.continue/config.yaml
 else
   cat << EOF > /home/coder/.continue/config.yaml
 name: Titan Operator IDE
@@ -162,7 +166,11 @@ EOF
 fi
 
 if [ -f "${SRC_CONTINUE_JSON}" ]; then
-  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_JSON}" > /home/coder/.continue/config.json
+  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; \
+       s|\${HERMES_API_TERRASTELLA_KEY}|${HERMES_API_TERRASTELLA_KEY:-}|g; \
+       s|\${HERMES_API_MARVIN_KEY}|${HERMES_API_MARVIN_KEY:-}|g; \
+       s|\${HERMES_API_BAWTFORD_KEY}|${HERMES_API_BAWTFORD_KEY:-}|g; \
+       s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_JSON}" > /home/coder/.continue/config.json
 fi
 
 # 5. Scaffolding Aider CLI configuration

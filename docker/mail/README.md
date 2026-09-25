@@ -379,3 +379,32 @@ a2 LIST "" "*"
 a3 LOGOUT
 EOF
 ```
+
+---
+
+## 9. Reactive Inbound Webhooks & Hermes Tool-First Integration (Ticket #164)
+
+### Architectural Paradigm: Tool-First Comms
+
+To prevent LLM split-brain, context runaway, and accidental auto-reply feedback loops, autonomous agents operate under a **Tool-First Model**:
+1. **Platform Gateway Disabled**: The default chat auto-reply gateway (`platforms.email.enabled: false`) is strictly disabled.
+2. **Doorbell Inbound Wake-Up (Push)**:
+   - When an email arrives for any `@titan.local` fleet address, Dovecot Pigeonhole Sieve triggers `/etc/dovecot/sieve/default.sieve` via `sieve_before`.
+   - The script uses `vnd.dovecot.pipe` to execute `/usr/lib/dovecot/sieve-pipe/agent-webhook.sh`.
+   - `agent-webhook.sh` extracts RFC 822 headers (`To`, `From`, `Subject`, `Message-ID`, `In-Reply-To`, `Date`) into JSON, maps the recipient to the agent's port (`terrastella: 8642`, `marvin: 8643`, `bawtford: 8644`), and dispatches an asynchronous `POST /webhook` to `http://titan-agent-<name>:<port>/webhook`.
+   - The agent webhook endpoint responds immediately with `HTTP 200 OK`, logs the event to `/memories/logs/email_inbound.md` (Rule 1 compliant OKF Markdown), and wakes the agent runtime via a background self-post.
+3. **Explicit Tool Actions (Pull & Send)**:
+   - The agent actively inspects and processes emails using the `titan-mail` toolset:
+     - `search_emails(query=..., subject=..., from_addr=..., unread_only=...)`: Queries the IMAP server for matching messages.
+     - `read_email(seq_num=..., message_id=...)`: Reads full email body and parses threading metadata (`in_reply_to`, `references`).
+     - `send_email(to=..., subject=..., body=..., in_reply_to=..., references=...)`: Sends emails via Postfix SMTP.
+4. **Strict Sender Verification**:
+   - Every agent is strictly locked to its assigned identity (`{agent_id}@titan.local`). Any attempt to spoof another sender address is immediately rejected with an error before contacting SMTP.
+
+### Automated Verification
+
+Execute the dedicated agent email verification suite:
+```bash
+./scripts/verify/verify-agent-email.sh
+```
+
