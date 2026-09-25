@@ -63,27 +63,29 @@ http://editor.localhost, https://editor.localhost, http://code.localhost, https:
 }
 
 # ==============================================================================
-# Communications Plane: SnappyMail Webmail Client Gateway (Ticket #156)
+# Communications Plane: SOGo Groupware & Webmail Client Gateway (Ticket #166)
 # ==============================================================================
-(snappymail_backend) {
+(sogo_backend) {
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy snappymail:8888 {
+	@root path /
+	redir @root /SOGo 302
+	reverse_proxy sogo:20000 {
 		flush_interval -1
 	}
 }
 
 http://mail.{$TITAN_DOMAIN:titan.local}, https://mail.{$TITAN_DOMAIN:titan.local} {
 	import titan_tls
-	import snappymail_backend
+	import sogo_backend
 }
 
 http://mail.localhost, https://mail.localhost, http://mail.titan.local, https://mail.titan.local {
 	tls internal
-	import snappymail_backend
+	import sogo_backend
 }
 
 

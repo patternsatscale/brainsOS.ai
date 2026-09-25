@@ -41,21 +41,32 @@ source "${REPO_ROOT}/.env"
 set +a
 
 MAIL_SERVER_CONTAINER="titan-net-mail-server"
-SNAPPY_CONTAINER="titan-net-snappymail"
 CADDY_CONTAINER="titan-net-caddy"
 
 SMTP_PORT="${MAIL_SMTP_PORT:-10025}"
 IMAP_PORT="${MAIL_IMAP_PORT:-10143}"
-SNAPPY_PORT="${SNAPPYMAIL_PORT:-8888}"
 ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-titan_admin_mail_secret_change_me}"
 AGENT_PASS="${TERRASTELLA_MAIL_PASSWORD:-titan_terrastella_mail_secret_change_me}"
 TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+
+# Detect Webmail Client (SOGo per Ticket #166, with SnappyMail fallback)
+if docker compose ps --services | grep -q "^sogo$"; then
+    WEBMAIL_SVC="sogo"
+    WEBMAIL_CONTAINER="titan-net-sogo"
+    WEBMAIL_PORT="${SOGO_PORT:-20000}"
+    WEBMAIL_PATH="/SOGo"
+else
+    WEBMAIL_SVC="snappymail"
+    WEBMAIL_CONTAINER="titan-net-snappymail"
+    WEBMAIL_PORT="${SNAPPYMAIL_PORT:-8888}"
+    WEBMAIL_PATH="/"
+fi
 
 # ------------------------------------------------------------------------------
 # 1. Container Status & Health Check
 # ------------------------------------------------------------------------------
 log_info "Step 1: Checking Mail stack container status..."
-for svc in mail-server snappymail; do
+for svc in mail-server "${WEBMAIL_SVC}"; do
     if ! docker compose ps --services --filter "status=running" | grep -q "^${svc}$"; then
         log_warn "Service ${svc} is not running. Launching via docker compose up -d ${svc}..."
         docker compose up -d "${svc}"
@@ -66,17 +77,17 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${MAIL_SERVER_CONTAINER}$"; the
     log_error "Mail server container ${MAIL_SERVER_CONTAINER} is not running."
     exit 1
 fi
-if ! docker ps --format '{{.Names}}' | grep -q "^${SNAPPY_CONTAINER}$"; then
-    log_error "SnappyMail container ${SNAPPY_CONTAINER} is not running."
+if ! docker ps --format '{{.Names}}' | grep -q "^${WEBMAIL_CONTAINER}$"; then
+    log_error "Webmail container ${WEBMAIL_CONTAINER} is not running."
     exit 1
 fi
-log_success "Mail engine and SnappyMail containers are running."
+log_success "Mail engine and Webmail (${WEBMAIL_SVC}) containers are running."
 
 # ------------------------------------------------------------------------------
 # 2. Host Sandboxing & Security Profile (Rule 4)
 # ------------------------------------------------------------------------------
 log_info "Step 2: Auditing container security profiles and sandboxing (Rule 4)..."
-for c in "${MAIL_SERVER_CONTAINER}" "${SNAPPY_CONTAINER}"; do
+for c in "${MAIL_SERVER_CONTAINER}" "${WEBMAIL_CONTAINER}"; do
     PRIV=$(docker inspect "${c}" --format '{{.HostConfig.Privileged}}')
     if [ "$PRIV" = "true" ]; then
         log_error "Security violation (Rule 4): Container ${c} is running in privileged mode!"
@@ -95,7 +106,7 @@ log_success "Security profile verified: unprivileged containers, zero Docker soc
 # ------------------------------------------------------------------------------
 log_info "Step 3: Auditing mail stack memory footprint (Rule 3 budget: < 100 MB)..."
 # Sum memory usage in MiB
-STATS=$(docker stats --no-stream --format "{{.Name}}: {{.MemUsage}}" "${MAIL_SERVER_CONTAINER}" "${SNAPPY_CONTAINER}")
+STATS=$(docker stats --no-stream --format "{{.Name}}: {{.MemUsage}}" "${MAIL_SERVER_CONTAINER}" "${WEBMAIL_CONTAINER}")
 log_info "Live memory consumption:"
 echo "$STATS" | sed 's/^/   /'
 log_success "Mail stack memory footprint verified well within hardware limits."
@@ -103,7 +114,7 @@ log_success "Mail stack memory footprint verified well within hardware limits."
 # ------------------------------------------------------------------------------
 # 4. Ingress Gateway Verification (Caddy)
 # ------------------------------------------------------------------------------
-log_info "Step 4: Verifying Caddy reverse-proxy routing for SnappyMail..."
+log_info "Step 4: Verifying Caddy reverse-proxy routing for Webmail (${WEBMAIL_SVC})..."
 HTTP_CODE_LOCAL=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: mail.localhost" http://127.0.0.1:80 || true)
 HTTP_CODE_DOMAIN=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: mail.${TITAN_DOMAIN}" http://127.0.0.1:80 || true)
 
@@ -119,13 +130,13 @@ if [ "$HTTP_CODE_DOMAIN" != "200" ] && [ "$HTTP_CODE_DOMAIN" != "301" ] && [ "$H
 fi
 log_success "Caddy ingress verified for mail.${TITAN_DOMAIN} (HTTP $HTTP_CODE_DOMAIN)."
 
-# Direct SnappyMail port check
-HTTP_CODE_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:"${SNAPPY_PORT}" || true)
-if [ "$HTTP_CODE_DIRECT" != "200" ]; then
-    log_error "SnappyMail direct port ${SNAPPY_PORT} returned HTTP $HTTP_CODE_DIRECT"
+# Direct Webmail port check
+HTTP_CODE_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${WEBMAIL_PORT}${WEBMAIL_PATH}" || true)
+if [ "$HTTP_CODE_DIRECT" != "200" ] && [ "$HTTP_CODE_DIRECT" != "302" ]; then
+    log_error "Webmail direct port ${WEBMAIL_PORT} returned HTTP $HTTP_CODE_DIRECT"
     exit 1
 fi
-log_success "SnappyMail webmail direct port ${SNAPPY_PORT} verified healthy (HTTP 200)."
+log_success "Webmail (${WEBMAIL_SVC}) direct port ${WEBMAIL_PORT} verified healthy (HTTP ${HTTP_CODE_DIRECT})."
 
 # ------------------------------------------------------------------------------
 # 5. SMTP Delivery & IMAP Verification via Python Standard Library

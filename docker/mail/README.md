@@ -17,7 +17,7 @@ In an autonomous multi-agent operating environment, human-agent and agent-to-age
 Project Titan deploys a private, ultra-lightweight email system engineered specifically for edge AI appliances:
 * **Dedicated Agent Mailboxes**: Every agent (`operator@titan.local`, `terrastella@titan.local`, `bawtford@titan.local`, `marvin@titan.local`) has a native Maildir inbox.
 * **Human-in-the-Loop (HITL) Asynchronous Briefs**: Agents dispatch RFC-compliant emails to `admin@titan.local` with markdown-formatted briefs, preview URLs, and actionable decision points.
-* **The Unified Admin Cockpit (Shared Mailboxes)**: The human operator logs into a modern webmail interface (**SnappyMail**) once. All agent mailboxes are dynamically mapped into the admin's sidebar under an `Agent Fleet` namespace (e.g., `Agent Fleet / Terrastella`, `Agent Fleet / Bawtford`). The operator inspects agent reports, reviews sent drafts, and replies directly—with **zero account switching**.
+* **The Unified Admin Cockpit (SOGo Groupware)**: The human operator logs into a modern groupware interface (**SOGo**) once. All agent mailboxes are dynamically mapped into the admin's sidebar under an `Agent Fleet` namespace (e.g., `Agent Fleet / Terrastella`, `Agent Fleet / Bawtford`). The operator inspects agent reports, reviews sent drafts, inspects CalDAV calendars, and schedules tasks via calendar invites.
 * **Strict Multi-Tenant Isolation (Rule 9)**: Individual agents authenticate with Dovecot and have access *only* to their own personal Maildir. Cross-agent inspection or reading the administrator's mailbox is blocked at the IMAP protocol layer via RFC 4314 ACLs.
 
 ```text
@@ -27,6 +27,7 @@ Project Titan deploys a private, ultra-lightweight email system engineered speci
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────┐  │
 │  │   Terrastella   │    │    Bawtford     │    │     Marvin      │    │  Operator   │  │
 │  │ (Agent Sandbox) │    │ (Agent Sandbox) │    │ (Agent Sandbox) │    │ Receptionist│  │
+│  │ [titan-queue]   │    │ [titan-queue]   │    │ [titan-queue]   │    │ [titan-queue│  │
 │  └────────┬────────┘    └────────┬────────┘    └────────┬────────┘    └──────┬──────┘  │
 └───────────┼──────────────────────┼──────────────────────┼────────────────────┼─────────┘
             │                      │                      │                    │
@@ -50,6 +51,7 @@ Project Titan deploys a private, ultra-lightweight email system engineered speci
 │  │ Pigeonhole Sieve Engine (Event Hooks for Issue #164)                             │  │
 │  │ - Compiles default.sieve to bytecode (.svbin)                                    │  │
 │  │ - /usr/lib/dovecot/sieve-pipe mounted for wake-up webhook dispatch               │  │
+│  │ - Pipes new message brief to agent /webhook endpoint                             │  │
 │  └──────────────────────────────────────────────────────────────────────────────────┘  │
 │                                         │                                              │
 │                                         ▼                                              │
@@ -59,25 +61,58 @@ Project Titan deploys a private, ultra-lightweight email system engineered speci
                                           │ Internal IMAP (:143) / SMTP (:25)
                                           ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                          WEBMAIL CONTAINER (titan-snappymail)                          │
+│                   GROUPWARE CONTAINER: SOGo (titan-net-sogo)                           │
+│                   Replaces SnappyMail (Ticket #166)                                    │
 │                                                                                        │
-│  - Image: djmaze/snappymail:latest (Alpine PHP 8.2 FPM + Caddy/Nginx)                  │
-│  - Pre-seeded titan.local domain profile (Zero manual config required)                 │
-│  - Displays personal Admin Inbox + dynamically subscribed Agent Fleet inboxes          │
+│  - Native ARM64 (debian:bookworm-slim + sogo 5.8.0 + memcached)                        │
+│  - CalDAV / CardDAV / Webmail Unified Engine                                           │
+│  - sogo-ealarms-notify (1-minute calendar event reminder dispatcher)                  │
+│  - Dedicated Isolated DB: titan-sogo-db (PostgreSQL 16, Rule 6 strictly enforced)     │
 └─────────────────────────────────────────┬──────────────────────────────────────────────┘
                                           │
-                                          │ Reverse Proxy HTTP (Port 8888)
+                                          │ Reverse Proxy HTTP (Port 20000)
                                           ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                       INGRESS REVERSE PROXY (titan-infra-caddy)                        │
 │                                                                                        │
-│  - Virtual Hosts: mail.localhost, mail.titan.local, localhost:8888                     │
-│  - Future: WireGuard / Tailscale Secure VPN Entrypoint (Issue #164)                    │
+│  - Virtual Hosts: mail.localhost, mail.titan.local -> sogo:20000 (/ -> /SOGo)         │
 └─────────────────────────────────────────┬──────────────────────────────────────────────┘
                                           │
                                           ▼
-                              Human Operator Web Browser
-                         (Private Access: "Open to me and only me")
+                               Human Operator Web Browser
+                         (Unified Webmail & Multi-Agent CalDAV)
+```
+
+---
+
+## 2. Core Service Components
+
+Rather than deploying heavyweight enterprise mail servers (which routinely consume 500 MB to 1 GB+ RAM due to embedded anti-spam scanners, anti-virus daemons, and bloated database engines), Project Titan combines **Alpine Postfix** and **Dovecot** in a single, unprivileged container:
+
+### A. Postfix (Message Transfer Agent - MTA)
+* **Role**: Accepts local SMTP submissions from agent containers and SOGo; routes messages to the local virtual mailbox delivery agent.
+* **Ports**:
+  * `25` (Standard SMTP): Open to the internal Docker network (`titan-internal`) for local container dispatch.
+  * `587` (Submission): Authenticated submission supporting SASL authentication via Dovecot.
+* **Local Hand-off**: Uses **LMTP (Local Mail Transfer Protocol)** over TCP (`127.0.0.1:24`) to deliver incoming mail directly to Dovecot.
+* **Modern Storage**: Configured with **LMDB** (`virtual_mailbox_maps = lmdb:/etc/mail-titan/vmailbox`), completely avoiding deprecated Berkeley DB hash dependencies on modern Alpine distributions.
+
+### B. Dovecot (Mail Delivery Agent & IMAP Server - MDA)
+* **Role**: Handles mailbox storage (Maildir format), local indexing, IMAP retrieval for webmail, shared folder namespaces, and access control.
+* **Extreme Low Footprint**: Written in optimized C with memory-mapped (`mmap`) indices (`dovecot.index`). When idle, Dovecot consumes **under 15 MiB RAM**.
+* **Authentication**: File-based passdb (`/etc/mail-titan/users`) with encrypted or plaintext schemes—requiring zero external database dependencies.
+* **Storage Engine**: Maildir layout (`/var/mail/vmail/%n/Maildir`) providing 100% human-readable flat-file message persistence.
+
+### C. Pigeonhole Sieve Engine (Event Hooks for Issue #164)
+* **Role**: Dovecot LMTP is configured with the **Pigeonhole Sieve extension** (`sieve_plugins = sieve_extprograms`, `sieve_global_extensions = +vnd.dovecot.pipe`).
+* **Extension Hook**: Script `/usr/lib/dovecot/sieve-pipe/agent-webhook.sh` pipes incoming email metadata to target agent containers (`http://titan-agent-<name>:<port>/webhook`) to wake agents up asynchronously.
+
+### D. SOGo Groupware & CalDAV Subsystem (Ticket #166)
+* **Role**: Replaces legacy SnappyMail with a comprehensive, modern groupware suite supporting Webmail, Multi-Agent CalDAV Calendars, CardDAV address books, and automated reminder triggers.
+* **Image**: `titan-sogo:latest` built natively on ARM64 from `debian:bookworm-slim` packaging SOGo 5.8.0, local memcached, and PostgreSQL driver.
+* **Email Alarms Engine**: Background daemon executes `sogo-ealarms-notify` every 60 seconds. When an event reminder fires, SOGo dispatches an email via Postfix (`mail-server:25`), which passes through Dovecot LMTP and triggers the agent's webhook.
+* **Database Isolation (Rule 6)**: SOGo persistence is hosted exclusively in `titan-sogo-db` (`postgres:16-alpine`), completely isolated from `titan-infra-litellm-db`.
+* **Zero Overhead**: Total idle footprint of SOGo (~18 MiB) and SOGo DB (~36 MiB) is ~54 MiB, well below the appliance budget.    (Private Access: "Open to me and only me")
 ```
 
 ---

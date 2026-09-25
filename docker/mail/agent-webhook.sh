@@ -9,6 +9,13 @@ set -e
 # Read piped email from stdin
 EMAIL_RAW="$(cat)"
 
+# Source environment variables if available
+if [ -f /etc/environment ]; then
+    set -a
+    . /etc/environment
+    set +a
+fi
+
 # 1. Determine recipient from $1 (Sieve envelope argument) or fallback to To header
 RECIPIENT_ARG="${1:-}"
 

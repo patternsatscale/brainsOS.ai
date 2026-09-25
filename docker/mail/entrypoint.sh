@@ -77,6 +77,10 @@ touch /var/log/dovecot.log
 chown dovecot:dovecot /var/log/dovecot.log 2>/dev/null || true
 tail -n 0 -F /var/log/dovecot.log &
 
+# Export environment variables for Dovecot Sieve child scripts
+env | grep -E '^(HERMES_API_|TITAN_AGENT_)' > /etc/environment || true
+chmod 644 /etc/environment
+
 # Start Dovecot
 echo "[TITAN-MAIL] Starting Dovecot daemon..."
 /usr/sbin/dovecot
