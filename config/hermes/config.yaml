@@ -9,6 +9,7 @@ model:
   default: "titan-core"
   provider: "custom"
   base_url: "http://proxy.local:4000/v1"
+  context_length: 65536
 
 providers:
   custom:
@@ -30,10 +31,15 @@ terminal:
   backend: "local"
   timeout: 180
 
+tools:
+  tool_search:
+    enabled: "off"
+
 plugins:
   enabled:
     - hermes-okf
     - titan-subagents
+    - titan-mail
 
 platforms:
   api_server:
@@ -41,6 +47,8 @@ platforms:
   signal:
     enabled: false
   telegram:
+    enabled: false
+  email:
     enabled: false
 
 monitoring:

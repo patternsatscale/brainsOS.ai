@@ -99,7 +99,7 @@ if [ "${TARGET_TENANT}" != "all" ]; then
 
   # Resolve tenant virtual key (macOS Bash 3.2 compatible)
   UPPER_TENANT=$(echo "${TARGET_TENANT}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-  TENANT_VAR_NAME="HERMES_${UPPER_TENANT}_KEY"
+  TENANT_VAR_NAME="${UPPER_TENANT}_LITELLM_KEY"
   eval "KEY_VAL=\${${TENANT_VAR_NAME}:-}"
   if [ -z "${KEY_VAL}" ]; then
     KEY_VAL="sk-titan-${TARGET_TENANT}-key"
@@ -131,8 +131,9 @@ else
   fi
 
   # Revoke primary key if defined
-  if [ -n "${HERMES_LITELLM_KEY:-}" ]; then
-    revoke_key "${HERMES_LITELLM_KEY}"
+  PRIMARY_VKEY="${TERRASTELLA_LITELLM_KEY:-${HERMES_LITELLM_KEY:-}}"
+  if [ -n "${PRIMARY_VKEY}" ]; then
+    revoke_key "${PRIMARY_VKEY}"
   fi
 
   # Revoke all manifest keys if possible
@@ -147,7 +148,7 @@ if os.path.exists(manifest_path) and master_key:
         data = yaml.safe_load(f) or {}
     for a in data.get('agents', []):
         aid = a['id']
-        key_name = a.get('routing', {}).get('virtual_key', f'HERMES_{aid.upper().replace(\"-\", \"_\")}_KEY')
+        key_name = a.get('routing', {}).get('virtual_key', f'{aid.upper().replace(\"-\", \"_\")}_LITELLM_KEY')
         key_val = os.environ.get(key_name, f'sk-titan-{aid}-key')
         req = urllib.request.Request(
             f'{litellm_url}/key/delete',

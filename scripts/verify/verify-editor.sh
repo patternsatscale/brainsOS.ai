@@ -232,7 +232,7 @@ fi
 # In-container Agent API DNS reachability check
 log_info "Verifying Operator IDE network reachability to Ingress Gateway Agent APIs..."
 AGENT_PROBE=$(docker compose exec -T code-server curl -s -m 5 -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer ${API_SERVER_KEY:-}" \
+  -H "Authorization: Bearer ${HERMES_API_TERRASTELLA_KEY:-${API_SERVER_KEY:-}}" \
   "http://api.terrastella.titan.local/v1/models" 2>/dev/null || echo "000")
 if echo "${AGENT_PROBE}" | grep -qE '^(200|401|405)'; then
   log_success "Operator IDE successfully routed to api.terrastella.titan.local (HTTP ${AGENT_PROBE})."

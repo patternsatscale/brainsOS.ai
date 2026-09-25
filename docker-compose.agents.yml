@@ -46,12 +46,14 @@ services:
       - HERMES_DASHBOARD_PORT=9119
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_LITELLM_KEY:-sk-titan-terrastella-key}
-      - CUSTOM_API_KEY=${HERMES_LITELLM_KEY:-sk-titan-terrastella-key}
-      - OPENAI_API_KEY=${HERMES_LITELLM_KEY:-sk-titan-terrastella-key}
+      - HERMES_LITELLM_KEY=${TERRASTELLA_LITELLM_KEY:-sk-titan-terrastella-key}
+      - CUSTOM_API_KEY=${TERRASTELLA_LITELLM_KEY:-sk-titan-terrastella-key}
+      - OPENAI_API_KEY=${TERRASTELLA_LITELLM_KEY:-sk-titan-terrastella-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
+      - HERMES_STREAM_STALE_TIMEOUT=600
+      - HERMES_STREAM_READ_TIMEOUT=600
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/opt/data
       - HERMES_WRITE_SAFE_ROOT=/opt/data
@@ -59,7 +61,7 @@ services:
       - HERMES_GATEWAY_BOOTSTRAP_STATE=running
       - API_SERVER_HOST=0.0.0.0
       - API_SERVER_PORT=8642
-      - API_SERVER_KEY=${API_SERVER_KEY:-}
+      - API_SERVER_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_TERRASTELLA:-${SIGNAL_ACCOUNT:-}}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_TERRASTELLA:-${SIGNAL_ALLOWED_USERS:-}}
@@ -72,18 +74,25 @@ services:
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
       - OTEL_SERVICE_NAME=hermes-terrastella
       - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-terrastella,agent.id=terrastella,session.id=titan-terrastella-default
+      - AGENT_MAIL_USER=${TERRASTELLA_MAIL_USER:-terrastella@titan.local}
+      - AGENT_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-titan_terrastella_mail_secret_change_me}
+      - TITAN_MAIL_SMTP_HOST=mail-server
+      - TITAN_MAIL_SMTP_PORT=25
+      - TITAN_MAIL_IMAP_HOST=mail-server
+      - TITAN_MAIL_IMAP_PORT=143
       - HTTP_PROXY=http://titan-net-egress-proxy:8082
       - HTTPS_PROXY=http://titan-net-egress-proxy:8082
       - http_proxy=http://titan-net-egress-proxy:8082
       - https_proxy=http://titan-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
     command: ["sleep", "infinity"]
     depends_on:
       - signal-cli
+      - mail-server
       - tool-egress-proxy
     networks:
       - titan-ingress
@@ -130,12 +139,14 @@ services:
       - HERMES_DASHBOARD_PORT=9120
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_MARVIN_KEY:-sk-titan-marvin-key}
-      - CUSTOM_API_KEY=${HERMES_MARVIN_KEY:-sk-titan-marvin-key}
-      - OPENAI_API_KEY=${HERMES_MARVIN_KEY:-sk-titan-marvin-key}
+      - HERMES_LITELLM_KEY=${MARVIN_LITELLM_KEY:-sk-titan-marvin-key}
+      - CUSTOM_API_KEY=${MARVIN_LITELLM_KEY:-sk-titan-marvin-key}
+      - OPENAI_API_KEY=${MARVIN_LITELLM_KEY:-sk-titan-marvin-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
+      - HERMES_STREAM_STALE_TIMEOUT=600
+      - HERMES_STREAM_READ_TIMEOUT=600
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/opt/data
       - HERMES_WRITE_SAFE_ROOT=/opt/data
@@ -143,7 +154,7 @@ services:
       - HERMES_GATEWAY_BOOTSTRAP_STATE=running
       - API_SERVER_HOST=0.0.0.0
       - API_SERVER_PORT=8643
-      - API_SERVER_KEY=${API_SERVER_KEY:-}
+      - API_SERVER_KEY=${HERMES_API_MARVIN_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT_MARVIN:-${SIGNAL_ACCOUNT:-}}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS_MARVIN:-${SIGNAL_ALLOWED_USERS:-}}
@@ -156,18 +167,25 @@ services:
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-}
       - OTEL_SERVICE_NAME=hermes-marvin
       - OTEL_RESOURCE_ATTRIBUTES=service.name=hermes-marvin,agent.id=marvin,session.id=titan-marvin-default
+      - AGENT_MAIL_USER=${MARVIN_MAIL_USER:-marvin@titan.local}
+      - AGENT_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-titan_marvin_mail_secret_change_me}
+      - TITAN_MAIL_SMTP_HOST=mail-server
+      - TITAN_MAIL_SMTP_PORT=25
+      - TITAN_MAIL_IMAP_HOST=mail-server
+      - TITAN_MAIL_IMAP_PORT=143
       - HTTP_PROXY=http://titan-net-egress-proxy:8082
       - HTTPS_PROXY=http://titan-net-egress-proxy:8082
       - http_proxy=http://titan-net-egress-proxy:8082
       - https_proxy=http://titan-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
     command: ["sleep", "infinity"]
     depends_on:
       - signal-cli
+      - mail-server
       - tool-egress-proxy
     networks:
       - titan-ingress
@@ -218,12 +236,14 @@ services:
       - HERMES_DASHBOARD_PORT=9121
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-admin}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-titan_admin_secret}
-      - HERMES_LITELLM_KEY=${HERMES_BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
-      - CUSTOM_API_KEY=${HERMES_BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
-      - OPENAI_API_KEY=${HERMES_BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
+      - HERMES_LITELLM_KEY=${BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
+      - CUSTOM_API_KEY=${BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
+      - OPENAI_API_KEY=${BAWTFORD_LITELLM_KEY:-sk-titan-bawtford-key}
       - OPENAI_BASE_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - PROXY_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
       - LITELLM_URL=http://proxy.local:${LITELLM_PORT:-4000}/v1
+      - HERMES_STREAM_STALE_TIMEOUT=600
+      - HERMES_STREAM_READ_TIMEOUT=600
       - MEMORY_DIR=/memories
       - WORKSPACE_DIR=/workspace
       - HERMES_WRITE_SAFE_ROOT=/opt/data:/workspace:/app/html
@@ -231,7 +251,7 @@ services:
       - HERMES_GATEWAY_BOOTSTRAP_STATE=running
       - API_SERVER_HOST=0.0.0.0
       - API_SERVER_PORT=8644
-      - API_SERVER_KEY=${API_SERVER_KEY:-}
+      - API_SERVER_KEY=${HERMES_API_BAWTFORD_KEY:-}
       - SIGNAL_HTTP_URL=http://signal-cli:8080
       - SIGNAL_ACCOUNT=${SIGNAL_ACCOUNT:-}
       - SIGNAL_ALLOWED_USERS=${SIGNAL_ALLOWED_USERS:-}
@@ -249,18 +269,25 @@ services:
       - GIT_COMMITTER_NAME=Bawtford
       - GIT_COMMITTER_EMAIL=bawtford@cindypawford.com
       - GIT_TERMINAL_PROMPT=0
+      - AGENT_MAIL_USER=${BAWTFORD_MAIL_USER:-bawtford@titan.local}
+      - AGENT_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-titan_bawtford_mail_secret_change_me}
+      - TITAN_MAIL_SMTP_HOST=mail-server
+      - TITAN_MAIL_SMTP_PORT=25
+      - TITAN_MAIL_IMAP_HOST=mail-server
+      - TITAN_MAIL_IMAP_PORT=143
       - HTTP_PROXY=http://titan-net-egress-proxy:8082
       - HTTPS_PROXY=http://titan-net-egress-proxy:8082
       - http_proxy=http://titan-net-egress-proxy:8082
       - https_proxy=http://titan-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
     command: ["sleep", "infinity"]
     depends_on:
       - signal-cli
+      - mail-server
       - tool-egress-proxy
     networks:
       - titan-ingress

@@ -28,7 +28,7 @@ http://proxy.{$TITAN_DOMAIN:titan.local}, https://proxy.{$TITAN_DOMAIN:titan.loc
 	import proxy_backend
 }
 
-http://proxy.localhost, https://proxy.localhost {
+http://proxy.localhost, https://proxy.localhost, http://proxy.titan.local, https://proxy.titan.local {
 	tls internal
 	import proxy_backend
 }
@@ -57,43 +57,45 @@ http://editor.{$TITAN_DOMAIN:titan.local}, https://editor.{$TITAN_DOMAIN:titan.l
 	import editor_backend
 }
 
-http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost {
+http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost, http://editor.titan.local, https://editor.titan.local, http://code.titan.local, https://code.titan.local {
 	tls internal
 	import editor_backend
 }
 
 # ==============================================================================
-# Communications Plane: SnappyMail Webmail Client Gateway (Ticket #156)
+# Communications Plane: SOGo Groupware & Webmail Client Gateway (Ticket #166)
 # ==============================================================================
-(snappymail_backend) {
+(sogo_backend) {
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy snappymail:8888 {
+	@root path /
+	redir @root /SOGo 302
+	reverse_proxy sogo:20000 {
 		flush_interval -1
 	}
 }
 
 http://mail.{$TITAN_DOMAIN:titan.local}, https://mail.{$TITAN_DOMAIN:titan.local} {
 	import titan_tls
-	import snappymail_backend
+	import sogo_backend
 }
 
-http://mail.localhost, https://mail.localhost {
+http://mail.localhost, https://mail.localhost, http://mail.titan.local, https://mail.titan.local {
 	tls internal
-	import snappymail_backend
+	import sogo_backend
 }
 
 
 # Legacy Memory Plane Redirect (SilverBullet -> Operator IDE)
-http://memory.localhost {
-	redir http://editor.localhost{uri} permanent
+http://memory.localhost, http://memory.titan.local {
+	redir http://editor.titan.local{uri} permanent
 }
-https://memory.localhost {
+https://memory.localhost, https://memory.titan.local {
 	tls internal
-	redir https://editor.localhost{uri} permanent
+	redir https://editor.titan.local{uri} permanent
 }
 http://memory.{$TITAN_DOMAIN:titan.local} {
 	redir http://editor.{$TITAN_DOMAIN:titan.local}{uri} permanent
@@ -122,7 +124,7 @@ http://dgx.{$TITAN_DOMAIN:titan.local}, https://dgx.{$TITAN_DOMAIN:titan.local} 
 	import dgx_backend
 }
 
-http://dgx.localhost, https://dgx.localhost {
+http://dgx.localhost, https://dgx.localhost, http://dgx.titan.local, https://dgx.titan.local {
 	tls internal
 	import dgx_backend
 }
@@ -146,7 +148,7 @@ http://langfuse.{$TITAN_DOMAIN:titan.local}, https://langfuse.{$TITAN_DOMAIN:tit
 	import langfuse_backend
 }
 
-http://langfuse.localhost, https://langfuse.localhost {
+http://langfuse.localhost, https://langfuse.localhost, http://langfuse.titan.local, https://langfuse.titan.local {
 	tls internal
 	import langfuse_backend
 }
@@ -172,7 +174,7 @@ http://efw.{$TITAN_DOMAIN:titan.local}, https://efw.{$TITAN_DOMAIN:titan.local},
 	import efw_backend
 }
 
-http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost {
+http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost, http://efw.titan.local, https://efw.titan.local, http://firewall.titan.local, https://firewall.titan.local {
 	tls internal
 	import efw_backend
 }
@@ -1051,7 +1053,7 @@ http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://
 	import landing_page_content
 }
 
-http://localhost, https://localhost, :80, :443 {
+http://localhost, https://localhost, http://titan.local, https://titan.local, :80, :443 {
 	tls internal
 	import landing_page_content
 }

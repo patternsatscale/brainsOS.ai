@@ -210,3 +210,69 @@ class TitanMailClient:
             if status != "OK" or not folders:
                 return []
             return [f.decode() for f in folders if f]
+
+    def read_message(
+        self,
+        message_id: Optional[str] = None,
+        seq_num: Optional[str] = None,
+        folder: str = "INBOX",
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch and return a single message by Message-ID or IMAP sequence number."""
+        if not self.username or not self.password:
+            raise ValueError("IMAP operations require username and password")
+
+        if message_id:
+            clean_id = message_id.strip()
+            # Clean enclosing angle brackets if present for IMAP header query
+            header_query = clean_id
+            if header_query.startswith("<") and header_query.endswith(">"):
+                header_query = header_query[1:-1]
+            criteria = f'HEADER Message-ID "{header_query}"'
+            msgs = self.fetch_messages(folder=folder, criteria=criteria, limit=1)
+            if msgs:
+                return msgs[0]
+            # Fallback search if exact HEADER match didn't return
+            msgs = self.search_messages(query=clean_id, folder=folder, limit=1)
+            return msgs[0] if msgs else None
+
+        if seq_num:
+            with imaplib.IMAP4(self.imap_host, self.imap_port) as imap:
+                imap.login(self.username, self.password)
+                mailbox = f'"{folder}"' if " " in folder and not folder.startswith('"') else folder
+                status, _ = imap.select(mailbox)
+                if status != "OK":
+                    return None
+                fetch_id = str(seq_num).encode()
+                typ, data = imap.fetch(fetch_id, "(RFC822)")
+                if typ != "OK" or not data or not data[0]:
+                    return None
+                raw_email = data[0][1]
+                msg = email.message_from_bytes(raw_email)
+                body = ""
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        if part.get_content_type() == "text/plain":
+                            body = part.get_payload(decode=True).decode(
+                                part.get_content_charset() or "utf-8", errors="replace"
+                            )
+                            break
+                else:
+                    payload = msg.get_payload(decode=True)
+                    if payload:
+                        body = payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
+
+                return {
+                    "seq_num": str(seq_num),
+                    "message_id": msg.get("Message-ID", ""),
+                    "from": msg.get("From", ""),
+                    "to": msg.get("To", ""),
+                    "subject": msg.get("Subject", ""),
+                    "date": msg.get("Date", ""),
+                    "in_reply_to": msg.get("In-Reply-To", ""),
+                    "references": msg.get("References", ""),
+                    "body": body.strip(),
+                }
+
+        # If neither specified, fetch latest message in folder
+        latest = self.fetch_messages(folder=folder, criteria="ALL", limit=1)
+        return latest[0] if latest else None

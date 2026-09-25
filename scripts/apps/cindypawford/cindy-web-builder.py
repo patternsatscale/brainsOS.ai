@@ -208,7 +208,7 @@ def call_developer_llm(
         OpenAI = None
 
     base_url = api_base or os.getenv("OPENAI_BASE_URL") or os.getenv("LITELLM_URL") or "http://127.0.0.1:4000/v1"
-    key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("HERMES_LITELLM_KEY") or os.getenv("HERMES_CINDY_LITELLM_KEY") or "sk-titan-key"
+    key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("BAWTFORD_LITELLM_KEY") or "sk-titan-bawtford-key"
 
     tokens_desc = json.dumps(design_tokens, indent=2) if design_tokens else "Use existing CSS variables defined in styles.css."
 

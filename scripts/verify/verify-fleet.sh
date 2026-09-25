@@ -253,8 +253,8 @@ if [ -n "${SECONDARY_AGENT_ID}" ]; then
   if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
     log_info "LiteLLM gateway is online; issuing concurrent completion probes across agents..."
 
-    PRIMARY_KEY="${HERMES_LITELLM_KEY:-sk-titan-${PRIMARY_AGENT_ID}-key}"
-    SEC_KEY="sk-titan-${SECONDARY_AGENT_ID}-key"
+    PRIMARY_KEY="${TERRASTELLA_LITELLM_KEY:-sk-titan-${PRIMARY_AGENT_ID}-key}"
+    SEC_KEY="${MARVIN_LITELLM_KEY:-sk-titan-${SECONDARY_AGENT_ID}-key}"
 
     # Issue concurrent health / models requests with different keys
     REQ1=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${PRIMARY_KEY}" "http://127.0.0.1:${LITELLM_PORT}/models" || echo "failed")
