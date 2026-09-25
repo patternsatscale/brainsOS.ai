@@ -208,8 +208,10 @@ Once running, the following endpoints are accessible via your browser:
 | **Marvin API** | [http://api.marvin.titan.local/v1](http://api.marvin.titan.local/v1) | `8643` | Bearer `${HERMES_MARVIN_KEY}` | Sports analytics chat completions interface |
 | **Cindy Pawford UI** | [http://cindypawford.titan.local](http://cindypawford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Cindy Pawford supermodel CEO dashboard & atelier |
 | **Cindy Pawford API** | [http://api.cindypawford.titan.local/v1](http://api.cindypawford.titan.local/v1) | `8644` | Bearer `${HERMES_CINDY_LITELLM_KEY}` | Cindy Pawford chat completions interface |
+| **SnappyMail Webmail** | [http://mail.titan.local](http://mail.titan.local) *(alias: [http://mail.localhost](http://mail.localhost))* | `8888` / `80` | `admin@titan.local` / `${ADMIN_MAIL_PASSWORD}` | Internal email client with shared `Agent Fleet` mailboxes |
 | **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing, key & budget proxy |
 | **Langfuse Observability** | [http://langfuse.titan.local:3001](http://langfuse.titan.local:3001) | `3001` | *Local account* | Distributed tracing, token telemetry & agent spans |
+
 
 ---
 
@@ -281,13 +283,25 @@ project-titan/
 │       ├── info/             # Project information portal (info.cindypawford.com; safe/green AI & edge benchmark)
 │       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repo; mapped to /app/html)
 ├── packages/
-│   └── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI
-│       ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
-│       ├── README.md         # Architecture & contributor guide for memory engine & vector stores
-│       ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
-│       └── tests/            # Dedicated pytest suite (100% test coverage)
+│   ├── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI
+│   │   ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
+│   │   ├── README.md         # Architecture & contributor guide for memory engine & vector stores
+│   │   ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
+│   │   └── tests/            # Dedicated pytest suite (100% test coverage)
+│   └── titan_mail/           # Standalone RFC-compliant asynchronous email client for agents
+│       ├── pyproject.toml    # Package definition (zero external dependencies)
+│       ├── README.md         # Architecture and usage guide for agent mail operations
+│       ├── titan_mail/       # TitanMailClient implementation (RFC threading & shared IMAP)
+│       └── tests/            # Test suite (roundtrip SMTP/IMAP & shared mailbox tests)
 ├── docker/
+│   ├── mail/                 # Lightweight native ARM64 mail server (Postfix + Dovecot)
+│   │   ├── Dockerfile        # Alpine image with Postfix, Dovecot LMTP/IMAP, and Pigeonhole Sieve
+│   │   ├── entrypoint.sh     # Daemon lifecycle, user seeding, and ACL registration manager
+│   │   ├── dovecot/          # Dovecot IMAP/LMTP configuration (shared namespaces & ACLs)
+│   │   ├── postfix/          # Postfix SMTP configuration (LMTP delivery & local routing)
+│   │   └── sieve/            # Pigeonhole Sieve scripts & webhook execution hooks
 │   ├── caddy/
+
 │   │   ├── Dockerfile        # Custom Caddy multi-stage build with Route 53 ACME DNS-01 plugin
 │   │   └── README.md         # Ingress reverse proxy & ACME DNS-01 wildcard SSL architecture guide
 
@@ -324,7 +338,8 @@ project-titan/
     │   ├── setup-memories.sh # Idempotent provisioning & scaffolding manager for memory plane
     │   ├── setup-editor.sh   # Automated builder & deployer for Titan Operator IDE (code-server)
     │   ├── setup-langfuse.sh # Standalone decoupled service manager for Langfuse container stack
-    │   └── deploy-infra.sh   # Operator CLI deployment tool for infra/ SST platform cloud resources
+    │   ├── deploy-infra.sh   # Operator CLI deployment tool for infra/ SST platform cloud resources
+    │   └── setup-mail.sh     # Mail infrastructure provisioning, account seeding, and SnappyMail pre-config
     ├── control/              # Runtime lifecycle, fleet management, and disaster recovery
     │   ├── start-control-plane.sh # Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
     │   ├── emergency-stop.sh # Granular key revocation & process freeze (targeted or full-fleet)
@@ -341,7 +356,9 @@ project-titan/
     │   ├── verify-agent-telemetry.sh # End-to-end multi-agent & LiteLLM telemetry verification suite
     │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
     │   ├── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
-    │   └── verify-dns-ssl.sh # Split-horizon DNS, Caddy Route 53 ACME, and SSL verification suite
+    │   ├── verify-dns-ssl.sh # Split-horizon DNS, Caddy Route 53 ACME, and SSL verification suite
+    │   └── verify-mail.sh    # Automated internal mail, SnappyMail, and shared mailbox test suite
+
     └── apps/                 # Application-specific operations and deployment tooling
         └── cindypawford/     # Autonomous fashion designer application suite
             ├── deploy-cindypawford-com.sh   # Direct-to-production deployment tool
