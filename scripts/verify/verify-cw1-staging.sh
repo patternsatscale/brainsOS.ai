@@ -73,7 +73,7 @@ assert_output_not_contains() {
 }
 
 echo "================================================================================"
-echo "Project Titan: Ticket #36 (CW-1) End-to-End Verification Suite"
+echo "brainsOS: Ticket #36 (CW-1) End-to-End Verification Suite"
 echo "================================================================================"
 
 # ------------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 # ==============================================================================
-# Project Titan: Multi-Agent Fleet Manifest
+# brainsOS: Multi-Agent Fleet Manifest
 # Single source of truth for all autonomous agent units.
 # Structured top-down across architectural layers (L1 to L4).
 # ==============================================================================
@@ -16,13 +16,13 @@ agents:
 
     # L1: Communications & UX Ingress
     comms:
-      subdomain: "terrastella.titan.local"
+      subdomain: "terrastella.brainsos.local"
       port: 8642
       dashboard_port: 9119
       api_key_env: "HERMES_API_TERRASTELLA_KEY"
       email:
         enabled: true
-        address: "terrastella@titan.local"
+        address: "terrastella@brainsos.local"
         user_env: "TERRASTELLA_MAIL_USER"
         password_env: "TERRASTELLA_MAIL_PASSWORD"
       signal:
@@ -37,9 +37,9 @@ agents:
     runtime: "hermes"
     persona: "config/hermes/terrastella/SOUL.md"
     models:
-      default: "titan-core"
+      default: "brainsos-core"
       available:
-        - "titan-core"
+        - "brainsos-core"
         - "qwen3.8:latest"
 
     # L3: Memory Plane & Tool Sandbox
@@ -56,9 +56,9 @@ agents:
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
-      http_proxy: "http://titan-net-egress-proxy:8082"
-      https_proxy: "http://titan-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      http_proxy: "http://brainsos-net-egress-proxy:8082"
+      https_proxy: "http://brainsos-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -73,13 +73,13 @@ agents:
 
     # L1: Communications & UX Ingress
     comms:
-      subdomain: "marvin.titan.local"
+      subdomain: "marvin.brainsos.local"
       port: 8643
       dashboard_port: 9120
       api_key_env: "HERMES_API_MARVIN_KEY"
       email:
         enabled: true
-        address: "marvin@titan.local"
+        address: "marvin@brainsos.local"
         user_env: "MARVIN_MAIL_USER"
         password_env: "MARVIN_MAIL_PASSWORD"
       signal:
@@ -94,9 +94,9 @@ agents:
     runtime: "hermes"
     persona: "config/hermes/marvin/SOUL.md"
     models:
-      default: "titan-core"
+      default: "brainsos-core"
       available:
-        - "titan-core"
+        - "brainsos-core"
         - "llama3.2:3b"
 
     # L3: Memory Plane & Tool Sandbox
@@ -113,9 +113,9 @@ agents:
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
-      http_proxy: "http://titan-net-egress-proxy:8082"
-      https_proxy: "http://titan-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      http_proxy: "http://brainsos-net-egress-proxy:8082"
+      https_proxy: "http://brainsos-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -126,12 +126,11 @@ agents:
   # ----------------------------------------------------------------------------
   - id: "bawtford"
     name: "Bawtford - Creative Director & Supermodel CEO"
-    migrate_from: "cindy-pawford"
     enabled: true
 
     # L1: Communications & UX Ingress
     comms:
-      subdomain: "bawtford.titan.local"
+      subdomain: "bawtford.brainsos.local"
       extra_domains:
         - "cindypawford.com"
       port: 8644
@@ -139,7 +138,7 @@ agents:
       api_key_env: "HERMES_API_BAWTFORD_KEY"
       email:
         enabled: true
-        address: "bawtford@titan.local"
+        address: "bawtford@brainsos.local"
         user_env: "BAWTFORD_MAIL_USER"
         password_env: "BAWTFORD_MAIL_PASSWORD"
       signal:
@@ -157,9 +156,9 @@ agents:
     runtime: "hermes"
     persona: "config/hermes/bawtford/SOUL.md"
     models:
-      default: "titan-core"
+      default: "brainsos-core"
       available:
-        - "titan-core"
+        - "brainsos-core"
         - "cindy-active-coding-model"
         - "llama3.2:3b"
         - "qwen2.5:latest"
@@ -226,9 +225,9 @@ agents:
     # L4: Tool Egress Inspection Proxy & Gateway
     egress:
       enabled: true
-      http_proxy: "http://titan-net-egress-proxy:8082"
-      https_proxy: "http://titan-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,titan-signal-cli,titan-net-signal-cli,titan-litellm-db,titan-infra-litellm-db,mail-server,titan-mail-server,titan-net-mail-server,.titan.local,*.titan.local,titan.local,.titan.internal,*.titan.internal,titan.internal"
+      http_proxy: "http://brainsos-net-egress-proxy:8082"
+      https_proxy: "http://brainsos-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:

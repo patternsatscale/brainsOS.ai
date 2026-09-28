@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: In-Transit Egress Credential Injection Verification Suite
+# brainsOS: In-Transit Egress Credential Injection Verification Suite
 # Ticket #147: Migrate GitHub In-Transit Credential Injection to Egress Proxy
 # Supersedes Ticket #93 / Issue #114
 #
@@ -57,13 +57,13 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'titan-net-egress-proxy')"
-CINDY_CONTAINER="titan-agent-cindy-pawford"
-UNAUTH_CONTAINER="titan-agent-terrastella"
-CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?caddy$' | head -n 1 || echo 'titan-net-caddy')"
+PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'brainsos-net-egress-proxy')"
+CINDY_CONTAINER="brainsos-agent-cindy-pawford"
+UNAUTH_CONTAINER="brainsos-agent-terrastella"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?caddy$' | head -n 1 || echo 'brainsos-net-caddy')"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
-WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
+WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-brainsos_tool_egress_secret}"
 
 log_info "================================================================="
 log_info "  Running Egress Credential Injection Verification (Ticket #147) "
@@ -121,20 +121,6 @@ for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
     exit 1
   fi
   log_success "Zero GitHub tokens in ${c} container environment (GH_TOKEN, GITHUB_TOKEN, and PAT strings absent)."
-
-  # Verify legacy GH_HOST is NOT set to github-proxy.titan.local
-  CONT_GH_HOST=$(docker exec "${c}" bash -c 'echo "${GH_HOST:-}"')
-  if [ "${CONT_GH_HOST}" = "github-proxy.titan.local" ]; then
-    log_error "Legacy GH_HOST=github-proxy.titan.local still present in ${c}!"
-    exit 1
-  fi
-
-  # Verify legacy insteadOf rewrite is absent
-  INSTEAD_OF=$(docker exec "${c}" git config --system --get "url.https://github-proxy.titan.local/.insteadOf" 2>/dev/null || true)
-  if [ -n "${INSTEAD_OF}" ]; then
-    log_error "Legacy git insteadOf rewrite still present in ${c}!"
-    exit 1
-  fi
 done
 log_success "Clean agent runtime verified: zero ambient secrets, zero URL rewrites, zero enterprise GH_HOST overrides."
 

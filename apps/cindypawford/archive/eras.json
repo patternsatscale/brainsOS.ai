@@ -27,7 +27,7 @@
       "status_tag": "ACTIVE LIVE ERA",
       "color_theme": "primary",
       "quote": "Air-gapped sandboxes, wag-and-woof mascots, and high-frequency bacon dials: sovereign intelligence runs cold, clean, and gilded.",
-      "coding_model": "titan-arm64-local",
+      "coding_model": "brainsos-arm64-local",
       "emblem": ""
     }
   ]

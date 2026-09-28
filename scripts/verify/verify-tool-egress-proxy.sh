@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Tool Egress Gateway & Inspection Proxy Verification Suite
+# brainsOS: Tool Egress Gateway & Inspection Proxy Verification Suite
 # Ticket #146: Outbound Inspection Proxy (mitmproxy / mitmweb)
 #
 # Asserts:
 #   1. Manifest synchronization & compose topology drift check
-#   2. Container status & loopback port binding (titan-tool-egress-proxy:8081/8082)
-#   3. Web UI console accessibility via efw.titan.local / firewall.titan.local & 127.0.0.1:8081
+#   2. Container status & loopback port binding (brainsos-tool-egress-proxy:8081/8082)
+#   3. Web UI console accessibility via efw.brainsos.local / firewall.brainsos.local & 127.0.0.1:8081
 #   4. Mitmproxy CA certificate trust across agent sandbox runtimes (curl, OpenSSL, Python)
 #   5. Outbound HTTP/HTTPS tool traffic interception & flow capture
 #   6. Live flow audit via mitmweb REST/JSON API (/flows)
@@ -57,12 +57,12 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'titan-net-egress-proxy')"
-AGENT_CONTAINER="titan-agent-terrastella"
-CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?caddy$' | head -n 1 || echo 'titan-net-caddy')"
+PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'brainsos-net-egress-proxy')"
+AGENT_CONTAINER="brainsos-agent-terrastella"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?caddy$' | head -n 1 || echo 'brainsos-net-caddy')"
 WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
-WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-brainsos_tool_egress_secret}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 
 log_info "================================================================="
 log_info "  Running Tool Egress Gateway Verification Suite (Ticket #146)   "
@@ -120,21 +120,21 @@ if [ "${HTTP_CODE}" -ne 200 ]; then
 fi
 log_success "Direct loopback console reachable on 127.0.0.1:${WEB_PORT} (HTTP 200)."
 
-# Caddy ingress via efw.titan.local
-HTTP_CODE_EFW=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: efw.${TITAN_DOMAIN}" "http://127.0.0.1/?token=${WEB_PASSWORD}" || echo "000")
+# Caddy ingress via efw.brainsos.local
+HTTP_CODE_EFW=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: efw.${BRAINSOS_DOMAIN}" "http://127.0.0.1/?token=${WEB_PASSWORD}" || echo "000")
 if [ "${HTTP_CODE_EFW}" -ne 200 ]; then
-  log_error "Caddy route efw.${TITAN_DOMAIN} returned HTTP ${HTTP_CODE_EFW} (expected 200)."
+  log_error "Caddy route efw.${BRAINSOS_DOMAIN} returned HTTP ${HTTP_CODE_EFW} (expected 200)."
   exit 1
 fi
-log_success "Caddy ingress route verified: efw.${TITAN_DOMAIN} (HTTP 200)."
+log_success "Caddy ingress route verified: efw.${BRAINSOS_DOMAIN} (HTTP 200)."
 
-# Caddy ingress via firewall.titan.local
-HTTP_CODE_FW=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: firewall.${TITAN_DOMAIN}" "http://127.0.0.1/?token=${WEB_PASSWORD}" || echo "000")
+# Caddy ingress via firewall.brainsos.local
+HTTP_CODE_FW=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: firewall.${BRAINSOS_DOMAIN}" "http://127.0.0.1/?token=${WEB_PASSWORD}" || echo "000")
 if [ "${HTTP_CODE_FW}" -ne 200 ]; then
-  log_error "Caddy route firewall.${TITAN_DOMAIN} returned HTTP ${HTTP_CODE_FW} (expected 200)."
+  log_error "Caddy route firewall.${BRAINSOS_DOMAIN} returned HTTP ${HTTP_CODE_FW} (expected 200)."
   exit 1
 fi
-log_success "Caddy ingress route verified: firewall.${TITAN_DOMAIN} (HTTP 200)."
+log_success "Caddy ingress route verified: firewall.${BRAINSOS_DOMAIN} (HTTP 200)."
 
 # ------------------------------------------------------------------------------
 # Step 4: Verify CA Certificate Trust in Agent Container Sandbox

@@ -1,12 +1,11 @@
-"""Hermes Plugin Compatibility Shim for titan_memory (OKF Engine).
+"""Hermes Plugin Integration for brainsos_memory (OKF Engine).
 
-This module re-exports core classes and utilities from packages/titan_memory
-to ensure 100% backward compatibility with upstream Hermes plugins.
+This module re-exports core classes and utilities from packages/brainsOS-memory.
 """
 
 from __future__ import annotations
 
-from titan_memory.okf import (
+from brainsos_memory.okf import (
     FORBIDDEN_DIRECTORIES,
     FORBIDDEN_EXTENSIONS,
     HermesOKF,

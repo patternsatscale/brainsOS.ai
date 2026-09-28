@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Memory Plane Provisioning & Scaffolding Script
+# brainsOS: Memory Plane Provisioning & Scaffolding Script
 # Configures the flat-file OKF storage layout, permissions, starter templates,
 # and verifies native ARM64 container image for SilverBullet PKM.
 # ==============================================================================
@@ -48,12 +48,12 @@ else
   fi
 fi
 
-log_info "Initializing Project Titan Memory Plane from ${REPO_ROOT}..."
+log_info "Initializing brainsOS Memory Plane from ${REPO_ROOT}..."
 
 # ------------------------------------------------------------------------------
 # 1. Resolve Target Memories Directory
 # ------------------------------------------------------------------------------
-DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -66,7 +66,7 @@ log_info "Target OKF storage directory: ${TARGET_MEMORIES_DIR}"
 # ------------------------------------------------------------------------------
 # 2. Directory Scaffolding & Permissions Alignment
 # ------------------------------------------------------------------------------
-if [[ "$TARGET_MEMORIES_DIR" == /data/titan/* ]]; then
+if [[ "$TARGET_MEMORIES_DIR" == /data/brainsos/* ]]; then
   log_info "Configuring production appliance directory with sudo: ${TARGET_MEMORIES_DIR}..."
   sudo mkdir -p "${TARGET_MEMORIES_DIR}"
   sudo chown -R 1000:1000 "${TARGET_MEMORIES_DIR}"
@@ -94,7 +94,7 @@ if [ -d "${TEMPLATE_DIR}" ]; then
 fi
 
 # Enforce uniform permissions on seeded files
-if [[ "$TARGET_MEMORIES_DIR" == /data/titan/* ]]; then
+if [[ "$TARGET_MEMORIES_DIR" == /data/brainsos/* ]]; then
   sudo chown -R 1000:1000 "${TARGET_MEMORIES_DIR}"
   sudo chmod -R 775 "${TARGET_MEMORIES_DIR}"
 else
@@ -132,6 +132,6 @@ else
   exit 1
 fi
 
-log_success "Memory Plane setup complete! Inspect & curate memories via Titan Operator IDE:"
+log_success "Memory Plane setup complete! Inspect & curate memories via brainsOS Operator IDE:"
 log_info "  Launch editor via: ./scripts/setup/setup-editor.sh"
 echo ""

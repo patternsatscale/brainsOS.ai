@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Asynchronous Work Queue & FIFO Concurrency Verification Suite
-# Validates packages/titan_queue unit tests, FIFO ordering, concurrency limits,
-# Rule 1 memory purity, and titan-mail plugin integration.
+# brainsOS: Asynchronous Work Queue & FIFO Concurrency Verification Suite
+# Validates packages/brainsOS-queue unit tests, FIFO ordering, concurrency limits,
+# Rule 1 memory purity, and brainsos-mail plugin integration.
 # ==============================================================================
 
 set -euo pipefail
@@ -28,7 +28,7 @@ fi
 cd "${REPO_ROOT}"
 
 echo -e "${BOLD}====================================================================${NC}"
-echo -e "${BOLD}Project Titan: Modular Work Queue & Concurrency Verification Suite  ${NC}"
+echo -e "${BOLD}brainsOS: Modular Work Queue & Concurrency Verification Suite  ${NC}"
 echo -e "${BOLD}====================================================================${NC}"
 
 # Check for environment
@@ -52,17 +52,19 @@ fi
 log_info "Using Python interpreter: ${PYTHON_BIN}"
 
 # 1. Package Structure Verification
-log_info "Step 1: Validating packages/titan_queue package structure..."
+QUEUE_PKG_DIR="packages/brainsOS-queue"
+QUEUE_MOD_DIR="${QUEUE_PKG_DIR}/brainsos_queue"
+log_info "Step 1: Validating ${QUEUE_PKG_DIR} package structure..."
 REQUIRED_FILES=(
-  "packages/titan_queue/pyproject.toml"
-  "packages/titan_queue/README.md"
-  "packages/titan_queue/titan_queue/__init__.py"
-  "packages/titan_queue/titan_queue/models.py"
-  "packages/titan_queue/titan_queue/queue.py"
-  "packages/titan_queue/titan_queue/worker.py"
-  "packages/titan_queue/titan_queue/backends/base.py"
-  "packages/titan_queue/titan_queue/backends/memory.py"
-  "packages/titan_queue/titan_queue/backends/sqlite.py"
+  "${QUEUE_PKG_DIR}/pyproject.toml"
+  "${QUEUE_PKG_DIR}/README.md"
+  "${QUEUE_MOD_DIR}/__init__.py"
+  "${QUEUE_MOD_DIR}/models.py"
+  "${QUEUE_MOD_DIR}/queue.py"
+  "${QUEUE_MOD_DIR}/worker.py"
+  "${QUEUE_MOD_DIR}/backends/base.py"
+  "${QUEUE_MOD_DIR}/backends/memory.py"
+  "${QUEUE_MOD_DIR}/backends/sqlite.py"
 )
 
 for f in "${REQUIRED_FILES[@]}"; do
@@ -71,22 +73,22 @@ for f in "${REQUIRED_FILES[@]}"; do
     exit 1
   fi
 done
-log_success "All required titan_queue source files are present."
+log_success "All required queue source files are present."
 
 # 2. Syntax Validation
-log_info "Step 2: Checking Python syntax across titan_queue and titan-mail plugin..."
-find packages/titan_queue/titan_queue -name "*.py" -exec "${PYTHON_BIN}" -m py_compile {} +
-"${PYTHON_BIN}" -m py_compile docker/hermes/plugins/titan-mail/__init__.py
+log_info "Step 2: Checking Python syntax across work queue and mail plugins..."
+find "${QUEUE_MOD_DIR}" -name "*.py" -exec "${PYTHON_BIN}" -m py_compile {} +
+"${PYTHON_BIN}" -m py_compile docker/hermes/plugins/brainsos-mail/__init__.py
 log_success "Python syntax validation passed."
 
 # 3. Unit Test Suite Execution
-log_info "Step 3: Executing titan_queue unit test suite via pytest..."
+log_info "Step 3: Executing work queue unit test suite via pytest..."
 if [ -x "${PYTEST_BIN}" ]; then
-  "${PYTEST_BIN}" packages/titan_queue/tests/ -v
-  log_success "All 13 titan_queue unit tests passed successfully."
+  "${PYTEST_BIN}" "${QUEUE_PKG_DIR}/tests/" -v
+  log_success "All work queue unit tests passed successfully."
 else
   log_warn "pytest not executable; executing via unittest module..."
-  "${PYTHON_BIN}" -m unittest discover -s packages/titan_queue/tests
+  "${PYTHON_BIN}" -m unittest discover -s "${QUEUE_PKG_DIR}/tests"
   log_success "Unit tests passed."
 fi
 
@@ -106,8 +108,8 @@ log_success "Memory plane purity verified: ZERO queue databases in /memories."
 # 5. Rule 3 Hardware Serialization Guard Verification
 log_info "Step 5: Verifying Rule 3 (Hardware Serialization) default concurrency in worker..."
 DEFAULT_CONCURRENCY=$("${PYTHON_BIN}" -c '
-from titan_queue.worker import FIFOQueueWorker
-from titan_queue.queue import WorkQueue
+from brainsos_queue.worker import FIFOQueueWorker
+from brainsos_queue.queue import WorkQueue
 q = WorkQueue("test")
 w = FIFOQueueWorker(queue=q, handler=lambda t: None)
 print(w.concurrency)
@@ -119,13 +121,13 @@ if [ "${DEFAULT_CONCURRENCY}" -ne 1 ]; then
 fi
 log_success "Default concurrency is strictly 1 (hardware serialization preserved)."
 
-# 6. Verify Dockerfile includes titan_queue
-log_info "Step 6: Verifying Dockerfile packaging for titan_queue..."
-if ! grep -q "packages/titan_queue" docker/hermes/Dockerfile; then
-  log_error "docker/hermes/Dockerfile does not install packages/titan_queue"
+# 6. Verify Dockerfile includes work queue package
+log_info "Step 6: Verifying Dockerfile packaging for work queue..."
+if ! grep -q "packages/brainsOS-queue" docker/hermes/Dockerfile; then
+  log_error "docker/hermes/Dockerfile does not install packages/brainsOS-queue"
   exit 1
 fi
-log_success "docker/hermes/Dockerfile packages titan_queue."
+log_success "docker/hermes/Dockerfile packages work queue."
 
 echo -e "\n${BOLD}${GREEN}====================================================================${NC}"
 echo -e "${BOLD}${GREEN}  All Work Queue & Concurrency Verifications PASSED Successfully!   ${NC}"

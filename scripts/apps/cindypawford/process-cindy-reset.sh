@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Cindy Pawford 'Seal & Reset' Execution Engine
+# brainsOS: Cindy Pawford 'Seal & Reset' Execution Engine
 # Ticket #88 (CW-0B): Host-Side Weekly Archive, Git Tagging & Model Rotation
 # ==============================================================================
 
@@ -132,7 +132,7 @@ log_info "Phase 2: Ingesting era recap metadata and updating historical ledger..
 THEME_NAME="Atelier Collection ${WEEK_SLUG}"
 DATE_RANGE="$(date -v-7d +%Y-%m-%d 2>/dev/null || date -d '7 days ago' +%Y-%m-%d 2>/dev/null || echo "Past Week") to $(date +%Y-%m-%d)"
 CLOSING_QUOTE="A true supermodel never looks back, unless there is warm bacon behind her."
-CURRENT_CODING_MODEL="titan-core"
+CURRENT_CODING_MODEL="brainsos-core"
 
 if [ -f "${RECAP_FILE}" ]; then
   log_info "Found agent recap at ${RECAP_FILE}."
@@ -160,7 +160,7 @@ fi
 if grep -q "cindy-active-coding-model" "${LITELLM_CONFIG}" 2>/dev/null; then
   CURRENT_CODING_MODEL=$(awk '/model_name: cindy-active-coding-model/{getline; getline; print $2}' "${LITELLM_CONFIG}" | sed 's|ollama_chat/||')
 fi
-CURRENT_CODING_MODEL="${CURRENT_CODING_MODEL:-titan-core}"
+CURRENT_CODING_MODEL="${CURRENT_CODING_MODEL:-brainsos-core}"
 
 # Update eras.json
 ERA_RECORD=$(${PYTHON_BIN} - << EOF
@@ -234,7 +234,7 @@ import json, random, os
 
 pool_path = "${MODEL_POOL_FILE}"
 current_model = "${CURRENT_CODING_MODEL}"
-models = ["qwen2.5:latest", "llama3.2:3b", "titan-core"]
+models = ["qwen2.5:latest", "llama3.2:3b", "brainsos-core"]
 
 if os.path.exists(pool_path):
     try:

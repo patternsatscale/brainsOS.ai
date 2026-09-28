@@ -37,7 +37,7 @@ fi
 cd "${REPO_ROOT}"
 
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
-CONTAINER="titan-agent-cindy-pawford"
+CONTAINER="brainsos-agent-cindy-pawford"
 SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
 
 log_info "================================================================="
@@ -156,7 +156,7 @@ PR_URL=$(gh pr create --repo "${REMOTE_REPO}" \
   --base main \
   --head "${TEST_BRANCH}" \
   --title "chore(test): automated PR deployment verification ${TIMESTAMP}" \
-  --body "> 🤖 **Automated CI/CD Verification Probe** — *Project Titan Ticket #98*
+  --body "> 🤖 **Automated CI/CD Verification Probe** — *brainsOS Ticket #98*
 Testing end-to-end PR guard check and automated deployment pipeline.")
 
 PR_NUM=$(echo "${PR_URL}" | grep -oE '[0-9]+$')

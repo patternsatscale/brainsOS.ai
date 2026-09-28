@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Operator IDE Setup & Provisioning Script
+# brainsOS: Operator IDE Setup & Provisioning Script
 # Provisions storage directories, registers operator virtual key in LiteLLM,
 # builds the native ARM64/AMD64 code-server image, and launches the service.
 # ==============================================================================
@@ -48,13 +48,13 @@ else
   fi
 fi
 
-log_info "Setting up Project Titan Operator IDE from ${REPO_ROOT}..."
+log_info "Setting up brainsOS Operator IDE from ${REPO_ROOT}..."
 
 # ------------------------------------------------------------------------------
 # 1. Scaffold Storage Directories
 # ------------------------------------------------------------------------------
-CONFIG_DIR="${TITAN_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}"
-DATA_DIR="${TITAN_CODE_SERVER_DATA:-./data/control_plane/vscode_data}"
+CONFIG_DIR="${BRAINSOS_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}"
+DATA_DIR="${BRAINSOS_CODE_SERVER_DATA:-./data/control_plane/vscode_data}"
 
 if [[ "$CONFIG_DIR" != /* ]]; then
   CONFIG_DIR="${REPO_ROOT}/${CONFIG_DIR#./}"
@@ -85,7 +85,7 @@ fi
 # ------------------------------------------------------------------------------
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
-OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}"
+OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
 
 if [ -n "${LITELLM_MASTER_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
   log_info "Checking operator virtual key in LiteLLM DB..."
@@ -99,7 +99,7 @@ if [ -n "${LITELLM_MASTER_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "htt
       -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"titan-operator\", \"max_budget\": 100.0, \"models\": []}" || true
+      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"brainsos-operator\", \"max_budget\": 100.0, \"models\": []}" || true
     log_success "Operator virtual key provisioned in LiteLLM control plane."
   else
     log_info "Operator virtual key is already registered in LiteLLM control plane."
@@ -109,35 +109,25 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Retire Obsolete SilverBullet Service
+# 3. Build & Launch Containerized Operator IDE
 # ------------------------------------------------------------------------------
-if docker ps -a --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
-  log_info "Retiring obsolete titan-silverbullet container..."
-  docker stop titan-silverbullet >/dev/null 2>&1 || true
-  docker rm -f titan-silverbullet >/dev/null 2>&1 || true
-  log_success "Obsolete titan-silverbullet service cleanly retired."
-fi
-
-# ------------------------------------------------------------------------------
-# 4. Build & Launch Containerized Operator IDE
-# ------------------------------------------------------------------------------
-log_info "Building native titan-code-server container image..."
+log_info "Building native brainsos-code-server container image..."
 docker compose build code-server
 
-log_info "Starting titan-code-server service..."
+log_info "Starting brainsos-code-server service..."
 docker compose up -d code-server
 
-# Ensure Caddy is recreated or updated with the new titan-operator-net
+# Ensure Caddy is recreated or updated with the new brainsos-operator-net
 log_info "Ensuring Caddy gateway is connected to operator network..."
 docker compose up -d caddy
 
 log_success "======================================================================"
-log_success "Titan Operator IDE is running!"
+log_success "brainsOS Operator IDE is running!"
 log_success "Access URLs:"
-log_success "  - Ingress:      http://editor.localhost (or http://editor.titan.local)"
-log_success "  - Alternate:    http://code.localhost   (or http://code.titan.local)"
+log_success "  - Ingress:      http://editor.localhost (or http://editor.brainsos.local)"
+log_success "  - Alternate:    http://code.localhost   (or http://code.brainsos.local)"
 log_success "  - Direct Port:  http://127.0.0.1:${CODE_SERVER_PORT:-8443}"
 log_success "Credentials:"
-log_success "  - HTTP Basic Auth: ${OPERATOR_USER:-operator} / ${CODE_SERVER_PASSWORD:-titan_operator_secret}"
-log_success "  - IDE Password:    ${CODE_SERVER_PASSWORD:-titan_operator_secret}"
+log_success "  - HTTP Basic Auth: ${OPERATOR_USER:-operator} / ${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
+log_success "  - IDE Password:    ${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
 log_success "======================================================================"

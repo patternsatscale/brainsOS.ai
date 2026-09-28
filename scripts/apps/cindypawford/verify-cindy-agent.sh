@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Cindy Pawford Agent Unit Automated Verification Suite
+# brainsOS: Cindy Pawford Agent Unit Automated Verification Suite
 # Ticket #87 (CW-0A): Base Persona, Tenancy & Monorepo Web Scaffold
 # ==============================================================================
 
@@ -46,10 +46,10 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 AGENT_ID="cindy-pawford"
-CONTAINER="titan-agent-${AGENT_ID}"
+CONTAINER="brainsos-agent-${AGENT_ID}"
 SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
 MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
 WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
@@ -208,7 +208,7 @@ fi
 log_success "Sub-agent SOUL.md verified 100% clean of conversational roleplay or canine humor."
 
 # Verify Rule 7: Compartmentalization (No host daemon/DB leakage in SOUL.md or sub-agent SOUL.md)
-for forbidden in "127.0.0.1:11434" "titan-litellm-db" "postgresql://" "vllm" "SST"; do
+for forbidden in "127.0.0.1:11434" "brainsos-litellm-db" "postgresql://" "vllm" "SST"; do
   if grep -qi "${forbidden}" "${SOUL_PATH}" || grep -qi "${forbidden}" "${SUB_SOUL_PATH}"; then
     log_error "Rule 7 violation: Found forbidden backend leak '${forbidden}' in SOUL files!"
     exit 1
@@ -286,9 +286,9 @@ fi
 log_info "Step 7: Verifying Caddy ingress resolution and Telegram stub..."
 
 # HTTP probe via Caddy on port 80 with Host header
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: cindy-pawford.${TITAN_DOMAIN}" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: cindy-pawford.${BRAINSOS_DOMAIN}" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
 if [ "${HTTP_STATUS}" = "200" ] || [ "${HTTP_STATUS}" = "302" ] || [ "${HTTP_STATUS}" = "401" ]; then
-  log_success "Caddy ingress resolves 'cindy-pawford.${TITAN_DOMAIN}' -> HTTP ${HTTP_STATUS}."
+  log_success "Caddy ingress resolves 'cindy-pawford.${BRAINSOS_DOMAIN}' -> HTTP ${HTTP_STATUS}."
 else
   log_warn "Caddy ingress returned '${HTTP_STATUS}' (gateway will route upon reload)."
 fi
@@ -393,19 +393,19 @@ assert not valid_bad, 'Syntax check failed to reject invalid JavaScript!'
 "
 log_success "Quality Gate passed: Markdown fences and conversational chatter stripped, JS syntax validated."
 
-# 8e. Verify titan-subagents plugin files and configuration
-PLUGIN_DIR="${WORK_DIR}/plugins/titan-subagents"
+# 8e. Verify brainsos-subagents plugin files and configuration
+PLUGIN_DIR="${WORK_DIR}/plugins/brainsos-subagents"
 if [ -f "${PLUGIN_DIR}/plugin.yaml" ] && [ -f "${PLUGIN_DIR}/__init__.py" ]; then
-  log_success "Verified titan-subagents plugin scaffolded in workspace: ${PLUGIN_DIR}."
+  log_success "Verified brainsos-subagents plugin scaffolded in workspace: ${PLUGIN_DIR}."
 else
-  log_error "Missing titan-subagents plugin in workspace!"
+  log_error "Missing brainsos-subagents plugin in workspace!"
   exit 1
 fi
 
-if grep -q "titan-subagents" "${WORK_DIR}/config.yaml"; then
-  log_success "Verified titan-subagents enabled in ${WORK_DIR}/config.yaml."
+if grep -q "brainsos-subagents" "${WORK_DIR}/config.yaml"; then
+  log_success "Verified brainsos-subagents enabled in ${WORK_DIR}/config.yaml."
 else
-  log_error "titan-subagents plugin not enabled in ${WORK_DIR}/config.yaml!"
+  log_error "brainsos-subagents plugin not enabled in ${WORK_DIR}/config.yaml!"
   exit 1
 fi
 

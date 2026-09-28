@@ -1,14 +1,14 @@
 {
   "agent": {
-    "name": "hermes-titan",
+    "name": "hermes-brainsos",
     "version": "1.0.0",
-    "description": "Project Titan Autonomous Agent Instance",
+    "description": "brainsOS Autonomous Agent Instance",
     "soul_path": "/app/config/SOUL.md"
   },
   "llm": {
     "provider": "openai_compatible",
     "base_url": "http://litellm:4000/v1",
-    "model": "titan-core",
+    "model": "brainsos-core",
     "api_key_env": "HERMES_LITELLM_KEY",
     "temperature": 0.2,
     "max_tokens": 4096,

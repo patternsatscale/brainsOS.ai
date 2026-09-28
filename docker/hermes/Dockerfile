@@ -1,29 +1,30 @@
 # ==============================================================================
-# Project Titan: Upstream Hermes Agent Sandbox Image
+# brainsOS: Upstream Hermes Agent Sandbox Image
 # Built on the official Nous Research Hermes Agent distribution
-# Pre-configured with Titan OKF Memory Plugin, multi-channel gateways & sandboxing
+# Pre-configured with brainsOS OKF Memory Plugin, multi-channel gateways & sandboxing
 # ==============================================================================
 
 FROM nousresearch/hermes-agent:latest
 
-# Install standalone titan-memory package (L5: Memory & Tools)
-COPY packages/titan_memory /opt/hermes/packages/titan_memory
-RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/titan_memory
+# Install standalone brainsOS-memory package (L5: Memory & Tools)
+COPY packages/brainsOS-memory /opt/hermes/packages/brainsOS-memory
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-memory
 
-# Install standalone titan-mail package (Communications Plane)
-COPY packages/titan_mail /opt/hermes/packages/titan_mail
-RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/titan_mail
+# Install standalone brainsOS-mail package (Communications Plane)
+COPY packages/brainsOS-mail /opt/hermes/packages/brainsOS-mail
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-mail
 
-# Install standalone titan-queue package (Asynchronous Work Queue)
-COPY packages/titan_queue /opt/hermes/packages/titan_queue
-RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/titan_queue
+# Install standalone brainsOS-queue package (Asynchronous Work Queue)
+COPY packages/brainsOS-queue /opt/hermes/packages/brainsOS-queue
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-queue
 
-# Install native Titan OKF memory plugin
+# Install native brainsOS OKF memory plugin
 COPY docker/hermes/plugins/hermes-okf /opt/hermes/plugins/hermes-okf
 RUN ln -sf /opt/hermes/plugins/hermes-okf /opt/hermes/plugins/memory/hermes-okf
 
-# Install native Titan Mail plugin & tools
-COPY docker/hermes/plugins/titan-mail /opt/hermes/plugins/titan-mail
+# Install native brainsOS Mail and Sub-agents plugins & tools
+COPY docker/hermes/plugins/brainsos-mail /opt/hermes/plugins/brainsos-mail
+COPY docker/hermes/plugins/brainsos-subagents /opt/hermes/plugins/brainsos-subagents
 
 # Install GitHub CLI (gh), Git tooling, and configure safe container defaults
 RUN apt-get update -qq && \

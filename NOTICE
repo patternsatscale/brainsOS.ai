@@ -1,0 +1,28 @@
+brainsOS
+Copyright 2024-2026 Patterns at Scale
+
+This product includes software developed by Patterns at Scale (https://patternsatscale.com).
+Website: https://brainsos.ai
+Repository: https://github.com/patternsatscale/brainsOS
+
+This software incorporates or interacts with the following open-source components:
+
+- LiteLLM (BerriAI): https://github.com/BerriAI/litellm
+- Langfuse: https://github.com/langfuse/langfuse
+- Caddy Server: https://github.com/caddyserver/caddy
+- mitmproxy: https://github.com/mitmproxy/mitmproxy
+- Postfix: http://www.postfix.org
+- Dovecot: https://www.dovecot.org
+- SOGo Groupware (Alinto): https://sogo.nu
+- code-server (Coder): https://github.com/coder/code-server
+- Nous Hermes Agent (Nous Research): https://github.com/NousResearch
+- Ollama: https://github.com/ollama/ollama
+
+Agentic Governance & Security Controls (AGSC v1.0.0)
+Copyright (c) 2026 COHUMAIN Labs & SafeAlign AI
+Licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+Research: https://www.cohumain.ai/research
+Platform: https://safealignai.io/
+Documentation: https://himjoe.github.io/Agentic-governance-and-security-controls-by-COHUMAIN-Labs-and-Safealign-AI/
+Repository: https://github.com/HimJoe/Agentic-governance-and-security-controls-by-COHUMAIN-Labs-and-Safealign-AI

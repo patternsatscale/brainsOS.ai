@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Operator IDE Container Entrypoint Wrapper
+# brainsOS: Operator IDE Container Entrypoint Wrapper
 # Synchronizes pre-installed extensions, sets default configs, and launches code-server
 # ==============================================================================
 set -eu
@@ -18,7 +18,7 @@ mkdir -p /home/coder/.config/code-server
 cat << EOF > /home/coder/.config/code-server/config.yaml
 bind-addr: 0.0.0.0:8443
 auth: ${CODE_SERVER_AUTH}
-password: ${PASSWORD:-titan_operator_secret}
+password: ${PASSWORD:-brainsos_operator_secret}
 cert: false
 disable-telemetry: true
 disable-update-check: true
@@ -135,11 +135,11 @@ fi
 
 # 4. Scaffolding Continue AI extension configuration (dynamically synced from fleet manifest)
 mkdir -p /home/coder/.continue
-OP_KEY="${OPENAI_API_KEY:-${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}}"
+OP_KEY="${OPENAI_API_KEY:-${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}}"
 API_KEY="${API_SERVER_KEY:-}"
 
-SRC_CONTINUE_YAML="/workspace/project-titan/config/editor/continue_config.yaml"
-SRC_CONTINUE_JSON="/workspace/project-titan/config/editor/continue_config.json"
+SRC_CONTINUE_YAML="/workspace/brainsos/config/editor/continue_config.yaml"
+SRC_CONTINUE_JSON="/workspace/brainsos/config/editor/continue_config.json"
 
 if [ -f "${SRC_CONTINUE_YAML}" ]; then
   sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; \
@@ -149,13 +149,13 @@ if [ -f "${SRC_CONTINUE_YAML}" ]; then
        s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_YAML}" > /home/coder/.continue/config.yaml
 else
   cat << EOF > /home/coder/.continue/config.yaml
-name: Titan Operator IDE
+name: brainsOS Operator IDE
 version: 1.0.0
 schema: v1
 models:
-  - name: "Titan Core (LiteLLM)"
+  - name: "brainsOS Core (LiteLLM)"
     provider: openai
-    model: titan-core
+    model: brainsos-core
     apiBase: http://litellm:4000/v1
     apiKey: "${OP_KEY}"
     roles:
@@ -177,8 +177,8 @@ fi
 if [ ! -f /home/coder/.aider.conf.yml ]; then
   cat << EOF > /home/coder/.aider.conf.yml
 openai-api-base: http://litellm:4000/v1
-openai-api-key: ${OPENAI_API_KEY:-sk-titan-operator-virtual-key}
-model: openai/titan-core
+openai-api-key: ${OPENAI_API_KEY:-sk-brainsos-operator-virtual-key}
+model: openai/brainsos-core
 EOF
 fi
 
@@ -195,4 +195,4 @@ EOF
 fi
 
 # Launch upstream entrypoint with multi-root workspace
-exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust /workspace/titan.code-workspace "$@"
+exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust /workspace/brainsos.code-workspace "$@"

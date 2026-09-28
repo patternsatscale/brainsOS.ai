@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Hermes Agent Workspace & Persistence Automated Verification
+# brainsOS: Hermes Agent Workspace & Persistence Automated Verification
 # Validates host bind-mount persistence, unprivileged sandbox boundaries,
 # skills scaffolding, full backup readiness, and secret hygiene.
 # ==============================================================================
@@ -49,10 +49,10 @@ fi
 HERMES_PORT="${HERMES_PORT:-8642}"
 HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
 API_SERVER_KEY="${HERMES_API_TERRASTELLA_KEY:-${API_SERVER_KEY:-}}"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
-DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
-WORKSPACE_PATH="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-./data/agent_workspaces}}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
+WORKSPACE_PATH="${BRAINSOS_AGENT_WORKSPACES_DIR:-./data/agent_workspaces}"
 
 if [[ "$WORKSPACE_PATH" != /* ]]; then
   HOST_WORKSPACE="${REPO_ROOT}/${WORKSPACE_PATH#./}"
@@ -108,16 +108,9 @@ if ! docker compose ps --services | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
   fi
 fi
 
-HERMES_CONTAINER="titan-agent-${PRIMARY_AGENT_ID}"
-if ! docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-${PRIMARY_AGENT_ID}"; then
-  if docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-primary"; then
-    HERMES_CONTAINER="titan-agent-primary"
-  elif docker ps -a --format '{{.Names}}' | grep -qw "titan-hermes"; then
-    HERMES_CONTAINER="titan-hermes"
-  fi
-fi
+HERMES_CONTAINER="brainsos-agent-${PRIMARY_AGENT_ID}"
 
-log_info "Running Project Titan Hermes Workspace & Persistence Verification..."
+log_info "Running brainsOS Hermes Workspace & Persistence Verification..."
 log_info "Host Workspace Path: ${HOST_WORKSPACE}"
 log_info "Host Memories Path:  ${HOST_MEMORIES}"
 log_info "Target Service:      ${HERMES_SERVICE} (${HERMES_CONTAINER})"
@@ -160,7 +153,7 @@ fi
 log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
 SIGNAL_ABOUT=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about || echo "failed")
 if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
-  log_success "Signal-CLI daemon reachable on titan-internal network (REST API)."
+  log_success "Signal-CLI daemon reachable on brainsos-internal network (REST API)."
 else
   log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
   exit 1
@@ -192,12 +185,12 @@ else
   exit 1
 fi
 
-log_info "Step 2D: Checking Caddy reverse proxy routing for api.hermes.${TITAN_DOMAIN}..."
-CADDY_API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: api.hermes.${TITAN_DOMAIN}" -H "Authorization: Bearer ${API_SERVER_KEY}" "http://127.0.0.1:${CADDY_HTTP_PORT}/v1/models" || echo "failed")
+log_info "Step 2D: Checking Caddy reverse proxy routing for api.hermes.${BRAINSOS_DOMAIN}..."
+CADDY_API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: api.hermes.${BRAINSOS_DOMAIN}" -H "Authorization: Bearer ${API_SERVER_KEY}" "http://127.0.0.1:${CADDY_HTTP_PORT}/v1/models" || echo "failed")
 if [ "${CADDY_API_STATUS}" == "200" ]; then
-  log_success "Caddy ingress routes to Hermes API at api.hermes.${TITAN_DOMAIN} (HTTP 200)."
+  log_success "Caddy ingress routes to Hermes API at api.hermes.${BRAINSOS_DOMAIN} (HTTP 200)."
 else
-  log_error "Caddy ingress failed for api.hermes.${TITAN_DOMAIN}: expected HTTP 200, got '${CADDY_API_STATUS}'."
+  log_error "Caddy ingress failed for api.hermes.${BRAINSOS_DOMAIN}: expected HTTP 200, got '${CADDY_API_STATUS}'."
   exit 1
 fi
 
@@ -371,7 +364,7 @@ log_info "Step 7: Testing unified full-data backup script (scripts/control/backu
 if [ -x "${REPO_ROOT}/scripts/control/backup.sh" ]; then
   "${REPO_ROOT}/scripts/control/backup.sh"
   "${REPO_ROOT}/scripts/control/backup.sh" --list
-  LATEST_BACKUP=$(find "${REPO_ROOT}/data/backups" -name "titan_data_*.tar.gz" -type f | sort | tail -n 1)
+  LATEST_BACKUP=$(find "${REPO_ROOT}/data/backups" -name "brainsos_data_*.tar.gz" -type f | sort | tail -n 1)
   if [ -n "${LATEST_BACKUP}" ] && (tar -tzf "${LATEST_BACKUP}" ./manifest.json >/dev/null 2>&1 || (tar -tzf "${LATEST_BACKUP}" 2>/dev/null || true) | grep -q "manifest.json"); then
     log_success "Full data backup created and validated with manifest: $(basename "${LATEST_BACKUP}")"
   else

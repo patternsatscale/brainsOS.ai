@@ -1,6 +1,6 @@
-# Project Titan: Multi-Agent Fleet Memory Plane
+# brainsOS: Multi-Agent Fleet Memory Plane
 
-Welcome to the **Project Titan Memory Plane**—the human-auditable, decoupled knowledge and governance hub for autonomous agent execution.
+Welcome to the **brainsOS Memory Plane**—the human-auditable, decoupled knowledge and governance hub for autonomous agent execution.
 
 This workspace mounts the host filesystem (`/memories`) using the **Open Knowledge Format (OKF)**: pure, human-readable flat-file Markdown.
 

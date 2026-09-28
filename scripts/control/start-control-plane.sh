@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Native Host Control Plane Service Manager
+# brainsOS: Native Host Control Plane Service Manager
 # Manages the host inference engine (Ollama) and AI proxy gateway (LiteLLM)
 # ==============================================================================
 
@@ -73,7 +73,7 @@ fi
 # Observability Plane (Langfuse & OpenTelemetry)
 LANGFUSE_AUTO_START="${LANGFUSE_AUTO_START:-false}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
-LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.titan.local:${LANGFUSE_PORT}}"
+LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.brainsos.local:${LANGFUSE_PORT}}"
 LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
 LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
 LANGFUSE_OTEL_AUTH="${LANGFUSE_OTEL_AUTH:-}"
@@ -117,7 +117,7 @@ is_gx10_hardware() {
 # Action: Stop
 # ------------------------------------------------------------------------------
 stop_services() {
-  log_info "Stopping Project Titan host control plane..."
+  log_info "Stopping brainsOS host control plane..."
   
   if [ -f "${LITELLM_PID_FILE}" ]; then
     PID=$(cat "${LITELLM_PID_FILE}")
@@ -205,7 +205,7 @@ stop_services() {
 # Action: Status
 # ------------------------------------------------------------------------------
 status_services() {
-  log_info "Checking Project Titan host control plane status..."
+  log_info "Checking brainsOS host control plane status..."
   
   # Ollama status
   if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
@@ -233,7 +233,7 @@ status_services() {
   REMOTE_LF_BODY=$(curl -s "${LANGFUSE_HOST}/api/public/health" 2>/dev/null || true)
 
   if [ -n "${LOCAL_LF_BODY}" ] && echo "${LOCAL_LF_BODY}" | grep -q '"status":"OK"'; then
-    log_success "Langfuse: RUNNING locally on http://localhost:${LANGFUSE_PORT} (http://langfuse.titan.local:${LANGFUSE_PORT})"
+    log_success "Langfuse: RUNNING locally on http://localhost:${LANGFUSE_PORT} (http://langfuse.brainsos.local:${LANGFUSE_PORT})"
   elif [ -n "${REMOTE_LF_BODY}" ] && echo "${REMOTE_LF_BODY}" | grep -q '"status":"OK"'; then
     log_success "Langfuse: RUNNING remotely at ${LANGFUSE_HOST}"
   else
@@ -255,7 +255,7 @@ status_services() {
 # Action: Start
 # ------------------------------------------------------------------------------
 start_services() {
-  log_info "Starting Project Titan host control plane..."
+  log_info "Starting brainsOS host control plane..."
 
   # 1. Start Ollama if not already responding
   if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
@@ -288,7 +288,7 @@ start_services() {
   if check_db_ready; then
     log_info "LiteLLM PostgreSQL database is already responding on 127.0.0.1:${LITELLM_DB_PORT}."
   else
-    log_info "Starting dedicated LiteLLM PostgreSQL database (titan-litellm-db)..."
+    log_info "Starting dedicated LiteLLM PostgreSQL database (brainsos-infra-litellm-db)..."
     docker compose up -d litellm-db
     
     DB_READY=false
@@ -328,9 +328,9 @@ start_services() {
     LITELLM_SUCCESS_CALLBACKS="langfuse,otel"
     LITELLM_FAILURE_CALLBACKS="langfuse,otel"
     
-    # Resolve host-level endpoint: if LANGFUSE_HOST points to titan.local and does not resolve natively on host, use loopback
+    # Resolve host-level endpoint: if LANGFUSE_HOST points to brainsos.local and does not resolve natively on host, use loopback
     HOST_LANGFUSE_URL="${LANGFUSE_HOST}"
-    if [[ "${HOST_LANGFUSE_URL}" == *"langfuse.titan.local"* ]] && ! curl -s -m 1 "${HOST_LANGFUSE_URL}/api/public/health" >/dev/null 2>&1; then
+    if [[ "${HOST_LANGFUSE_URL}" == *"langfuse.brainsos.local"* ]] && ! curl -s -m 1 "${HOST_LANGFUSE_URL}/api/public/health" >/dev/null 2>&1; then
       HOST_LANGFUSE_URL="http://127.0.0.1:${LANGFUSE_PORT}"
     fi
 

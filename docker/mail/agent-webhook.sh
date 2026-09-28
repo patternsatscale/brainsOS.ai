@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Dovecot Pigeonhole Sieve Inbound Agent Webhook Dispatcher
+# brainsOS: Dovecot Pigeonhole Sieve Inbound Agent Webhook Dispatcher
 # Piped by Dovecot LMTP on inbound email delivery to wake fleet agents reactively.
 # Zero polling, zero token waste, pure push-based doorbell wake-up.
 # ==============================================================================
@@ -121,35 +121,35 @@ if [ -z "${TARGET_TO}" ]; then
     TARGET_TO="$(echo "$PARSED_JSON" | grep -o '"to": *"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)"
 fi
 
-# Extract mailbox username before @ (e.g. terrastella@titan.local -> terrastella)
+# Extract mailbox username before @ (e.g. terrastella@brainsos.local -> terrastella)
 AGENT_NAME="$(echo "${TARGET_TO}" | cut -d@ -f1 | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
 
 # Only trigger for known autonomous fleet agents or configured recipients
 case "${AGENT_NAME}" in
     terrastella)
-        AGENT_PORT="${TITAN_AGENT_PORT_TERRASTELLA:-8642}"
+        AGENT_PORT="${BRAINSOS_AGENT_PORT_TERRASTELLA:-8642}"
         AGENT_KEY="${HERMES_API_TERRASTELLA_KEY:-}"
         ;;
     marvin)
-        AGENT_PORT="${TITAN_AGENT_PORT_MARVIN:-8643}"
+        AGENT_PORT="${BRAINSOS_AGENT_PORT_MARVIN:-8643}"
         AGENT_KEY="${HERMES_API_MARVIN_KEY:-}"
         ;;
     bawtford|cindy-pawford)
-        AGENT_PORT="${TITAN_AGENT_PORT_BAWTFORD:-8644}"
+        AGENT_PORT="${BRAINSOS_AGENT_PORT_BAWTFORD:-8644}"
         AGENT_KEY="${HERMES_API_BAWTFORD_KEY:-}"
         ;;
     *)
         # Not a recognized fleet agent mailbox (e.g. admin or operator) - skip webhook dispatch cleanly
-        echo "[TITAN-SIEVE-PIPE] Non-agent delivery to '${TARGET_TO}' (user: '${AGENT_NAME}'). Skipping webhook."
+        echo "[BRAINSOS-SIEVE-PIPE] Non-agent delivery to '${TARGET_TO}' (user: '${AGENT_NAME}'). Skipping webhook."
         exit 0
         ;;
 esac
 
 # Allow environment overrides for agent host / target URL
-AGENT_HOST="${TITAN_AGENT_HOST:-titan-agent-${AGENT_NAME}}"
+AGENT_HOST="${BRAINSOS_AGENT_HOST:-brainsos-agent-${AGENT_NAME}}"
 WEBHOOK_URL="${AGENT_WEBHOOK_URL:-http://${AGENT_HOST}:${AGENT_PORT}/webhook}"
 
-echo "[TITAN-SIEVE-PIPE] Inbound email for '${AGENT_NAME}' -> Dispatching push webhook to ${WEBHOOK_URL}..."
+echo "[BRAINSOS-SIEVE-PIPE] Inbound email for '${AGENT_NAME}' -> Dispatching push webhook to ${WEBHOOK_URL}..."
 
 AUTH_HEADER=()
 if [ -n "${AGENT_KEY}" ]; then
@@ -161,13 +161,13 @@ HTTP_STATUS=$(curl -s -o /tmp/webhook_response.txt -w "%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
     "${AUTH_HEADER[@]}" \
-    -H "X-Titan-Event: inbound-email" \
+    -H "X-BrainsOS-Event: inbound-email" \
     -d "${PARSED_JSON}" \
     --connect-timeout 5 \
     --max-time 10 \
     "${WEBHOOK_URL}" || echo "failed")
 
-echo "[TITAN-SIEVE-PIPE] Webhook dispatched to ${WEBHOOK_URL} (HTTP Status: ${HTTP_STATUS})"
+echo "[BRAINSOS-SIEVE-PIPE] Webhook dispatched to ${WEBHOOK_URL} (HTTP Status: ${HTTP_STATUS})"
 
 # Always exit 0 so Dovecot LMTP delivery to the user Maildir completes successfully
 exit 0

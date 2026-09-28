@@ -1,179 +1,232 @@
-# Project Titan: Autonomous Agent Workspace Specification
+# brainsOS: Open-Source Edge Agent Operating System & Governance Runtime
 
-This repository contains the complete infrastructure, configuration manifests, and orchestration scripts for **Project Titan**—an isolated, secure, and human-auditable autonomous AI agent appliance built on an **ASUS Ascent GX10** running DGX OS (Ubuntu 24.04 ARM64).
+[![Project Status: Active Alpha](https://img.shields.io/badge/Status-Active_Alpha-orange.svg)](https://brainsos.ai)
+[![COHUMAIN ACSG: Target Architecture](https://img.shields.io/badge/COHUMAIN_ACSG-Target_Architecture-blue.svg)](docs/cohumain/README.md)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
+[![Architecture: ARM64 Native](https://img.shields.io/badge/Architecture-ARM64_Native-purple.svg)](#prerequisites)
 
-The system architecture enforces an absolute boundary between execution runtimes, routing paths, and memory states to ensure zero-trust operations within local infrastructure.
+> **Website**: [brainsOS.ai](https://brainsos.ai) • **Initiative**: [Patterns at Scale](https://patternsatscale.com) • **Governance Standard**: [COHUMAIN ACSG](docs/cohumain/CONTROLS.md)
 
------
+**brainsOS** is the open-source bare-metal operating system and governance runtime for the **Balanced Reasoning & Agent Inference Node System (BRAINS)**. It bridges local autonomous AI agents directly to physical hardware telemetry, deterministic safety circuit breakers, virtual token quotas, and asynchronous queue management.
 
-## 1\. System Topology & Philosophy
+Governed by physics. Accountable down to the millijoule.
 
-Project Titan transforms a dedicated bare-metal system into a transactional black box. Rather than running unverified Python loops or local AI tooling directly on the host operating system, the entire application stack is containerized, isolated, and structured according to the **Titan L1–L7 Reference Model**:
+---
 
-### Titan L1–L7 Reference Model
+> [!NOTE]
+> ### 🚧 Project Status: Active Development (Alpha)
+> **brainsOS is an active open-source engineering project under rapid alpha development.**
+> 
+> The **COHUMAIN Agentic Cybersecurity Governance (ACSG)** controls catalog included in this repository represents our **architectural North Star and aspirational conformance roadmap**. While foundational baseline controls (deterministic kill switches, least-privilege host sandboxing, and memory purity) are operational today, full conformance across all 25 controls is an ongoing, phased engineering effort. We publish our complete architecture, source code, and control mappings in the open to build transparently and invite community collaboration.
+
+---
+
+## 1. The Problem: Cloud AI Ignores Physics
+
+Modern artificial intelligence largely operates on the premise that power is infinite, cloud compute is limitless, and execution is synchronous. Today, gigawatts are poured into unconstrained reasoning loops, offloading physical burdens—grid instability, carbon emissions, and unmanaged heat—onto the surrounding world. When an autonomous agent enters a divergent tool loop, it burns cash, spikes processor draw, and pushes real-world costs onto local infrastructure uninterrupted.
+
+**Software token counters cannot protect your hardware.** Autonomous local intelligence needs bare-metal operational boundaries.
+
+### The Patterns at Scale Philosophy
+Rooted in the *Patterns at Scale Manifesto*, brainsOS enforces a new computing paradigm:
+
+* **Computation Must Learn to Breathe with the Grid**: Scaling up when energy generation and ambient conditions afford it, scaling down when physical constraints demand it.
+* **Energy Quotas Rather than Just Token Budgets**: Tying execution limits directly to battery reserves, solar generation curves, and ambient thermal saturation.
+* **Accounting for Every Watt Down to the Millijoule**: Moving beyond theoretical model parameter counts to measure total thermodynamic cost per completed task.
+* **Living with System Heat**: Treating compute as a responsive micro-utility, recycling thermal exhaust when possible, and curbing demands when the environment requires it.
+
+---
+
+## 2. Core Architectural Capabilities
+
+```
+┌────────────────────────────────────────────────────────┐
+│                PROJECT MILLIJOULE (mJ)                 │
+│    The Overarching Mission & Thermodynamic Research    │
+│ (Solar orchestration, thermal sinks, waste heat reuse) │
+├────────────────────────────────────────────────────────┤
+│                         BRAINS                         │
+│    Balanced Reasoning & Agent Inference Node System    │
+│ (brainsOS.ai: ACSG governance runtime & kill switches) │
+├────────────────────────────────────────────────────────┤
+│                 PHYSICAL & SENSORY LAYER               │
+│  Heterogeneous Hardware • Microgrid Bus • Sensors      │
+└────────────────────────────────────────────────────────┘
+```
+
+### 1. Asynchronous Message & Queue Execution
+Replaces unpredictable synchronous agent loops with a decoupled queuing harness (`packages/brainsOS-queue`). Reasoning steps, tool executions, and multi-agent communications flow through strict asynchronous message brokers, enforcing backpressure, concurrency limits, and energy-aware job scheduling.
+
+### 2. Deterministic Safety Circuit Breakers & Kill Switches
+Translates ACSG agent safety into hard physical boundaries. If an autonomous agent diverges or enters an unconstrained loop, brainsOS drains or drops queue workers, cutting execution deterministically via `./scripts/control/emergency-stop.sh` or virtual key invalidation before battery reserves collapse or silicon reaches thermal limits.
+
+### 3. Least-Privilege Host Sandboxing
+Enforces strict boundary isolation on bare-metal silicon. Agent runtimes drop elevated Linux capabilities (`cap_drop: [ALL]`), operate under non-root identities (`PUID=1000`, `PGID=1000`), and strictly block exposure of the host Docker socket (`/var/run/docker.sock`).
+
+### 4. Memory Plane Purity (Open Knowledge Format)
+Runtimes are ephemeral and disposable. Long-term agent knowledge is preserved exclusively in human-auditable flat-file Markdown notes using the Open Knowledge Format (OKF) via `packages/brainsOS-memory`. Binary indices, SQLite databases, and packages are strictly forbidden in `/memories` and reside in `/workspace`.
+
+---
+
+## 3. Out-of-the-Box Governance Stack
+
+brainsOS unifies established enterprise-grade open-source components into a cohesive local governance and inspection plane:
+
+| Component | Role in brainsOS Harness | Governance Boundary |
+|---|---|---|
+| **[LiteLLM](https://github.com/BerriAI/litellm)** | Local token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1`) to protect unified LPDDR5x memory buses from bandwidth thrashing. |
+| **[Langfuse](https://langfuse.com)** | Step-by-step local tracing of asynchronous agent trajectories and tool spans | Full OpenTelemetry observability into reasoning steps, token latency, and error states. |
+| **[mitmproxy](https://mitmproxy.org) & [Caddy](https://caddyserver.com)** | Ingress/egress firewalls and boundary inspection proxies | Intercepts outbound HTTP/HTTPS calls, redacts secrets from flow logs, and terminates unauthorized external connections. |
+| **In-Transit Egress Proxy** | Multi-tenant in-transit credential injection | Containers hold **zero ambient secrets** or GitHub tokens; credentials are dynamically injected in transit by proxy based on client container IP. |
+| **[Postfix](https://www.postfix.org) & [SOGo](https://sogo.nu)** | Decoupled, auditable messaging backbone | Asynchronous agent-to-human and agent-to-agent email communication, avoiding fragile polling loops. |
+| **Operator IDE ([code-server](https://github.com/coder/code-server))** | Controlled operator workspace and inspection console | Sandboxed environment for inspecting artifacts, memories, and workspace state behind HTTP Basic Auth. |
+
+---
+
+## 4. The BRAINS Reference Architecture (L1–L7 Model)
 
 ``` text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ L7: Communications, UX & Operator IDE                                       │
-│     - Ingress Reverse Proxy: titan-net-caddy (*.titan.local, TLS, streaming SSE) │
-│     - Messaging Daemons: titan-net-signal-cli (JSON-RPC daemon on :8080)    │
-│     - Operator IDE & PKM: titan-app-code-server (:8443 -> editor.titan.local)│
+│     - Ingress Reverse Proxy: Caddy (*.brainsos.local, TLS)     │
+│     - Messaging Daemons: brainsos-net-signal-cli, Postfix SMTP, SOGo Groupware │
+│     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Core Units (Manifest-Driven Fleet: config/agents.yaml)            │
-│     - titan-agent-terrastella   (:8642 API, :9119 Dashboard, $50 Budget)    │
-│     - titan-agent-football-dan  (:8643 API, :9120 Dashboard, $25 Budget)    │
-│     - titan-agent-cindy-pawford (:8644 API, :9121 Dashboard, $25 Budget)    │
+│     - Primary Operations Agent  (:8642 API, :9119 Dashboard)                │
+│     - Sports Analytics Agent    (:8643 API, :9120 Dashboard)                │
+│     - Autonomous Designer Agent (:8644 API, :9121 Dashboard)                │
 │     - Personas: config/hermes/<id>/SOUL.md & subagents/<sub_id>/SOUL.md     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
-│     - Standalone Package: packages/titan_memory/ (OKF Engine & Vector SPI)  │
+│     - Standalone Packages: packages/brainsOS-memory/, brainsOS-mail/, etc.  │
 │     - Partitioned Memories: ./data/agent_memories/<id> (Pure Markdown)      │
 │     - Tenant Workspaces:   ./data/agent_workspaces/<id> (Tools, Caches, DBs)│
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L4: Routing & Security Control Plane                                        │
+│ L4: Routing, Security & ACSG Control Plane                                  │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
 │     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
-│     - Tool Egress Proxy: titan-net-egress-proxy (:8081/8082, flows & auth)  │
-│     - Control Plane DB: titan-infra-litellm-db (PostgreSQL, titan-litellm)  │
+│     - Tool Egress Proxy: brainsos-net-egress-proxy (:8081/8082, flows & auth)  │
+│     - Control Plane DB: brainsos-infra-litellm-db (PostgreSQL, isolated)       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane                                                         │
 │     - Host Ollama / vLLM bound strictly to loopback (127.0.0.1:11434)       │
 │     - Zero direct agent access; all completions route through LiteLLM       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L2: Virtualization & Isolated Bridge Networks                               │
-│     - titan-ingress (Caddy -> Service ports)                                │
-│     - titan-internal (Agent egress & Signal daemon)                         │
-│     - titan-litellm-net (Strictly isolates PostgreSQL from agents)          │
+│     - brainsos-ingress (Caddy -> Service ports)                                │
+│     - brainsos-internal (Agent egress & messaging daemons)                     │
+│     - brainsos-litellm-net (Strictly isolates PostgreSQL from agents)          │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L1: Hardware & System Plane                                                 │
-│     - ASUS Ascent GX10 (NVIDIA GB10 ARM64, unified LPDDR5x ~273 GB/s)       │
+│ L1: Hardware & Physical Plane                                               │
+│     - Bare-Metal Target: ASUS Ascent GX10 (NVIDIA GB10 ARM64, unified memory)│
 │     - Development Workstation: Apple Silicon macOS (native ARM64 parity)    │
+│     - Microgrid & Power Bus: DC shunts, Battery Management, Solar telemetry │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ Cross-Cutting: Observability & Operational Safety                           │
 │     - Decoupled Langfuse v4 + OpenTelemetry distributed tracing             │
-│     - Unified full-data backup (scripts/control/backup.sh)                  │
-│     - Granular single-tenant emergency kill-switch (scripts/control/stop)   │
+│     - Full-data backup & versioning (scripts/control/backup.sh)             │
+│     - Granular emergency kill-switch (scripts/control/emergency-stop.sh)    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Core Architecture Rules
+---
 
-  * **Zero Direct Connect (Rule 2):** The agent layer has no network visibility or access keys for raw local inference engines or external APIs. It connects strictly to the LiteLLM proxy gateway (`http://proxy.local:4000/v1`).
-  * **Control Plane Database Isolation (Rule 6):** LiteLLM is backed by a dedicated PostgreSQL container (`titan-litellm-db`) isolated on `titan-litellm-net`. Agents have zero database credentials, zero network routes, and zero storage mounts to this database.
-  * **Memory Plane Purity (Rule 1):** Runtimes are ephemeral and disposable. Long-term knowledge is preserved in human-readable, flat-file Markdown using the Open Knowledge Format (OKF). Binary indices, SQLite databases, and packages are strictly forbidden in `/memories` and reside in `/workspace`.
-  * **Manifest-Driven Multi-Agent Tenancy:** Fleet composition is declared centrally in `config/agents.yaml`. The reconciler (`scripts/control/sync-agents.sh`) renders compose topologies (`docker-compose.agents.yml`), Caddy virtual hosts (`config/caddy/agents.caddy`), seeds personas, and provisions virtual keys with budget caps.
-  * **Decoupled Memory Module (`packages/titan_memory`):** Core memory logic, OKF models, purity validators, and a pluggable `VectorStore` abstract SPI are decoupled into a standalone package, allowing memory contributors to extend vector stores without stepping on agent runtime toes.
-  * **Unified Persistent Storage & Cloud Backup:** All persistent state across the appliance lives under a single host data root (`./data` in development, or `/data/titan` on production GX10):
-    * `memories/`: Human-auditable OKF Markdown notes partitioned per agent (`memories/<agent_id>/`).
-    * `litellm_db/`: LiteLLM PostgreSQL persistence (dynamic models, virtual keys, audit logs).
-    * `workspace/`: Hermes agent runtime state, custom skills, Signal session credentials, tool configs, and caches partitioned per agent (`workspace/<agent_id>/`).
-  * **Human-in-the-Loop Governance & Operator IDE:** Titan Operator IDE (containerized VS Code / Code-Server) functions as the unified engineering console across Project Titan. Operators access a 4-root workspace (Project Titan repo, memory trees, agent scratchpads, and web app canvases), native terminal access with pre-installed Aider, Continue AI assistant with pre-configured LiteLLM and Agent endpoints, Markdown PKM extensions (Foam, Markdown All in One), and the `titan-chat` CLI helper, accessible via Caddy at `editor.titan.local` (and `code.titan.local`) behind HTTP Basic Auth.
-  * **Immediate Software Kill-Switch:** Invalidating a single virtual key inside LiteLLM or running `./scripts/control/emergency-stop.sh <tenant_id>` severs inference streams and halts rogue agents instantly without impacting other agents or host state.
-  * **In-Transit Egress Credential Injection (Rule 10):** Agent containers hold zero ambient API tokens or GitHub secrets (`GH_TOKEN`, `GITHUB_TOKEN`) in their environment or filesystem. Git Smart HTTP and GitHub CLI traffic routes through Caddy (`https://github-proxy.titan.local`), which terminates internal TLS and injects fine-grained authorization headers in transit as traffic leaves the internal network.
+## 5. Built for Enterprise-Grade ACSG Compliance
 
------
+brainsOS is engineered as an open-source reference implementation for **COHUMAIN certification**, operationalizing the **Agentic Governance & Security Controls (AGSC)** standard developed jointly by **[COHUMAIN Labs](https://www.cohumain.ai/research)** (responsible-AI research) and **[SafeAlign AI](https://safealignai.io/)** (enterprise agent governance and security).
 
-## 2. Security & Operational Baselines
+The complete, canonical 25-control catalog is maintained directly within this repository under [`docs/cohumain/`](docs/cohumain/), licensed under [Creative Commons Attribution 4.0 International (CC BY 4.0)](docs/cohumain/LICENSE):
 
-  * **Identity Pinning:** All container applications run bound to uniform user configurations (`PUID=1000`, `PGID=1000`) to guarantee write access and eliminate file ownership collisions across shared storage volumes.
-  * **Host Sandboxing:** The agent container runtime completely drops elevated Linux capabilities (`cap_drop: [ALL]`, only retaining minimal network hooks) and strictly blocks exposure of the host Docker socket (`/var/run/docker.sock`).
-  * **Hardware Serialization:** To safely manage model execution on the GB10 chip without thrashing the unified LPDDR5x memory bus (~273 GB/s peak bandwidth), LiteLLM serializes request scheduling via `max_parallel_requests: 1` or `2`.
-  * **Host OS Protection:** Core NVIDIA stack dependencies (`linux-nvidia-hwe-24.04`, `nvidia-container-toolkit`) are held explicitly using `apt-mark hold` to isolate baseline configurations from breaking up-stream package modifications.
-  * **Storage Path Conventions:**
-    * **Development (macOS & standard clones):** Uses relative paths inside the repository root (`./data/agent_memories`, `./data/agent_workspaces`, `./data/control_plane/litellm_db`, `./data/telemetry`).
-    * **Production Appliance (ASUS Ascent GX10):** Can optionally bind to dedicated NVMe mount paths (`/data/titan/agent_memories`, `/data/titan/agent_workspaces`, `/data/titan/control_plane/litellm_db`) configured via `.env`.
+| Control Domain | Focus Areas | Key Controls Operationalized |
+|---|---|---|
+| **🛡️ Safety (SAF)** | Runaway prevention & factual safeguards | `SAF-01` System Oversight, `SAF-02` Emergency Kill Switch, `SAF-05` Output Safeguards |
+| **⚖️ Alignment (ALN)** | Boundary control & human intervention | `ALN-01` Autonomy Boundary, `ALN-02` Human Oversight, `ALN-05` Action Attribution |
+| **🏛️ Governance (GOV)** | Data integrity & carbon accountability | `GOV-01` Data Provenance, `GOV-02` Change Governance, `GOV-08` Environmental Governance |
+| **🔒 Security (SEC)** | Isolation, egress security & memory purity | `SEC-01` Coordination Security, `SEC-02` Least Privilege, `SEC-07` Memory Purity Guard |
 
------
+*For complete control specifications, audit criteria, and external crosswalks (EU AI Act, NIST AI RMF, ISO 42001, MITRE ATLAS), see [docs/cohumain/README.md](docs/cohumain/README.md) and [docs/cohumain/CONTROLS.md](docs/cohumain/CONTROLS.md).*
 
-## 3. Quickstart & Getting Started (Linux / DGX OS & macOS)
+---
 
-This guide provides the fastest path to bootstrap, run, and verify a complete Project Titan appliance on a standard Linux workstation (Ubuntu 24.04 LTS, DGX OS, or Debian-based distributions) or a macOS development environment.
+## 6. Connection to Research: Project Millijoule (mJ)
+
+**brainsOS** is the general-purpose, open-source platform that powers **Project Millijoule (mJ)**, an overarching research initiative and living laboratory operated by Patterns at Scale.
+
+While brainsOS provides the open-source software harness, Project mJ investigates the outer physical boundaries of environment-aware computation:
+* **Power-Adaptive Reasoning**: Dynamically scaling reasoning depth and model parameter sizes against real-time solar generation curves and battery state-of-charge.
+* **Heat-Aware Compute Scheduling (Digital Boilers)**: Treating processors as responsive thermal micro-utilities, batching background reasoning to supplement living-space heating during cold hours.
+* **Thermal Characterization Lab**: First-law open-loop flow calorimetry measuring empirical heat dissipation against electrical draw to calculate the true millijoules expended per generated token (`mJ/tok`).
+
+> [!NOTE]
+> **Data Demarcation**: Project mJ's living-space sensory feeds, continuous-flow calorimetry logs, proprietary agent personas, and private memory trees remain unshared. brainsOS is the reusable open-source tooling.
+
+---
+
+## 7. Quickstart & Getting Started
 
 ### Prerequisites
 
 | Component | Minimum Requirement | Recommended / Notes |
 |---|---|---|
-| **Operating System** | Ubuntu 24.04 LTS, DGX OS 6+ (ARM64), or macOS 14+ (Apple Silicon) | Debian 12+ x86_64 or ARM64 compatible |
+| **Operating System** | macOS 14+ (Apple Silicon) or Ubuntu 24.04 LTS / DGX OS (ARM64) | Debian 12+ x86_64 or ARM64 compatible |
 | **Container Engine** | Docker Engine 24.0+ & Docker Compose v2 (`docker compose`) | User must be in `docker` group (`sudo usermod -aG docker $USER`) |
-| **Host Tooling** | `bash` 4+, `curl`, `git`, `jq`, `python3` (3.10+), `python3-venv` | Handled automatically by `setup-host.sh` on Ubuntu/DGX OS |
-| **Hardware / Memory** | 16 GB RAM minimum | Unified LPDDR5x (GX10 GB10) or Apple Silicon Unified Memory |
-| **Inference Acceleration** | CPU fallback supported | NVIDIA CUDA 12+ & `nvidia-container-toolkit` for GPU acceleration |
-
-> [!IMPORTANT]
-> **Linux Docker Group Membership:** Ensure your non-root user can interact with the Docker daemon without `sudo`:
-> ```bash
-> sudo usermod -aG docker $USER && newgrp docker
-> ```
+| **Host Tooling** | `bash` 4+, `curl`, `git`, `jq`, `python3` (3.10+), `python3-venv` | Handled automatically by `setup-host.sh` on Linux |
+| **Unified Memory** | 16 GB RAM minimum | Unified LPDDR5x (GX10 GB10) or Apple Silicon Unified Memory |
+| **Inference Engine** | CPU fallback supported | NVIDIA CUDA 12+ & `nvidia-container-toolkit` for GPU acceleration |
 
 ---
 
-### Step-by-Step Quickstart
+### Step-by-Step Bootstrap
 
 #### 1. Clone the Repository & Configure Environment
 ```bash
-git clone https://github.com/patternsatscale/project-titan.git
-cd project-titan
+git clone https://github.com/patternsatscale/brainsOS.git
+cd brainsOS
 
 # Copy baseline environment configuration
 cp .env.example .env
 ```
-*Review `.env` parameters if needed:*
-- `TITAN_DATA_DIR`: Set to `./data/agent_memories` (development) or `/data/titan/agent_memories` (production GX10).
-- `TITAN_WORKSPACE_DIR`: Set to `./data/agent_workspaces` (development) or `/data/titan/agent_workspaces` (production GX10).
-- `PUID` and `PGID`: Set to `1000:1000` (default non-root user).
 
-#### 2. Run Idempotent Host Baseline Setup
-Execute the host setup script to audit system permissions, install host dependencies, initialize the native Ollama inference engine, configure Python virtual environments, and seed the default local model:
+#### 2. Run Host Baseline Setup
+Execute the idempotent setup script to audit system permissions, install dependencies, configure native loopback inference (Ollama), and seed the default model:
 ```bash
 ./scripts/setup/setup-host.sh --pull-model
 ```
-*Flags:*
-- `--pull-model`: Automatically pulls and seeds the baseline model (e.g. `qwen2.5:7b-instruct-q4_K_M` or `hermes3:8b`). Omit if seeding manually.
 
-#### 3. Initialize Memory Plane & Build Hermes Agent
-Provision the pure Open Knowledge Format (OKF) storage directories and build the unprivileged Hermes Agent sandbox:
+#### 3. Initialize Memory Plane & Build Agent Sandbox
+Provision the pure Open Knowledge Format (OKF) storage directories and build the unprivileged agent sandbox:
 ```bash
-# Provision flat-file OKF directory tree (knowledge/, rules/, logs/)
 ./scripts/setup/setup-memories.sh
-
-# Build unprivileged Hermes container image with native hermes-okf plugin
 ./scripts/setup/setup-hermes.sh
 ```
 
-#### 4. Start Native Host Control Plane
-Launch the host-side inference runtime (`ollama` on `127.0.0.1:11434`), LiteLLM proxy gateway (`:4000`), and initialize dynamic PostgreSQL persistence:
+#### 4. Start Host Control Plane
+Launch the host-side inference runtime (`ollama` on `127.0.0.1:11434`), LiteLLM proxy gateway (`:4000`), and dynamic PostgreSQL persistence:
 ```bash
 ./scripts/control/start-control-plane.sh start
-```
-*Verify control plane status:*
-```bash
 ./scripts/control/start-control-plane.sh status
 ```
 
 #### 5. Launch Appliance Container Cluster
-Start the containerized ingress gateway, database, PKM interface, messaging daemons, and Hermes agent sandbox via Docker Compose:
+Start the ingress proxy, database, Operator IDE, messaging daemons, and agent containers via Docker Compose:
 ```bash
 docker compose up -d
-```
-*Verify running containers:*
-```bash
 docker compose ps
 ```
 
 #### 6. Configure Network & Local Domain Routing (`/etc/hosts`)
-Route appliance domains to loopback (or your Linux machine's LAN IP) using the automated network script:
+Route appliance domains to loopback (or your appliance's static LAN IP):
 ```bash
-# Register *.titan.local domains non-interactively in /etc/hosts
 sudo ./scripts/setup/setup-network.sh --skip-ip -y
 ```
 *Or manually append to `/etc/hosts`:*
 ```text
-127.0.0.1 titan.local terrastella.titan.local api.terrastella.titan.local marvin.titan.local api.marvin.titan.local football-dan.titan.local api.football-dan.titan.local cindypawford.titan.local api.cindypawford.titan.local proxy.titan.local memory.titan.local langfuse.titan.local editor.titan.local code.titan.local
+127.0.0.1 brainsos.local terrastella.brainsos.local api.terrastella.brainsos.local marvin.brainsos.local api.marvin.brainsos.local cindypawford.brainsos.local api.cindypawford.brainsos.local proxy.brainsos.local memory.brainsos.local langfuse.brainsos.local editor.brainsos.local code.brainsos.local
 ```
-*(Note: If accessing this Linux appliance remotely from another machine on your LAN, replace `127.0.0.1` with the appliance's actual static LAN IP).*
 
-#### 7. Run Automated Verification Tests
-Validate complete end-to-end functionality, storage isolation, and agent persistence:
+#### 7. Run Verification Test Harnesses
+Validate system isolation, memory purity, and routing:
 ```bash
 # Verify multi-agent fleet manifest, isolation, and scheduling
 ./scripts/verify/verify-fleet.sh
@@ -181,12 +234,9 @@ Validate complete end-to-end functionality, storage isolation, and agent persist
 # Verify primary agent workspace persistence and LiteLLM mediation
 ./scripts/verify/verify-hermes.sh
 
-# Verify Titan Operator IDE and OKF memory plane synchronization
+# Verify Operator IDE and OKF memory plane synchronization
 ./scripts/verify/verify-editor.sh
 ./scripts/verify/verify-memories.sh
-
-# Verify Langfuse observability and OpenTelemetry ingestion
-./scripts/verify/verify-langfuse.sh
 
 # Verify in-transit edge egress credential injection
 ./scripts/verify/verify-egress-token-injection.sh
@@ -194,28 +244,25 @@ Validate complete end-to-end functionality, storage isolation, and agent persist
 
 ---
 
-### Appliance Service Directory
+## 8. Appliance Service Directory
 
-Once running, the following endpoints are accessible via your browser:
+Once running, the following local services are accessible in your browser:
 
-| Endpoint | Ingress URL | Port | Default Credentials | Description |
+| Service | Ingress URL | Port | Default Credentials | Role |
 |---|---|---|---|---|
-| **Appliance Portal** | [http://titan.local](http://titan.local) | `80` / `443` | *None* | ASUS Ascent GX10 appliance dashboard & hub |
-| **Operator IDE** | [http://editor.titan.local](http://editor.titan.local) *(alias: [http://code.titan.local](http://code.titan.local))* | `8443` | `operator` / `${OPERATOR_PASSWORD}` | Containerized VS Code, Multi-Root Workspace, Aider, Continue & Foam PKM |
-| **Terrastella UI (Primary)** | [http://terrastella.titan.local](http://terrastella.titan.local) | `9119` | `admin` / `titan_admin_secret` | Primary operations agent dashboard, channels & tool config |
-| **Terrastella API (Primary)** | [http://api.terrastella.titan.local/v1](http://api.terrastella.titan.local/v1) | `8642` | Bearer `${HERMES_API_TERRASTELLA_KEY}` (outbound: `${TERRASTELLA_LITELLM_KEY}`) | OpenAI-compatible chat completions interface |
-| **Marvin UI** | [http://marvin.titan.local](http://marvin.titan.local) | `9120` | `admin` / `titan_admin_secret` | Sports analytics agent dashboard & telemetry |
-| **Marvin API** | [http://api.marvin.titan.local/v1](http://api.marvin.titan.local/v1) | `8643` | Bearer `${HERMES_API_MARVIN_KEY}` (outbound: `${MARVIN_LITELLM_KEY}`) | Sports analytics chat completions interface |
-| **Bawtford UI** | [http://bawtford.titan.local](http://bawtford.titan.local) | `9121` | `admin` / `titan_admin_secret` | Bawtford supermodel CEO dashboard & atelier |
-| **Bawtford API** | [http://api.bawtford.titan.local/v1](http://api.bawtford.titan.local/v1) | `8644` | Bearer `${HERMES_API_BAWTFORD_KEY}` (outbound: `${BAWTFORD_LITELLM_KEY}`) | Bawtford chat completions interface |
-| **SOGo Groupware & Webmail** | [http://mail.titan.local](http://mail.titan.local) *(alias: [http://mail.localhost](http://mail.localhost))* | `20000` / `80` | `operator@titan.local` / `operator_secret_pass` | SOGo Webmail, Multi-Agent CalDAV Calendars & Alarms |
-| **LiteLLM Gateway** | [http://proxy.titan.local](http://proxy.titan.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing, key & budget proxy |
-| **Langfuse Observability** | [http://langfuse.titan.local:3001](http://langfuse.titan.local:3001) | `3001` | *Local account* | Distributed tracing, token telemetry & agent spans |
-
+| **Appliance Portal** | [http://brainsos.local](http://brainsos.local) | `80` / `443` | *None* | Appliance dashboard & status hub |
+| **Operator IDE** | [http://editor.brainsos.local](http://editor.brainsos.local) | `8443` | `operator` / `${OPERATOR_PASSWORD}` | Containerized VS Code (code-server), Continue AI assistant & PKM |
+| **Primary Agent UI** | [http://terrastella.brainsos.local](http://terrastella.brainsos.local) | `9119` | `admin` / `${TERRASTELLA_MAIL_PASSWORD}` | Primary operations agent dashboard |
+| **Primary Agent API** | [http://api.terrastella.brainsos.local/v1](http://api.terrastella.brainsos.local/v1) | `8642` | Bearer `${HERMES_API_TERRASTELLA_KEY}` | OpenAI-compatible chat completions interface |
+| **Sports Analytics UI** | [http://marvin.brainsos.local](http://marvin.brainsos.local) | `9120` | `admin` / `${MARVIN_MAIL_PASSWORD}` | Sports companion dashboard |
+| **Bawtford Designer UI** | [http://bawtford.brainsos.local](http://bawtford.brainsos.local) | `9121` | `admin` / `${BAWTFORD_MAIL_PASSWORD}` | Autonomous fashion designer atelier |
+| **SOGo Groupware** | [http://mail.brainsos.local](http://mail.brainsos.local) | `20000` / `80` | `operator@brainsos.local` / `${OPERATOR_MAIL_PASSWORD}` | Webmail, agent shared mailboxes & CalDAV |
+| **LiteLLM Gateway** | [http://proxy.brainsos.local](http://proxy.brainsos.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing & budget proxy |
+| **Langfuse Tracing** | [http://langfuse.brainsos.local:3001](http://langfuse.brainsos.local:3001) | `3001` | *Local account* | Distributed tracing & token telemetry |
 
 ---
 
-### Common Operations & Lifecycle Management
+## 9. Common Lifecycle Operations
 
 ```bash
 # Check service status across host and containers
@@ -224,281 +271,77 @@ docker compose ps
 
 # View container logs
 docker compose logs -f caddy
-docker compose logs -f agent-primary agent-football-dan agent-cindy-pawford
+docker compose logs -f agent-primary
 
 # Gracefully restart the full appliance
 docker compose restart
 ./scripts/control/start-control-plane.sh restart
 
-# Gracefully shut down all services
-docker compose down
-./scripts/control/start-control-plane.sh stop
-
-# Emergency kill-switch (instantly revokes agent key and freezes loops)
+# Emergency kill-switch (instantly revokes agent key and freezes execution)
 ./scripts/control/emergency-stop.sh
+
+# Reconcile fleet changes after editing config/agents.yaml
+./scripts/control/sync-agents.sh
 ```
-
------
-
-## 4. Repository Directory Structure
-
-``` text
-project-titan/  
-├── README.md                 # System vision, architecture, and quickstart guide
-├── AGENTS.md                 # Agent operating discipline, tickets, and safety rules
-├── docker-compose.yml        # Declarative service topology and isolated networks (cluster: titan)
-├── docker-compose.agents.yml # Auto-generated multi-agent fleet service units (sync-agents.sh)
-├── .env.example              # Environment variables template (UID/GID, pathing, DB secrets)
-├── config/  
-│   ├── agents.yaml           # Declarative multi-agent fleet manifest (L1–L7 layer definitions)
-│   ├── caddy/  
-│   │   ├── Caddyfile         # Main ingress reverse proxy configuration (*.titan.local / *.titan.<domain>)
-│   │   ├── agents.caddy      # Auto-generated agent subdomain vhosts (sync-agents.sh)
-│   │   └── tls_policy.caddy  # Auto-generated TLS policy snippet (Route 53 ACME or internal CA)
-│   ├── editor/
-│   │   ├── titan.code-workspace # Multi-Root Workspace definition (Project Titan, Memories, Workspaces, Site)
-│   │   └── settings.json     # Operator IDE settings, markdown/foam PKM configs, and memory purity exclusions
-│   ├── litellm/  
-│   │   └── config.yaml       # Rate-limiting, model aliases, and database persistence settings
-│   ├── hermes/  
-│   │   ├── config.yaml       # Upstream Hermes Agent config (providers, channels, plugins)
-│   │   ├── model_pool.json   # Autonomous coding model pool for weekly engine rotation (cindy-active-coding-model)
-│   │   ├── primary/          # Primary operations agent persona (SOUL.md)
-│   │   ├── football-dan/     # Sports analytics companion persona (SOUL.md)
-│   │   └── cindy-pawford/    # Cindy Pawford conversational persona & specialized subagents
-│   │       ├── SOUL.md       # Primary conversational & Creative Director persona
-│   │       └── web-developer/
-│   │           └── SOUL.md   # Website builder sub-agent clean software engineering persona
-│   └── memories/             # Version-controlled starter OKF templates (knowledge/, rules/, logs/)
-├── infra/                    # Decoupled SST v3 (Ion) Platform Cloud Infrastructure (DNS, ACME IAM, SES)
-│   ├── sst.config.ts         # SST platform root configuration (zero hardcoded domains)
-│   ├── src/                  # Modular cloud components (dns.ts, ses.ts)
-│   ├── package.json          # SST Ion dependencies and typecheck scripts
-│   └── README.md             # Platform cloud architecture and local CLI deployment guide
-├── apps/
-│   └── cindypawford/
-│       ├── archive/          # Immutable Digital Museum Vault (2024 Genesis era, sealed snapshots, eras.json)
-│       ├── assets/           # UI design tokens, component mockups & visual specifications from Stitch
-│       ├── clean-slate/      # Master atelier starter templates (index.html, styles.css, app.js) seeded on reset
-│       ├── info/             # Project information portal (info.cindypawford.com; safe/green AI & edge benchmark)
-│       └── site/             # Cindy Pawford public HTML canvas (cloned CindyPawford-Online repo; mapped to /app/html)
-├── packages/
-│   ├── titan_memory/         # Standalone OKF memory engine, purity guards, & VectorStore SPI
-│   │   ├── pyproject.toml    # Standalone Python package definition (pip/uv installable)
-│   │   ├── README.md         # Architecture & contributor guide for memory engine & vector stores
-│   │   ├── titan_memory/     # Core OKF parser, models, purity validator, and tools registry
-│   │   └── tests/            # Dedicated pytest suite (100% test coverage)
-│   ├── titan_mail/           # Standalone RFC-compliant asynchronous email client for agents
-│   │   ├── pyproject.toml    # Package definition (zero external dependencies)
-│   │   ├── README.md         # Architecture and usage guide for agent mail operations
-│   │   ├── titan_mail/       # TitanMailClient & RFC 5545 calendar ICS generation
-│   │   └── tests/            # Test suite (roundtrip SMTP/IMAP & calendar tests)
-│   └── titan_queue/          # Modular asynchronous FIFO work queue & concurrency manager
-│       ├── pyproject.toml    # Standalone package definition
-│       ├── README.md         # Queue architecture, FIFO semantics & backends guide
-│       ├── titan_queue/      # WorkQueue, FIFOQueueWorker, models, and SQLite/Memory backends
-│       └── tests/            # Dedicated pytest suite (FIFO, concurrency, retries, dead-letter)
-├── docker/
-│   ├── mail/                 # Lightweight native ARM64 mail server (Postfix + Dovecot)
-│   │   ├── Dockerfile        # Alpine image with Postfix, Dovecot LMTP/IMAP, and Pigeonhole Sieve
-│   │   ├── entrypoint.sh     # Daemon lifecycle, user seeding, and ACL registration manager
-│   │   ├── dovecot/          # Dovecot IMAP/LMTP configuration (shared namespaces & ACLs)
-│   │   ├── postfix/          # Postfix SMTP configuration (LMTP delivery & local routing)
-│   │   └── sieve/            # Pigeonhole Sieve scripts & webhook execution hooks
-│   ├── caddy/
-
-│   │   ├── Dockerfile        # Custom Caddy multi-stage build with Route 53 ACME DNS-01 plugin
-│   │   └── README.md         # Ingress reverse proxy & ACME DNS-01 wildcard SSL architecture guide
-
-│   ├── editor/
-│   │   ├── Dockerfile        # Containerized VS Code (Code-Server), Aider, Continue, and PKM tooling
-│   │   ├── entrypoint.sh     # Extension installer & Multi-Root workspace initialization
-│   │   └── titan-chat        # Operator CLI helper for direct interactive agent chat
-│   ├── hermes/
-│   │   ├── Dockerfile        # Upstream Nous Research Hermes Agent container definition
-│   │   └── plugins/
-│   │       └── hermes-okf/   # Native Hermes OKF plugin package (plugin.yaml, okf.py, tools.py)
-│   └── langfuse/
-│       ├── docker-compose.yml# Decoupled Langfuse v4 distributed observability stack
-│       └── .env.example      # Standalone Langfuse environment template
-├── docs/                     # Architectural tenets, specifications, and ticket walkthroughs
-│   ├── lab-work/             # Claude documentation, critique & project reporting (Rule 11)
-│   ├── reference-architecture-tenets.md  # Core security tenets and controls (TN-1 to TN-9)
-│   └── YYYY-MM-DD-ticket*.md # Human-auditable ticket walkthroughs & test evidence
-├── data/  
-│   ├── memories/             # Live host volume storage for OKF Markdown files
-│   │   └── agents/           # Partitioned agent memories (primary, football-dan, cindy-pawford)
-│   ├── litellm_db/           # Dedicated LiteLLM PostgreSQL persistence storage (git-ignored)
-│   ├── workspace/            # Partitioned agent tools, caches, and Signal/Telegram state (git-ignored)
-│   │   ├── primary/          # Primary agent sandbox workspace
-│   │   ├── football-dan/     # Football-dan agent sandbox workspace
-│   │   ├── cindy-pawford/    # Cindy-pawford agent runtime sandbox
-│   │   └── signal/           # signal-cli identity keys and daemon registration state
-│   └── backups/              # Timestamped full-data and memory snapshots (git-ignored)
-└── scripts/                  # Structured operational scripts directory
-    ├── setup/                # Host, container, memory, and network provisioning
-    │   ├── setup-host.sh     # Idempotent baseline script for packages, Ollama, LiteLLM, and DB
-    │   ├── setup-network.sh  # Static IP & local appliance domain (/etc/hosts) setup script
-    │   ├── setup-hermes.sh   # Automated builder and validator for unprivileged Hermes container
-    │   ├── setup-memories.sh # Idempotent provisioning & scaffolding manager for memory plane
-    │   ├── setup-editor.sh   # Automated builder & deployer for Titan Operator IDE (code-server)
-    │   ├── setup-langfuse.sh # Standalone decoupled service manager for Langfuse container stack
-    │   ├── deploy-infra.sh   # Operator CLI deployment tool for infra/ SST platform cloud resources
-    │   ├── setup-mail.sh     # Mail infrastructure provisioning and account seeding
-    │   └── setup-sogo.sh     # SOGo groupware and isolated database provisioning (Ticket #166)
-    ├── control/              # Runtime lifecycle, fleet management, and disaster recovery
-    │   ├── start-control-plane.sh # Service manager for host Ollama inference, LiteLLM gateway, and titan-litellm-db
-    │   ├── emergency-stop.sh # Granular key revocation & process freeze (targeted or full-fleet)
-    │   ├── reload-env.sh     # Synchronizes database passwords and safely reloads all .env changes
-    │   ├── sync-agents.sh    # Fleet manifest orchestrator (renders compose, caddy, keys, & storage)
-    │   ├── backup.sh         # Full appliance data plane backup and restore manager
-    │   └── snapshot-memories.sh # Automated versioning and rollback snapshot manager for memories
-    ├── verify/               # Automated test harnesses and verification suites
-    │   ├── verify-fleet.sh   # Multi-agent fleet verification harness (drift, routing, isolation)
-    │   ├── verify-hermes.sh  # Automated verification harness for Hermes workspace persistence
-    │   ├── verify-editor.sh  # Automated verification harness for Titan Operator IDE (security & tooling)
-    │   ├── verify-memories.sh# Automated verification harness for OKF memory synchronization
-    │   ├── verify-langfuse.sh# Automated verification harness for Langfuse & OpenTelemetry ingestion
-    │   ├── verify-agent-telemetry.sh # End-to-end multi-agent & LiteLLM telemetry verification suite
-    │   ├── verify-cw1-staging.sh # SST Ion, DynamoDB API, and platform shell verification suite
-    │   ├── verify-egress-token-injection.sh # In-transit GitHub credential injection verification suite
-    │   ├── verify-mail.sh    # Automated internal mail, Webmail, and shared mailbox test suite
-    │   ├── verify-agent-email.sh # Automated agent reactive email webhooks & Hermes tool test suite
-    │   ├── verify-queue.sh   # Asynchronous work queue & FIFO concurrency test suite (Ticket #168)
-    │   └── verify-sogo.sh    # SOGo groupware, database isolation, and CalDAV alarms suite (Ticket #166)
-
-    └── apps/                 # Application-specific operations and deployment tooling
-        └── cindypawford/     # Autonomous fashion designer application suite
-            ├── deploy-cindypawford-com.sh   # Direct-to-production deployment tool
-            ├── rollback-cindypawford-com.sh # Deterministic canvas rollback tool
-            ├── process-cindy-reset.sh       # Automated 'Seal & Reset' execution engine
-            ├── republish-archives.sh        # Out-of-band museum republishing tooling
-            ├── build-archive-portal.py      # Digital museum gallery compiler
-            ├── verify-cindy-agent.sh        # Cindy Pawford agent unit verification suite (CW-0A)
-            ├── verify-cindy-canvas.sh       # Canvas isolation verification suite (CW-0A.1)
-            ├── verify-cindy-archive.sh      # Genesis archive & seal-and-reset suite (CW-0B)
-            └── verify-cindy-deploy.sh       # Protected CI/CD and autonomous deployment suite (#98)
-```
-
------
-
-## 5. Phased Engineering Roadmap
-
-Project Titan follows a strict, step-by-step implementation discipline to prevent unvalidated configuration sprawl.
-
-``` marp
-Phase 0: Base Config
-  └── Phase 1: Control Plane
-        └── Phase 2: Hermes Agent
-              └── Phase 3: Memory Mgmt
-                    └── Phase 4: Security
-                          └── Phase 5: Benchmarking
-
-```
-
-### Phase 0: Base Config (Host OS & Ingress Baseline)
-
-  * Execute package pinning (`apt-mark hold`) across hardware drivers and runtime toolkits on DGX OS.
-  * Configure local directory layouts under `/data/titan/memories` and seed environment schemas.
-  * Deploy the reverse proxy container (Caddy/Traefik) running inside an isolated Docker bridge network.
-  * *Exit Criteria:* Validated local network routing across `terrastella.titan.local` (and `[agent].titan.local`) and `proxy.titan.local` endpoints to mockup responses.
-
-### Phase 1: Control Plane (Inference & LiteLLM Gateway)
-
-  * Provision native local inference runtimes (Ollama/vLLM) on the host system to maximize hardware acceleration (Metal on macOS, CUDA on GB10 / DGX OS) bound strictly to loopback (`127.0.0.1:11434`).
-  * Deploy native LiteLLM proxy gateway on the host (`:4000`) backed by a dedicated, isolated PostgreSQL service (`titan-litellm-db`) with `store_model_in_db: true` for dynamic model and key persistence.
-  * Enforce hardware-aware request queuing (`max_parallel_requests: 1`) and initialize virtual proxy keys (`HERMES_LITELLM_KEY`).
-  * *Exit Criteria:* Local models are queried successfully via authenticated proxy paths; dynamic model and key mutations persist across process restarts; all direct access routes to raw inference and database ports are bound strictly to localhost loopback.
-
-### Phase 2: Hermes Agent (Upstream Runtime, Web Dashboard & Messaging Gateways)
-
-  * Deploy the unprivileged upstream Nous Research Hermes Agent sandbox container (`titan-hermes`) built via `docker/hermes/Dockerfile` with dropped privileges (`no-new-privileges:true`, UID 1000) and native s6 supervision.
-  * Enforce outbound internet egress on `titan-internal` while strictly eliminating the host Docker socket (`/var/run/docker.sock`) and isolating the control plane database (`titan-litellm-db`).
-  * Route outbound agent queries strictly to `http://proxy.local:4000/v1` authenticated via virtual proxy key, isolating host infrastructure names from agent context (Rule 7).
-  * Deploy a companion `signal-cli` daemon service on `titan-internal` persisting registration state in `/workspace/signal`.
-  * Implement operator onboarding workflow (`./scripts/setup/link-signal.sh`), terminal QR device linking, multi-protocol gateway proxy (port 8080 multiplexing `/v1/*` REST and `/api/v1/*` native SSE/JSON-RPC), and strict operator whitelisting (`SIGNAL_ALLOWED_USERS`, #144).
-  * Expose the native Hermes Web Dashboard via Caddy reverse proxy at `[agent].titan.local` (e.g. `terrastella.titan.local:9119`) and gateway API at `api.[agent].titan.local` (e.g. `api.terrastella.titan.local:8642`).
-  * *Exit Criteria:* Hermes processing loops and dashboard are operational; Signal and Telegram operator gateways configured; strict operator whitelisting enforced; tools and workspace state persist strictly in `/workspace` with zero memory pollution.
-
-### Phase 3: Memory Mgmt (Flat-File OKF & Operator IDE Interface)
-
-  * Establish host storage mappings to `${TITAN_DATA_DIR}` (`/data/titan/agent_memories` on GX10, `./data/agent_memories` on macOS) using unified permission access keys (`1000:1000`).
-  * Deploy the Titan Operator IDE container (`titan-app-code-server`, #145 superseding SilverBullet) mounting a 4-root workspace (`/workspace/project-titan`, `/memories`, `/data/workspace`, `/apps/cindypawford/site`), accessible via Caddy at `editor.titan.local` behind HTTP Basic Auth.
-  * Deploy the native `hermes-okf` plugin package (`docker/hermes/plugins/hermes-okf`) registering `read_okf_note`, `write_okf_note`, and `synthesize_active_rules` into Hermes Agent's tool registry.
-  * Implement budget-aware dynamic rule injection and working memory scratchpad loading into Hermes reasoning loops.
-  * Enforce hardware-adaptive context windows: safe 4,096 tokens on 16GB macOS workstations and 32,768 tokens on ASUS Ascent GX10 appliances.
-  * *Exit Criteria:* Bi-directional persistence and synchronization verified—memory edits applied inside Operator IDE propagate to active agent reasoning streams; memory purity audit asserts strictly human-auditable flat-file Markdown (zero `.vscode/` pollution).
-
-### Phase 4: Security (Hardening & Operational Readiness)
-
-  * Configure automated cron scheduling for hourly host-side snapshots or localized Git tracking across the memory mount.
-  * Enforce absolute network separation to guarantee the hardware appliance is unreachable from enterprise or corporate nodes.
-  * Execute recovery test validations: simulate a runaway agent processing thread, apply immediate key revocation via `emergency-stop.sh`, and verify graceful degradation without impacting host states.
-  * **Tool Egress Gateway & In-Transit Credential Injection Proxy (mitmproxy / mitmweb, #146, #147)**:
-    * Deploys dedicated outbound inspection proxy container (`titan-net-egress-proxy`) on `titan-internal` listening on port `8082`.
-    * Exposes `mitmweb` operator dashboard on loopback `127.0.0.1:8081` and accessible via Caddy at `efw.titan.local` (and `firewall.titan.local`).
-    * Real-time flow capture and live connection logs auditing all outbound HTTP/HTTPS agent tool executions (REST calls, web scraping, external search).
-    * Automated internal CA certificate distribution: mitmproxy root CA (`mitmproxy-ca-cert.pem`) mounted into agent containers and trusted via `/usr/local/share/ca-certificates/mitmproxy-ca.crt` (`REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`).
-    * Multi-Tenant In-Transit Credential Injection (`config/egress/addons/github_auth.py`): injects fine-grained Git Smart HTTP and GitHub API authorization headers in transit based on tenant container IP identity, while rejecting unauthorized tenant containers (`403 Forbidden`).
-    * Flow display credential redaction: masks injected tokens to `[INJECTED_CINDY_TOKEN]` within mitmweb memory flows and REST APIs.
-    * Strict internal plane isolation (`NO_PROXY`): LiteLLM inference (`host.docker.internal:4000`), Signal messaging (`signal-cli:8080`), and local internal services bypass proxy interception completely (Rule 2).
-    * Dedicated verification test suites: `./scripts/verify/verify-tool-egress-proxy.sh` and `./scripts/verify/verify-egress-token-injection.sh`.
-  * *Exit Criteria:* Deterministic cluster reconstruction from bare config parameters via `docker compose down && docker compose up -d` with complete retention of memory trees; 100% of outbound tool traffic logged and visible in operator console with zero control plane leakage.
-
-### Phase 5: Benchmarking (Evaluation, Optimization & Observability)
-
-  * Benchmark Ollama vs. vLLM vs. SGLang on native ARM64 / DGX OS to evaluate prefill speed and KV-cache memory pressure.
-  * Measure context scaling performance across 4k, 8k, 16k, 32k, and 64k token windows.
-  * **Langfuse Observability & OpenTelemetry Tracing (#19, #120, #154)**:
-    * **Decoupled Architecture**: Production Langfuse v4 container stack (`docker/langfuse/docker-compose.yml`) featuring ClickHouse OLAP analytics, Redis ingestion queue, MinIO S3 object storage, PostgreSQL transactional database, and asynchronous background worker, completely decoupled from the main Titan appliance cluster, allowing it to run locally or on a separate developer workstation over the LAN.
-    * **Dual Write Mode (`LANGFUSE_MIGRATION_V4_WRITE_MODE=dual`)**: Enables both PostgreSQL v3 tables and ClickHouse v4 columnar analytics, ensuring compatibility with LiteLLM Python SDK ingestion while activating the REST `/api/public/sessions` and `/api/public/traces` endpoints.
-    * **3-Tier Hierarchy (Titan &rarr; Agent &rarr; AgentSession)**:
-      * **Project**: Scoped to `titan` workspace.
-      * **Agent (`User` / `userId`)**: Virtual key binding (`user_id: <agent_id>`) and request body attribute (`user: <agent_id>`) break out each agent in the Langfuse Users view with per-agent metrics.
-      * **AgentSession (`Session` / `sessionId`)**: Deterministic format `titan-<agent_id>-<context_id>` propagated via `x-litellm-session-id` header and `metadata.session_id`, populating the Langfuse Sessions view with full trace trees and turn replay.
-      * **Metadata & Tags**: Comprehensive metadata (`agent_id`, `model`, `plane: agent`, etc.) and multi-dimensional tags (`[<agent_id>, "titan", "hermes"]`) preserved on all traces.
-    * **No Auto-Start by Default**: Controlled via `LANGFUSE_AUTO_START=false` in `.env`. The GX10 appliance runs all core planes (Inference, Control, Agent, Memory) without auto-starting Langfuse.
-    * **Standardized DNS & Dedicated Port**: Tracing endpoints target `langfuse.titan.local` on dedicated **port 3001** (mapped via `/etc/hosts` or Docker `extra_hosts` to the remote workstation IP `LANGFUSE_HOST_IP`).
-    * **Dual Ingestion**:
-      * **LiteLLM Gateway**: Native tracing callback (`langfuse`) and OpenTelemetry exporter capturing request metadata, token counts, model aliases, and latency.
-      * **Hermes Agent**: Direct OTLP trace export via `http://langfuse.titan.local:3001/api/public/otel/v1/traces` and request middleware for session/identity propagation.
-    * **Standalone Lifecycle Management**:
-      * Setup & start: `./scripts/setup/setup-langfuse.sh setup && ./scripts/setup/setup-langfuse.sh start`
-      * Service status & logs: `./scripts/setup/setup-langfuse.sh status` / `./scripts/setup/setup-langfuse.sh logs`
-      * Key helper: `./scripts/setup/setup-langfuse.sh keys` (prompts for keys and generates Base64 `LANGFUSE_OTEL_AUTH`)
-      * Verification: `./scripts/verify/verify-langfuse.sh` and `./scripts/verify/verify-agent-telemetry.sh`
-  * *Exit Criteria:* Quantifiable benchmark report and automated profiling harness across memory bandwidth and agent execution latencies; dual OTel/LiteLLM trace ingestion validated; session-level trace breakout and agent attribution verified in Langfuse v4.
 
 ---
 
-## 6. Lab work: Hermes Multi-Agent Demonstrations & Hardening
+## 10. Repository Directory Structure
 
-Real-world agent operational testing across multi-tenancy, calibration, safety circuit breakers, and adversarial resilience.
+``` text
+brainsOS/  
+├── LICENSE                   # Apache License 2.0
+├── NOTICE                    # Copyright and third-party attribution notices
+├── SECURITY.md               # Responsible vulnerability disclosure policy
+├── CONTRIBUTING.md           # Developer guidelines and verification discipline
+├── CODE_OF_CONDUCT.md        # Contributor Covenant v2.1
+├── SUPPORT.md                # Community support and contact directory
+├── README.md                 # System vision, architecture, and quickstart guide
+├── AGENTS.md                 # Agent operating discipline and safety rules
+├── docker-compose.yml        # Declarative service topology and isolated networks
+├── docker-compose.agents.yml # Auto-generated multi-agent fleet units (sync-agents.sh)
+├── .env.example              # Environment variables template
+├── config/  
+│   ├── agents.yaml           # Declarative multi-agent fleet manifest
+│   ├── caddy/                # Ingress reverse proxy configuration
+│   ├── editor/               # Operator IDE workspace and Continue configs
+│   ├── litellm/              # Rate-limiting, model aliases, and DB settings
+│   ├── hermes/               # Upstream agent personas and configs
+│   └── egress/               # In-transit credential injection proxy rules
+├── packages/
+│   ├── brainsOS-memory/      # Standalone OKF memory engine & VectorStore SPI
+│   ├── brainsOS-mail/        # Standalone RFC-compliant asynchronous email client
+│   └── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
+├── docker/                   # Dockerfiles for mail, caddy, editor, hermes, langfuse
+├── docs/  
+│   ├── cohumain/             # COHUMAIN ACSG 25-control catalog & conformance roadmap
+│   ├── project-titan/        # Historical ticket & walkthrough archive (September 2026)
+│   ├── reference-architecture-tenets.md  # Core security tenets (TN-1 to TN-9)
+│   └── lab-work/             # Claude documentation & critique area (Rule 11)
+├── data/                     # Partitioned host volumes (memories, workspaces, databases)
+└── scripts/                  # Structured operational scripts
+    ├── setup/                # Host, container, memory, and network provisioning
+    ├── control/              # Runtime lifecycle, fleet management, and kill-switch
+    ├── verify/               # Automated test harnesses and verification suites
+    └── apps/                 # Application-specific operations tooling
+```
 
-### Shared Tenancy Foundation
-- **Sprint 0 (#28)**: Shared multi-tenancy foundation (`football-dan` & `cindy-pawford`), memory/workspace partitioning, policy-plane behavioral budgets, append-only action log with agent versioning, out-of-band halt script, and canary seeding.
+---
 
-### Epic A: Football Dan (Probabilistic Reasoning & Financial Invariants)
-- **FD-1 (#29)**: Read-only Telegram researcher, strict OKF provenance schema enforcement, frozen KPI baseline, benign injection marker suite.
-- **FD-2 (#30)**: Calibrated advice with mandatory stated probability, automated weekly resolution job against real-world game outcomes, Brier score computation.
-- **FD-3 (#31)**: Memory plane under localized Git versioning, volatility-aware retrieval, automated staleness sweep, duplicate detection/deletion, contributor reliability scoring.
-- **FD-4 (#32)**: Isolated paper wagering ledger with reserve-then-commit semantics, hard financial invariants, open positions as committed capital, programmatic invariant fuzzing harness.
-- **FD-5 (#33)**: Irreversible-action classification, external gate outside agent runtime, Telegram approval flow with timeout-to-deny, bypass attempt alerting.
-- **FD-6 (#34)**: Whisper STT ingress with mandatory transcript retention in action log, Kokoro TTS response path with post-transcription text guardrails.
-- **FD-7 (#35)**: Automated season report export from action log & KPI harness, memory archival to cold storage, clean tenant teardown & Season 2 carry-forward review.
+## 11. Repository Transition Notice
 
-### Epic B: Cindy Pawford (Staged Publishing & Autonomous Breakers)
-- **CW-1 (#36)**: Content generation restricted strictly to staging storage prefix, scoped least-privilege credentials (`PutObject`), bucket versioning/rollback tooling, operator promotion CLI.
-- **CW-2 (#37)**: Automated promotion guarded by deterministic circuit breakers (out-of-prefix writes, rate ceilings, diff anomalies, policy modification attempts) with graduated response (freeze -> suspend -> halt).
-- **CW-3 (#38)**: Untrusted web page ingestion via tool-less reader sandbox (`TN-1.8`), comic/image generation into staging, indirect prompt injection test suite.
-- **CW-4 (#39)**: Semantic safety circuit breakers: embedding drift baseline, real-person assertion detector, content policy classifier, calibrated false-positive arming gate.
-- **CW-5 (#40)**: Self-hosted social arena (Mastodon), labeled agent identity, bidirectional cross-agent injection testing, memory pollution defense with provenance tracking.
-- **CW-6 (#41)**: Explicit numerical traffic objective, strict tactic allowlist with breaker trip on violation, reward-hacking observation harness capturing agent rationalizations verbatim.
+This repository has completed its architectural transition to **`patternsatscale/brainsOS`** ([brainsOS.ai](https://brainsos.ai)).
 
-### Cross-Cutting Security & Telemetry
-- **X-1 (#42)**: Outbound policy inspection at LiteLLM scanning consultation payloads for seeded tenant canary tokens (`TN-6`).
-- **X-2 (#43)**: Isolated sandbox CloudTrail -> EventBridge -> SNS canary alerting infrastructure.
-- **X-3 (#44)**: Adversarial "nosy neighbour" agent harness attempting cross-tenant penetration of memory, workspace, tools, and credentials.
-- **X-4 (#45)**: Appliance power draw and thermal telemetry correlation logging against Heating Degree Days (HDD).
+For existing local clones, update your Git remote URL:
+```bash
+git remote set-url origin https://github.com/patternsatscale/brainsOS.git
+git fetch origin
+```
 
+All legacy compatibility shims, dual fallbacks, and deprecated naming have been permanently removed in favor of canonical brainsOS configurations and container runtimes.
 
+---
+
+## 12. License & Governance
+* **brainsOS Platform Code**: Licensed under the **[Apache License, Version 2.0](LICENSE)**. Developed by **[Patterns at Scale](https://patternsatscale.com)**.
+* **Agentic Governance & Security Controls (AGSC v1.0.0)**: Authored by **[COHUMAIN Labs](https://www.cohumain.ai/research)** and **[SafeAlign AI](https://safealignai.io/)**. Licensed under **[Creative Commons Attribution 4.0 International (CC BY 4.0)](docs/cohumain/LICENSE)** © 2026 COHUMAIN Labs & SafeAlign AI. Official standard documentation and workbook: [himjoe.github.io](https://himjoe.github.io/Agentic-governance-and-security-controls-by-COHUMAIN-Labs-and-Safealign-AI/).

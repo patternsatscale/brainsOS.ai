@@ -1,9 +1,9 @@
 # ==============================================================================
-# Project Titan: Shared Platform Core Topology
-# Aligned with the Titan L1-L7 Reference Architecture
+# brainsOS: Shared Platform Core Topology
+# Aligned with the brainsOS L1-L7 Reference Architecture
 # ==============================================================================
 
-name: titan
+name: brainsos
 
 # Include dynamically managed agent units from fleet manifest
 include:
@@ -20,8 +20,8 @@ services:
     build:
       context: ./docker/caddy
       dockerfile: Dockerfile
-    image: titan-caddy:latest
-    container_name: titan-net-caddy
+    image: brainsos-caddy:latest
+    container_name: brainsos-net-caddy
     restart: unless-stopped
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
@@ -34,23 +34,23 @@ services:
       - caddy_config:/config
       - ${HOME}/.aws:/root/.aws:ro
     networks:
-      titan-ingress:
-      titan-internal:
-      titan-operator-net:
+      brainsos-ingress:
+      brainsos-internal:
+      brainsos-operator-net:
     environment:
-      - TITAN_DOMAIN=${TITAN_DOMAIN:-titan.local}
-      - AWS_ACCESS_KEY_ID=${TITAN_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
-      - AWS_SECRET_ACCESS_KEY=${TITAN_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
-      - AWS_REGION=${TITAN_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
       - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
       - ACME_EMAIL=${ACME_EMAIL:-}
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
     image: bbernhard/signal-cli-rest-api:latest
-    container_name: titan-net-signal-cli
+    container_name: brainsos-net-signal-cli
     restart: unless-stopped
-    entrypoint: ["/entrypoint-titan.sh"]
+    entrypoint: ["/entrypoint-brainsos.sh"]
     security_opt:
       - "no-new-privileges:true"
     environment:
@@ -59,23 +59,23 @@ services:
       - SIGNAL_NATIVE_HTTP_PORT=8082
       - SIGNAL_REST_API_PORT=8084
     volumes:
-      - ${TITAN_COMMS_DIR:-./data/comms}/signal:/home/.local/share/signal-cli
-      - ./docker/signal/entrypoint.sh:/entrypoint-titan.sh:ro
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}/signal:/home/.local/share/signal-cli
+      - ./docker/signal/entrypoint.sh:/entrypoint-brainsos.sh:ro
       - ./docker/signal/gateway_proxy.py:/usr/local/bin/gateway_proxy.py:ro
     networks:
-      titan-internal:
+      brainsos-internal:
         aliases:
-          - titan-net-signal-cli
-          - titan-signal-cli
+          - brainsos-net-signal-cli
+          - brainsos-signal-cli
           - signal-cli
 
-  # Communications & Mail Plane: Postfix + Dovecot Mail Engine (Ticket #156)
+  # Communications & Mail Plane: Postfix + Dovecot Mail Engine
   mail-server:
     build:
       context: ./docker/mail
       dockerfile: Dockerfile
-    image: titan-mail-server:latest
-    container_name: titan-net-mail-server
+    image: brainsos-mail-server:latest
+    container_name: brainsos-net-mail-server
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -83,25 +83,25 @@ services:
       - "127.0.0.1:${MAIL_SMTP_PORT:-10025}:25"
       - "127.0.0.1:${MAIL_IMAP_PORT:-10143}:143"
     volumes:
-      - ${TITAN_COMMS_DIR:-./data/comms}/email/vmail:/var/mail/vmail
-      - ${TITAN_COMMS_DIR:-./data/comms}/email/config:/etc/mail-titan
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}/email/vmail:/var/mail/vmail
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}/email/config:/etc/mail-brainsos
     environment:
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
     networks:
-      titan-internal:
+      brainsos-internal:
         aliases:
-          - titan-net-mail-server
-          - titan-mail-server
+          - brainsos-net-mail-server
+          - brainsos-mail-server
           - mail-server
           - mail
 
-  # Communications Plane: Dedicated Isolated SOGo Database (PostgreSQL 16) (Ticket #166)
-  # Rule 6 Invariant: Completely isolated from titan-infra-litellm-db.
+  # Communications Plane: Dedicated Isolated SOGo Database (PostgreSQL 16)
+  # Rule 6 Invariant: Completely isolated from brainsos-infra-litellm-db.
   sogo-db:
     image: postgres:16-alpine
-    container_name: titan-sogo-db
+    container_name: brainsos-sogo-db
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -110,53 +110,52 @@ services:
       POSTGRES_PASSWORD: ${SOGO_DB_PASSWORD:-sogo_secret_pass}
       POSTGRES_DB: ${SOGO_DB_NAME:-sogo}
     volumes:
-      - ${TITAN_COMMS_DIR:-./data/comms}/sogo/db:/var/lib/postgresql/data
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}/sogo/db:/var/lib/postgresql/data
     networks:
-      - titan-internal
+      - brainsos-internal
     ports:
       - "127.0.0.1:${SOGO_DB_PORT:-5434}:5432"
 
-  # Communications & UX Plane: SOGo Groupware & Webmail/CalDAV Client (Ticket #166)
-  # Replaces SnappyMail with unified Webmail, CalDAV Calendars, and Scheduled Alarms.
+  # Communications & UX Plane: SOGo Groupware & Webmail/CalDAV Client
+  # Webmail, CalDAV Calendars, and Scheduled Alarms.
   sogo:
     build:
       context: ./docker/sogo
       dockerfile: Dockerfile
-    image: titan-sogo:latest
-    container_name: titan-net-sogo
+    image: brainsos-sogo:latest
+    container_name: brainsos-net-sogo
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${SOGO_PORT:-20000}:20000"
     volumes:
-      - ${TITAN_COMMS_DIR:-./data/comms}/sogo/spool:/var/spool/sogo
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}/sogo/spool:/var/spool/sogo
     networks:
-      - titan-ingress
-      - titan-internal
+      - brainsos-ingress
+      - brainsos-internal
     depends_on:
       - sogo-db
       - mail-server
     environment:
-      - SOGO_DB_HOST=titan-sogo-db
+      - SOGO_DB_HOST=brainsos-sogo-db
       - SOGO_DB_PORT=5432
       - SOGO_DB_USER=${SOGO_DB_USER:-sogo}
       - SOGO_DB_PASSWORD=${SOGO_DB_PASSWORD:-sogo_secret_pass}
       - SOGO_DB_NAME=${SOGO_DB_NAME:-sogo}
-      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-titan_admin_mail_secret_change_me}
-      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-titan_operator_mail_secret_change_me}
-      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-titan_terrastella_mail_secret_change_me}
-      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-titan_bawtford_mail_secret_change_me}
-      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-titan_marvin_mail_secret_change_me}
-
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}
+      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
+      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
+      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
 
   # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
   code-server:
     build:
       context: .
       dockerfile: docker/editor/Dockerfile
-    image: titan-code-server:latest
-    container_name: titan-app-code-server
+    image: brainsos-code-server:latest
+    container_name: brainsos-app-code-server
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"
     security_opt:
@@ -167,23 +166,23 @@ services:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
     volumes:
-      - ${TITAN_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}:/home/coder/.config
-      - ${TITAN_CODE_SERVER_DATA:-./data/control_plane/vscode_data}:/home/coder/.local/share/code-server
-      - .:/workspace/project-titan
-      - ${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}:/memories
-      - ${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-./data/agent_workspaces}}:/data/workspace
-      - ${TITAN_COMMS_DIR:-./data/comms}:/data/comms
+      - ${BRAINSOS_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}:/home/coder/.config
+      - ${BRAINSOS_CODE_SERVER_DATA:-./data/control_plane/vscode_data}:/home/coder/.local/share/code-server
+      - .:/workspace/brainsos
+      - ${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data/agent_memories}}:/memories
+      - ${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_WORKSPACE_DIR:-./data/agent_workspaces}}:/data/workspace
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}:/data/comms
       - ./apps/cindypawford/site:/apps/cindypawford/site
-      - ./config/editor/titan.code-workspace:/workspace/titan.code-workspace:ro
-      - ./docker/editor/entrypoint.sh:/usr/local/bin/titan-editor-entrypoint.sh:ro
+      - ./config/editor/brainsos.code-workspace:/workspace/brainsos.code-workspace:ro
+      - ./docker/editor/entrypoint.sh:/usr/local/bin/brainsos-editor-entrypoint.sh:ro
       - ./data/control_plane/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-none}
-      - PASSWORD=${CODE_SERVER_PASSWORD:-titan_operator_secret}
+      - PASSWORD=${CODE_SERVER_PASSWORD:-brainsos_operator_secret}
       - OPENAI_API_BASE=http://litellm:4000/v1
-      - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}
+      - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
@@ -193,17 +192,17 @@ services:
       - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
       - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
     networks:
-      - titan-operator-net
+      - brainsos-operator-net
 
   # ============================================================================
   # L4: Tool Egress Gateway & Inspection Proxy (mitmproxy / mitmweb)
   # Intercepts, logs, and audits outbound HTTP/HTTPS traffic from agent tools
-  # Web console bound to host loopback & accessible via Caddy (efw.titan.local)
+  # Web console bound to host loopback & accessible via Caddy (efw.brainsos.local)
   # Forward proxy listens on internal port 8082
   # ============================================================================
   tool-egress-proxy:
     image: mitmproxy/mitmproxy:latest
-    container_name: titan-net-egress-proxy
+    container_name: brainsos-net-egress-proxy
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -211,7 +210,7 @@ services:
       - "127.0.0.1:${TOOL_EGRESS_WEB_PORT:-8081}:8081"
     environment:
       - PYTHONUNBUFFERED=1
-      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}
+      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-brainsos_tool_egress_secret}
       - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
       - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
     command:
@@ -225,7 +224,7 @@ services:
       - "--set"
       - "block_global=false"
       - "--set"
-      - "web_password=${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
+      - "web_password=${TOOL_EGRESS_WEB_PASSWORD:-brainsos_tool_egress_secret}"
       - "--no-web-open-browser"
       - "-s"
       - "/addons/github_auth.py"
@@ -233,10 +232,10 @@ services:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
       - ./config/egress/addons:/addons:ro
     networks:
-      titan-internal:
+      brainsos-internal:
         aliases:
-          - titan-net-egress-proxy
-          - titan-tool-egress-proxy
+          - brainsos-net-egress-proxy
+          - brainsos-tool-egress-proxy
           - tool-egress-proxy
           - efw
           - firewall
@@ -245,22 +244,22 @@ services:
   # L4: Routing & Security Plane
   # Control plane persistence: Dedicated PostgreSQL Database for LiteLLM
   # Decoupled dynamic persistence for models, virtual keys, rate limits & budgets
-  # Strictly isolated on titan-litellm-net; unreachable by agent containers
+  # Strictly isolated on brainsos-litellm-net; unreachable by agent containers
   # ============================================================================
   litellm-db:
     image: postgres:16-alpine
-    container_name: titan-infra-litellm-db
+    container_name: brainsos-infra-litellm-db
     restart: unless-stopped
     ports:
       - "127.0.0.1:${LITELLM_DB_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${LITELLM_DB_NAME:-litellm}
       POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
-      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-titan_litellm_secret_change_me}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}
     volumes:
       - ${LITELLM_DB_DATA_DIR:-./data/control_plane/litellm_db}:/var/lib/postgresql/data
     networks:
-      - titan-litellm-net
+      - brainsos-litellm-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}"]
       interval: 5s
@@ -272,24 +271,24 @@ services:
 # ==============================================================================
 networks:
   # Ingress network: connects Caddy to service ports
-  titan-ingress:
-    name: titan-ingress
+  brainsos-ingress:
+    name: brainsos-ingress
     driver: bridge
 
   # Agent internal network: allows agent WAN egress (web browsing, Signal)
   # and routing to LiteLLM via host.docker.internal
-  titan-internal:
-    name: titan-internal
+  brainsos-internal:
+    name: brainsos-internal
     driver: bridge
 
   # Operator IDE network: isolated from agent plane; connects Caddy to code-server
-  titan-operator-net:
-    name: titan-operator-net
+  brainsos-operator-net:
+    name: brainsos-operator-net
     driver: bridge
 
   # LiteLLM control plane database network: isolated from agent plane
-  titan-litellm-net:
-    name: titan-litellm-net
+  brainsos-litellm-net:
+    name: brainsos-litellm-net
     driver: bridge
 
 # ==============================================================================
@@ -297,8 +296,8 @@ networks:
 # ==============================================================================
 volumes:
   caddy_data:
-    name: titan_caddy_data
+    name: brainsos_caddy_data
   caddy_config:
-    name: titan_caddy_config
+    name: brainsos_caddy_config
   tool_egress_proxy_data:
-    name: titan_tool_egress_proxy_data
+    name: brainsos_tool_egress_proxy_data

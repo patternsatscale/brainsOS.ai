@@ -1,7 +1,0 @@
-name: titan-subagents
-version: 1.0.0
-description: "Project Titan Generic Sub-Agent Dispatcher & Tool Registration"
-author: "Project Titan"
-kind: backend
-provides_tools:
-  - build_website_feature

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Memories Snapshot & Rollback Manager
+# brainsOS: Memories Snapshot & Rollback Manager
 # Backs up the pure OKF Markdown knowledge plane and manages retention
 # ==============================================================================
 
@@ -33,7 +33,7 @@ fi
 
 # Read data dir from .env if available
 cd "${REPO_ROOT}"
-DATA_DIR=$(grep -E '^(TITAN_AGENT_MEMORIES_DIR|TITAN_DATA_DIR)=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
+DATA_DIR=$(grep -E '^BRAINSOS_AGENT_MEMORIES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
 DATA_DIR="${DATA_DIR:-./data/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
@@ -72,7 +72,7 @@ fi
 # Snapshot Creation
 # ------------------------------------------------------------------------------
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-SNAPSHOT_NAME="titan_memories_${TIMESTAMP}.tar.gz"
+SNAPSHOT_NAME="brainsos_memories_${TIMESTAMP}.tar.gz"
 SNAPSHOT_PATH="${BACKUP_DIR}/${SNAPSHOT_NAME}"
 
 if [ ! -d "${MEMORIES_DIR}" ]; then
@@ -92,11 +92,11 @@ log_success "Snapshot created: ${SNAPSHOT_NAME} (${SNAPSHOT_SIZE})"
 # Snapshot Retention (Keep last 14 snapshots)
 # ------------------------------------------------------------------------------
 MAX_SNAPSHOTS=14
-TOTAL_SNAPSHOTS=$(find "${BACKUP_DIR}" -name "titan_memories_*.tar.gz" | wc -l | tr -d ' ')
+TOTAL_SNAPSHOTS=$(find "${BACKUP_DIR}" -name "brainsos_memories_*.tar.gz" | wc -l | tr -d ' ')
 
 if [ "${TOTAL_SNAPSHOTS}" -gt "${MAX_SNAPSHOTS}" ]; then
   EXCESS=$((TOTAL_SNAPSHOTS - MAX_SNAPSHOTS))
   log_info "Pruning ${EXCESS} older snapshot(s) to maintain retention limit of ${MAX_SNAPSHOTS}..."
-  find "${BACKUP_DIR}" -name "titan_memories_*.tar.gz" -type f | sort | head -n "${EXCESS}" | xargs rm -f
+  find "${BACKUP_DIR}" -name "brainsos_memories_*.tar.gz" -type f | sort | head -n "${EXCESS}" | xargs rm -f
   log_success "Old snapshots pruned."
 fi

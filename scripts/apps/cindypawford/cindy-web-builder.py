@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Titan: Website Builder Sub-Agent Execution Engine
+brainsOS: Website Builder Sub-Agent Execution Engine
 Ticket #106: Decouple Conversational Persona from Web Development Code Generation
 
 Executes frontend features under a clean, unpolluted software engineering persona
@@ -208,7 +208,7 @@ def call_developer_llm(
         OpenAI = None
 
     base_url = api_base or os.getenv("OPENAI_BASE_URL") or os.getenv("LITELLM_URL") or "http://127.0.0.1:4000/v1"
-    key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("BAWTFORD_LITELLM_KEY") or "sk-titan-bawtford-key"
+    key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("BAWTFORD_LITELLM_KEY") or "sk-brainsos-bawtford-key"
 
     tokens_desc = json.dumps(design_tokens, indent=2) if design_tokens else "Use existing CSS variables defined in styles.css."
 
@@ -252,10 +252,10 @@ CRITICAL EXECUTION RULES:
     # Try calling via OpenAI client
     if OpenAI:
         client = OpenAI(base_url=base_url, api_key=key)
-        # Attempt completion with primary model, fallback to titan-core if needed
+        # Attempt completion with primary model, fallback to brainsos-core if needed
         models_to_try = [model]
-        if model != "titan-core":
-            models_to_try.append("titan-core")
+        if model != "brainsos-core":
+            models_to_try.append("brainsos-core")
 
         last_err = None
         for m in models_to_try:

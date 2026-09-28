@@ -1,9 +1,0 @@
-name: titan-mail
-version: 1.0.0
-description: "Project Titan Mail Integration — Tool-First asynchronous email communication for autonomous agents"
-author: "Project Titan"
-kind: backend
-provides_tools:
-  - send_email
-  - search_emails
-  - read_email

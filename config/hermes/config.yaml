@@ -1,12 +1,12 @@
 # ==============================================================================
-# Project Titan: Hermes Agent Configuration Template
+# brainsOS: Hermes Agent Configuration Template
 # Pre-configured for local-first zero-trust inference via LiteLLM control plane
 # ==============================================================================
 
 _config_version: 12
 
 model:
-  default: "titan-core"
+  default: "brainsos-core"
   provider: "custom"
   base_url: "http://proxy.local:4000/v1"
   context_length: 65536
@@ -19,7 +19,7 @@ providers:
     discover_models: true
 
 agent:
-  name: "titan"
+  name: "brainsos"
 
 database:
   journal_mode: "wal"
@@ -38,8 +38,8 @@ tools:
 plugins:
   enabled:
     - hermes-okf
-    - titan-subagents
-    - titan-mail
+    - brainsos-subagents
+    - brainsos-mail
 
 platforms:
   api_server:
@@ -52,7 +52,7 @@ platforms:
     enabled: false
 
 monitoring:
-  install_id: "titan-hermes"
+  install_id: "brainsos-hermes"
   gateway_health_export:
     enabled: true
     metrics_enabled: true
@@ -66,7 +66,7 @@ monitoring:
   export:
     otlp:
       enabled: true
-      endpoint: "http://langfuse.titan.local:3001/api/public/otel/v1/traces"
+      endpoint: "http://langfuse.brainsos.local:3001/api/public/otel/v1/traces"
       headers_env:
         Authorization: LANGFUSE_OTEL_AUTH
 

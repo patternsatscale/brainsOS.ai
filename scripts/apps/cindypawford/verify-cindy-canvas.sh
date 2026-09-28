@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Cindy Pawford Canvas & GitHub Tooling Verification Suite
+# brainsOS: Cindy Pawford Canvas & GitHub Tooling Verification Suite
 # Ticket #92 (CW-0A.1): Isolate HTML Canvas to /app/html & Bind Dedicated Repo
 # ==============================================================================
 
@@ -47,7 +47,7 @@ elif [ -f .env.example ]; then
 fi
 
 AGENT_ID="cindy-pawford"
-CONTAINER="titan-agent-${AGENT_ID}"
+CONTAINER="brainsos-agent-${AGENT_ID}"
 SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
 MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
 WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
@@ -215,7 +215,7 @@ log_success "Zero ambient GitHub secrets detected in container environment."
 
 # Verify gh auth status (via in-transit proxy or direct)
 AUTH_OUTPUT=$(docker exec "${CONTAINER}" bash -c "gh auth status" 2>&1 || true)
-if echo "${AUTH_OUTPUT}" | grep -qi -E "Logged in to (github\.com|github-proxy\.titan\.local)"; then
+if echo "${AUTH_OUTPUT}" | grep -qi -E "Logged in to (github\.com|github-proxy\.brainsos\.local)"; then
   log_success "Verified 'gh auth status' inside container: authenticated via in-transit relay."
 else
   log_error "GitHub CLI is not authenticated inside container! Output:\n${AUTH_OUTPUT}"
@@ -292,7 +292,7 @@ fi
 
 # Rule 7: Persona compartmentalization (no host backend leakage)
 SOUL_PATH="${MEM_DIR}/SOUL.md"
-for forbidden in "127.0.0.1:11434" "titan-litellm-db" "postgresql://" "vllm" "SST"; do
+for forbidden in "127.0.0.1:11434" "brainsos-litellm-db" "postgresql://" "vllm" "SST"; do
   if grep -qi "${forbidden}" "${SOUL_PATH}"; then
     log_error "Rule 7 violation: Found forbidden backend leak '${forbidden}' in ${SOUL_PATH}!"
     exit 1

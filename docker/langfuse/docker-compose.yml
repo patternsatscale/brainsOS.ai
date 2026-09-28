@@ -1,9 +1,9 @@
 # ==============================================================================
-# Project Titan: Observability Plane (Langfuse v4.38.0 Distributed Stack)
+# brainsOS: Observability Plane (Langfuse v4.38.0 Distributed Stack)
 # High-performance distributed tracing with ClickHouse, Redis, MinIO & Postgres
 # ==============================================================================
 
-name: titan-langfuse
+name: brainsos-langfuse
 
 services:
   # ----------------------------------------------------------------------------
@@ -12,7 +12,7 @@ services:
   # ----------------------------------------------------------------------------
   langfuse-web:
     image: docker.langfuse.com/langfuse/langfuse:4.38.0
-    container_name: titan-langfuse-web
+    container_name: brainsos-langfuse-web
     restart: unless-stopped
     depends_on:
       langfuse-db:
@@ -26,10 +26,10 @@ services:
     ports:
       - "${LANGFUSE_PORT:-3001}:3000"
     environment:
-      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
+      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-titan_langfuse_nextauth_secret_must_be_set_32_chars}
-      - SALT=${SALT:-titan_langfuse_salt_secret_must_be_set}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-brainsos_langfuse_nextauth_secret_must_be_set_32_chars}
+      - SALT=${SALT:-brainsos_langfuse_salt_secret_must_be_set}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       - TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-false}
       - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
@@ -64,24 +64,24 @@ services:
       - LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true
       - LANGFUSE_S3_MEDIA_UPLOAD_PREFIX=media/
       # Declarative Zero-Click Auto-Provisioning
-      - LANGFUSE_INIT_ORG_ID=${LANGFUSE_INIT_ORG_ID:-titan}
-      - LANGFUSE_INIT_ORG_NAME=${LANGFUSE_INIT_ORG_NAME:-Titan}
-      - LANGFUSE_INIT_PROJECT_ID=${LANGFUSE_INIT_PROJECT_ID:-titan}
-      - LANGFUSE_INIT_PROJECT_NAME=${LANGFUSE_INIT_PROJECT_NAME:-Titan Fleet}
+      - LANGFUSE_INIT_ORG_ID=${LANGFUSE_INIT_ORG_ID:-brainsos}
+      - LANGFUSE_INIT_ORG_NAME=${LANGFUSE_INIT_ORG_NAME:-brainsOS}
+      - LANGFUSE_INIT_PROJECT_ID=${LANGFUSE_INIT_PROJECT_ID:-brainsos}
+      - LANGFUSE_INIT_PROJECT_NAME=${LANGFUSE_INIT_PROJECT_NAME:-brainsOS Fleet}
       - LANGFUSE_INIT_PROJECT_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_INIT_PROJECT_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}
-      - LANGFUSE_INIT_USER_NAME=${LANGFUSE_INIT_USER_NAME:-Titan Admin}
-      - LANGFUSE_INIT_USER_PASSWORD=${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}
+      - LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}
+      - LANGFUSE_INIT_USER_NAME=${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}
+      - LANGFUSE_INIT_USER_PASSWORD=${LANGFUSE_INIT_USER_PASSWORD:-brainsos_admin_secret}
       # Outbound LLM Connection Whitelist (allows reaching LiteLLM and Agents via Caddy)
-      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.titan.local,api.cindypawford.titan.local,api.terrastella.titan.local,api.football-dan.titan.local,host.docker.internal,litellm,localhost
+      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.cindypawford.brainsos.local,api.terrastella.brainsos.local,api.football-dan.brainsos.local,host.docker.internal,litellm,localhost
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
-      - "proxy.titan.local:host-gateway"
-      - "api.cindypawford.titan.local:host-gateway"
-      - "api.terrastella.titan.local:host-gateway"
-      - "api.football-dan.titan.local:host-gateway"
+      - "proxy.brainsos.local:host-gateway"
+      - "api.cindypawford.brainsos.local:host-gateway"
+      - "api.terrastella.brainsos.local:host-gateway"
+      - "api.football-dan.brainsos.local:host-gateway"
     networks:
       - langfuse-net
     healthcheck:
@@ -97,7 +97,7 @@ services:
   # ----------------------------------------------------------------------------
   langfuse-worker:
     image: docker.langfuse.com/langfuse/langfuse-worker:4.38.0
-    container_name: titan-langfuse-worker
+    container_name: brainsos-langfuse-worker
     restart: unless-stopped
     depends_on:
       langfuse-db:
@@ -111,9 +111,9 @@ services:
     ports:
       - "127.0.0.1:3030:3030"
     environment:
-      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
+      - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
-      - SALT=${SALT:-titan_langfuse_salt_secret_must_be_set}
+      - SALT=${SALT:-brainsos_langfuse_salt_secret_must_be_set}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       - TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-false}
       - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
@@ -147,14 +147,14 @@ services:
       - LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true
       - LANGFUSE_S3_MEDIA_UPLOAD_PREFIX=media/
       # Outbound LLM Connection Whitelist (allows reaching LiteLLM and Agents via Caddy)
-      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.titan.local,api.cindypawford.titan.local,api.terrastella.titan.local,api.football-dan.titan.local,host.docker.internal,litellm,localhost
+      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.cindypawford.brainsos.local,api.terrastella.brainsos.local,api.football-dan.brainsos.local,host.docker.internal,litellm,localhost
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
-      - "proxy.titan.local:host-gateway"
-      - "api.cindypawford.titan.local:host-gateway"
-      - "api.terrastella.titan.local:host-gateway"
-      - "api.football-dan.titan.local:host-gateway"
+      - "proxy.brainsos.local:host-gateway"
+      - "api.cindypawford.brainsos.local:host-gateway"
+      - "api.terrastella.brainsos.local:host-gateway"
+      - "api.football-dan.brainsos.local:host-gateway"
     networks:
       - langfuse-net
 
@@ -164,7 +164,7 @@ services:
   # ----------------------------------------------------------------------------
   clickhouse:
     image: clickhouse/clickhouse-server:25.12
-    container_name: titan-langfuse-clickhouse
+    container_name: brainsos-langfuse-clickhouse
     restart: unless-stopped
     user: "101:101"
     environment:
@@ -191,7 +191,7 @@ services:
   # ----------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: titan-langfuse-redis
+    container_name: brainsos-langfuse-redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_AUTH:-myredissecret} --maxmemory-policy noeviction
     volumes:
@@ -212,7 +212,7 @@ services:
   # ----------------------------------------------------------------------------
   minio:
     image: cgr.dev/chainguard/minio
-    container_name: titan-langfuse-minio
+    container_name: brainsos-langfuse-minio
     restart: unless-stopped
     entrypoint: sh
     command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
@@ -239,12 +239,12 @@ services:
   # ----------------------------------------------------------------------------
   langfuse-db:
     image: postgres:16-alpine
-    container_name: titan-langfuse-db
+    container_name: brainsos-langfuse-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${LANGFUSE_DB_NAME:-langfuse}
       POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
-      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-titan_langfuse_secret_change_me}
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}
     volumes:
       - ${LANGFUSE_DB_DATA_DIR:-../../data/telemetry/postgres}:/var/lib/postgresql/data
     ports:
@@ -259,5 +259,5 @@ services:
 
 networks:
   langfuse-net:
-    name: titan-langfuse-net
+    name: brainsos-langfuse-net
     driver: bridge

@@ -1,6 +1,6 @@
-# Project Titan: Agent Operating Discipline & Ticket Workflow
+# brainsOS: Agent Operating Discipline & Ticket Workflow
 
-This document establishes the mandatory protocol for AI agents (and human developers) contributing to **Project Titan**. Adherence to these rules ensures architectural boundaries remain uncompromised and development remains disciplined and auditable.
+This document establishes the mandatory protocol for AI agents (and human developers) contributing to **brainsOS** ([brainsOS.ai](https://brainsos.ai)). Adherence to these rules ensures architectural boundaries remain uncompromised and development remains disciplined and auditable.
 
 ## 0. Target Architecture & Hardware Context
 
@@ -8,9 +8,9 @@ This document establishes the mandatory protocol for AI agents (and human develo
 - **Development Workstation**: **macOS (Apple Silicon)** providing native ARM64 container parity.
 - **Portability Rules**:
   - All Docker images must run natively on ARM64 without emulation.
-  - Storage paths are parameterized via `.env`: `./data/agent_memories` for local macOS development, `/data/titan/agent_memories` on the production GX10.
+  - Storage paths are parameterized via `.env`: `./data/agent_memories` for local macOS development, `/data/brainsos/agent_memories` on the production GX10.
   - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup/setup-host.sh`).
-- **Architectural Reference**: Agents must consult [README.md](file:///Users/pats/Development/project_titan/README.md) for full plane topology and system specifications.
+- **Architectural Reference**: Agents must consult [README.md](README.md) for full plane topology and system specifications.
 - **Out of Scope**: `docs/lab-work/` is the documentation and critique area and is **excluded from all coding work** — do not read it for requirements, write to it, or include it in a ticket's scope. See Rule 11.
 
 ---
@@ -55,8 +55,8 @@ Before submitting work or opening a PR, the agent **must** run the verification 
 
 ### Step 5: Architecture & Documentation Alignment (`README.md` & `AGENTS.md`)
 Before finalizing a ticket or opening a PR, the agent **must** review whether the changes introduce any architectural shifts, new services, port updates, or revised security boundaries:
-- **Topology & Runtimes**: If containers, host processes, ports, or environment parameters changed, update [README.md](file:///Users/pats/Development/project_titan/README.md).
-- **Rules & Guardrails**: If operational rules, agent procedures, or workflows changed, update [AGENTS.md](file:///Users/pats/Development/project_titan/AGENTS.md).
+- **Topology & Runtimes**: If containers, host processes, ports, or environment parameters changed, update [README.md](README.md).
+- **Rules & Guardrails**: If operational rules, agent procedures, or workflows changed, update [AGENTS.md](AGENTS.md).
 - Documentation must never drift from the live codebase; all doc updates must be included within the ticket's branch and PR.
 
 ### Step 6: Walkthrough Documentation & Mandatory Pre-Commit Review Gate
@@ -154,14 +154,14 @@ Agents must never violate the following zero-trust operational boundaries:
 - Never commit `.env` or sensitive API keys to Git. Keep all configuration templated in `.env.example`.
 
 ### Rule 6: Control Plane Database Isolation
-- The dedicated PostgreSQL persistence store (`titan-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
-- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`titan-litellm-net`), or storage volume mounts to the database.
+- The dedicated PostgreSQL persistence store (`brainsos-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
+- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`brainsos-litellm-net`), or storage volume mounts to the database.
 - The database port is bound strictly to `127.0.0.1:${LITELLM_DB_PORT:-5432}` on the host for LiteLLM's use only.
 - Strict isolation is enforced in `.github/workflows/pre-commit.yml` on every commit and PR.
 
 ### Rule 7: Information Compartmentalization in Agent Context
 - Persona documents (`SOUL.md`), agent prompts, and runtime configurations provided to the agent plane (`hermes`) must observe strict need-to-know principles.
-- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `titan-infra-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
+- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `brainsos-infra-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
 - The agent must be instructed exclusively on its assigned interfaces (e.g. its OpenAI-compatible completions endpoint `http://litellm:4000/v1`), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
 
 ### Rule 8: Script-Driven Discipline (Zero Ad-Hoc Container/Host Patching)
@@ -180,13 +180,13 @@ Agents must never violate the following zero-trust operational boundaries:
 ### Rule 9: Multi-Tenant Partitioning & Manifest Drift Prevention
 - **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/agents.yaml`. Direct manual edits to `docker-compose.agents.yml` or `config/caddy/agents.caddy` are strictly forbidden; all changes must flow through `./scripts/control/sync-agents.sh`.
 - **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/agent_workspaces/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/agent_memories/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
-- **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/titan_memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
+- **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/brainsOS-memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
 - **Automated Drift Enforcement**: The CI pipeline (`.github/workflows/pre-commit.yml`) and verification suites (`./scripts/verify/verify-fleet.sh`) enforce zero drift via `./scripts/control/sync-agents.sh --check` on every commit and PR.
 
 ### Rule 10: In-Transit Egress Credential Injection
 - **Zero Ambient Container Secrets**: Agent containers must **never** hold raw GitHub tokens (`GH_TOKEN`, `GITHUB_TOKEN`), personal access tokens (PATs), or third-party egress API secrets in their environment variables, `.env` mounts, or on-disk configuration files.
-- **Dedicated Egress Proxying**: All outbound internet traffic from agent containers routes through the dedicated Tool Egress Gateway proxy (`titan-net-egress-proxy:8082` via `HTTPS_PROXY`), maintaining 100% standard destination URLs (`https://github.com`, `https://api.github.com`) without fragile URL rewrites or custom enterprise host overrides.
-- **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `titan-internal`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
+- **Dedicated Egress Proxying**: All outbound internet traffic from agent containers routes through the dedicated Tool Egress Gateway proxy (`brainsos-net-egress-proxy:8082` via `HTTPS_PROXY`), maintaining 100% standard destination URLs (`https://github.com`, `https://api.github.com`) without fragile URL rewrites or custom enterprise host overrides.
+- **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `brainsos-internal`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
 - **Flow Display Redaction**: All injected credentials are masked to `[INJECTED_CINDY_TOKEN]` within flow displays and inspection APIs, ensuring zero ambient secrets leak into the `mitmweb` console.
 
 ### Rule 11: Separation of Build and Record (`docs/lab-work/` Is Out of Scope)

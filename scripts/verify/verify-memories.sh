@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Memory Plane Automated Verification & Security Audit
+# brainsOS: Memory Plane Automated Verification & Security Audit
 # Validates SilverBullet PKM, bi-directional synchronization with Hermes,
 # memory purity enforcement, and container security boundaries.
 # ==============================================================================
@@ -45,7 +45,7 @@ SILVERBULLET_PORT="${SILVERBULLET_PORT:-3000}"
 CADDY_PORT="${CADDY_HTTP_PORT:-80}"
 HERMES_PORT="${HERMES_PORT:-8642}"
 API_SERVER_KEY="${API_SERVER_KEY:-}"
-DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -91,7 +91,7 @@ if ! docker compose ps --services | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
   fi
 fi
 
-log_info "Running Project Titan Memory Plane automated verification..."
+log_info "Running brainsOS Memory Plane automated verification..."
 log_info "Target memories root:       ${MEMORIES_DIR}"
 log_info "Target agent memories path: ${AGENT_MEMORIES_DIR}"
 log_info "Target Hermes service:      ${HERMES_SERVICE}"
@@ -99,7 +99,7 @@ log_info "Target Hermes service:      ${HERMES_SERVICE}"
 # ------------------------------------------------------------------------------
 # 1. Verify SilverBullet PKM Health & Ingress Routing
 # ------------------------------------------------------------------------------
-if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
+if docker ps --format '{{.Names}}' | grep -q "^brainsos-silverbullet$"; then
   log_info "Checking SilverBullet accessibility on port :${SILVERBULLET_PORT}..."
   SB_DIRECT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${SILVERBULLET_PORT}/" || echo "failed")
   if [ "${SB_DIRECT_STATUS}" == "200" ]; then
@@ -109,21 +109,21 @@ if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
     exit 1
   fi
 
-  log_info "Checking Caddy ingress routing to memory.titan.local..."
-  CADDY_SB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.titan.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
+  log_info "Checking Caddy ingress routing to memory.brainsos.local..."
+  CADDY_SB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.brainsos.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
   if [ "${CADDY_SB_STATUS}" == "200" ]; then
-    log_success "SilverBullet reachable via Caddy at memory.titan.local (HTTP 200)."
+    log_success "SilverBullet reachable via Caddy at memory.brainsos.local (HTTP 200)."
   else
-    log_error "Caddy reverse proxy returned HTTP ${CADDY_SB_STATUS} for memory.titan.local."
+    log_error "Caddy reverse proxy returned HTTP ${CADDY_SB_STATUS} for memory.brainsos.local."
     exit 1
   fi
 else
-  log_info "SilverBullet retired/inactive (superseded by Titan Operator IDE #145)."
-  CADDY_MEM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.titan.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
+  log_info "SilverBullet retired/inactive (superseded by brainsOS Operator IDE #145)."
+  CADDY_MEM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: memory.brainsos.local" "http://127.0.0.1:${CADDY_PORT}/" || echo "failed")
   if echo "${CADDY_MEM_STATUS}" | grep -qE '^(200|301|302|308|401)'; then
     log_success "Memory plane ingress verified via Caddy (HTTP ${CADDY_MEM_STATUS})."
   else
-    log_warn "Caddy returned HTTP ${CADDY_MEM_STATUS} for memory.titan.local."
+    log_warn "Caddy returned HTTP ${CADDY_MEM_STATUS} for memory.brainsos.local."
   fi
 fi
 
@@ -133,7 +133,7 @@ fi
 log_info "Testing bi-directional memory synchronization (SilverBullet <-> Hermes)..."
 
 # Test 2A: Host write -> Hermes read
-SYNC_FILE="knowledge/titan_sync_test.md"
+SYNC_FILE="knowledge/brainsos_sync_test.md"
 SYNC_FULL_PATH="${AGENT_MEMORIES_DIR}/${SYNC_FILE}"
 cat << 'EOF' > "${SYNC_FULL_PATH}"
 ---
@@ -144,13 +144,13 @@ tags:
   - sync
 ---
 
-# Titan Memory Plane Synchronization Test
+# brainsOS Memory Plane Synchronization Test
 Verified live sync between host filesystem, SilverBullet PKM, and Hermes runtime.
 EOF
 
 log_info "Validating Hermes container can read live host memory mount..."
 HERMES_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "/memories/${SYNC_FILE}" 2>/dev/null || true)
-if echo "${HERMES_READ}" | grep -q "Titan Memory Plane Synchronization Test"; then
+if echo "${HERMES_READ}" | grep -q "brainsOS Memory Plane Synchronization Test"; then
   log_success "Hermes container read verified directly from /memories mount."
 else
   log_error "Hermes failed to read note from /memories."
@@ -180,7 +180,7 @@ rm -f "${SYNC_FULL_PATH}"
 log_success "Test 2A passed: Host -> Hermes read verified."
 
 # Test 2B: SilverBullet API write -> Hermes read
-if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
+if docker ps --format '{{.Names}}' | grep -q "^brainsos-silverbullet$"; then
   SB_API_NOTE="${SB_PREFIX}knowledge/sb_api_test.md"
   log_info "Writing test note via SilverBullet /.fs API..."
   SB_WRITE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -d "# SilverBullet Written Note" "http://127.0.0.1:${SILVERBULLET_PORT}/.fs/${SB_API_NOTE}" || echo "failed")
@@ -232,10 +232,10 @@ log_success "Memory plane purity verified (100% human-auditable flat-file Markdo
 # ------------------------------------------------------------------------------
 # 4. Verify Container Security & Plane Separation
 # ------------------------------------------------------------------------------
-TARGET_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(app-)?code-server$' | head -n 1 || echo 'titan-app-code-server')"
-if ! docker ps --format '{{.Names}}' | grep -qE '^titan-(app-)?code-server$'; then
-  if docker ps --format '{{.Names}}' | grep -q "^titan-silverbullet$"; then
-    TARGET_CONTAINER="titan-silverbullet"
+TARGET_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?code-server$' | head -n 1 || echo 'brainsos-app-code-server')"
+if ! docker ps --format '{{.Names}}' | grep -qE '^brainsos-(app-)?code-server$'; then
+  if docker ps --format '{{.Names}}' | grep -q "^brainsos-silverbullet$"; then
+    TARGET_CONTAINER="brainsos-silverbullet"
   fi
 fi
 
@@ -259,11 +259,11 @@ else
   log_success "Docker socket is strictly absent from ${TARGET_CONTAINER} container."
 fi
 
-# Assert NOT connected to titan-litellm-net
+# Assert NOT connected to brainsos-litellm-net
 log_info "Verifying control plane database network isolation..."
 TARGET_NETWORKS=$(docker inspect "${TARGET_CONTAINER}" --format '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null || echo "")
-if echo "${TARGET_NETWORKS}" | grep -q "titan-litellm-net"; then
-  log_error "SECURITY VIOLATION: ${TARGET_CONTAINER} is attached to titan-litellm-net!"
+if echo "${TARGET_NETWORKS}" | grep -q "brainsos-litellm-net"; then
+  log_error "SECURITY VIOLATION: ${TARGET_CONTAINER} is attached to brainsos-litellm-net!"
   exit 1
 else
   log_success "${TARGET_CONTAINER} is strictly isolated from LiteLLM database network."
@@ -332,6 +332,6 @@ fi
 
 echo ""
 log_success "======================================================================"
-log_success "Project Titan: Memory Plane & SilverBullet PKM Verification PASSED!"
+log_success "brainsOS: Memory Plane & SilverBullet PKM Verification PASSED!"
 log_success "======================================================================"
 echo ""

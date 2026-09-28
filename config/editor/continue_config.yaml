@@ -1,10 +1,10 @@
-name: Titan Operator IDE
+name: brainsOS Operator IDE
 version: 1.0.0
 schema: v1
 models:
-- name: Titan Core (LiteLLM)
+- name: brainsOS Core (LiteLLM)
   provider: openai
-  model: titan-core
+  model: brainsos-core
   apiBase: http://litellm:4000/v1
   apiKey: ${OPERATOR_LITELLM_KEY}
   roles:
@@ -14,21 +14,21 @@ models:
 - name: Terrastella (Agent API)
   provider: openai
   model: hermes-agent
-  apiBase: http://api.terrastella.titan.local.patternsatscale.com/v1
+  apiBase: http://api.terrastella.brainsos.local/v1
   apiKey: ${HERMES_API_TERRASTELLA_KEY}
   roles:
   - chat
 - name: Marvin (Agent API)
   provider: openai
   model: hermes-agent
-  apiBase: http://api.marvin.titan.local.patternsatscale.com/v1
+  apiBase: http://api.marvin.brainsos.local/v1
   apiKey: ${HERMES_API_MARVIN_KEY}
   roles:
   - chat
 - name: Bawtford (Agent API)
   provider: openai
   model: hermes-agent
-  apiBase: http://api.bawtford.titan.local.patternsatscale.com/v1
+  apiBase: http://api.bawtford.brainsos.local/v1
   apiKey: ${HERMES_API_BAWTFORD_KEY}
   roles:
   - chat

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Environment File Organizer & Formatter (format-env.sh)
+# brainsOS: Environment File Organizer & Formatter (format-env.sh)
 #
 # Formats and organizes .env to mirror the canonical structure, section
 # headings, and comments of .env.example while preserving all secret values,

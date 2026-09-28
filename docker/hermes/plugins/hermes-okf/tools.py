@@ -1,11 +1,11 @@
-"""Hermes Plugin Compatibility Shim for titan_memory tools.
+"""Hermes Plugin Integration for brainsos_memory tools.
 
-Re-exports schemas and handlers from titan_memory.tools for backward compatibility.
+Re-exports schemas and handlers from brainsos_memory.tools.
 """
 
 from __future__ import annotations
 
-from titan_memory.tools import (
+from brainsos_memory.tools import (
     READ_OKF_NOTE_SCHEMA,
     WRITE_OKF_NOTE_SCHEMA,
     SYNTHESIZE_ACTIVE_RULES_SCHEMA,

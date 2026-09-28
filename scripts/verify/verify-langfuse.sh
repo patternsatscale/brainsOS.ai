@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Langfuse Observability & OpenTelemetry Verification Script
+# brainsOS: Langfuse Observability & OpenTelemetry Verification Script
 # Validates DNS resolution, container health, virtualenv dependencies,
 # Hermes OTLP configuration, and LiteLLM tracing bindings.
 # ==============================================================================
@@ -45,7 +45,7 @@ fi
 
 LANGFUSE_AUTO_START="${LANGFUSE_AUTO_START:-false}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
-LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.titan.local:${LANGFUSE_PORT}}"
+LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.brainsos.local:${LANGFUSE_PORT}}"
 LANGFUSE_HOST_IP="${LANGFUSE_HOST_IP:-}"
 LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
 LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
@@ -71,7 +71,7 @@ warn_check() {
 }
 
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
-echo -e "${BLUE}${BOLD}Project Titan: Langfuse Observability & OpenTelemetry Verification${NC}"
+echo -e "${BLUE}${BOLD}brainsOS: Langfuse Observability & OpenTelemetry Verification${NC}"
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
 
 # ------------------------------------------------------------------------------
@@ -119,16 +119,16 @@ if [ -f "config/hermes/config.yaml" ]; then
 fi
 
 # Docker Compose Hermes extra_hosts
-if grep -q "langfuse.titan.local" docker-compose.yml docker-compose.agents.yml 2>/dev/null; then
-  pass_check "Docker Compose: 'langfuse.titan.local' entry mapped in hermes.extra_hosts."
+if grep -q "langfuse.brainsos.local" docker-compose.yml docker-compose.agents.yml 2>/dev/null; then
+  pass_check "Docker Compose: 'langfuse.brainsos.local' entry mapped in extra_hosts."
 else
-  fail_check "Docker Compose: missing 'langfuse.titan.local' in hermes.extra_hosts."
+  fail_check "Docker Compose: missing 'langfuse.brainsos.local' in extra_hosts."
 fi
 
 # Caddyfile reverse proxy
 if [ -f "config/caddy/Caddyfile" ]; then
-  if grep -q "langfuse.{\$TITAN_DOMAIN:titan.local}" config/caddy/Caddyfile; then
-    pass_check "Caddy Ingress: reverse proxy route configured for langfuse.titan.local."
+  if grep -q "langfuse.brainsos.local" config/caddy/Caddyfile || grep -q "langfuse.{\$BRAINSOS_DOMAIN:brainsos.local}" config/caddy/Caddyfile; then
+    pass_check "Caddy Ingress: reverse proxy route configured for langfuse.brainsos.local."
   else
     fail_check "Caddy Ingress: missing langfuse route in config/caddy/Caddyfile."
   fi
@@ -137,22 +137,22 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Network & DNS Resolution
 # ------------------------------------------------------------------------------
-log_info "Verifying DNS resolution for langfuse.titan.local..."
+log_info "Verifying DNS resolution for langfuse.brainsos.local..."
 
 # Check Python/host resolution
 HOST_RESOLVED_IP=$(python3 -c "
 import socket
 socket.setdefaulttimeout(2.0)
 try:
-    print(socket.gethostbyname('langfuse.titan.local'))
+    print(socket.gethostbyname('langfuse.brainsos.local'))
 except Exception:
     print('')
 " 2>/dev/null || true)
 
 if [ -n "${HOST_RESOLVED_IP}" ]; then
-  pass_check "Host DNS: 'langfuse.titan.local' resolves to ${HOST_RESOLVED_IP}."
+  pass_check "Host DNS: 'langfuse.brainsos.local' resolves to ${HOST_RESOLVED_IP}."
 else
-  warn_check "Host DNS: 'langfuse.titan.local' is not registered in /etc/hosts. Run ./scripts/setup/setup-network.sh"
+  warn_check "Host DNS: 'langfuse.brainsos.local' is not registered in /etc/hosts. Run ./scripts/setup/setup-network.sh"
 fi
 
 if [ -n "${LANGFUSE_HOST_IP}" ]; then
@@ -184,7 +184,7 @@ else
 fi
 
 if command -v docker >/dev/null 2>&1 && [ -n "${ACTIVE_ENDPOINT}" ]; then
-  for c in titan-langfuse-web titan-langfuse-worker titan-langfuse-clickhouse titan-langfuse-redis titan-langfuse-minio titan-langfuse-db; do
+  for c in brainsos-langfuse-web brainsos-langfuse-worker brainsos-langfuse-clickhouse brainsos-langfuse-redis brainsos-langfuse-minio brainsos-langfuse-db; do
     if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
       pass_check "Container '${c}': RUNNING."
     fi
@@ -236,15 +236,15 @@ fi
 # ------------------------------------------------------------------------------
 # 6. Preconfigured LLM Gateway & Fleet Agent Connections in Langfuse
 # ------------------------------------------------------------------------------
-if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
+if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
   log_info "Checking preconfigured LLM & Agent connections in Langfuse..."
-  if docker exec titan-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='titan' AND provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
-    pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.titan.local/v1) preconfigured for project 'titan'."
+  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='brainsos' AND provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
+    pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.brainsos.local/v1) preconfigured for project 'brainsos'."
   else
     warn_check "Langfuse LLM Connection: 'LiteLLM' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
   fi
-  if docker exec titan-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='titan' AND provider='Cindy-Pawford';" 2>/dev/null | grep -q "Cindy-Pawford"; then
-    pass_check "Langfuse Agent Connection: 'Cindy-Pawford' (http://api.cindypawford.titan.local/v1) preconfigured for project 'titan'."
+  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='brainsos' AND provider='Cindy-Pawford';" 2>/dev/null | grep -q "Cindy-Pawford"; then
+    pass_check "Langfuse Agent Connection: 'Cindy-Pawford' (http://api.cindypawford.brainsos.local/v1) preconfigured for project 'brainsos'."
   else
     warn_check "Langfuse Agent Connection: 'Cindy-Pawford' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
   fi

@@ -1,4 +1,4 @@
-"""hermes-okf plugin — Project Titan Open Knowledge Format memory integration.
+"""hermes-okf plugin — brainsOS Open Knowledge Format memory integration.
 
 Exposes native tools for the Hermes Agent to read, write, and synthesize
 human-auditable flat Markdown notes in /memories with zero technical debt.
@@ -63,7 +63,7 @@ def _telemetry_llm_request_middleware(request: Dict[str, Any], **kwargs: Any) ->
     import os
     agent_id = os.environ.get("HERMES_AGENT_ID") or os.environ.get("AGENT_ID") or "hermes"
     context_id = kwargs.get("context_id") or "default"
-    session_id = f"titan-{agent_id}-{context_id}"
+    session_id = f"brainsos-{agent_id}-{context_id}"
 
     # 1. Attribute to Agent in Langfuse (userId)
     if not request.get("user"):
@@ -78,7 +78,7 @@ def _telemetry_llm_request_middleware(request: Dict[str, Any], **kwargs: Any) ->
     metadata = request.setdefault("metadata", {})
     metadata.setdefault("session_id", session_id)
     metadata.setdefault("agent_id", agent_id)
-    metadata.setdefault("project", "titan")
+    metadata.setdefault("project", "brainsos")
     metadata.setdefault("plane", "agent")
 
     # 4. Attach multi-dimensional tags
@@ -86,8 +86,8 @@ def _telemetry_llm_request_middleware(request: Dict[str, Any], **kwargs: Any) ->
     if isinstance(tags, list):
         if agent_id not in tags:
             tags.append(agent_id)
-        if "titan" not in tags:
-            tags.append("titan")
+        if "brainsos" not in tags:
+            tags.append("brainsos")
 
     return request
 
@@ -131,7 +131,7 @@ try:
     from agent.memory_provider import MemoryProvider
 
     class HermesOKFMemoryProvider(MemoryProvider):
-        """Pluggable Hermes MemoryProvider implementation for Titan OKF."""
+        """Pluggable Hermes MemoryProvider implementation for brainsOS OKF."""
 
         @property
         def name(self) -> str:

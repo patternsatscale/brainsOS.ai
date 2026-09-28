@@ -21,9 +21,9 @@ This document establishes the mandatory operating discipline for **Cindy Pawford
    - The sub-agent runs under an unpolluted software developer persona (`cindy-active-coding-model`).
    - The sub-agent validates syntax (`node -c`), sanitizes fences, and returns clean file diffs.
 3. **Target Repository Isolation**:
-   - The target repository for all web canvas tickets is **`patternsatscale/CindyPawford-Online`** (cloned at `/app/html`), **not** `ProjectTitan`.
+   - The target repository for all web canvas tickets is **`patternsatscale/CindyPawford-Online`** (cloned at `/app/html`), **not** `brainsOS`.
 4. **In-Transit Egress Routing (Rule 10)**:
-   - All Git Smart HTTP operations (`git push`, `git fetch`) and GitHub CLI commands (`gh`) must route strictly through the egress gateway (`https://github-proxy.titan.local`).
+   - All Git Smart HTTP operations (`git push`, `git fetch`) and GitHub CLI commands (`gh`) must route strictly through the egress gateway (`https://github-proxy.brainsos.local`).
 5. **Memory Plane Purity (Rule 1)**:
    - All ticket briefs and session summaries logged to `/memories/logs/` must be 100% human-auditable Open Knowledge Format (OKF) Markdown files.
 
@@ -161,5 +161,5 @@ Once all tickets in the milestone are merged into `main`:
 | Attempting 5 features in 1 prompt turn | Break features into atomic GitHub tickets (1 ticket = 1 PR) |
 | Running tasks in an overloaded 100k+ token session | Work ticket-by-ticket and keep conversational context lean |
 | Hallucinating that files exist without checking disk | Always verify disk state via `git status` and `ls -la /app/html` |
-| Opening tickets in `ProjectTitan` | Open canvas tickets exclusively in `patternsatscale/CindyPawford-Online` |
+| Opening tickets in `brainsOS` | Open canvas tickets exclusively in `patternsatscale/CindyPawford-Online` |
 | Attempting to execute host deploy scripts | Deployment is a black box handled by host CI/CD / maintainers (Operational Rule 2) |

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Titan: Cindy Pawford Automated PR-to-Logbook Ingestion Script
+brainsOS: Cindy Pawford Automated PR-to-Logbook Ingestion Script
 Ticket #129: Automatically captures merged PRs into apps/cindypawford/archive/logbook.json
 and triggers build-archive-portal.py to update the live public logbook.
 """

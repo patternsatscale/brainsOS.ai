@@ -13,9 +13,9 @@ tags:
 This document maintains the high-level active state, current operator priorities, and ongoing objectives for the Hermes agent.
 
 ## Active System State
-- **Host**: Project Titan Appliance Runtime
+- **Host**: brainsOS Appliance Runtime
 - **Current Operational Phase**: Phase 3 (Memory Plane & OKF Knowledge Base)
-- **Primary Model**: `titan-core`
+- **Primary Model**: `brainsos-core`
 
 ## Operator Priorities
 1. Maintain memory plane purity (flat-file Markdown only, zero binary/database files).

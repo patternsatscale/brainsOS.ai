@@ -75,7 +75,7 @@ sequenceDiagram
 ```
 
 ### Phase 1: Autonomous Canvas Generation (Inside Container)
-1. Cindy's autonomous coding cron triggers inside `titan-agent-cindy-pawford`.
+1. Cindy's autonomous coding cron triggers inside `brainsos-agent-cindy-pawford`.
 2. The agent inspects community suggestions fetched via `GET /api/top-suggestions`.
 3. Cindy edits `index.html`, `styles.css`, and `app.js` inside `/app/html`.
 4. Cindy runs her local verification (`verify-cindy-canvas.sh` via Headless Chrome) and commits/pushes to `patternsatscale/CindyPawford-Online`.
@@ -142,7 +142,7 @@ To achieve fully autonomous hands-off deployments upon PR merges in `patternsats
      - `CLOUDFRONT_DISTRIBUTION_ID` (`E1AXFS263AVC77`)
 
 2. **Container Filesystem Masking (Zero Agent Tampering)**:
-   - Cindy's agent container (`titan-agent-cindy-pawford`) mounts the public site canvas at `/app/html`.
+   - Cindy's agent container (`brainsos-agent-cindy-pawford`) mounts the public site canvas at `/app/html`.
    - The `.github` directory is masked via a dedicated read-only bind mount (`/app/html/.github:ro`).
    - Any attempt by the agent to create, edit, or delete workflows inside `/app/html/.github/` fails with kernel-level `Read-only file system` rejection.
 
@@ -163,7 +163,7 @@ To achieve fully autonomous hands-off deployments upon PR merges in `patternsats
    - Issues wildcard CloudFront invalidation (`aws cloudfront create-invalidation --paths "/*"`).
    - Validated via `./scripts/apps/cindypawford/verify-cindy-deploy.sh`.
 
-### Mode 3: Autonomous Cloud Infrastructure CI/CD (`project-titan/.github/workflows/deploy-sst.yml`)
+### Mode 3: Autonomous Cloud Infrastructure CI/CD (`brainsOS/.github/workflows/deploy-sst.yml`)
 To deploy and update the cloud infrastructure plane (DynamoDB `Suggestions`, ApiGatewayV2 `CindyApi`, `ProductionSite`, `ArchiveSite`, and `InfoSite`) in AWS:
 1. **Triggering Events**:
    - Autonomous push trigger on `main` when `apps/cindypawford/**` or `.github/workflows/deploy-sst.yml` changes.

@@ -32,7 +32,7 @@ jobs:
     env:
       STAGE: ${{ github.event.inputs.stage || 'production' }}
     steps:
-      - name: Checkout Project Titan
+      - name: Checkout brainsOS
         uses: actions/checkout@v4
 
       - name: Checkout CindyPawford-Online Canvas

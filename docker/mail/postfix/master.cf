@@ -1,4 +1,4 @@
-# Postfix master.cf for Project Titan
+# Postfix master.cf for brainsOS
 smtp       inet  n       -       n       -       -       smtpd
 submission inet  n       -       n       -       -       smtpd
   -o smtpd_sasl_auth_enable=yes

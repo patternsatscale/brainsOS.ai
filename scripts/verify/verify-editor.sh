@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Operator IDE Automated Verification & Security Audit
+# brainsOS: Operator IDE Automated Verification & Security Audit
 # Validates container health, security boundaries, multi-tenant isolation,
 # Caddy ingress authentication, Aider & Goose tooling, and memory purity.
 # ==============================================================================
@@ -55,10 +55,10 @@ fi
 CODE_SERVER_PORT="${CODE_SERVER_PORT:-8443}"
 CADDY_PORT="${CADDY_HTTP_PORT:-80}"
 OPERATOR_USER="${OPERATOR_USER:-operator}"
-CODE_SERVER_PASSWORD="${CODE_SERVER_PASSWORD:-titan_operator_secret}"
-OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
-DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
+CODE_SERVER_PASSWORD="${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
+OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -69,7 +69,7 @@ if [ ! -d "${MEMORIES_DIR}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
   MEMORIES_DIR="${REPO_ROOT}/data/memories"
 fi
 
-log_info "Starting Project Titan Operator IDE automated verification..."
+log_info "Starting brainsOS Operator IDE automated verification..."
 
 # ------------------------------------------------------------------------------
 # 1. Verify Docker Compose Configuration
@@ -81,7 +81,7 @@ log_success "Docker Compose configuration is valid."
 # ------------------------------------------------------------------------------
 # 2. Verify Container Runtime Health & Direct Port Accessibility
 # ------------------------------------------------------------------------------
-CONTAINER_NAME="$(docker ps --format '{{.Names}}' | grep -E '^titan-(app-)?code-server$' | head -n 1 || echo 'titan-app-code-server')"
+CONTAINER_NAME="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?code-server$' | head -n 1 || echo 'brainsos-app-code-server')"
 log_info "Step 2: Checking ${CONTAINER_NAME} container status..."
 CONTAINER_STATUS=$(docker inspect --format '{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "missing")
 if [ "${CONTAINER_STATUS}" != "running" ]; then
@@ -119,17 +119,17 @@ fi
 
 # Rule 9: Multi-Tenant Isolation - Agent containers cannot reach Operator IDE
 log_info "Verifying multi-tenant isolation: asserting agents cannot connect to Operator IDE..."
-PRIMARY_AGENT=$(docker ps --format '{{.Names}}' | grep '^titan-agent-' | head -n 1 || echo "")
+PRIMARY_AGENT=$(docker ps --format '{{.Names}}' | grep '^brainsos-agent-' | head -n 1 || echo "")
 if [ -n "${PRIMARY_AGENT}" ]; then
   # Probe code-server from inside agent container
-  PROBE_RESULT=$(docker exec -T "${PRIMARY_AGENT}" nc -z -w 2 titan-code-server 8443 2>/dev/null && echo "connected" || echo "blocked")
+  PROBE_RESULT=$(docker exec -T "${PRIMARY_AGENT}" nc -z -w 2 brainsos-code-server 8443 2>/dev/null && echo "connected" || echo "blocked")
   if [ "${PROBE_RESULT}" == "blocked" ]; then
     log_success "Multi-tenant boundary verified: Agent '${PRIMARY_AGENT}' is strictly blocked from Operator IDE."
   else
-    fail_check "Security violation: Agent '${PRIMARY_AGENT}' was able to route to titan-code-server:8443!"
+    fail_check "Security violation: Agent '${PRIMARY_AGENT}' was able to route to brainsos-code-server:8443!"
   fi
 else
-  log_warn "No running titan-agent-* container found to run agent-side network probe."
+  log_warn "No running brainsos-agent-* container found to run agent-side network probe."
 fi
 
 # ------------------------------------------------------------------------------
@@ -138,7 +138,7 @@ fi
 log_info "Step 4: Testing Caddy ingress routing and HTTP Basic Auth security gate..."
 
 # Unauthenticated request must return 401 Unauthorized
-UNAUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: editor.${TITAN_DOMAIN}" "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
+UNAUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: editor.${BRAINSOS_DOMAIN}" "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
 if [ "${UNAUTH_STATUS}" == "401" ]; then
   log_success "Caddy ingress gate enforced: Unauthenticated request returned HTTP 401 Unauthorized."
 else
@@ -148,22 +148,22 @@ fi
 # Authenticated request must succeed (HTTP 200 or HTTP 302 login redirect)
 AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -u "${OPERATOR_USER}:${CODE_SERVER_PASSWORD}" \
-  -H "Host: editor.${TITAN_DOMAIN}" \
+  -H "Host: editor.${BRAINSOS_DOMAIN}" \
   "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
 
 if echo "${AUTH_STATUS}" | grep -qE '^(200|302)'; then
-  log_success "Caddy ingress authenticated routing verified (HTTP ${AUTH_STATUS}) for editor.${TITAN_DOMAIN}."
+  log_success "Caddy ingress authenticated routing verified (HTTP ${AUTH_STATUS}) for editor.${BRAINSOS_DOMAIN}."
 else
-  fail_check "Authenticated request to editor.${TITAN_DOMAIN} returned unexpected HTTP ${AUTH_STATUS}."
+  fail_check "Authenticated request to editor.${BRAINSOS_DOMAIN} returned unexpected HTTP ${AUTH_STATUS}."
 fi
 
-# Test code.titan.local alias
+# Test code.brainsos.local alias
 CODE_ALIAS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -u "${OPERATOR_USER}:${CODE_SERVER_PASSWORD}" \
-  -H "Host: code.${TITAN_DOMAIN}" \
+  -H "Host: code.${BRAINSOS_DOMAIN}" \
   "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
 if echo "${CODE_ALIAS_STATUS}" | grep -qE '^(200|302)'; then
-  log_success "Caddy ingress alias code.${TITAN_DOMAIN} verified (HTTP ${CODE_ALIAS_STATUS})."
+  log_success "Caddy ingress alias code.${BRAINSOS_DOMAIN} verified (HTTP ${CODE_ALIAS_STATUS})."
 fi
 
 # ------------------------------------------------------------------------------
@@ -171,8 +171,8 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 5: Verifying Multi-Root Workspace layout and filesystem mounts..."
 
-docker compose exec -T code-server test -f /workspace/titan.code-workspace || fail_check "Multi-root workspace file (/workspace/titan.code-workspace) not found inside container."
-docker compose exec -T code-server test -d /workspace/project-titan || fail_check "Repository root mount (/workspace/project-titan) missing inside container."
+docker compose exec -T code-server test -f /workspace/brainsos.code-workspace || fail_check "Multi-root workspace file (/workspace/brainsos.code-workspace) not found inside container."
+docker compose exec -T code-server test -d /workspace/brainsos || fail_check "Repository root mount (/workspace/brainsos) missing inside container."
 docker compose exec -T code-server test -d /memories || fail_check "Memory plane mount (/memories) missing inside container."
 docker compose exec -T code-server test -d /data/workspace || fail_check "Agent workspaces mount (/data/workspace) missing inside container."
 docker compose exec -T code-server test -d /data/comms || fail_check "Communications gateways mount (/data/comms) missing inside container."
@@ -189,7 +189,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 6. Verify AI Assistant Tooling (Aider, Goose, titan-chat) & LiteLLM Reachability
+# 6. Verify AI Assistant Tooling (Aider, Goose, brainsos-chat) & LiteLLM Reachability
 # ------------------------------------------------------------------------------
 log_info "Step 6: Verifying AI tooling and LiteLLM reachability..."
 
@@ -233,19 +233,19 @@ fi
 log_info "Verifying Operator IDE network reachability to Ingress Gateway Agent APIs..."
 AGENT_PROBE=$(docker compose exec -T code-server curl -s -m 5 -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer ${HERMES_API_TERRASTELLA_KEY:-${API_SERVER_KEY:-}}" \
-  "http://api.terrastella.titan.local/v1/models" 2>/dev/null || echo "000")
+  "http://api.terrastella.brainsos.local/v1/models" 2>/dev/null || echo "000")
 if echo "${AGENT_PROBE}" | grep -qE '^(200|401|405)'; then
-  log_success "Operator IDE successfully routed to api.terrastella.titan.local (HTTP ${AGENT_PROBE})."
+  log_success "Operator IDE successfully routed to api.terrastella.brainsos.local (HTTP ${AGENT_PROBE})."
 else
-  log_warn "Operator IDE probe to api.terrastella.titan.local returned HTTP ${AGENT_PROBE}."
+  log_warn "Operator IDE probe to api.terrastella.brainsos.local returned HTTP ${AGENT_PROBE}."
 fi
 
-# titan-chat CLI check
-TITAN_CHAT_PATH=$(docker compose exec -T code-server which titan-chat 2>/dev/null || echo "")
-if [ -n "${TITAN_CHAT_PATH}" ]; then
-  log_success "Fleet communication helper installed at ${TITAN_CHAT_PATH}."
+# brainsos-chat CLI check
+BRAINSOS_CHAT_PATH=$(docker compose exec -T code-server which brainsos-chat 2>/dev/null || echo "")
+if [ -n "${BRAINSOS_CHAT_PATH}" ]; then
+  log_success "Fleet communication helper installed at ${BRAINSOS_CHAT_PATH}."
 else
-  fail_check "titan-chat helper script not found inside container."
+  fail_check "brainsos-chat helper script not found inside container."
 fi
 
 # LiteLLM reachability from container
@@ -262,6 +262,6 @@ fi
 
 echo ""
 log_success "======================================================================"
-log_success "Project Titan: Operator IDE Verification PASSED (All Checks Satisfied)"
+log_success "brainsOS: Operator IDE Verification PASSED (All Checks Satisfied)"
 log_success "======================================================================"
 echo ""

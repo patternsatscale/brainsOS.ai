@@ -40,8 +40,8 @@ export function setupSes(domains: string[], zoneId: any, zoneName: string) {
   }
 
   // 4. Outbound IAM Send Policy Scaffolding (Building block for future agent email dispatch)
-  const sesSenderPolicy = new aws.iam.Policy("TitanSesSenderPolicy", {
-    name: "titan-ses-sender-policy",
+  const sesSenderPolicy = new aws.iam.Policy("BrainsOSSesSenderPolicy", {
+    name: "brainsos-ses-sender-policy",
     description: "Least-privilege policy allowing agent communications layer to send via verified SES identities",
     policy: JSON.stringify({
       Version: "2012-10-17",

@@ -20,7 +20,7 @@ RUN addgroup -g 5000 vmail 2>/dev/null || true && \
 RUN mkdir -p /var/mail/vmail \
              /etc/dovecot \
              /etc/postfix \
-             /etc/mail-titan \
+             /etc/mail-brainsos \
              /usr/lib/dovecot/sieve-pipe \
              /etc/dovecot/sieve \
              /var/run/dovecot && \

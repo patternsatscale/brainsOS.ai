@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Titan: Cindy Pawford Digital Museum & Declassified Logbook Portal Generator
+brainsOS: Cindy Pawford Digital Museum & Declassified Logbook Portal Generator
 Protocol 1984.7 — Retro Phosphor Terminal & Historic Archival Ledger Aesthetic.
 Compiles apps/cindypawford/archive/index.html deterministically from logbook.json and eras.json.
 """
