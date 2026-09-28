@@ -3,4 +3,4 @@
 from brainsos_queue.backends.base import QueueBackend
 from brainsos_queue.backends.memory import MemoryQueueBackend
 
-__all__ = ["QueueBackend", "MemoryQueueBackend"]
+__all__ = ["MemoryQueueBackend", "QueueBackend"]

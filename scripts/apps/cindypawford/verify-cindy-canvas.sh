@@ -46,11 +46,11 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-AGENT_ID="cindy-pawford"
+AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
-WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
+SITE_DIR="${REPO_ROOT}/agent_apps/cindypawford/site"
+MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/${AGENT_ID}"
+WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}/${AGENT_ID}"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 
 log_info "================================================================="
@@ -96,7 +96,7 @@ log_success "Container '${CONTAINER}' is running."
 # ------------------------------------------------------------------------------
 log_info "Step 3: Verifying explicit boundary separation across mounts..."
 
-# 3a. Verify /workspace mount maps to data/workspace/cindy-pawford
+# 3a. Verify /workspace mount maps to data/agent_workspaces/bawtford
 WORK_MOUNT=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
 if [ "${WORK_MOUNT}" = "${WORK_DIR}" ]; then
   log_success "Verified container '/workspace' bind-mount maps to '${WORK_DIR}'."
@@ -105,7 +105,7 @@ else
   exit 1
 fi
 
-# 3b. Verify /memories mount maps to data/memories/cindy-pawford
+# 3b. Verify /memories mount maps to data/agent_memories/bawtford
 MEM_MOUNT=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/memories"}}{{.Source}}{{end}}{{end}}')
 if [ "${MEM_MOUNT}" = "${MEM_DIR}" ]; then
   log_success "Verified container '/memories' bind-mount maps to '${MEM_DIR}'."
@@ -114,7 +114,7 @@ else
   exit 1
 fi
 
-# 3c. Verify /app/html mount maps to apps/cindypawford/site
+# 3c. Verify /app/html mount maps to agent_apps/cindypawford/site
 HTML_MOUNT=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
 if [ "${HTML_MOUNT}" = "${SITE_DIR}" ]; then
   log_success "Verified container '/app/html' bind-mount maps to '${SITE_DIR}'."
@@ -189,7 +189,7 @@ fi
 GIT_NAME=$(docker exec "${CONTAINER}" bash -c "cd /app/html && git config user.name" 2>/dev/null || echo "")
 GIT_EMAIL=$(docker exec "${CONTAINER}" bash -c "cd /app/html && git config user.email" 2>/dev/null || echo "")
 
-if [ "${GIT_NAME}" = "Cindy Pawford" ] && [ "${GIT_EMAIL}" = "cindy@cindypawford.com" ]; then
+if { [ "${GIT_NAME}" = "Cindy Pawford" ] || [ "${GIT_NAME}" = "Bawtford" ]; } && { [ "${GIT_EMAIL}" = "cindy@cindypawford.com" ] || [ "${GIT_EMAIL}" = "bawtford@cindypawford.com" ]; }; then
   log_success "Container Git identity verified: '${GIT_NAME} <${GIT_EMAIL}>'."
 else
   log_error "Git identity mismatch: '${GIT_NAME}' / '${GIT_EMAIL}'."
@@ -214,7 +214,7 @@ fi
 log_success "Zero ambient GitHub secrets detected in container environment."
 
 # Verify gh auth status (via in-transit proxy or direct)
-AUTH_OUTPUT=$(docker exec "${CONTAINER}" bash -c "gh auth status" 2>&1 || true)
+AUTH_OUTPUT=$(docker exec -u hermes -e GH_TOKEN=in-transit-placeholder "${CONTAINER}" bash -c "gh auth status" 2>&1 || true)
 if echo "${AUTH_OUTPUT}" | grep -qi -E "Logged in to (github\.com|github-proxy\.brainsos\.local)"; then
   log_success "Verified 'gh auth status' inside container: authenticated via in-transit relay."
 else
@@ -223,7 +223,7 @@ else
 fi
 
 # Verify gh pr list
-PR_OUTPUT=$(docker exec "${CONTAINER}" bash -c "cd /app/html && gh pr list --repo ${REMOTE_REPO}" 2>&1 || echo "failed")
+PR_OUTPUT=$(docker exec -u hermes -e GH_TOKEN=in-transit-placeholder "${CONTAINER}" bash -c "cd /app/html && gh pr list --repo ${REMOTE_REPO}" 2>&1 || echo "failed")
 if [ "${PR_OUTPUT}" != "failed" ]; then
   log_success "Verified 'gh pr list' against '${REMOTE_REPO}' from inside container."
 else
@@ -232,7 +232,7 @@ else
 fi
 
 # Verify gh issue list
-ISSUE_OUTPUT=$(docker exec "${CONTAINER}" bash -c "cd /app/html && gh issue list --repo ${REMOTE_REPO}" 2>&1 || echo "failed")
+ISSUE_OUTPUT=$(docker exec -u hermes -e GH_TOKEN=in-transit-placeholder "${CONTAINER}" bash -c "cd /app/html && gh issue list --repo ${REMOTE_REPO}" 2>&1 || echo "failed")
 if [ "${ISSUE_OUTPUT}" != "failed" ]; then
   log_success "Verified 'gh issue list' against '${REMOTE_REPO}' from inside container."
 else

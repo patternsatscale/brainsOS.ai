@@ -7,13 +7,12 @@ format for calendar synchronization and tracking.
 from __future__ import annotations
 
 import datetime
-from pathlib import Path
 import time
-from typing import Optional, Union
 import uuid
+from pathlib import Path
 
 
-def _format_dt(dt_val: Union[datetime.datetime, float, int]) -> str:
+def _format_dt(dt_val: datetime.datetime | float) -> str:
     """Format datetime or unix timestamp into RFC 5545 UTC timestamp (YYYYMMDDTHHMMSSZ)."""
     if isinstance(dt_val, (int, float)):
         dt = datetime.datetime.fromtimestamp(dt_val, tz=datetime.timezone.utc)
@@ -41,12 +40,12 @@ def _escape_ics_text(text: str) -> str:
 
 def generate_ics_event(
     summary: str,
-    start_time: Union[datetime.datetime, float, int],
-    end_time: Optional[Union[datetime.datetime, float, int]] = None,
-    description: Optional[str] = None,
-    uid: Optional[str] = None,
-    organizer: Optional[str] = None,
-    attendee: Optional[str] = None,
+    start_time: datetime.datetime | float,
+    end_time: datetime.datetime | float | None = None,
+    description: str | None = None,
+    uid: str | None = None,
+    organizer: str | None = None,
+    attendee: str | None = None,
     status: str = "CONFIRMED",
 ) -> str:
     """Generate an RFC 5545 compliant VCALENDAR string containing a single VEVENT.
@@ -108,7 +107,7 @@ def generate_ics_event(
     return "\r\n".join(lines)
 
 
-def write_ics_file(file_path: Union[str, Path], ics_content: str) -> Path:
+def write_ics_file(file_path: str | Path, ics_content: str) -> Path:
     """Persist an ICS calendar file to disk, enforcing Rule 1 Memory Plane Purity.
 
     Args:

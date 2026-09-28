@@ -34,12 +34,16 @@ terminal:
 tools:
   tool_search:
     enabled: "off"
+  web_search:
+    enabled: false
+
+mcp_servers:
+  brainsos:
+    command: "python"
+    args: ["-m", "brainsos_mcp.server"]
 
 plugins:
-  enabled:
-    - hermes-okf
-    - brainsos-subagents
-    - brainsos-mail
+  enabled: []
 
 platforms:
   api_server:

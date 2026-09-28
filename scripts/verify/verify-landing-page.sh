@@ -94,9 +94,9 @@ log_success "Verified all architectural tiers (L1–L7 + Cross-Cutting) present 
 
 # Assert Side-by-Side Agent Cards
 grep "Terrastella" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing Terrastella card in landing page."
-grep "Cindy Pawford" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing Cindy Pawford card in landing page."
-grep "Football Dan" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing Football Dan card in landing page."
-log_success "Verified side-by-side agent cards: Terrastella, Cindy Pawford, and Football Dan."
+grep "Bawtford" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing Bawtford card in landing page."
+grep "Marvin" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing Marvin card in landing page."
+log_success "Verified side-by-side agent cards: Terrastella, Bawtford, and Marvin."
 
 # Assert Zero Legacy Debt
 if grep -i "hermes.localhost" <<< "${LANDING_HTML}" >/dev/null; then
@@ -109,8 +109,8 @@ log_success "Verified zero legacy hermes URLs in landing page (clean zero-debt a
 
 # Assert /etc/hosts Snippet
 grep "terrastella.brainsos.local" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing terrastella in /etc/hosts snippet."
-grep "cindypawford.brainsos.local" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing cindypawford in /etc/hosts snippet."
-grep "football-dan.brainsos.local" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing football-dan in /etc/hosts snippet."
+grep "bawtford.brainsos.local" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing bawtford in /etc/hosts snippet."
+grep "marvin.brainsos.local" <<< "${LANDING_HTML}" >/dev/null || fail_check "Missing marvin in /etc/hosts snippet."
 log_success "Verified /etc/hosts snippet contains all active multi-agent fleet subdomains."
 
 # ------------------------------------------------------------------------------
@@ -128,15 +128,15 @@ TERRA_LOCAL_RESP=$(curl -s -I -H "Host: terrastella.localhost" http://127.0.0.1:
 grep -i "Server: uvicorn" <<< "${TERRA_LOCAL_RESP}" >/dev/null || fail_check "terrastella.localhost did not route to uvicorn container."
 log_success "Routing: terrastella.localhost -> brainsos-agent-terrastella:9119 (uvicorn) [PASS]"
 
-# 4b. Cindy Pawford (Creative Director)
-CINDY_RESP=$(curl -s -I -H "Host: cindypawford.brainsos.local" http://127.0.0.1:80)
-grep -i "Server: uvicorn" <<< "${CINDY_RESP}" >/dev/null || fail_check "cindypawford.brainsos.local did not route to uvicorn container."
-log_success "Routing: cindypawford.brainsos.local -> brainsos-agent-cindy-pawford:9121 (uvicorn) [PASS]"
+# 4b. Bawtford (Creative Director)
+BAWT_RESP=$(curl -s -I -H "Host: bawtford.brainsos.local" http://127.0.0.1:80)
+grep -i "Server: uvicorn" <<< "${BAWT_RESP}" >/dev/null || fail_check "bawtford.brainsos.local did not route to uvicorn container."
+log_success "Routing: bawtford.brainsos.local -> brainsos-agent-bawtford:9121 (uvicorn) [PASS]"
 
-# 4c. Football Dan (Sports Analytics)
-DAN_RESP=$(curl -s -I -H "Host: football-dan.brainsos.local" http://127.0.0.1:80)
-grep -i "Server: uvicorn" <<< "${DAN_RESP}" >/dev/null || fail_check "football-dan.brainsos.local did not route to uvicorn container."
-log_success "Routing: football-dan.brainsos.local -> brainsos-agent-football-dan:9120 (uvicorn) [PASS]"
+# 4c. Marvin (Sports Analytics)
+MARVIN_RESP=$(curl -s -I -H "Host: marvin.brainsos.local" http://127.0.0.1:80)
+grep -i "Server: uvicorn" <<< "${MARVIN_RESP}" >/dev/null || fail_check "marvin.brainsos.local did not route to uvicorn container."
+log_success "Routing: marvin.brainsos.local -> brainsos-agent-marvin:9120 (uvicorn) [PASS]"
 
 # 4d. brainsOS Operator IDE (Layer 7 / Layer 5 Operator Console)
 EDITOR_RESP=$(curl -s -I -H "Host: editor.brainsos.local" http://127.0.0.1:80)

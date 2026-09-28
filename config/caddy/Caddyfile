@@ -28,7 +28,7 @@ http://proxy.{$BRAINSOS_DOMAIN:brainsos.local}, https://proxy.{$BRAINSOS_DOMAIN:
 	import proxy_backend
 }
 
-http://proxy.localhost, https://proxy.localhost, http://proxy.brainsos.local, https://proxy.brainsos.local {
+http://proxy.localhost, https://proxy.localhost {
 	tls internal
 	import proxy_backend
 }
@@ -57,7 +57,7 @@ http://editor.{$BRAINSOS_DOMAIN:brainsos.local}, https://editor.{$BRAINSOS_DOMAI
 	import editor_backend
 }
 
-http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost, http://editor.brainsos.local, https://editor.brainsos.local, http://code.brainsos.local, https://code.brainsos.local {
+http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost {
 	tls internal
 	import editor_backend
 }
@@ -83,7 +83,7 @@ http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:br
 	import sogo_backend
 }
 
-http://mail.localhost, https://mail.localhost, http://mail.brainsos.local, https://mail.brainsos.local {
+http://mail.localhost, https://mail.localhost {
 	tls internal
 	import sogo_backend
 }
@@ -107,7 +107,7 @@ http://dgx.{$BRAINSOS_DOMAIN:brainsos.local}, https://dgx.{$BRAINSOS_DOMAIN:brai
 	import dgx_backend
 }
 
-http://dgx.localhost, https://dgx.localhost, http://dgx.brainsos.local, https://dgx.brainsos.local {
+http://dgx.localhost, https://dgx.localhost {
 	tls internal
 	import dgx_backend
 }
@@ -131,7 +131,7 @@ http://langfuse.{$BRAINSOS_DOMAIN:brainsos.local}, https://langfuse.{$BRAINSOS_D
 	import langfuse_backend
 }
 
-http://langfuse.localhost, https://langfuse.localhost, http://langfuse.brainsos.local, https://langfuse.brainsos.local {
+http://langfuse.localhost, https://langfuse.localhost {
 	tls internal
 	import langfuse_backend
 }
@@ -157,7 +157,7 @@ http://efw.{$BRAINSOS_DOMAIN:brainsos.local}, https://efw.{$BRAINSOS_DOMAIN:brai
 	import efw_backend
 }
 
-http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost, http://efw.brainsos.local, https://efw.brainsos.local, http://firewall.brainsos.local, https://firewall.brainsos.local {
+http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost {
 	tls internal
 	import efw_backend
 }
@@ -1036,7 +1036,7 @@ http://{$BRAINSOS_DOMAIN:brainsos.local}, https://{$BRAINSOS_DOMAIN:brainsos.loc
 	import landing_page_content
 }
 
-http://localhost, https://localhost, http://brainsos.local, https://brainsos.local, :80, :443 {
+http://localhost, https://localhost, :80, :443 {
 	tls internal
 	import landing_page_content
 }

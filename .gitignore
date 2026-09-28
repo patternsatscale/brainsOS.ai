@@ -13,10 +13,17 @@ config/agents.local.yaml
 config/agents.override.yaml
 
 # Live Agent Memories (Keep root gitkeep, live notes remain git-ignored)
+memories/**/*
+!memories/**/.gitkeep
 data/agent_memories/*
 !data/agent_memories/.gitkeep
 data/memories/*
 !data/memories/.gitkeep
+
+# Databases & Proxies
+*.db
+*.sqlite
+.mitmproxy/
 
 # Snapshots, Runtime State & Backups
 data/backups/
@@ -35,6 +42,8 @@ data/workspace/*
 
 # Agent Public Web Canvas (cloned dedicated repositories)
 apps/cindypawford/site/
+agent_apps/*/site/
+agent_apps/cindypawford/site/
 
 # Local Volume Mounts & Caches
 data/litellm_db/
@@ -52,6 +61,8 @@ __pycache__/
 *$py.class
 .pytest_cache/
 *.egg-info/
+.ruff_cache/
+.mypy_cache/
 # Build & Dependencies
 node_modules/
 .sst/

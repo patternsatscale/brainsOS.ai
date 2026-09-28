@@ -66,6 +66,9 @@ Enforces strict boundary isolation on bare-metal silicon. Agent runtimes drop el
 ### 4. Memory Plane Purity (Open Knowledge Format)
 Runtimes are ephemeral and disposable. Long-term agent knowledge is preserved exclusively in human-auditable flat-file Markdown notes using the Open Knowledge Format (OKF) via `packages/brainsOS-memory`. Binary indices, SQLite databases, and packages are strictly forbidden in `/memories` and reside in `/workspace`.
 
+### 5. Dynamic Capabilities MCP Server (Zero Native Tool Injection)
+Exposes agent tools across all domain packages dynamically via the Model Context Protocol (FastMCP) over `stdio` (`packages/brainsOS-mcp`). Eliminates prompt bloat and KV cache exhaustion on unified memory architectures by avoiding direct injection of custom tool definitions into native Hermes system prompts.
+
 ---
 
 ## 3. Out-of-the-Box Governance Stack
@@ -85,38 +88,105 @@ brainsOS unifies established enterprise-grade open-source components into a cohe
 
 ## 4. The BRAINS Reference Architecture (L1–L7 Model)
 
+```mermaid
+graph TD
+    classDef l7 fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#fff;
+    classDef l6 fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef l5 fill:#14532d,stroke:#4ade80,stroke-width:2px,color:#fff;
+    classDef l4 fill:#701a75,stroke:#f472b6,stroke-width:2px,color:#fff;
+    classDef l3 fill:#7c2d12,stroke:#fb923c,stroke-width:2px,color:#fff;
+    classDef l2 fill:#334155,stroke:#94a3b8,stroke-width:2px,color:#fff;
+    classDef l1 fill:#18181b,stroke:#a1a1aa,stroke-width:2px,color:#fff;
+
+    subgraph "L7: Communications, Ingress & Operator Console"
+        CADDY["Caddy Reverse Proxy<br/>(*.brainsos.local :80/:443)"]:::l7
+        EDITOR["Operator IDE & Console<br/>(editor.brainsos.local :8443)"]:::l7
+        SOGO["SOGo / Postfix<br/>(mail.brainsos.local :20000)"]:::l7
+    end
+
+    subgraph "L6: Autonomous Agent Fleet Units (agent_apps/ & config/agents.yaml)"
+        CINDY["Cindy Pawford<br/>(site/ & pipeline/ :9122)"]:::l6
+        TERRA["Terra Stella Operations<br/>(:8642 / :9119)"]:::l6
+        MARVIN["Marvin Sports Analytics<br/>(:8643 / :9120)"]:::l6
+    end
+
+    subgraph "L5: Memory Plane & Tool Sandboxing"
+        MEM["OKF Memory Engine<br/>(/memories - pure Markdown)"]:::l5
+        QUEUE["Async WorkQueue & Worker<br/>(packages/brainsOS-queue)"]:::l5
+        TEL["Telemetry Bus & mJ Calc<br/>(packages/brainsOS-telemetry)"]:::l5
+        MCP["FastMCP Tool Server<br/>(packages/brainsOS-mcp)"]:::l5
+    end
+
+    subgraph "L4: Routing, Security & Control Plane"
+        LITELLM["LiteLLM Gateway (:4000)<br/>(Virtual Keys & Spend Limits)"]:::l4
+        MITM["Tool Egress Gateway (:8082)<br/>(In-Transit Credential Injection)"]:::l4
+        DB["Control DB (:5432)<br/>(PostgreSQL - Isolated)"]:::l4
+    end
+
+    subgraph "L3: Host Inference Plane (Loopback Bound)"
+        OLLAMA["Host Ollama / vLLM<br/>(127.0.0.1:11434)"]:::l3
+    end
+
+    subgraph "L2: Virtualization & Isolated Bridge Networks"
+        NET_INGRESS["brainsos-ingress"]:::l2
+        NET_INTERNAL["brainsos-internal"]:::l2
+        NET_LITELLM["brainsos-litellm-net"]:::l2
+    end
+
+    subgraph "L1: Physical & Hardware Layer"
+        HW["ASUS Ascent GX10 (NVIDIA GB10) / Apple Silicon<br/>Unified Memory Bus • Hardware Serializer"]:::l1
+    end
+
+    CADDY -->|routes to| CINDY
+    CADDY -->|routes to| TERRA
+    CADDY -->|routes to| MARVIN
+    CADDY -->|routes to| EDITOR
+    CADDY -->|routes to| SOGO
+
+    CINDY -->|executes via| QUEUE
+    QUEUE -->|emits mJ telemetry| TEL
+    CINDY -->|loads notes from| MEM
+    CINDY -->|LLM completions| LITELLM
+    CINDY -->|outbound internet| MITM
+
+    LITELLM -->|serializes requests| OLLAMA
+    LITELLM -->|persists keys/spend| DB
+    OLLAMA -->|runs on bare-metal| HW
+```
+
 ``` text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ L7: Communications, UX & Operator IDE                                       │
-│     - Ingress Reverse Proxy: Caddy (*.brainsos.local, TLS)     │
-│     - Messaging Daemons: brainsos-net-signal-cli, Postfix SMTP, SOGo Groupware │
-│     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)  │
+│     - Ingress Reverse Proxy: Caddy (*.brainsos.local, TLS)                 │
+│     - Messaging Daemons: brainsos-net-signal-cli, Postfix SMTP, SOGo        │
+│     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)│
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L6: Agent Core Units (Manifest-Driven Fleet: config/agents.yaml)            │
+│ L6: Agent Core Units (agent_apps/ & Manifest Fleet: config/agents.yaml)     │
 │     - Primary Operations Agent  (:8642 API, :9119 Dashboard)                │
 │     - Sports Analytics Agent    (:8643 API, :9120 Dashboard)                │
 │     - Autonomous Designer Agent (:8644 API, :9121 Dashboard)                │
-│     - Personas: config/hermes/<id>/SOUL.md & subagents/<sub_id>/SOUL.md     │
+│     - Isolated Tenancies: agent_apps/<tenant>/site/ vs pipeline/            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
-│     - Standalone Packages: packages/brainsOS-memory/, brainsOS-mail/, etc.  │
+│     - Standalone Packages: packages/brainsOS-memory/, brainsOS-queue/, etc. │
+│     - Telemetry & Energy Accounting: packages/brainsOS-telemetry/           │
 │     - Partitioned Memories: ./data/agent_memories/<id> (Pure Markdown)      │
 │     - Tenant Workspaces:   ./data/agent_workspaces/<id> (Tools, Caches, DBs)│
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing, Security & ACSG Control Plane                                  │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
 │     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
-│     - Tool Egress Proxy: brainsos-net-egress-proxy (:8081/8082, flows & auth)  │
-│     - Control Plane DB: brainsos-infra-litellm-db (PostgreSQL, isolated)       │
+│     - Tool Egress Proxy: brainsos-net-egress-proxy (:8081/8082, flows & auth)│
+│     - Control Plane DB: brainsos-infra-litellm-db (PostgreSQL, isolated)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane                                                         │
 │     - Host Ollama / vLLM bound strictly to loopback (127.0.0.1:11434)       │
 │     - Zero direct agent access; all completions route through LiteLLM       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L2: Virtualization & Isolated Bridge Networks                               │
-│     - brainsos-ingress (Caddy -> Service ports)                                │
-│     - brainsos-internal (Agent egress & messaging daemons)                     │
-│     - brainsos-litellm-net (Strictly isolates PostgreSQL from agents)          │
+│     - brainsos-ingress (Caddy -> Service ports)                             │
+│     - brainsos-internal (Agent egress & messaging daemons)                  │
+│     - brainsos-litellm-net (Strictly isolates PostgreSQL from agents)       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L1: Hardware & Physical Plane                                               │
 │     - Bare-Metal Target: ASUS Ascent GX10 (NVIDIA GB10 ARM64, unified memory)│
@@ -126,7 +196,7 @@ brainsOS unifies established enterprise-grade open-source components into a cohe
 │ Cross-Cutting: Observability & Operational Safety                           │
 │     - Decoupled Langfuse v4 + OpenTelemetry distributed tracing             │
 │     - Full-data backup & versioning (scripts/control/backup.sh)             │
-│     - Granular emergency kill-switch (scripts/control/emergency-stop.sh)    │
+│     - Granular emergency kill-switch (make emergency-stop)                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -184,8 +254,8 @@ While brainsOS provides the open-source software harness, Project mJ investigate
 git clone https://github.com/patternsatscale/brainsOS.git
 cd brainsOS
 
-# Copy baseline environment configuration
-cp .env.example .env
+# Bootstrap environment: copies .env, creates data directories, installs virtualenv & packages
+make setup
 ```
 
 #### 2. Run Host Baseline Setup
@@ -211,6 +281,8 @@ Launch the host-side inference runtime (`ollama` on `127.0.0.1:11434`), LiteLLM 
 #### 5. Launch Appliance Container Cluster
 Start the ingress proxy, database, Operator IDE, messaging daemons, and agent containers via Docker Compose:
 ```bash
+make up
+# or
 docker compose up -d
 docker compose ps
 ```
@@ -225,9 +297,15 @@ sudo ./scripts/setup/setup-network.sh --skip-ip -y
 127.0.0.1 brainsos.local terrastella.brainsos.local api.terrastella.brainsos.local marvin.brainsos.local api.marvin.brainsos.local cindypawford.brainsos.local api.cindypawford.brainsos.local proxy.brainsos.local memory.brainsos.local langfuse.brainsos.local editor.brainsos.local code.brainsos.local
 ```
 
-#### 7. Run Verification Test Harnesses
-Validate system isolation, memory purity, and routing:
+#### 7. Run Verification Test Harnesses & Quality Gates
+Validate system isolation, memory purity, package test suites, and routing:
 ```bash
+# Run full package test suites (pytest)
+make test
+
+# Run static analysis and type checks (ruff & mypy)
+make lint
+
 # Verify multi-agent fleet manifest, isolation, and scheduling
 ./scripts/verify/verify-fleet.sh
 
@@ -265,20 +343,19 @@ Once running, the following local services are accessible in your browser:
 ## 9. Common Lifecycle Operations
 
 ```bash
-# Check service status across host and containers
+# Standardized lifecycle commands via root Makefile
+make setup          # Bootstrap .env, data dirs, venv, and editable packages
+make up             # Synchronize fleet manifest and start Docker fleet
+make down           # Gracefully stop all Docker services
+make test           # Run pytest suite across all packages
+make lint           # Run ruff check and mypy across all packages
+make emergency-stop # Instantly terminate all agent containers
+
+# Inspect runtime services & logs
 ./scripts/control/start-control-plane.sh status
 docker compose ps
-
-# View container logs
 docker compose logs -f caddy
 docker compose logs -f agent-primary
-
-# Gracefully restart the full appliance
-docker compose restart
-./scripts/control/start-control-plane.sh restart
-
-# Emergency kill-switch (instantly revokes agent key and freezes execution)
-./scripts/control/emergency-stop.sh
 
 # Reconcile fleet changes after editing config/agents.yaml
 ./scripts/control/sync-agents.sh
@@ -290,9 +367,12 @@ docker compose restart
 
 ``` text
 brainsOS/  
+├── Makefile                  # Standardized lifecycle commands (setup, up, down, test, lint)
+├── pyproject.toml            # Centralized Python tooling configuration (ruff, mypy, pytest)
 ├── LICENSE                   # Apache License 2.0
 ├── NOTICE                    # Copyright and third-party attribution notices
-├── SECURITY.md               # Responsible vulnerability disclosure policy
+├── SECURITY.md               # Responsible vulnerability disclosure policy & threat model
+├── REPO_MAP.md               # Navigation map & rules of engagement for contributors
 ├── CONTRIBUTING.md           # Developer guidelines and verification discipline
 ├── CODE_OF_CONDUCT.md        # Contributor Covenant v2.1
 ├── SUPPORT.md                # Community support and contact directory
@@ -301,6 +381,11 @@ brainsOS/
 ├── docker-compose.yml        # Declarative service topology and isolated networks
 ├── docker-compose.agents.yml # Auto-generated multi-agent fleet units (sync-agents.sh)
 ├── .env.example              # Environment variables template
+├── agent_apps/               # Decoupled tenant workspaces
+│   └── cindypawford/
+│       ├── site/             # Untrusted agent-authored web frontend (HTML/CSS/JS)
+│       ├── pipeline/         # Host-executed deployment infrastructure (SST Ion, AWS)
+│       └── AGENT_BOUNDARIES.md # Agent containment rules
 ├── config/  
 │   ├── agents.yaml           # Declarative multi-agent fleet manifest
 │   ├── caddy/                # Ingress reverse proxy configuration
@@ -311,7 +396,8 @@ brainsOS/
 ├── packages/
 │   ├── brainsOS-memory/      # Standalone OKF memory engine & VectorStore SPI
 │   ├── brainsOS-mail/        # Standalone RFC-compliant asynchronous email client
-│   └── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
+│   ├── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
+│   └── brainsOS-telemetry/   # Decoupled Observer/Observable bus & SyntheticEnergyObserver
 ├── docker/                   # Dockerfiles for mail, caddy, editor, hermes, langfuse
 ├── docs/  
 │   ├── cohumain/             # COHUMAIN ACSG 25-control catalog & conformance roadmap

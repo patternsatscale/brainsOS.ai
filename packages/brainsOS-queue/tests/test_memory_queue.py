@@ -1,8 +1,9 @@
 """Unit tests for brainsos_queue MemoryQueueBackend and WorkQueue."""
 
 import unittest
+
 from brainsos_queue.backends.memory import MemoryQueueBackend
-from brainsos_queue.models import Task, TaskStatus
+from brainsos_queue.models import TaskStatus
 from brainsos_queue.queue import WorkQueue, clear_registry, get_queue
 
 

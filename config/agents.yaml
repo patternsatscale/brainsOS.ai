@@ -208,7 +208,7 @@ agents:
       path: "./data/agent_memories/bawtford"
     workspace:
       path: "./data/agent_workspaces/bawtford"
-      site_path: "./apps/cindypawford/site"
+      site_path: "./agent_apps/cindypawford/site"
       canvas_mount: "/app/html"
       repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
       protected_paths:

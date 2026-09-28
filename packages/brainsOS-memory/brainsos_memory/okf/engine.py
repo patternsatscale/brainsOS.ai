@@ -17,13 +17,14 @@ Enforces Inviolable Rule 7 (Information Compartmentalization):
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from brainsos_memory.okf.models import OKFNote
 from brainsos_memory.okf.purity import (
     FORBIDDEN_DIRECTORIES,
-    FORBIDDEN_EXTENSIONS,
     resolve_safe_path,
+)
+from brainsos_memory.okf.purity import (
     validate_purity as run_purity_validation,
 )
 from brainsos_memory.vector.base import VectorStore
@@ -48,8 +49,8 @@ class OKFEngine:
 
     def __init__(
         self,
-        root_dir: Optional[str] = None,
-        vector_store: Optional[VectorStore] = None,
+        root_dir: str | None = None,
+        vector_store: VectorStore | None = None,
     ):
         self.root_dir = os.path.abspath(root_dir or get_memory_dir())
         self.knowledge_dir = os.path.join(self.root_dir, "knowledge")
@@ -64,9 +65,9 @@ class OKFEngine:
         """Resolve target path ensuring it remains within root_dir."""
         return resolve_safe_path(self.root_dir, rel_path)
 
-    def list_notes(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_notes(self, category: str | None = None) -> list[dict[str, Any]]:
         """List all valid OKF notes with metadata."""
-        results = []
+        results: list[dict[str, Any]] = []
         target_dir = self.root_dir
         if category and category in ("knowledge", "rules", "logs"):
             target_dir = os.path.join(self.root_dir, category)
@@ -120,8 +121,8 @@ class OKFEngine:
         rel_path: str,
         content: str,
         title: str = "",
-        note_type: Optional[str] = None,
-        tags: Optional[List[str]] = None,
+        note_type: str | None = None,
+        tags: list[str] | None = None,
         active: bool = True,
         priority: str = "normal",
     ) -> OKFNote:
@@ -178,7 +179,7 @@ class OKFEngine:
 
         return note
 
-    def search(self, query: str, category: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, category: str | None = None) -> list[dict[str, Any]]:
         """Full-text case-insensitive keyword search across OKF notes."""
         q = query.lower().strip()
         if not q:
@@ -217,7 +218,7 @@ class OKFEngine:
 
         return results
 
-    def get_active_rules_context(self, max_chars: Optional[int] = None) -> str:
+    def get_active_rules_context(self, max_chars: int | None = None) -> str:
         """
         Synthesizes active operator rules from /memories/rules/*.md
         into a prioritized, budgeted prompt section.
@@ -259,7 +260,7 @@ class OKFEngine:
 
         return "".join(output_lines)
 
-    def get_working_memory_context(self, max_chars: Optional[int] = None) -> str:
+    def get_working_memory_context(self, max_chars: int | None = None) -> str:
         """Loads the active working memory note if available."""
         ctx_tokens = get_context_window()
         if max_chars is None:
@@ -276,7 +277,7 @@ class OKFEngine:
         except Exception:
             return ""
 
-    def validate_purity(self) -> Tuple[bool, List[str]]:
+    def validate_purity(self) -> tuple[bool, list[str]]:
         """Scans root_dir to enforce absolute memory plane purity (Rule 1)."""
         return run_purity_validation(self.root_dir)
 

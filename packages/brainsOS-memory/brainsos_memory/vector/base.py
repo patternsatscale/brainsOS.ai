@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from brainsos_memory.okf.models import OKFNote
 
@@ -16,7 +16,7 @@ class SearchResult:
     title: str
     score: float
     snippet: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class VectorStore(ABC):
@@ -25,14 +25,11 @@ class VectorStore(ABC):
     @abstractmethod
     def upsert_note(self, note: OKFNote) -> None:
         """Embed and upsert note into vector index."""
-        pass
 
     @abstractmethod
-    def query(self, query_text: str, limit: int = 5, category: Optional[str] = None) -> List[SearchResult]:
+    def query(self, query_text: str, limit: int = 5, category: str | None = None) -> list[SearchResult]:
         """Query vector index for semantically similar notes."""
-        pass
 
     @abstractmethod
     def delete_note(self, rel_path: str) -> None:
         """Remove note embedding from index."""
-        pass

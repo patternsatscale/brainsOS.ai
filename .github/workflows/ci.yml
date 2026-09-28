@@ -1,0 +1,68 @@
+name: CI Matrix & Test Suite
+
+on:
+  push:
+    branches: [main, rebrand-brainsos]
+  pull_request:
+    branches: [main, rebrand-brainsos]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  python-matrix:
+    name: Test & Lint (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install Development Dependencies & Packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio ruff mypy
+          pip install -e packages/brainsOS-mail
+          pip install -e packages/brainsOS-memory
+          pip install -e packages/brainsOS-queue
+          pip install -e packages/brainsOS-telemetry
+          pip install -e packages/brainsOS-mcp
+
+      - name: Code Quality & Linting (Ruff)
+        run: |
+          ruff check packages/
+
+      - name: Type Checking (Mypy)
+        run: |
+          mypy packages/
+
+      - name: Test Suite (Pytest)
+        run: |
+          pytest packages/*/tests
+
+  secret-hygiene:
+    name: Secret Hygiene & Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Detector
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

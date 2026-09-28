@@ -3,4 +3,4 @@
 from brainsos_memory.vector.base import SearchResult, VectorStore
 from brainsos_memory.vector.null import NullVectorStore
 
-__all__ = ["VectorStore", "SearchResult", "NullVectorStore"]
+__all__ = ["NullVectorStore", "SearchResult", "VectorStore"]

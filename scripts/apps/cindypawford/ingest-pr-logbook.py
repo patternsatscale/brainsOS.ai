@@ -22,7 +22,7 @@ def find_repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 REPO_ROOT = find_repo_root()
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "apps", "cindypawford", "archive")
+ARCHIVE_DIR = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "archive")
 LOGBOOK_JSON = os.path.join(ARCHIVE_DIR, "logbook.json")
 BUILD_SCRIPT = os.path.join(REPO_ROOT, "scripts", "apps", "cindypawford", "build-archive-portal.py")
 
@@ -293,7 +293,7 @@ def auto_scan_and_ingest(dry_run=False):
     }
 
     target_repo = "patternsatscale/CindyPawford-Online"
-    site_dir = os.path.join(REPO_ROOT, "apps", "cindypawford", "site")
+    site_dir = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "site")
     discovered_prs = []
 
     # 1. Primary: Query GitHub API via gh CLI for CindyPawford-Online
@@ -314,7 +314,7 @@ def auto_scan_and_ingest(dry_run=False):
                 discovered_prs.append({
                     "pr_number": num,
                     "pr_title": title_text,
-                    "pr_author": (item.get("author") or {}).get("login") or "cindy-pawford",
+                    "pr_author": (item.get("author") or {}).get("login") or "bawtford",
                     "commit_sha": (item.get("mergeCommit") or {}).get("oid") or "HEAD",
                     "timestamp": item.get("mergedAt") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     "summary": item.get("body") or ""

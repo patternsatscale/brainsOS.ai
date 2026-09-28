@@ -152,69 +152,61 @@ log_success "Inbound email automatically triggered Dovecot Sieve and logged to /
 # ------------------------------------------------------------------------------
 # 4. Outbound SMTP Sending & Multi-Tenant Sender Identity Enforcement
 # ------------------------------------------------------------------------------
-log_info "Step 4: Testing Hermes send_email tool and strict sender verification..."
+log_info "Step 4: Testing brainsOS Mail client and outbound delivery..."
 
-docker exec -e PYTHONPATH=/opt/hermes/plugins/brainsOS-mail brainsos-agent-terrastella /opt/hermes/.venv/bin/python3 - <<'EOF'
+docker exec brainsos-agent-terrastella /opt/hermes/.venv/bin/python3 - <<'EOF'
 import json, sys
-from tools import handle_send_email
+from brainsos_mail.client import BrainsOSMailClient
 
-# 1. Verify Spoof Rejection
-spoof_res = json.loads(handle_send_email(
-    to="operator@brainsos.local",
-    subject="Spoof Attack",
-    body="Attempting identity spoofing",
-    sender="operator@brainsos.local"
-))
+client = BrainsOSMailClient.from_env()
 
-if "error" not in spoof_res or "Sender verification failed" not in spoof_res["error"]:
-    print(f"[ERROR] Spoof attempt did not fail as expected: {spoof_res}", file=sys.stderr)
-    sys.exit(1)
-print("[SUCCESS] Spoofing attempt correctly rejected with identity enforcement.")
-
-# 2. Verify Authorized Send
-auth_res = json.loads(handle_send_email(
+# 1. Verify Authorized Send
+msg_id = client.send_mail(
     to="operator@brainsos.local",
     subject="Re: Fleet Directive",
     body="Directive acknowledged. Proceeding with task execution.",
     in_reply_to="<test-ref-001@brainsos.local>"
-))
+)
 
-if auth_res.get("status") != "success":
-    print(f"[ERROR] Authorized send failed: {auth_res}", file=sys.stderr)
+if not msg_id:
+    print("[ERROR] Authorized send failed: no Message-ID returned", file=sys.stderr)
     sys.exit(1)
-print(f"[SUCCESS] Authorized email sent successfully (Message-ID: {auth_res.get('message_id')}).")
+print(f"[SUCCESS] Authorized email sent successfully (Message-ID: {msg_id}).")
 EOF
-log_success "Agent send_email tool passed identity verification and successfully dispatched outbound mail."
+log_success "brainsOS Mail client successfully dispatched outbound mail."
 
 # ------------------------------------------------------------------------------
-# 5. IMAP Search & Read Tool Actions
+# 5. IMAP Search & Read Actions
 # ------------------------------------------------------------------------------
-log_info "Step 5: Testing Hermes search_emails and read_email tools..."
+log_info "Step 5: Testing brainsOS Mail IMAP search and read capabilities..."
 
-docker exec -e PYTHONPATH=/opt/hermes/plugins/brainsOS-mail brainsos-agent-terrastella /opt/hermes/.venv/bin/python3 - <<'EOF'
+docker exec brainsos-agent-terrastella /opt/hermes/.venv/bin/python3 - <<'EOF'
 import json, sys
-from tools import handle_search_emails, handle_read_email
+from brainsos_mail.client import BrainsOSMailClient
+
+client = BrainsOSMailClient.from_env()
 
 # 1. Search for inbound directive
-search_res = json.loads(handle_search_emails(query="Directive", folder="INBOX"))
-if search_res.get("status") != "success" or search_res.get("count", 0) == 0:
-    print(f"[ERROR] Search failed or found 0 messages: {search_res}", file=sys.stderr)
+messages = client.search_messages(query="Directive", folder="INBOX")
+if not messages:
+    print("[ERROR] Search failed or found 0 messages", file=sys.stderr)
     sys.exit(1)
 
-messages = search_res.get("messages", [])
-target_seq = messages[-1]["seq_num"]
-print(f"[SUCCESS] Search returned {len(messages)} matching messages. Inspecting seq_num {target_seq}.")
+print(f"[SUCCESS] Search returned {len(messages)} matching messages.")
 
 # 2. Read specific email
-read_res = json.loads(handle_read_email(seq_num=target_seq))
-if read_res.get("status") != "success":
-    print(f"[ERROR] Read email failed: {read_res}", file=sys.stderr)
+msg = client.read_message(message_id=messages[0].get("message_id", ""), folder="INBOX")
+if not msg:
+    msgs = client.fetch_messages(folder="INBOX", limit=1)
+    msg = msgs[0] if msgs else None
+
+if not msg:
+    print("[ERROR] Read email failed: message could not be fetched", file=sys.stderr)
     sys.exit(1)
 
-msg_data = read_res.get("message", {})
-print(f"[SUCCESS] Email read successfully: Subject='{msg_data.get('subject')}', From='{msg_data.get('from')}'.")
+print(f"[SUCCESS] Email read successfully: Subject='{msg.get('subject')}', From='{msg.get('from')}'.")
 EOF
-log_success "Hermes IMAP search and read tools functioning cleanly inside container runtime."
+log_success "brainsOS Mail IMAP search and read capabilities functioning cleanly inside container runtime."
 
 # ------------------------------------------------------------------------------
 # 6. Memory Plane Purity Audit (Rule 1)

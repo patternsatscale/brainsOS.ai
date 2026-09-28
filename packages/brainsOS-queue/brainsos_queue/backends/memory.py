@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
-from typing import Dict, List, Optional
 
 from brainsos_queue.backends.base import QueueBackend
 from brainsos_queue.models import Task, TaskStatus
@@ -14,9 +13,9 @@ class MemoryQueueBackend(QueueBackend):
     """In-memory work queue backend using asyncio locks and FIFO ordered dictionaries."""
 
     def __init__(self) -> None:
-        self._tasks: Dict[str, Task] = OrderedDict()
+        self._tasks: dict[str, Task] = OrderedDict()
         self._lock = asyncio.Lock()
-        self._notify_events: Dict[str, asyncio.Event] = {}
+        self._notify_events: dict[str, asyncio.Event] = {}
 
     def _get_event(self, queue_name: str) -> asyncio.Event:
         if queue_name not in self._notify_events:
@@ -31,7 +30,7 @@ class MemoryQueueBackend(QueueBackend):
             event.set()
         return task
 
-    async def dequeue(self, queue_name: str) -> Optional[Task]:
+    async def dequeue(self, queue_name: str) -> Task | None:
         async with self._lock:
             for task in self._tasks.values():
                 if task.queue == queue_name and task.status in (TaskStatus.QUEUED, TaskStatus.FAILED):
@@ -42,7 +41,7 @@ class MemoryQueueBackend(QueueBackend):
             event.clear()
             return None
 
-    async def peek(self, queue_name: str) -> Optional[Task]:
+    async def peek(self, queue_name: str) -> Task | None:
         async with self._lock:
             for task in self._tasks.values():
                 if task.queue == queue_name and task.status in (TaskStatus.QUEUED, TaskStatus.FAILED):
@@ -57,24 +56,24 @@ class MemoryQueueBackend(QueueBackend):
                 event.set()
         return task
 
-    async def get_task(self, task_id: str) -> Optional[Task]:
+    async def get_task(self, task_id: str) -> Task | None:
         async with self._lock:
             return self._tasks.get(task_id)
 
-    async def size(self, queue_name: str, status: Optional[TaskStatus] = None) -> int:
+    async def size(self, queue_name: str, status: TaskStatus | None = None) -> int:
         async with self._lock:
             if status is None:
                 return sum(1 for t in self._tasks.values() if t.queue == queue_name)
             return sum(1 for t in self._tasks.values() if t.queue == queue_name and t.status == status)
 
-    async def list_tasks(self, queue_name: str, status: Optional[TaskStatus] = None) -> List[Task]:
+    async def list_tasks(self, queue_name: str, status: TaskStatus | None = None) -> list[Task]:
         async with self._lock:
             tasks = [t for t in self._tasks.values() if t.queue == queue_name]
             if status is not None:
                 tasks = [t for t in tasks if t.status == status]
             return list(tasks)
 
-    async def clear(self, queue_name: Optional[str] = None) -> None:
+    async def clear(self, queue_name: str | None = None) -> None:
         async with self._lock:
             if queue_name is None:
                 self._tasks.clear()
@@ -87,7 +86,7 @@ class MemoryQueueBackend(QueueBackend):
                 event = self._get_event(queue_name)
                 event.clear()
 
-    async def wait_for_item(self, queue_name: str, timeout: Optional[float] = None) -> bool:
+    async def wait_for_item(self, queue_name: str, timeout: float | None = None) -> bool:
         """Wait until a new item is available in the queue."""
         event = self._get_event(queue_name)
         try:

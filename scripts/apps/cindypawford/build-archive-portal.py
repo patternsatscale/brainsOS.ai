@@ -18,7 +18,7 @@ def find_repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 REPO_ROOT = find_repo_root()
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "apps", "cindypawford", "archive")
+ARCHIVE_DIR = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "archive")
 LOGBOOK_JSON_PATH = os.path.join(ARCHIVE_DIR, "logbook.json")
 ERAS_JSON_PATH = os.path.join(ARCHIVE_DIR, "eras.json")
 OUTPUT_HTML_PATH = os.path.join(ARCHIVE_DIR, "index.html")
@@ -223,7 +223,7 @@ def render_timeline_entry(entry):
 
     pr_footer = ""
     if pr_url:
-        pr_author = html.escape(str(pr_meta.get("author", "cindy-pawford")))
+        pr_author = html.escape(str(pr_meta.get("author", "bawtford")))
         sha = html.escape(str(pr_meta.get("commit_sha", "HEAD"))[:8])
         pr_footer = f"""
         <div class="flex items-center justify-between pt-space-xs mt-1 border-t border-outline-variant/20 flex-wrap gap-2 font-label-sm text-label-sm">

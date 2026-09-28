@@ -3,8 +3,9 @@
 import os
 import tempfile
 import unittest
+
 from brainsos_queue.backends.sqlite import SQLiteQueueBackend
-from brainsos_queue.models import Task, TaskStatus
+from brainsos_queue.models import TaskStatus
 from brainsos_queue.queue import WorkQueue
 
 

@@ -1,7 +1,0 @@
-name: brainsos-subagents
-version: 1.0.0
-description: "brainsOS Generic Sub-Agent Dispatcher & Tool Registration"
-author: "brainsOS"
-kind: backend
-provides_tools:
-  - build_website_feature

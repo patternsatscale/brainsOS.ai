@@ -6,7 +6,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class TaskStatus(str, Enum):
@@ -22,23 +22,23 @@ class TaskStatus(str, Enum):
 class Task:
     """A discrete unit of asynchronous work."""
     queue: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: TaskStatus = TaskStatus.QUEUED
     created_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
-    completed_at: Optional[float] = None
+    started_at: float | None = None
+    completed_at: float | None = None
     retries: int = 0
     max_retries: int = 3
-    error: Optional[str] = None
-    result: Optional[Any] = None
+    error: str | None = None
+    result: Any | None = None
 
     def mark_started(self) -> None:
         """Mark task as actively executing."""
         self.status = TaskStatus.PROCESSING
         self.started_at = time.time()
 
-    def mark_completed(self, result: Optional[Any] = None) -> None:
+    def mark_completed(self, result: Any | None = None) -> None:
         """Mark task as successfully completed."""
         self.status = TaskStatus.COMPLETED
         self.completed_at = time.time()
@@ -55,14 +55,14 @@ class Task:
         else:
             self.status = TaskStatus.FAILED
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize task to a JSON-compatible dictionary."""
         d = asdict(self)
         d["status"] = self.status.value
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Task:
+    def from_dict(cls, data: dict[str, Any]) -> Task:
         """Deserialize task from a dictionary."""
         data_copy = dict(data)
         if "status" in data_copy and isinstance(data_copy["status"], str):

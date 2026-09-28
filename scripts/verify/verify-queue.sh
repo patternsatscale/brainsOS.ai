@@ -76,9 +76,8 @@ done
 log_success "All required queue source files are present."
 
 # 2. Syntax Validation
-log_info "Step 2: Checking Python syntax across work queue and mail plugins..."
+log_info "Step 2: Checking Python syntax across work queue package..."
 find "${QUEUE_MOD_DIR}" -name "*.py" -exec "${PYTHON_BIN}" -m py_compile {} +
-"${PYTHON_BIN}" -m py_compile docker/hermes/plugins/brainsos-mail/__init__.py
 log_success "Python syntax validation passed."
 
 # 3. Unit Test Suite Execution

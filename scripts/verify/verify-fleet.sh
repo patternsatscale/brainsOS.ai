@@ -102,8 +102,8 @@ else
 fi
 
 # Detect enabled agents & primary agent from compose
-ENABLED_AGENTS=$(docker compose config --services | grep '^agent-' | sed 's/^agent-//' || echo "primary football-dan cindy-pawford")
-PRIMARY_AGENT_ID="primary"
+ENABLED_AGENTS=$(docker compose config --services | grep '^agent-' | sed 's/^agent-//' || echo "terrastella marvin bawtford")
+PRIMARY_AGENT_ID="terrastella"
 if echo "${ENABLED_AGENTS}" | grep -qw "terrastella"; then
   PRIMARY_AGENT_ID="terrastella"
 elif echo "${ENABLED_AGENTS}" | grep -qw "primary"; then

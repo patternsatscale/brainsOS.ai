@@ -1,9 +1,9 @@
 """Unit tests for brainsos_mail RFC 5545 calendar ICS generation."""
 
 import datetime
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from brainsos_mail.calendar import generate_ics_event, write_ics_file
 

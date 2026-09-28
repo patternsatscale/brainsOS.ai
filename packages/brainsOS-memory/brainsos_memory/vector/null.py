@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from brainsos_memory.okf.models import OKFNote
 from brainsos_memory.vector.base import SearchResult, VectorStore
 
@@ -14,7 +12,7 @@ class NullVectorStore(VectorStore):
     def upsert_note(self, note: OKFNote) -> None:
         pass
 
-    def query(self, query_text: str, limit: int = 5, category: Optional[str] = None) -> List[SearchResult]:
+    def query(self, query_text: str, limit: int = 5, category: str | None = None) -> list[SearchResult]:
         return []
 
     def delete_note(self, rel_path: str) -> None:

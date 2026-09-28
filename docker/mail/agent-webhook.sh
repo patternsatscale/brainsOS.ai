@@ -135,6 +135,7 @@ case "${AGENT_NAME}" in
         AGENT_KEY="${HERMES_API_MARVIN_KEY:-}"
         ;;
     bawtford|cindy-pawford)
+        AGENT_NAME="bawtford"
         AGENT_PORT="${BRAINSOS_AGENT_PORT_BAWTFORD:-8644}"
         AGENT_KEY="${HERMES_API_BAWTFORD_KEY:-}"
         ;;

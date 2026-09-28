@@ -249,8 +249,28 @@ for agent in enabled_agents:
         f"    image: brainsos-hermes:latest",
         f"    container_name: brainsos-agent-{agent_id}",
         f"    restart: unless-stopped",
+        f"    read_only: true",
         f"    security_opt:",
         f"      - \"no-new-privileges:true\"",
+        f"    cap_drop:",
+        f"      - ALL",
+        f"    cap_add:",
+        f"      - SETUID",
+        f"      - SETGID",
+        f"      - CHOWN",
+        f"      - DAC_OVERRIDE",
+        f"      - FOWNER",
+        f"    deploy:",
+        f"      resources:",
+        f"        limits:",
+        f"          cpus: \"2.0\"",
+        f"          memory: 4096M",
+        f"          pids: 200",
+        f"    tmpfs:",
+        f"      - /tmp:rw,noexec,nosuid,size=64m",
+        f"      - /run:rw,exec,nosuid,size=64m",
+        f"      - /etc/ssl/certs:rw,size=10m",
+        f"      - /usr/local/share/ca-certificates:rw,size=10m",
         f"    ports:",
         f"      - \"127.0.0.1:{port}:{port}\"",
         f"      - \"127.0.0.1:{dash_port}:{dash_port}\"",
@@ -776,17 +796,28 @@ for agent in manifest.get("agents", []):
         if os.path.exists(old_persona_dir) and not os.path.exists(new_persona_dir):
             print(f"[INFO] Migrating Hermes persona from '{migrate_from}' to '{agent_id}'...")
             shutil.copytree(old_persona_dir, new_persona_dir, symlinks=True)
+            shutil.rmtree(old_persona_dir, ignore_errors=True)
 
         if os.path.exists(old_mem) and (not os.path.exists(mem_dir) or not os.listdir(mem_dir)):
             print(f"[INFO] Migrating memory partition from '{migrate_from}' to '{agent_id}'...")
             shutil.copytree(old_mem, mem_dir, dirs_exist_ok=True, symlinks=True, ignore=shutil.ignore_patterns(".cache", "*.sock"))
+            shutil.rmtree(old_mem, ignore_errors=True)
 
         if os.path.exists(old_work) and (not os.path.exists(work_dir) or not os.listdir(work_dir)):
             print(f"[INFO] Migrating workspace partition from '{migrate_from}' to '{agent_id}'...")
             shutil.copytree(old_work, work_dir, dirs_exist_ok=True, symlinks=True, ignore=shutil.ignore_patterns(".cache", "*.sock"))
+            shutil.rmtree(old_work, ignore_errors=True)
 
     os.makedirs(mem_dir, exist_ok=True)
     os.makedirs(work_dir, exist_ok=True)
+
+    # Purge legacy plugins directory across all workspace partitions
+    ws_parent = os.path.abspath(os.path.join(repo_root, "data", "agent_workspaces"))
+    if os.path.exists(ws_parent):
+        for ws_name in os.listdir(ws_parent):
+            legacy_p = os.path.join(ws_parent, ws_name, "plugins")
+            if os.path.isdir(legacy_p):
+                shutil.rmtree(legacy_p)
 
     if site_rel:
         for prot_path in agent.get("workspace", {}).get("protected_paths", []):
@@ -845,26 +876,9 @@ for agent in manifest.get("agents", []):
         with open(os.path.join(mem_dir, "subagents.json"), "w", encoding="utf-8") as sf:
             json.dump(subagents, sf, indent=2)
 
-    # Scaffold workspace sandbox (tools, skills, cron, and runtime memories)
-    for sub in ("skills", "plugins", "signal", "cron", "memories"):
+    # Scaffold workspace sandbox (skills, signal, cron, and runtime memories)
+    for sub in ("skills", "signal", "cron", "memories"):
         os.makedirs(os.path.join(work_dir, sub), exist_ok=True)
-
-    # Scaffold brainsos-subagents plugin into workspace if subagents configured
-    if subagents:
-        src_plugin = os.path.join(repo_root, "docker", "hermes", "plugins", "brainsos-subagents")
-        dest_plugin = os.path.join(work_dir, "plugins", "brainsos-subagents")
-        if os.path.exists(src_plugin):
-            if os.path.exists(dest_plugin):
-                shutil.rmtree(dest_plugin)
-            shutil.copytree(src_plugin, dest_plugin)
-
-    # Scaffold brainsos-mail plugin into workspace
-    src_mail_plugin = os.path.join(repo_root, "docker", "hermes", "plugins", "brainsos-mail")
-    dest_mail_plugin = os.path.join(work_dir, "plugins", "brainsos-mail")
-    if os.path.exists(src_mail_plugin):
-        if os.path.exists(dest_mail_plugin):
-            shutil.rmtree(dest_mail_plugin)
-        shutil.copytree(src_mail_plugin, dest_mail_plugin)
 
     # Seed initial Hermes working memory files if not present
     ws_memories_dir = os.path.join(work_dir, "memories")
@@ -979,34 +993,42 @@ for agent in manifest.get("agents", []):
             cfg["platforms"]["signal"]["enabled"] = sig_config.get("enabled", False)
             if sig_config.get("http_url"):
                 cfg["platforms"]["signal"]["http_url"] = sig_config.get("http_url")
-        # Ensure brainsos-subagents plugin is enabled if subagents are configured
-        if subagents:
-            if "plugins" not in cfg:
-                cfg["plugins"] = {"enabled": ["hermes-okf"]}
-            if "enabled" not in cfg["plugins"]:
-                cfg["plugins"]["enabled"] = ["hermes-okf"]
-            if "brainsos-subagents" not in cfg["plugins"]["enabled"]:
-                cfg["plugins"]["enabled"].append("brainsos-subagents")
-        # Ensure brainsos-mail plugin is enabled
-        if "plugins" not in cfg:
-            cfg["plugins"] = {"enabled": ["hermes-okf"]}
-        if "enabled" not in cfg["plugins"]:
-            cfg["plugins"]["enabled"] = ["hermes-okf"]
-        if "brainsos-mail" not in cfg["plugins"]["enabled"]:
-            cfg["plugins"]["enabled"].append("brainsos-mail")
+        # Zero Hermes Native Tool Injection: capabilities exposed exclusively via external MCP server
+        cfg["plugins"] = {"enabled": []}
+        legacy_plugins_dir = os.path.join(work_dir, "plugins")
+        if os.path.isdir(legacy_plugins_dir):
+            shutil.rmtree(legacy_plugins_dir)
+        if "mcp_servers" not in cfg:
+            cfg["mcp_servers"] = {
+                "brainsos": {
+                    "command": "python",
+                    "args": ["-m", "brainsos_mcp.server"],
+                }
+            }
+
+        # Render mcp.json in workspace for standard MCP client discovery
+        dest_mcp = os.path.join(work_dir, "mcp.json")
+        with open(dest_mcp, "w", encoding="utf-8") as mf:
+            json.dump({
+                "mcpServers": {
+                    "brainsos": {
+                        "command": "python",
+                        "args": ["-m", "brainsos_mcp.server"]
+                    }
+                }
+            }, mf, indent=2)
+
         # Ensure email platform gateway auto-reply is disabled
         if "platforms" not in cfg:
             cfg["platforms"] = {}
         if "email" not in cfg["platforms"]:
             cfg["platforms"]["email"] = {}
         cfg["platforms"]["email"]["enabled"] = False
-        # Ensure tool_search dynamic deferral is disabled so model directly sees all tools
+        # Ensure tool_search dynamic deferral is disabled
         if "tools" not in cfg:
             cfg["tools"] = {}
-        if "tool_search" not in cfg["tools"]:
-            cfg["tools"]["tool_search"] = {"enabled": "off"}
-        else:
-            cfg["tools"]["tool_search"]["enabled"] = "off"
+        cfg["tools"]["tool_search"] = {"enabled": "off"}
+        cfg["tools"]["web_search"] = {"enabled": False}
         with open(dest_config, "w", encoding="utf-8") as df:
             yaml.safe_dump(cfg, df, sort_keys=False)
 
@@ -1021,6 +1043,33 @@ for agent in manifest.get("agents", []):
     print(f"  - Workspace: {work_dir}")
     if site_rel:
         print(f"  - Site:      {os.path.abspath(os.path.join(repo_root, site_rel.lstrip('./')))}")
+
+# 3A. Purge retired / unreferenced agent partitions from data/agent_memories, data/agent_workspaces, and config/hermes
+manifest_agent_ids = set([a["id"] for a in manifest.get("agents", [])])
+system_mem_dirs = {"knowledge", "rules", "logs"}
+agent_memories_parent = os.path.abspath(os.path.join(repo_root, "data", "agent_memories"))
+if os.path.exists(agent_memories_parent):
+    for entry in os.listdir(agent_memories_parent):
+        entry_path = os.path.join(agent_memories_parent, entry)
+        if os.path.isdir(entry_path) and entry not in manifest_agent_ids and entry not in system_mem_dirs:
+            print(f"[INFO] Purging retired agent memory partition: {entry_path}")
+            shutil.rmtree(entry_path, ignore_errors=True)
+
+agent_workspaces_parent = os.path.abspath(os.path.join(repo_root, "data", "agent_workspaces"))
+if os.path.exists(agent_workspaces_parent):
+    for entry in os.listdir(agent_workspaces_parent):
+        entry_path = os.path.join(agent_workspaces_parent, entry)
+        if os.path.isdir(entry_path) and entry not in manifest_agent_ids:
+            print(f"[INFO] Purging retired agent workspace partition: {entry_path}")
+            shutil.rmtree(entry_path, ignore_errors=True)
+
+hermes_parent = os.path.abspath(os.path.join(repo_root, "config", "hermes"))
+if os.path.exists(hermes_parent):
+    for entry in os.listdir(hermes_parent):
+        entry_path = os.path.join(hermes_parent, entry)
+        if os.path.isdir(entry_path) and entry not in manifest_agent_ids:
+            print(f"[INFO] Purging retired agent persona directory: {entry_path}")
+            shutil.rmtree(entry_path, ignore_errors=True)
 
 # 3B. Render dynamic PKM fleet memory index
 index_lines = [
@@ -1065,14 +1114,14 @@ EOF
 # 4. Enforce permissions (chmod 775 on workspaces/memories/comms and preserve file executables)
 chmod -R 775 "${REPO_ROOT}/data/agent_workspaces" "${REPO_ROOT}/data/agent_memories" "${REPO_ROOT}/data/comms" 2>/dev/null || true
 chmod -R 775 "${REPO_ROOT}/data/workspace" "${REPO_ROOT}/data/memories" 2>/dev/null || true
-if [ -d "${REPO_ROOT}/apps" ]; then
-  find "${REPO_ROOT}/apps" -type d -exec chmod 775 {} + 2>/dev/null || true
-  chmod -R ug+rw "${REPO_ROOT}/apps" 2>/dev/null || true
-  if [ -d "${REPO_ROOT}/apps/cindypawford/infra/node_modules/.bin" ]; then
-    chmod +x "${REPO_ROOT}/apps/cindypawford/infra/node_modules/.bin/"* 2>/dev/null || true
+if [ -d "${REPO_ROOT}/agent_apps" ]; then
+  find "${REPO_ROOT}/agent_apps" -type d -exec chmod 775 {} + 2>/dev/null || true
+  chmod -R ug+rw "${REPO_ROOT}/agent_apps" 2>/dev/null || true
+  if [ -d "${REPO_ROOT}/agent_apps/cindypawford/pipeline/node_modules/.bin" ]; then
+    chmod +x "${REPO_ROOT}/agent_apps/cindypawford/pipeline/node_modules/.bin/"* 2>/dev/null || true
   fi
-  if [ -f "${REPO_ROOT}/apps/cindypawford/infra/node_modules/typescript/bin/tsc" ]; then
-    chmod +x "${REPO_ROOT}/apps/cindypawford/infra/node_modules/typescript/bin/tsc" 2>/dev/null || true
+  if [ -f "${REPO_ROOT}/agent_apps/cindypawford/pipeline/node_modules/typescript/bin/tsc" ]; then
+    chmod +x "${REPO_ROOT}/agent_apps/cindypawford/pipeline/node_modules/typescript/bin/tsc" 2>/dev/null || true
   fi
 fi
 

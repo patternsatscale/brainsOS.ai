@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from typing import Any, Awaitable, Callable, Optional, Set
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from brainsos_queue.models import Task, TaskStatus
 from brainsos_queue.queue import WorkQueue
@@ -27,6 +29,7 @@ class FIFOQueueWorker:
         concurrency: int = 1,
         poll_interval: float = 0.05,
         backoff_base: float = 0.2,
+        telemetry_bus: Any | None = None,
     ) -> None:
         if concurrency < 1:
             raise ValueError(f"Concurrency must be at least 1, got {concurrency}")
@@ -36,11 +39,12 @@ class FIFOQueueWorker:
         self.concurrency = concurrency
         self.poll_interval = poll_interval
         self.backoff_base = backoff_base
+        self.telemetry_bus = telemetry_bus
 
         self._semaphore = asyncio.Semaphore(concurrency)
         self._running = False
-        self._loop_task: Optional[asyncio.Task] = None
-        self._active_tasks: Set[asyncio.Task] = set()
+        self._loop_task: asyncio.Task | None = None
+        self._active_tasks: set[asyncio.Task] = set()
 
     @property
     def is_running(self) -> bool:
@@ -130,18 +134,80 @@ class FIFOQueueWorker:
                 logger.error("Error in queue worker dispatcher loop: %s", e)
                 await asyncio.sleep(self.poll_interval)
 
+    async def _emit_telemetry(
+        self,
+        event_type: str,
+        task: Task,
+        duration_ms: float = 0.0,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit telemetry event to attached TelemetryBus if configured."""
+        if not self.telemetry_bus:
+            return
+        try:
+            agent_id = "unknown"
+            tokens = 0
+            if isinstance(task.payload, dict):
+                agent_id = task.payload.get("agent_id") or task.payload.get("agent") or "unknown"
+                tokens = int(task.payload.get("tokens") or task.payload.get("total_tokens") or 0)
+
+            metadata: dict[str, Any] = {
+                "queue": task.queue,
+                "duration_ms": duration_ms,
+                "tokens": tokens,
+                "retries": task.retries,
+            }
+            if extra:
+                metadata.update(extra)
+
+            try:
+                from brainsos_telemetry import TelemetryEvent
+                event = TelemetryEvent(
+                    task_id=task.id,
+                    agent_id=agent_id,
+                    event_type=event_type,
+                    metadata=metadata,
+                )
+            except ImportError:
+                class _EventStub:
+                    def __init__(self, task_id: str, agent_id: str, event_type: str, metadata: dict[str, Any]):
+                        self.task_id = task_id
+                        self.agent_id = agent_id
+                        self.event_type = event_type
+                        self.metadata = metadata
+                        self.energy_millijoules = 0.0
+                        self.thermal_celsius = None
+                event = _EventStub(task.id, agent_id, event_type, metadata)  # type: ignore
+
+            res = self.telemetry_bus.notify(event)
+            if inspect.isawaitable(res):
+                await res
+        except Exception as e:
+            logger.debug("Failed to emit telemetry: %s", e)
+
     async def _process_task(self, task: Task) -> None:
         """Execute task handler with retries and status tracking."""
+        start_perf = time.perf_counter()
+        await self._emit_telemetry("task_started", task)
         try:
             logger.debug("Executing task %s on queue '%s'", task.id, task.queue)
             result = await self.handler(task)
+            duration_ms = (time.perf_counter() - start_perf) * 1000.0
             task.mark_completed(result=result)
             await self.queue.update_task(task)
+            await self._emit_telemetry("task_completed", task, duration_ms=duration_ms)
             logger.info("Task %s completed successfully", task.id)
         except Exception as e:
+            duration_ms = (time.perf_counter() - start_perf) * 1000.0
             logger.warning("Task %s failed: %s", task.id, e)
             task.mark_failed(str(e))
             await self.queue.update_task(task)
+            await self._emit_telemetry(
+                "task_failed",
+                task,
+                duration_ms=duration_ms,
+                extra={"error": str(e)},
+            )
 
             # If retries remain, back off before making task eligible for retry
             if task.status == TaskStatus.FAILED:

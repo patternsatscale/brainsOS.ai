@@ -58,7 +58,7 @@ elif [ -f .env.example ]; then
 fi
 
 PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'brainsos-net-egress-proxy')"
-CINDY_CONTAINER="brainsos-agent-cindy-pawford"
+CINDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-agent-(bawtford|cindy-pawford)$' | head -n 1 || echo 'brainsos-agent-bawtford')"
 UNAUTH_CONTAINER="brainsos-agent-terrastella"
 CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?caddy$' | head -n 1 || echo 'brainsos-net-caddy')"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
@@ -143,7 +143,7 @@ else
 fi
 
 # 4b: Test GitHub CLI (gh api user)
-GH_USER=$(docker exec "${CINDY_CONTAINER}" gh api user --jq .login 2>/dev/null || echo "GH_FAILED")
+GH_USER=$(docker exec -u hermes -e GH_TOKEN=in-transit-placeholder "${CINDY_CONTAINER}" gh api user --jq .login 2>/dev/null || echo "GH_FAILED")
 if [ "${GH_USER}" != "GH_FAILED" ] && [ -n "${GH_USER}" ]; then
   log_success "Cindy verified authenticated via GitHub CLI: 'gh api user' returned '${GH_USER}'."
 else
@@ -236,9 +236,13 @@ for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
 done
 
 # Rule 1: Memory plane purity
-MEM_FILES=$(find "${REPO_ROOT}/data/memories/cindy-pawford" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
+CINDY_MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/bawtford"
+if [ ! -d "${CINDY_MEM_DIR}" ]; then
+  CINDY_MEM_DIR="${REPO_ROOT}/data/memories/bawtford"
+fi
+MEM_FILES=$(find "${CINDY_MEM_DIR}" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
 if [ -z "${MEM_FILES}" ]; then
-  log_success "Rule 1 verified: Memory plane data/memories/cindy-pawford is 100% pure OKF Markdown."
+  log_success "Rule 1 verified: Memory plane ${CINDY_MEM_DIR} is 100% pure OKF Markdown."
 else
   log_error "Memory plane purity violation: non-markdown files detected: ${MEM_FILES}"
   exit 1

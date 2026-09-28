@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import List, Tuple
 
 FORBIDDEN_EXTENSIONS = {
     ".db", ".sqlite", ".sqlite3", ".pyc", ".pyo", ".so", ".bin",
@@ -25,7 +24,7 @@ def resolve_safe_path(root_dir: str, rel_path: str) -> str:
     return abs_path
 
 
-def validate_purity(root_dir: str) -> Tuple[bool, List[str]]:
+def validate_purity(root_dir: str) -> tuple[bool, list[str]]:
     """Scan root_dir to verify strict adherence to Rule 1 (Memory Purity)."""
     violations = []
     abs_root = os.path.abspath(root_dir)

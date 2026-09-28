@@ -1,9 +1,0 @@
-name: brainsos-mail
-version: 1.0.0
-description: "brainsOS Mail Integration — Tool-First asynchronous email communication for autonomous agents"
-author: "brainsOS"
-kind: backend
-provides_tools:
-  - send_email
-  - search_emails
-  - read_email

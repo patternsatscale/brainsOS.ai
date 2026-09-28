@@ -15,8 +15,28 @@ services:
     image: brainsos-hermes:latest
     container_name: brainsos-agent-terrastella
     restart: unless-stopped
+    read_only: true
     security_opt:
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4096M
+          pids: 200
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,exec,nosuid,size=64m
+      - /etc/ssl/certs:rw,size=10m
+      - /usr/local/share/ca-certificates:rw,size=10m
     ports:
       - "127.0.0.1:8642:8642"
       - "127.0.0.1:9119:9119"
@@ -108,8 +128,28 @@ services:
     image: brainsos-hermes:latest
     container_name: brainsos-agent-marvin
     restart: unless-stopped
+    read_only: true
     security_opt:
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4096M
+          pids: 200
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,exec,nosuid,size=64m
+      - /etc/ssl/certs:rw,size=10m
+      - /usr/local/share/ca-certificates:rw,size=10m
     ports:
       - "127.0.0.1:8643:8643"
       - "127.0.0.1:9120:9120"
@@ -201,8 +241,28 @@ services:
     image: brainsos-hermes:latest
     container_name: brainsos-agent-bawtford
     restart: unless-stopped
+    read_only: true
     security_opt:
       - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4096M
+          pids: 200
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,exec,nosuid,size=64m
+      - /etc/ssl/certs:rw,size=10m
+      - /usr/local/share/ca-certificates:rw,size=10m
     ports:
       - "127.0.0.1:8644:8644"
       - "127.0.0.1:9121:9121"
@@ -220,9 +280,9 @@ services:
       - ./data/agent_workspaces/bawtford:/opt/data
       - ./data/agent_workspaces/bawtford:/workspace
       # Dedicated Public HTML Canvas
-      - ./apps/cindypawford/site:/app/html
+      - ./agent_apps/cindypawford/site:/app/html
       # Masked / Read-Only Protected Path
-      - ./apps/cindypawford/site/.github:/app/html/.github:ro
+      - ./agent_apps/cindypawford/site/.github:/app/html/.github:ro
       # Tool Egress Proxy CA Certificate Mount (Read-Only)
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     working_dir: /opt/data

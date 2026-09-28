@@ -74,14 +74,15 @@ services:
       - LANGFUSE_INIT_USER_NAME=${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}
       - LANGFUSE_INIT_USER_PASSWORD=${LANGFUSE_INIT_USER_PASSWORD:-brainsos_admin_secret}
       # Outbound LLM Connection Whitelist (allows reaching LiteLLM and Agents via Caddy)
-      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.cindypawford.brainsos.local,api.terrastella.brainsos.local,api.football-dan.brainsos.local,host.docker.internal,litellm,localhost
+      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.terrastella.brainsos.local,api.marvin.brainsos.local,api.bawtford.brainsos.local,api.cindypawford.brainsos.local,host.docker.internal,litellm,localhost
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
       - "proxy.brainsos.local:host-gateway"
-      - "api.cindypawford.brainsos.local:host-gateway"
       - "api.terrastella.brainsos.local:host-gateway"
-      - "api.football-dan.brainsos.local:host-gateway"
+      - "api.marvin.brainsos.local:host-gateway"
+      - "api.bawtford.brainsos.local:host-gateway"
+      - "api.cindypawford.brainsos.local:host-gateway"
     networks:
       - langfuse-net
     healthcheck:
@@ -147,14 +148,15 @@ services:
       - LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true
       - LANGFUSE_S3_MEDIA_UPLOAD_PREFIX=media/
       # Outbound LLM Connection Whitelist (allows reaching LiteLLM and Agents via Caddy)
-      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.cindypawford.brainsos.local,api.terrastella.brainsos.local,api.football-dan.brainsos.local,host.docker.internal,litellm,localhost
+      - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.terrastella.brainsos.local,api.marvin.brainsos.local,api.bawtford.brainsos.local,api.cindypawford.brainsos.local,host.docker.internal,litellm,localhost
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
       - "proxy.brainsos.local:host-gateway"
-      - "api.cindypawford.brainsos.local:host-gateway"
       - "api.terrastella.brainsos.local:host-gateway"
-      - "api.football-dan.brainsos.local:host-gateway"
+      - "api.marvin.brainsos.local:host-gateway"
+      - "api.bawtford.brainsos.local:host-gateway"
+      - "api.cindypawford.brainsos.local:host-gateway"
     networks:
       - langfuse-net
 

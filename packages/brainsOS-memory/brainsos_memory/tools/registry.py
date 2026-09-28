@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from brainsos_memory.okf.engine import OKFEngine
 
-READ_OKF_NOTE_SCHEMA: Dict[str, Any] = {
+READ_OKF_NOTE_SCHEMA: dict[str, Any] = {
     "name": "read_okf_note",
     "description": (
         "Read and parse an Open Knowledge Format (OKF) Markdown note from /memories. "
@@ -29,7 +29,7 @@ READ_OKF_NOTE_SCHEMA: Dict[str, Any] = {
     },
 }
 
-WRITE_OKF_NOTE_SCHEMA: Dict[str, Any] = {
+WRITE_OKF_NOTE_SCHEMA: dict[str, Any] = {
     "name": "write_okf_note",
     "description": (
         "Create or update an Open Knowledge Format (OKF) Markdown note in /memories. "
@@ -79,7 +79,7 @@ WRITE_OKF_NOTE_SCHEMA: Dict[str, Any] = {
     },
 }
 
-SYNTHESIZE_ACTIVE_RULES_SCHEMA: Dict[str, Any] = {
+SYNTHESIZE_ACTIVE_RULES_SCHEMA: dict[str, Any] = {
     "name": "synthesize_active_rules",
     "description": (
         "Synthesize active operator directives and rules from /memories/rules/*.md "
@@ -101,7 +101,7 @@ SYNTHESIZE_ACTIVE_RULES_SCHEMA: Dict[str, Any] = {
 }
 
 
-def handle_read_okf_note(args: Dict[str, Any], engine: Optional[OKFEngine] = None, **kwargs: Any) -> str:
+def handle_read_okf_note(args: dict[str, Any], engine: OKFEngine | None = None, **kwargs: Any) -> str:
     """Tool handler for reading an OKF note."""
     engine = engine or OKFEngine()
     rel_path = args.get("rel_path", "")
@@ -125,7 +125,7 @@ def handle_read_okf_note(args: Dict[str, Any], engine: Optional[OKFEngine] = Non
         return json.dumps({"success": False, "error": str(e)})
 
 
-def handle_write_okf_note(args: Dict[str, Any], engine: Optional[OKFEngine] = None, **kwargs: Any) -> str:
+def handle_write_okf_note(args: dict[str, Any], engine: OKFEngine | None = None, **kwargs: Any) -> str:
     """Tool handler for creating or updating an OKF note."""
     engine = engine or OKFEngine()
     rel_path = args.get("rel_path", "")
@@ -158,7 +158,7 @@ def handle_write_okf_note(args: Dict[str, Any], engine: Optional[OKFEngine] = No
         return json.dumps({"success": False, "error": str(e)})
 
 
-def handle_synthesize_active_rules(args: Dict[str, Any], engine: Optional[OKFEngine] = None, **kwargs: Any) -> str:
+def handle_synthesize_active_rules(args: dict[str, Any], engine: OKFEngine | None = None, **kwargs: Any) -> str:
     """Tool handler for synthesizing active rules."""
     engine = engine or OKFEngine()
     max_chars = args.get("max_chars")

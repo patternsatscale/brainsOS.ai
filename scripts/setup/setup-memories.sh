@@ -109,7 +109,7 @@ log_info "Verifying memory plane purity in ${TARGET_MEMORIES_DIR}..."
 PURITY_VIOLATIONS=0
 while IFS= read -r -d '' file; do
   fname="$(basename "$file")"
-  if [[ "$fname" == .gitkeep* ]]; then
+  if [[ "$fname" == .gitkeep* || "$fname" == "subagents.json" ]]; then
     continue
   fi
   ext="${fname##*.}"

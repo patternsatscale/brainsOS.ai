@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class OKFNote:
@@ -15,11 +15,11 @@ class OKFNote:
         rel_path: str,
         title: str = "",
         note_type: str = "knowledge",
-        tags: Optional[List[str]] = None,
+        tags: list[str] | None = None,
         active: bool = True,
         priority: str = "normal",
         body: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ):
         self.rel_path = rel_path
         self.title = title or os.path.splitext(os.path.basename(rel_path))[0]
@@ -33,7 +33,7 @@ class OKFNote:
     @classmethod
     def parse(cls, rel_path: str, raw_content: str) -> OKFNote:
         """Parse raw markdown content and extract YAML frontmatter."""
-        frontmatter: Dict[str, Any] = {}
+        frontmatter: dict[str, Any] = {}
         body = raw_content
 
         match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)$", raw_content, re.DOTALL)

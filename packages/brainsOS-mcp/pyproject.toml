@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brainsOS-mcp"
+version = "0.1.0"
+description = "brainsOS: Dynamic Model Context Protocol (MCP) server for decoupled agent capabilities"
+readme = "README.md"
+authors = [
+    { name = "Patterns at Scale", email = "community@patternsatscale.com" }
+]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+brainsos-mcp = "brainsos_mcp.server:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"

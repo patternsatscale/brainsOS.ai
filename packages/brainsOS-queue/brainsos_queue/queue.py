@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from brainsos_queue.backends.base import QueueBackend
 from brainsos_queue.backends.memory import MemoryQueueBackend
@@ -15,18 +15,18 @@ logger = logging.getLogger("brainsos_queue")
 class WorkQueue:
     """A named asynchronous work queue."""
 
-    def __init__(self, name: str, backend: Optional[QueueBackend] = None) -> None:
+    def __init__(self, name: str, backend: QueueBackend | None = None) -> None:
         self.name = name
         self.backend = backend or MemoryQueueBackend()
 
     async def enqueue(
         self,
-        payload: Dict[str, Any],
-        task_id: Optional[str] = None,
+        payload: dict[str, Any],
+        task_id: str | None = None,
         max_retries: int = 3,
     ) -> Task:
         """Enqueue a new unit of work into this queue."""
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "queue": self.name,
             "payload": payload,
             "max_retries": max_retries,
@@ -39,11 +39,11 @@ class WorkQueue:
         logger.debug("Enqueued task %s to queue '%s'", enqueued.id, self.name)
         return enqueued
 
-    async def dequeue(self) -> Optional[Task]:
+    async def dequeue(self) -> Task | None:
         """Atomically pop the next available FIFO task."""
         return await self.backend.dequeue(self.name)
 
-    async def peek(self) -> Optional[Task]:
+    async def peek(self) -> Task | None:
         """Peek at the next available task without dequeuing."""
         return await self.backend.peek(self.name)
 
@@ -51,15 +51,15 @@ class WorkQueue:
         """Persist updated task state."""
         return await self.backend.update_task(task)
 
-    async def get_task(self, task_id: str) -> Optional[Task]:
+    async def get_task(self, task_id: str) -> Task | None:
         """Retrieve task by ID."""
         return await self.backend.get_task(task_id)
 
-    async def size(self, status: Optional[TaskStatus] = None) -> int:
+    async def size(self, status: TaskStatus | None = None) -> int:
         """Return the number of tasks in this queue."""
         return await self.backend.size(self.name, status=status)
 
-    async def list_tasks(self, status: Optional[TaskStatus] = None) -> List[Task]:
+    async def list_tasks(self, status: TaskStatus | None = None) -> list[Task]:
         """List tasks in this queue."""
         return await self.backend.list_tasks(self.name, status=status)
 
@@ -69,8 +69,8 @@ class WorkQueue:
 
 
 # Global named queue registry
-_QUEUES: Dict[str, WorkQueue] = {}
-_DEFAULT_BACKEND: Optional[QueueBackend] = None
+_QUEUES: dict[str, WorkQueue] = {}
+_DEFAULT_BACKEND: QueueBackend | None = None
 
 
 def set_default_backend(backend: QueueBackend) -> None:
@@ -79,9 +79,8 @@ def set_default_backend(backend: QueueBackend) -> None:
     _DEFAULT_BACKEND = backend
 
 
-def get_queue(name: str = "default", backend: Optional[QueueBackend] = None) -> WorkQueue:
+def get_queue(name: str = "default", backend: QueueBackend | None = None) -> WorkQueue:
     """Retrieve or create a singleton named queue."""
-    global _QUEUES, _DEFAULT_BACKEND
     if name not in _QUEUES:
         selected_backend = backend or _DEFAULT_BACKEND or MemoryQueueBackend()
         _QUEUES[name] = WorkQueue(name=name, backend=selected_backend)
@@ -90,6 +89,6 @@ def get_queue(name: str = "default", backend: Optional[QueueBackend] = None) -> 
 
 def clear_registry() -> None:
     """Reset the global queue registry (primarily for test teardown)."""
-    global _QUEUES, _DEFAULT_BACKEND
+    global _DEFAULT_BACKEND
     _QUEUES.clear()
     _DEFAULT_BACKEND = None

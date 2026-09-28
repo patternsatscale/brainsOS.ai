@@ -7,12 +7,12 @@ smtplib and imaplib.
 from __future__ import annotations
 
 import email
-from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
 import imaplib
 import os
 import smtplib
-from typing import Any, Dict, List, Optional
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
+from typing import Any
 
 
 class BrainsOSMailClient:
@@ -24,8 +24,8 @@ class BrainsOSMailClient:
         smtp_port: int = 25,
         imap_host: str = "127.0.0.1",
         imap_port: int = 143,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
     ) -> None:
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
@@ -51,10 +51,10 @@ class BrainsOSMailClient:
         to: str,
         subject: str,
         body: str,
-        from_addr: Optional[str] = None,
-        in_reply_to: Optional[str] = None,
-        references: Optional[str] = None,
-        extra_headers: Optional[Dict[str, str]] = None,
+        from_addr: str | None = None,
+        in_reply_to: str | None = None,
+        references: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> str:
         """Compose and dispatch an RFC-compliant email message.
 
@@ -97,12 +97,12 @@ class BrainsOSMailClient:
         folder: str = "INBOX",
         criteria: str = "ALL",
         limit: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Fetch messages matching criteria from the specified IMAP folder."""
         if not self.username or not self.password:
             raise ValueError("IMAP operations require username and password")
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         with imaplib.IMAP4(self.imap_host, self.imap_port) as imap:
             imap.login(self.username, self.password)
@@ -120,29 +120,34 @@ class BrainsOSMailClient:
             id_list = msg_nums[0].split()
             # Fetch latest messages up to limit
             for num in id_list[-limit:]:
-                typ, data = imap.fetch(num, "(RFC822)")
-                if typ != "OK" or not data:
+                seq_str = num.decode() if isinstance(num, bytes) else str(num)
+                typ, data = imap.fetch(seq_str, "(RFC822)")
+                if typ != "OK" or not data or not isinstance(data[0], tuple) or len(data[0]) < 2:
                     continue
 
                 raw_email = data[0][1]
+                if not isinstance(raw_email, (bytes, bytearray)):
+                    continue
                 msg = email.message_from_bytes(raw_email)
 
                 body = ""
                 if msg.is_multipart():
                     for part in msg.walk():
                         if part.get_content_type() == "text/plain":
-                            body = part.get_payload(decode=True).decode(
-                                part.get_content_charset() or "utf-8", errors="replace"
-                            )
+                            payload = part.get_payload(decode=True)
+                            if isinstance(payload, bytes):
+                                body = payload.decode(
+                                    part.get_content_charset() or "utf-8", errors="replace"
+                                )
                             break
                 else:
                     payload = msg.get_payload(decode=True)
-                    if payload:
+                    if isinstance(payload, bytes):
                         body = payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
 
                 results.append(
                     {
-                        "seq_num": num.decode(),
+                        "seq_num": seq_str,
                         "message_id": msg.get("Message-ID", ""),
                         "from": msg.get("From", ""),
                         "to": msg.get("To", ""),
@@ -160,21 +165,21 @@ class BrainsOSMailClient:
         self,
         folder: str = "INBOX",
         limit: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Fetch unread (UNSEEN) messages from the specified folder."""
         return self.fetch_messages(folder=folder, criteria="UNSEEN", limit=limit)
 
     def search_messages(
         self,
-        query: Optional[str] = None,
-        subject: Optional[str] = None,
-        from_addr: Optional[str] = None,
-        since_date: Optional[str] = None,
-        before_date: Optional[str] = None,
+        query: str | None = None,
+        subject: str | None = None,
+        from_addr: str | None = None,
+        since_date: str | None = None,
+        before_date: str | None = None,
         unread_only: bool = False,
         folder: str = "INBOX",
         limit: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Search messages matching criteria (keywords, subject, sender, date).
 
         Builds standard RFC 3501 IMAP SEARCH query.
@@ -183,7 +188,7 @@ class BrainsOSMailClient:
           - search_messages(subject="approval", unread_only=True)
           - search_messages(from_addr="admin@brainsos.local", since_date="20-Sep-2026")
         """
-        tokens: List[str] = []
+        tokens: list[str] = []
         if unread_only:
             tokens.append("UNSEEN")
         if query:
@@ -200,7 +205,7 @@ class BrainsOSMailClient:
         criteria = " ".join(tokens) if tokens else "ALL"
         return self.fetch_messages(folder=folder, criteria=criteria, limit=limit)
 
-    def list_folders(self) -> List[str]:
+    def list_folders(self) -> list[str]:
         """List all visible IMAP folders for the authenticated user."""
         if not self.username or not self.password:
             raise ValueError("IMAP operations require username and password")
@@ -210,14 +215,20 @@ class BrainsOSMailClient:
             status, folders = imap.list()
             if status != "OK" or not folders:
                 return []
-            return [f.decode() for f in folders if f]
+            result: list[str] = []
+            for f in folders:
+                if isinstance(f, bytes):
+                    result.append(f.decode())
+                elif isinstance(f, tuple) and f and isinstance(f[0], bytes):
+                    result.append(f[0].decode())
+            return result
 
     def read_message(
         self,
-        message_id: Optional[str] = None,
-        seq_num: Optional[str] = None,
+        message_id: str | None = None,
+        seq_num: str | None = None,
         folder: str = "INBOX",
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Fetch and return a single message by Message-ID or IMAP sequence number."""
         if not self.username or not self.password:
             raise ValueError("IMAP operations require username and password")
@@ -243,23 +254,27 @@ class BrainsOSMailClient:
                 status, _ = imap.select(mailbox)
                 if status != "OK":
                     return None
-                fetch_id = str(seq_num).encode()
+                fetch_id = str(seq_num)
                 typ, data = imap.fetch(fetch_id, "(RFC822)")
-                if typ != "OK" or not data or not data[0]:
+                if typ != "OK" or not data or not isinstance(data[0], tuple) or len(data[0]) < 2:
                     return None
                 raw_email = data[0][1]
+                if not isinstance(raw_email, (bytes, bytearray)):
+                    return None
                 msg = email.message_from_bytes(raw_email)
                 body = ""
                 if msg.is_multipart():
                     for part in msg.walk():
                         if part.get_content_type() == "text/plain":
-                            body = part.get_payload(decode=True).decode(
-                                part.get_content_charset() or "utf-8", errors="replace"
-                            )
+                            payload = part.get_payload(decode=True)
+                            if isinstance(payload, bytes):
+                                body = payload.decode(
+                                    part.get_content_charset() or "utf-8", errors="replace"
+                                )
                             break
                 else:
                     payload = msg.get_payload(decode=True)
-                    if payload:
+                    if isinstance(payload, bytes):
                         body = payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
 
                 return {

@@ -176,7 +176,7 @@ docker compose exec -T code-server test -d /workspace/brainsos || fail_check "Re
 docker compose exec -T code-server test -d /memories || fail_check "Memory plane mount (/memories) missing inside container."
 docker compose exec -T code-server test -d /data/workspace || fail_check "Agent workspaces mount (/data/workspace) missing inside container."
 docker compose exec -T code-server test -d /data/comms || fail_check "Communications gateways mount (/data/comms) missing inside container."
-docker compose exec -T code-server test -d /apps/cindypawford/site || fail_check "App canvas mount (/apps/cindypawford/site) missing inside container."
+docker compose exec -T code-server test -d /agent_apps/cindypawford/site || fail_check "App canvas mount (/agent_apps/cindypawford/site) missing inside container."
 log_success "All 5 Multi-Root Workspace mount points verified inside container."
 
 # Rule 1 Purity Check: Ensure no .vscode or SQLite files in memories

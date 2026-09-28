@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "apps/cindypawford/**"
+      - "agent_apps/cindypawford/**"
       - ".github/workflows/deploy-sst.yml"
   workflow_dispatch:
     inputs:
@@ -39,14 +39,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: patternsatscale/CindyPawford-Online
-          path: apps/cindypawford/site
+          path: agent_apps/cindypawford/site
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/cindypawford/infra/package-lock.json
+          cache-dependency-path: agent_apps/cindypawford/pipeline/package-lock.json
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -57,17 +57,17 @@ jobs:
 
       - name: Stage Platform Shell & Runtime Config
         run: |
-          echo "--> Staging master platform shell into apps/cindypawford/site/_platform/..."
-          mkdir -p apps/cindypawford/site/_platform
-          cp apps/cindypawford/infra/src/shell.js apps/cindypawford/site/_platform/shell.js
+          echo "--> Staging master platform shell into agent_apps/cindypawford/site/_platform/..."
+          mkdir -p agent_apps/cindypawford/site/_platform
+          cp agent_apps/cindypawford/pipeline/src/shell.js agent_apps/cindypawford/site/_platform/shell.js
 
           echo "--> Generating runtime configuration fallback..."
-          cat << 'CONF' > apps/cindypawford/site/_platform/config.js
+          cat << 'CONF' > agent_apps/cindypawford/site/_platform/config.js
           window.CINDY_API_URL = window.CINDY_API_URL || "https://api.cindypawford.com";
           CONF
 
           echo "--> Ensuring platform scripts are injected into all HTML pages..."
-          for html_file in apps/cindypawford/site/*.html; do
+          for html_file in agent_apps/cindypawford/site/*.html; do
             [ -f "$html_file" ] || continue
             if ! grep -q "/_platform/config.js" "$html_file"; then
               sed -i 's|</body>|  <script src="/_platform/config.js"></script>\n</body>|' "$html_file"
@@ -84,17 +84,17 @@ jobs:
           python3 scripts/apps/cindypawford/build-archive-portal.py
 
       - name: Install SST Dependencies & Providers
-        working-directory: apps/cindypawford/infra
+        working-directory: agent_apps/cindypawford/pipeline
         run: |
           npm ci
           npx sst install
 
       - name: Validate TypeScript Types
-        working-directory: apps/cindypawford/infra
+        working-directory: agent_apps/cindypawford/pipeline
         run: npm run typecheck
 
       - name: Deploy SST Infrastructure
-        working-directory: apps/cindypawford/infra
+        working-directory: agent_apps/cindypawford/pipeline
         run: |
           echo "--> Deploying SST Ion infrastructure to AWS (${STAGE})..."
           npx sst deploy --stage "${STAGE}"

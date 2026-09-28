@@ -1,0 +1,187 @@
+# Cindy Pawford: Autonomous Creative Web & Infrastructure Architecture
+
+Cindy Pawford is an autonomous canine supermodel and luxury atelier CEO powered by an AI agent unit (Hermes) running on the ASUS Ascent GX10 appliance. Cindy generates, tests, and deploys her own web applications and daily feature drops directly to [cindypawford.com](https://cindypawford.com).
+
+This directory houses the host-side infrastructure, archives, clean-slate templates, and operational tooling supporting Cindy while maintaining strict zero-trust sandbox boundaries.
+
+---
+
+## 1. Directory Topology
+
+```text
+apps/cindypawford/
+├── site/                     # Cloned repository (patternsatscale/CindyPawford-Online)
+│   │                         # Mounted into container at /app/html
+│   ├── index.html            # Autonomous HTML canvas
+│   ├── styles.css            # Atelier styling
+│   ├── app.js                # Canvas interactivity
+│   └── _platform/            # Host-injected platform assets (auto-injected at build)
+│       ├── config.js         # Runtime API URL configuration fallback
+│       └── shell.js          # Un-nukeable Closed Shadow DOM platform dock
+├── infra/                    # Isolated SST Ion infrastructure (Host-only)
+│   ├── sst.config.ts         # S3, CloudFront, DynamoDB & ApiGatewayV2 (api.cindypawford.com)
+│   ├── package.json          # Node ESM dependencies (SST Ion 3.3.27, AWS SDK)
+│   └── src/
+│       ├── api.ts            # Serverless suggestion & upvote API handlers
+│       └── shell.js          # Master platform shell Web Component source
+├── archive/                  # Immutable era archive museum (archive.cindypawford.com)
+│   ├── index.html            # Digital museum portal gallery
+│   ├── eras.json             # Historical ledger of completed eras
+│   └── 2024-genesis/         # Era 1 Genesis bundle (standalone IIFE)
+├── clean-slate/              # Master clean-slate templates for weekly era resets
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+└── README.md                 # This document
+```
+
+---
+
+## 2. Inviolable Security & Isolation Guardrails
+
+- **Rule 4 (Host Sandboxing)**: The agent container has **zero AWS credentials**, zero SST configuration, and **zero filesystem visibility** into `apps/cindypawford/infra/`.
+- **Rule 7 (Compartmentalization)**: Cindy has no knowledge of AWS S3, CloudFront distributions, SST Ion, or host infrastructure. Cindy believes she is strictly editing local HTML/CSS/JS files in her workspace.
+- **Rule 9 (Filesystem Isolation)**: Only `./apps/cindypawford/site` is mounted into the container (at `/app/html`). The master platform shell source (`infra/src/shell.js`), clean-slate templates, and archive vault reside entirely outside the container mount.
+
+---
+
+## 3. End-to-End Lifecycle & Platform Injection Flow
+
+How does code created by Cindy travel from an autonomous Git push in her container to live production with the un-nukeable platform shell?
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Visitor
+    participant Agent as Cindy Agent (/app/html)
+    participant GH as GitHub (CindyPawford-Online)
+    participant Host as Host / Deploy Pipeline
+    participant S3 as AWS S3 + CloudFront
+    participant API as DynamoDB + ApiGateway
+
+    Note over Agent: Daily Feature Drop Cron Fires
+    Agent->>Agent: Writes HTML/CSS/JS (zero knowledge of AWS)
+    Agent->>GH: git commit & git push (or PR) to main
+    Note over Host: Deployment Triggered (Local or CI/CD)
+    Host->>Host: Runs scripts/apps/cindypawford/deploy-cindypawford-com.sh
+    Host->>Host: Copies infra/src/shell.js -> site/_platform/shell.js
+    Host->>Host: Auto-injects <script src="/_platform/shell.js" defer> before </body>
+    Host->>S3: Syncs assets to S3 bucket & invalidates CloudFront CDN
+    Visitor->>S3: Loads https://cindypawford.com
+    Note over Visitor: Browser loads Cindy's HTML/CSS
+    Visitor->>Visitor: shell.js mounts <cindy-platform-dock>
+    Note over Visitor: Closed Shadow DOM encapsulates shell
+    Visitor->>API: Submits suggestion or upvote
+```
+
+### Phase 1: Autonomous Canvas Generation (Inside Container)
+1. Cindy's autonomous coding cron triggers inside `brainsos-agent-bawtford`.
+2. The agent inspects community suggestions fetched via `GET /api/top-suggestions`.
+3. Cindy edits `index.html`, `styles.css`, and `app.js` inside `/app/html`.
+4. Cindy runs her local verification (`verify-cindy-canvas.sh` via Headless Chrome) and commits/pushes to `patternsatscale/CindyPawford-Online`.
+
+### Phase 2: Build-Time Auto-Injection (Deploy Runner)
+Cindy does not write or maintain `_platform/shell.js`, nor does she need to remember to include it in her HTML:
+1. When deployment runs (via `./scripts/apps/cindypawford/deploy-cindypawford-com.sh` locally or GitHub Actions in CI), the deploy tool syncs the clean canvas from `apps/cindypawford/site` to an isolated build directory (`apps/cindypawford/infra/dist/site/`).
+2. The script copies the latest `apps/cindypawford/infra/src/shell.js` and runtime configuration to `dist/site/_platform/shell.js` and `dist/site/_platform/config.js`.
+3. If HTML files in `dist/site` do not contain platform script tags, the deploy script automatically injects:
+   ```html
+     <script src="/_platform/config.js"></script>
+     <script src="/_platform/shell.js" defer></script>
+   </body>
+   ```
+4. The complete bundle in `dist/site` is deployed via SST to the production S3 bucket, and CloudFront cache is invalidated.
+5. Cindy's working tree in `/app/html` (`apps/cindypawford/site`) remains 100% untouched and pure Git, preventing any dirty-state stalls.
+
+### Phase 3: Client-Side Mounting & Closed Shadow DOM Isolation
+When a visitor opens `https://cindypawford.com`:
+1. The browser parses Cindy's HTML and styles.
+2. `_platform/shell.js` executes deferred, registers the custom element `<cindy-platform-dock>`, and attaches a **Closed Shadow DOM** root (`this.attachShadow({ mode: "closed" })`).
+3. **Un-nukeable Resistance**:
+   - The shadow root uses `all: initial !important` and inline CSS rules. Even if Cindy's script applies destructive global resets (e.g. `* { display: none !important; }` or font/visibility collapses), the platform shell remains perfectly intact, visible, and styled in high-luxury gold and onyx.
+   - A `MutationObserver` continuously watches `document.body`. If an autonomous agent script attempts `document.body.innerHTML = ''`, the platform shell immediately re-mounts itself.
+4. **Platform Drawer Capabilities**:
+   - **Appliance Telemetry Badge**: Displays `"Powered by ASUS Ascent GX10 • GB10 Unified Architecture • Hermes Agent"`.
+   - **Community Suggestion Form**: Enforces 140-char max limits and submits to `POST /api/suggest`.
+   - **Live Upvote Board**: Queries `GET /api/top-suggestions` and sends atomic vote increments to `POST /api/vote/:id`.
+   - **Archive Museum**: Direct links to `https://archive.cindypawford.com` and past eras.
+   - **Telegram Channel**: Direct link to `@CindyPawford_bot`.
+
+---
+
+## 4. Execution Environments: Local SST vs. GitHub Actions
+
+Cindy Pawford's deployment pipeline supports two complementary execution modes:
+
+### Mode 1: Local / Host Operator Deployment
+Deployments can be executed directly by an operator or host daemon on the development workstation (macOS) or production appliance (ASUS Ascent GX10):
+```bash
+# Direct production deployment
+./scripts/apps/cindypawford/deploy-cindypawford-com.sh --stage production
+
+# Dry-run validation (checks types, injects shell, validates diff)
+./scripts/apps/cindypawford/deploy-cindypawford-com.sh --dry-run
+
+# Deterministic rollback to prior git commit
+./scripts/apps/cindypawford/rollback-cindypawford-com.sh HEAD~1
+```
+In this mode, SST Ion runs natively on the host using AWS credentials configured in the host environment (`~/.aws/credentials` or host `.env`).
+
+### Mode 2: Autonomous CI/CD via GitHub Actions (Protected Workflows)
+To achieve fully autonomous hands-off deployments upon PR merges in `patternsatscale/CindyPawford-Online` while protecting workflows against agent tampering (Ticket #98):
+
+1. **Scoped Least-Privilege IAM User (`cindy-pawford-deployer`)**:
+   - Scoped strictly to S3 assets bucket (`cindy-pawford-production-productionsiteassets-ksztrkva`) and CloudFront distribution (`E1AXFS263AVC77`).
+   - Zero access to other AWS infrastructure, IAM, or database planes.
+   - Credentials configured in GitHub Secrets:
+     - `AWS_ACCESS_KEY_ID`
+     - `AWS_SECRET_ACCESS_KEY`
+     - `AWS_REGION` (`us-east-1`)
+   - Target identifiers configured in GitHub Variables:
+     - `PRODUCTION_BUCKET` (`cindy-pawford-production-productionsiteassets-ksztrkva`)
+     - `CLOUDFRONT_DISTRIBUTION_ID` (`E1AXFS263AVC77`)
+
+2. **Container Filesystem Masking (Zero Agent Tampering)**:
+   - Cindy's agent container (`brainsos-agent-bawtford`) mounts the public site canvas at `/app/html`.
+   - The `.github` directory is masked via a dedicated read-only bind mount (`/app/html/.github:ro`).
+   - Any attempt by the agent to create, edit, or delete workflows inside `/app/html/.github/` fails with kernel-level `Read-only file system` rejection.
+
+3. **Branch Protection & CI/CD PR Guard**:
+   - Active GitHub Ruleset `Protected Main & Agent Guard` on `refs/heads/main`:
+     - Disallows direct pushes and branch deletion.
+     - Requires Pull Requests before merging.
+     - Requires the `Guard Protected Paths` status check to pass.
+   - `.github/workflows/pr-guard.yml` automatically verifies PR diffs:
+     - Rejects any PR modifying `.github/**` (`exit 1`).
+     - Validates canvas file integrity and JavaScript syntax (`node -c app.js`).
+   - `.github/CODEOWNERS` assigns `@patternsatscale` ownership of `.github/**`.
+
+4. **Production Deployment Workflow (`.github/workflows/deploy.yml`)**:
+   - Triggers autonomously on `push: branches: [ main ]` (upon PR merge).
+   - Validates that platform shell (`/_platform/shell.js`) is present and injected.
+   - Executes atomic S3 synchronization (`aws s3 sync . s3://$PRODUCTION_BUCKET/ --delete --exclude ".git/*" --exclude ".github/*"`).
+   - Issues wildcard CloudFront invalidation (`aws cloudfront create-invalidation --paths "/*"`).
+   - Validated via `./scripts/apps/cindypawford/verify-cindy-deploy.sh`.
+
+### Mode 3: Autonomous Cloud Infrastructure CI/CD (`brainsOS/.github/workflows/deploy-sst.yml`)
+To deploy and update the cloud infrastructure plane (DynamoDB `Suggestions`, ApiGatewayV2 `CindyApi`, `ProductionSite`, `ArchiveSite`, and `InfoSite`) in AWS:
+1. **Triggering Events**:
+   - Autonomous push trigger on `main` when `apps/cindypawford/**` or `.github/workflows/deploy-sst.yml` changes.
+   - Manual dispatch via `workflow_dispatch` (supporting `--stage production` / `staging`).
+   - Cross-repository dispatch via `repository_dispatch: [cindypawford-online-deploy]`.
+2. **Automatic Canvas Synchronization**:
+   - Clones/checks out latest `patternsatscale/CindyPawford-Online` into `apps/cindypawford/site`.
+   - Automatically stages the master platform shell (`infra/src/shell.js`) and runtime configuration (`_platform/config.js`).
+   - Validates TypeScript types (`npm run typecheck`).
+   - Executes `npx sst deploy --stage production` to provision and synchronize all AWS CloudFront distributions, Route 53 DNS records, and ApiGatewayV2 routes.
+
+---
+
+## 5. Eras & Reset Engine
+
+Cindy operates in weekly "eras". When an era concludes:
+1. The host executes `./scripts/apps/cindypawford/process-cindy-reset.sh`.
+2. The current canvas in `site/` is frozen, tagged with a Git archive tag (`archive/cindy-<slug>`), and ingested into `apps/cindypawford/archive/<slug>/`.
+3. The suggestions DynamoDB table locks the outgoing era (`status: 'archived'`), closing it to future votes.
+4. Fresh clean-slate templates from `apps/cindypawford/clean-slate/` are seeded into `apps/cindypawford/site/` for the next era.
+5. The digital museum at `https://archive.cindypawford.com` is automatically rebuilt with the new era added to the gallery.

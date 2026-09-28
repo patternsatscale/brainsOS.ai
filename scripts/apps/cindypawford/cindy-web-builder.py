@@ -62,7 +62,7 @@ def resolve_canvas_dir(explicit: Optional[str] = None) -> Path:
         return container_canvas
     # On host:
     repo_root = find_repo_root()
-    host_site = repo_root / "apps" / "cindypawford" / "site"
+    host_site = repo_root / "agent_apps" / "cindypawford" / "site"
     if host_site.exists():
         return host_site
     return container_canvas
@@ -76,7 +76,11 @@ def resolve_memory_dir(explicit: Optional[str] = None) -> Path:
     if container_mem.exists():
         return container_mem
     repo_root = find_repo_root()
-    host_mem = repo_root / "data" / "memories" / "cindy-pawford"
+    host_mem = repo_root / "data" / "agent_memories" / "bawtford"
+    if not host_mem.exists():
+        legacy_mem = repo_root / "data" / "memories" / "bawtford"
+        if legacy_mem.exists():
+            return legacy_mem
     host_mem.mkdir(parents=True, exist_ok=True)
     return host_mem
 
@@ -91,11 +95,11 @@ def resolve_persona_path(explicit: Optional[str] = None) -> Path:
         return container_soul
     # Check repo canonical path
     repo_root = find_repo_root()
-    repo_soul = repo_root / "config" / "hermes" / "cindy-pawford" / "web-developer" / "SOUL.md"
+    repo_soul = repo_root / "config" / "hermes" / "bawtford" / "web-developer" / "SOUL.md"
     if repo_soul.exists():
         return repo_soul
     # Fallback to local file relative to script
-    return repo_root / "config" / "hermes" / "cindy-pawford" / "web-developer" / "SOUL.md"
+    return repo_root / "config" / "hermes" / "bawtford" / "web-developer" / "SOUL.md"
 
 
 def sanitize_code_content(raw_code: str, file_name: str) -> Tuple[str, List[str]]:
@@ -425,7 +429,7 @@ def execute_build(
     okf_content = f"""# Sub-Agent Execution Brief: {feature_name}
 
 - **Date**: {datetime.datetime.now(datetime.timezone.utc).isoformat()}
-- **Sub-Agent**: Website Builder (`cindy-pawford/web-developer`)
+- **Sub-Agent**: Website Builder (`bawtford/web-developer`)
 - **Status**: PASSED
 - **Target Files**: {', '.join(t_files)}
 - **Modified Files**: {', '.join(modified_files) or 'None'}

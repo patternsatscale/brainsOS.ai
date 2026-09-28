@@ -48,11 +48,11 @@ fi
 
 BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
-AGENT_ID="cindy-pawford"
+AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
-WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
+SITE_DIR="${REPO_ROOT}/agent_apps/cindypawford/site"
+MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/${AGENT_ID}"
+WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}/${AGENT_ID}"
 
 log_info "================================================================="
 log_info "  Running Cindy Pawford (CW-0A) Agent Unit Verification Suite   "
@@ -124,14 +124,14 @@ fi
 # Check required vanilla web files on host
 for file in index.html styles.css app.js; do
   if [ -f "${SITE_DIR}/${file}" ]; then
-    log_success "Verified host site file: apps/cindypawford/site/${file}"
+    log_success "Verified host site file: agent_apps/cindypawford/site/${file}"
   else
-    log_error "Missing required site file: apps/cindypawford/site/${file}"
+    log_error "Missing required site file: agent_apps/cindypawford/site/${file}"
     exit 1
   fi
 done
 
-# Verify container /workspace mount points to data/workspace/cindy-pawford
+# Verify container /workspace mount points to WORK_DIR
 WORK_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
 if [ "${WORK_MOUNT_CHECK}" = "${WORK_DIR}" ]; then
   log_success "Verified container '/workspace' bind-mount maps directly to '${WORK_DIR}'."
@@ -140,7 +140,7 @@ else
   exit 1
 fi
 
-# Verify container /app/html mount points to apps/cindypawford/site
+# Verify container /app/html mount points to agent_apps/cindypawford/site
 HTML_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
 if [ "${HTML_MOUNT_CHECK}" = "${SITE_DIR}" ]; then
   log_success "Verified container '/app/html' bind-mount maps directly to '${SITE_DIR}'."
@@ -154,7 +154,7 @@ TEST_WRITE_FILE="/app/html/.test_cindy_perm_$(date +%s)"
 docker exec "${CONTAINER}" bash -c "echo 'cindy_write_ok' > ${TEST_WRITE_FILE}"
 
 if [ -f "${SITE_DIR}/$(basename "${TEST_WRITE_FILE}")" ]; then
-  log_success "Verified: Agent has verified write access to apps/cindypawford/site from /app/html."
+  log_success "Verified: Agent has verified write access to agent_apps/cindypawford/site from /app/html."
   docker exec "${CONTAINER}" rm -f "${TEST_WRITE_FILE}"
 else
   log_error "Write test failed: Host did not observe file created from container /app/html."
@@ -294,8 +294,8 @@ else
 fi
 
 # Verify Telegram bot per-agent configuration
-if grep -qE "@CindyPawford(_bot|Bot)" "${REPO_ROOT}/config/agents.yaml" && \
-   grep -qE "@CindyPawford(_bot|Bot)" "${WORK_DIR}/config.yaml" && \
+if grep -qE "@(CindyPawford|Bawtford)(_bot|Bot)" "${REPO_ROOT}/config/agents.yaml" && \
+   grep -qE "@(CindyPawford|Bawtford)(_bot|Bot)" "${WORK_DIR}/config.yaml" && \
    grep -q "TELEGRAM_BOT_TOKEN_CINDY" "${REPO_ROOT}/docker-compose.agents.yml"; then
   log_success "Verified per-agent Telegram config (CindyPawford bot profile, TELEGRAM_BOT_TOKEN_CINDY)."
 else
@@ -393,19 +393,19 @@ assert not valid_bad, 'Syntax check failed to reject invalid JavaScript!'
 "
 log_success "Quality Gate passed: Markdown fences and conversational chatter stripped, JS syntax validated."
 
-# 8e. Verify brainsos-subagents plugin files and configuration
-PLUGIN_DIR="${WORK_DIR}/plugins/brainsos-subagents"
-if [ -f "${PLUGIN_DIR}/plugin.yaml" ] && [ -f "${PLUGIN_DIR}/__init__.py" ]; then
-  log_success "Verified brainsos-subagents plugin scaffolded in workspace: ${PLUGIN_DIR}."
-else
-  log_error "Missing brainsos-subagents plugin in workspace!"
-  exit 1
+# 8e. Verify zero legacy plugins in workspace and brainsOS MCP server configuration
+if [ -d "${WORK_DIR}/plugins" ]; then
+  LEGACY_PLUGINS=$(find "${WORK_DIR}/plugins" -type f 2>/dev/null || true)
+  if [ -n "${LEGACY_PLUGINS}" ]; then
+    log_error "Detected forbidden legacy plugins in ${WORK_DIR}/plugins!"
+    exit 1
+  fi
 fi
 
-if grep -q "brainsos-subagents" "${WORK_DIR}/config.yaml"; then
-  log_success "Verified brainsos-subagents enabled in ${WORK_DIR}/config.yaml."
+if grep -q "mcp_servers" "${WORK_DIR}/config.yaml" && grep -q "brainsos_mcp" "${WORK_DIR}/config.yaml"; then
+  log_success "Verified MCP server configuration enabled in ${WORK_DIR}/config.yaml."
 else
-  log_error "brainsos-subagents plugin not enabled in ${WORK_DIR}/config.yaml!"
+  log_error "MCP server configuration missing in ${WORK_DIR}/config.yaml!"
   exit 1
 fi
 

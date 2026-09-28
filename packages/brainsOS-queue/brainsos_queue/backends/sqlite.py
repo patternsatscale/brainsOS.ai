@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
 
 from brainsos_queue.backends.base import QueueBackend
 from brainsos_queue.models import Task, TaskStatus
@@ -111,7 +109,7 @@ class SQLiteQueueBackend(QueueBackend):
             event.set()
         return task
 
-    async def dequeue(self, queue_name: str) -> Optional[Task]:
+    async def dequeue(self, queue_name: str) -> Task | None:
         async with self._lock:
             with self._get_connection() as conn:
                 # Find oldest task with status 'queued' or 'failed' where retries < max_retries
@@ -140,7 +138,7 @@ class SQLiteQueueBackend(QueueBackend):
                 conn.commit()
                 return task
 
-    async def peek(self, queue_name: str) -> Optional[Task]:
+    async def peek(self, queue_name: str) -> Task | None:
         async with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.execute(
@@ -185,14 +183,14 @@ class SQLiteQueueBackend(QueueBackend):
                 event.set()
         return task
 
-    async def get_task(self, task_id: str) -> Optional[Task]:
+    async def get_task(self, task_id: str) -> Task | None:
         async with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
                 row = cursor.fetchone()
                 return self._row_to_task(row) if row else None
 
-    async def size(self, queue_name: str, status: Optional[TaskStatus] = None) -> int:
+    async def size(self, queue_name: str, status: TaskStatus | None = None) -> int:
         async with self._lock:
             with self._get_connection() as conn:
                 if status is None:
@@ -204,7 +202,7 @@ class SQLiteQueueBackend(QueueBackend):
                     )
                 return cursor.fetchone()[0]
 
-    async def list_tasks(self, queue_name: str, status: Optional[TaskStatus] = None) -> List[Task]:
+    async def list_tasks(self, queue_name: str, status: TaskStatus | None = None) -> list[Task]:
         async with self._lock:
             with self._get_connection() as conn:
                 if status is None:
@@ -216,7 +214,7 @@ class SQLiteQueueBackend(QueueBackend):
                     )
                 return [self._row_to_task(r) for r in cursor.fetchall()]
 
-    async def clear(self, queue_name: Optional[str] = None) -> None:
+    async def clear(self, queue_name: str | None = None) -> None:
         async with self._lock:
             with self._get_connection() as conn:
                 if queue_name is None:
@@ -229,7 +227,7 @@ class SQLiteQueueBackend(QueueBackend):
                     event.clear()
                 conn.commit()
 
-    async def wait_for_item(self, queue_name: str, timeout: Optional[float] = None) -> bool:
+    async def wait_for_item(self, queue_name: str, timeout: float | None = None) -> bool:
         event = self._get_event(queue_name)
         try:
             if timeout is not None:

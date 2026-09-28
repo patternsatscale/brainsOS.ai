@@ -15,9 +15,9 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 
-SITE_DIR = os.path.join(REPO_ROOT, "apps", "cindypawford", "site")
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "apps", "cindypawford", "archive")
-INFO_DIR = os.path.join(REPO_ROOT, "apps", "cindypawford", "info")
+SITE_DIR = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "site")
+ARCHIVE_DIR = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "archive")
+INFO_DIR = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "info")
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8088
 

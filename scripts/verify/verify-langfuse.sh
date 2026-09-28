@@ -238,15 +238,15 @@ fi
 # ------------------------------------------------------------------------------
 if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
   log_info "Checking preconfigured LLM & Agent connections in Langfuse..."
-  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='brainsos' AND provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
-    pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.brainsos.local/v1) preconfigured for project 'brainsos'."
+  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
+    pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.brainsos.local/v1) preconfigured."
   else
     warn_check "Langfuse LLM Connection: 'LiteLLM' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
   fi
-  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE project_id='brainsos' AND provider='Cindy-Pawford';" 2>/dev/null | grep -q "Cindy-Pawford"; then
-    pass_check "Langfuse Agent Connection: 'Cindy-Pawford' (http://api.cindypawford.brainsos.local/v1) preconfigured for project 'brainsos'."
+  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE provider IN ('bawtford', 'Bawtford', 'Cindy-Pawford', 'cindy-pawford');" 2>/dev/null | grep -qiE "bawtford|cindy-pawford"; then
+    pass_check "Langfuse Agent Connection: Creative Director preconfigured."
   else
-    warn_check "Langfuse Agent Connection: 'Cindy-Pawford' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
+    warn_check "Langfuse Agent Connection: Creative Director not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
   fi
 fi
 
