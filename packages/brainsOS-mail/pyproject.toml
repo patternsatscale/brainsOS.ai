@@ -12,7 +12,9 @@ authors = [
 ]
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "pydantic>=2.0.0",
+]
 
 [project.optional-dependencies]
 test = [
