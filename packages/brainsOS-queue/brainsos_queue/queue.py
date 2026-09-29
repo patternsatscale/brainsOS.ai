@@ -24,24 +24,30 @@ class WorkQueue:
         payload: dict[str, Any],
         task_id: str | None = None,
         max_retries: int = 3,
+        partition_key: str | None = None,
     ) -> Task:
         """Enqueue a new unit of work into this queue."""
         kwargs: dict[str, Any] = {
             "queue": self.name,
             "payload": payload,
             "max_retries": max_retries,
+            "partition_key": partition_key,
         }
         if task_id:
             kwargs["id"] = task_id
 
         task = Task(**kwargs)
         enqueued = await self.backend.enqueue(task)
-        logger.debug("Enqueued task %s to queue '%s'", enqueued.id, self.name)
+        logger.debug("Enqueued task %s to queue '%s' (partition=%s)", enqueued.id, self.name, partition_key)
         return enqueued
 
     async def dequeue(self) -> Task | None:
         """Atomically pop the next available FIFO task."""
         return await self.backend.dequeue(self.name)
+
+    async def acquire_task(self, worker_id: str, lease_timeout_sec: float = 120.0) -> Task | None:
+        """Atomically acquire the next available task respecting partition locks."""
+        return await self.backend.acquire_task(worker_id=worker_id, lease_timeout_sec=lease_timeout_sec, queue_name=self.name)
 
     async def peek(self) -> Task | None:
         """Peek at the next available task without dequeuing."""

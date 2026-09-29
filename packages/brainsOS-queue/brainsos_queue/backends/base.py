@@ -22,6 +22,19 @@ class QueueBackend(ABC):
         """
 
     @abstractmethod
+    async def acquire_task(
+        self,
+        worker_id: str,
+        lease_timeout_sec: float = 120.0,
+        queue_name: str | None = None,
+    ) -> Task | None:
+        """Atomically acquire the next available task respecting partition-level concurrency locks.
+
+        Tasks with the same partition_key are serialized; tasks with distinct partition keys
+        execute concurrently. Expired leases (locked_at > lease_timeout_sec) are automatically reclaimed.
+        """
+
+    @abstractmethod
     async def peek(self, queue_name: str) -> Task | None:
         """Inspect the next FIFO task in the queue without dequeuing it."""
 

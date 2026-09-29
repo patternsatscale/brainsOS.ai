@@ -30,6 +30,8 @@ class FIFOQueueWorker:
         poll_interval: float = 0.05,
         backoff_base: float = 0.2,
         telemetry_bus: Any | None = None,
+        worker_id: str | None = None,
+        lease_timeout_sec: float = 120.0,
     ) -> None:
         if concurrency < 1:
             raise ValueError(f"Concurrency must be at least 1, got {concurrency}")
@@ -40,6 +42,8 @@ class FIFOQueueWorker:
         self.poll_interval = poll_interval
         self.backoff_base = backoff_base
         self.telemetry_bus = telemetry_bus
+        self.worker_id = worker_id or f"worker-{id(self):x}"
+        self.lease_timeout_sec = lease_timeout_sec
 
         self._semaphore = asyncio.Semaphore(concurrency)
         self._running = False
@@ -87,7 +91,13 @@ class FIFOQueueWorker:
                 if pending_count == 0 and len(self._active_tasks) == 0:
                     break
                 # Dequeue remaining tasks if loop stopped
-                task = await self.queue.dequeue()
+                if hasattr(self.queue, "acquire_task"):
+                    task = await self.queue.acquire_task(
+                        worker_id=self.worker_id,
+                        lease_timeout_sec=self.lease_timeout_sec,
+                    )
+                else:
+                    task = await self.queue.dequeue()
                 if task:
                     await self._semaphore.acquire()
                     t = asyncio.create_task(self._process_task(task))
@@ -113,7 +123,13 @@ class FIFOQueueWorker:
                 # Wait for available concurrency slot before popping task
                 await self._semaphore.acquire()
 
-                task = await self.queue.dequeue()
+                if hasattr(self.queue, "acquire_task"):
+                    task = await self.queue.acquire_task(
+                        worker_id=self.worker_id,
+                        lease_timeout_sec=self.lease_timeout_sec,
+                    )
+                else:
+                    task = await self.queue.dequeue()
                 if not task:
                     self._semaphore.release()
                     # Wait for new items or sleep poll_interval
