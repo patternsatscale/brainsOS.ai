@@ -35,11 +35,9 @@ class AgentQueueWorkerDaemon:
         self.manifest_path = Path(manifest_path)
         self.queue_db_path = Path(queue_db_path)
         self.concurrency = concurrency
-        self.queue = WorkQueue(
-            "inbound_emails",
-            backend="sqlite",
-            db_path=self.queue_db_path,
-        )
+        from brainsos_queue.backends.sqlite import SQLiteQueueBackend
+        self.backend = SQLiteQueueBackend(db_path=str(self.queue_db_path))
+        self.queue = WorkQueue("inbound_emails", backend=self.backend)
         self.adapter = HermesMailAdapter()
         self.worker: FIFOQueueWorker | None = None
         self._stop_event = asyncio.Event()
