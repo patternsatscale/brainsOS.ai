@@ -59,13 +59,6 @@ set -a
 . "${ENV_FILE}"
 set +a
 
-# ------------------------------------------------------------------------------
-# 0. Sync fleet topology if agents manifest changed
-# ------------------------------------------------------------------------------
-if [ -f "${REPO_ROOT}/config/agents.yaml" ]; then
-  log_info "Step 0/5: Synchronizing multi-agent fleet manifest..."
-  "${SCRIPT_DIR}/sync-agents.sh" --quiet || true
-fi
 
 # ------------------------------------------------------------------------------
 # 1. Synchronize LiteLLM PostgreSQL Database Password (Zero Data Loss)

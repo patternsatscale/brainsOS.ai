@@ -56,6 +56,7 @@ mkdir -p "${PID_DIR}"
 OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"
 LITELLM_PID_FILE="${PID_DIR}/litellm.pid"
 DGX_BRIDGE_PID_FILE="${PID_DIR}/dgx_bridge.pid"
+QUEUE_WORKER_PID_FILE="${PID_DIR}/queue_worker.pid"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_DB_PORT="${LITELLM_DB_PORT:-5432}"
 DGX_BRIDGE_PORT="${DGX_BRIDGE_PORT:-11001}"
@@ -157,6 +158,17 @@ stop_services() {
     fi
   fi
 
+  # Stop Unified Queue Worker if running
+  if [ -f "${QUEUE_WORKER_PID_FILE}" ]; then
+    PID=$(cat "${QUEUE_WORKER_PID_FILE}")
+    if kill -0 "${PID}" 2>/dev/null; then
+      log_info "Stopping Unified Queue Worker (PID: ${PID})..."
+      kill "${PID}" 2>/dev/null || true
+    fi
+    rm -f "${QUEUE_WORKER_PID_FILE}"
+    log_success "Unified Queue Worker stopped."
+  fi
+
   # Stop DGX Telemetry bridge if running
   if [ -f "${DGX_BRIDGE_PID_FILE}" ]; then
     PID=$(cat "${DGX_BRIDGE_PID_FILE}")
@@ -248,6 +260,20 @@ status_services() {
     else
       log_warn "DGX Bridge: NOT RUNNING on http://${BRIDGE_BIND}:${DGX_BRIDGE_PORT}"
     fi
+  fi
+
+  # Unified Queue Worker status
+  if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
+    log_success "Queue Worker: RUNNING (PID: $(cat "${QUEUE_WORKER_PID_FILE}"))"
+  else
+    log_info "Queue Worker: NOT RUNNING"
+  fi
+
+  # Shared Stateless Hermes Runner status
+  if docker compose ps hermes-runner 2>/dev/null | grep -qE "(Up|running)"; then
+    log_success "Hermes Runner: RUNNING (brainsos-agent-hermes-runner:8642)"
+  else
+    log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d hermes-runner)"
   fi
 }
 
@@ -392,9 +418,7 @@ start_services() {
   fi
 
   # 4. Provision fleet virtual keys in LiteLLM control plane database
-  if [ -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
-    "${REPO_ROOT}/scripts/control/sync-agents.sh" --provision-keys || true
-  elif [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
+  if [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
     KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
       -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${HERMES_LITELLM_KEY}" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
@@ -408,6 +432,23 @@ start_services() {
         -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\", \"models\": []}" || true
       log_success "Hermes virtual key initialized in database."
     fi
+  fi
+
+  # 5. Start Shared Stateless Hermes Agent Runner container
+  log_info "Ensuring shared stateless Hermes runner (hermes-runner) is running..."
+  docker compose up -d hermes-runner 2>/dev/null || log_warn "Could not start hermes-runner container (Docker may be inactive)."
+
+  # 6. Start Unified Asynchronous Queue Worker
+  if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
+    log_info "Unified Queue Worker is already running (PID: $(cat "${QUEUE_WORKER_PID_FILE}"))."
+  else
+    log_info "Starting Unified Asynchronous Queue Worker..."
+    PYTHONPATH="${REPO_ROOT}/packages/brainsOS-mail:${REPO_ROOT}/packages/brainsOS-queue:${REPO_ROOT}/packages/brainsOS-agent:${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" \
+    nohup ${SETSID_CMD} .venv/bin/python -m brainsos_agent.worker </dev/null >"${PID_DIR}/queue_worker.log" 2>&1 &
+    QUEUE_WORKER_PID=$!
+    disown "${QUEUE_WORKER_PID}" 2>/dev/null || true
+    echo "${QUEUE_WORKER_PID}" > "${QUEUE_WORKER_PID_FILE}"
+    log_success "Unified Queue Worker started (PID: ${QUEUE_WORKER_PID})."
   fi
 
   # 5. Start DGX Telemetry Reverse Proxy Bridge (ASUS GX10 appliance profile only)

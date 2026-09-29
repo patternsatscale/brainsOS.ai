@@ -14,17 +14,16 @@ MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
 	@echo "  make setup          - Bootstrap environment (.env, data dirs, venv, packages)"
-	@echo "  make up             - Synchronize agent manifest and start Docker fleet"
+	@echo "  make up             - Start platform Docker services and shared runner"
 	@echo "  make down           - Stop all running Docker services"
 	@echo "  make test           - Run full pytest test suite across packages"
 	@echo "  make lint           - Run ruff linter and mypy type checks"
-	@echo "  make emergency-stop - Instantly terminate all agent containers"
+	@echo "  make emergency-stop - Instantly terminate agent runner container"
 
 setup:
 	@scripts/control/bootstrap-env.sh
 
 up:
-	@scripts/control/sync-agents.sh
 	@docker compose up -d
 
 down:
@@ -38,4 +37,4 @@ lint:
 	@$(MYPY) packages/
 
 emergency-stop:
-	@docker compose kill $$(docker compose ps --services 2>/dev/null | grep agent- || true)
+	@docker compose kill hermes-runner 2>/dev/null || true

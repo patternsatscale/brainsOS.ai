@@ -40,13 +40,18 @@ class AgentProfile(BaseModel):
         name = str(data.get("name", agent_id))
 
         # Email address extraction
+        raw_email = data.get("email")
         comms = data.get("comms", {}) if isinstance(data.get("comms"), dict) else {}
         email_info = comms.get("email", {}) if isinstance(comms.get("email"), dict) else {}
-        email_addr = (
-            data.get("email")
-            or email_info.get("address")
-            or (f"{agent_id}@brainsos.local" if agent_id else "agent@brainsos.local")
-        )
+
+        if isinstance(raw_email, str):
+            email_addr = raw_email
+        elif isinstance(raw_email, dict):
+            email_addr = raw_email.get("address") or f"{agent_id}@brainsos.local"
+        elif email_info.get("address"):
+            email_addr = email_info.get("address")
+        else:
+            email_addr = f"{agent_id}@brainsos.local" if agent_id else "agent@brainsos.local"
 
         runtime = str(data.get("runtime", "hermes"))
 

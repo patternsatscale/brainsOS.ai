@@ -109,9 +109,9 @@ if [ "${TARGET_TENANT}" != "all" ]; then
   log_success "Targeted emergency intervention complete for '${TARGET_TENANT}'."
   echo ""
   echo "To resume operations for '${TARGET_TENANT}':"
-  echo "  1. Audit memories: ./data/memories/${TARGET_TENANT}"
+  echo "  1. Audit memories: ./data/agent_memories/${TARGET_TENANT}"
   echo "  2. Unpause container: docker unpause ${CONTAINER_NAME} (or docker start ${CONTAINER_NAME})"
-  echo "  3. Resync keys: ./scripts/control/sync-agents.sh --provision-keys"
+  echo "  3. Resume control plane: ./scripts/control/start-control-plane.sh restart"
   echo ""
 
 else
@@ -169,6 +169,6 @@ if os.path.exists(manifest_path) and master_key:
   echo "To resume fleet operations:"
   echo "  1. Verify memories: bash scripts/control/snapshot-memories.sh"
   echo "  2. Unpause containers: docker compose unpause"
-  echo "  3. Resync keys: ./scripts/control/sync-agents.sh --provision-keys"
+  echo "  3. Resume control plane: ./scripts/control/start-control-plane.sh restart"
   echo ""
 fi

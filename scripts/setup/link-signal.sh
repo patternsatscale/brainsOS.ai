@@ -282,8 +282,7 @@ update_env_prompt() {
         fi
     fi
 
-    log_info "Synchronizing fleet configurations..."
-    "${REPO_ROOT}/scripts/control/sync-agents.sh"
+    log_info "Signal configuration complete."
 }
 
 # ------------------------------------------------------------------------------

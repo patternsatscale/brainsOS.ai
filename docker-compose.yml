@@ -5,10 +5,6 @@
 
 name: brainsos
 
-# Include dynamically managed agent units from fleet manifest
-include:
-  - docker-compose.agents.yml
-
 services:
   # ============================================================================
   # L7: Communications & UX Plane

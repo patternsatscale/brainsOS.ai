@@ -14,24 +14,19 @@ agents:
     name: "Terrastella - Primary Operations Agent"
     enabled: true
 
-    # L1: Communications & UX Ingress
-    comms:
-      subdomain: "terrastella.brainsos.local"
-      port: 8642
-      dashboard_port: 9119
-      api_key_env: "HERMES_API_TERRASTELLA_KEY"
-      email:
-        enabled: true
-        address: "terrastella@brainsos.local"
-        user_env: "TERRASTELLA_MAIL_USER"
-        password_env: "TERRASTELLA_MAIL_PASSWORD"
-      signal:
-        enabled: false
-      telegram:
-        enabled: false
-        bot_name: "@Terrastella_bot"
-        token_env: "TELEGRAM_BOT_TOKEN_TERRASTELLA"
-        allowed_users_env: "TELEGRAM_ALLOWED_USERS_TERRASTELLA"
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "terrastella@brainsos.local"
+      user_env: "TERRASTELLA_MAIL_USER"
+      password_env: "TERRASTELLA_MAIL_PASSWORD"
+    signal:
+      enabled: false
+    telegram:
+      enabled: false
+      bot_name: "@Terrastella_bot"
+      token_env: "TELEGRAM_BOT_TOKEN_TERRASTELLA"
+      allowed_users_env: "TELEGRAM_ALLOWED_USERS_TERRASTELLA"
 
     # L2: Agent Core Runtime
     runtime: "hermes"
@@ -71,24 +66,19 @@ agents:
     name: "Marvin - Sports Analytics"
     enabled: true
 
-    # L1: Communications & UX Ingress
-    comms:
-      subdomain: "marvin.brainsos.local"
-      port: 8643
-      dashboard_port: 9120
-      api_key_env: "HERMES_API_MARVIN_KEY"
-      email:
-        enabled: true
-        address: "marvin@brainsos.local"
-        user_env: "MARVIN_MAIL_USER"
-        password_env: "MARVIN_MAIL_PASSWORD"
-      signal:
-        enabled: false
-      telegram:
-        enabled: false
-        bot_name: "@Marvin_bot"
-        token_env: "TELEGRAM_BOT_TOKEN_MARVIN"
-        allowed_users_env: "TELEGRAM_ALLOWED_USERS_MARVIN"
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "marvin@brainsos.local"
+      user_env: "MARVIN_MAIL_USER"
+      password_env: "MARVIN_MAIL_PASSWORD"
+    signal:
+      enabled: false
+    telegram:
+      enabled: false
+      bot_name: "@Marvin_bot"
+      token_env: "TELEGRAM_BOT_TOKEN_MARVIN"
+      allowed_users_env: "TELEGRAM_ALLOWED_USERS_MARVIN"
 
     # L2: Agent Core Runtime
     runtime: "hermes"
@@ -128,29 +118,22 @@ agents:
     name: "Bawtford - Creative Director & Supermodel CEO"
     enabled: true
 
-    # L1: Communications & UX Ingress
-    comms:
-      subdomain: "bawtford.brainsos.local"
-      extra_domains:
-        - "cindypawford.com"
-      port: 8644
-      dashboard_port: 9121
-      api_key_env: "HERMES_API_BAWTFORD_KEY"
-      email:
-        enabled: true
-        address: "bawtford@brainsos.local"
-        user_env: "BAWTFORD_MAIL_USER"
-        password_env: "BAWTFORD_MAIL_PASSWORD"
-      signal:
-        enabled: true
-        http_url: "http://signal-cli:8080"
-        account_env: "SIGNAL_ACCOUNT"
-        allowed_users_env: "SIGNAL_ALLOWED_USERS"
-      telegram:
-        enabled: true
-        bot_name: "@BawtfordBot"
-        token_env: "TELEGRAM_BOT_TOKEN_CINDY"
-        allowed_users_env: "TELEGRAM_ALLOWED_USERS_CINDY"
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "bawtford@brainsos.local"
+      user_env: "BAWTFORD_MAIL_USER"
+      password_env: "BAWTFORD_MAIL_PASSWORD"
+    signal:
+      enabled: true
+      http_url: "http://signal-cli:8080"
+      account_env: "SIGNAL_ACCOUNT"
+      allowed_users_env: "SIGNAL_ALLOWED_USERS"
+    telegram:
+      enabled: true
+      bot_name: "@BawtfordBot"
+      token_env: "TELEGRAM_BOT_TOKEN_CINDY"
+      allowed_users_env: "TELEGRAM_ALLOWED_USERS_CINDY"
 
     # L2: Agent Core Runtime
     runtime: "hermes"

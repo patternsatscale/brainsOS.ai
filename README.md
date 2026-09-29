@@ -161,11 +161,11 @@ graph TD
 │     - Messaging Daemons: brainsos-net-signal-cli, Postfix SMTP, SOGo        │
 │     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)│
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L6: Agent Core Units (agent_apps/ & Manifest Fleet: config/agents.yaml)     │
-│     - Primary Operations Agent  (:8642 API, :9119 Dashboard)                │
-│     - Sports Analytics Agent    (:8643 API, :9120 Dashboard)                │
-│     - Autonomous Designer Agent (:8644 API, :9121 Dashboard)                │
-│     - Isolated Tenancies: agent_apps/<tenant>/site/ vs pipeline/            │
+│ L6: Agent Execution Plane (Warm Stateless Hermes Runner & Dynamic Profiles) │
+│     - Shared Hermes Runner (:8642 API /v1/chat/completions)                 │
+│     - Dynamic Manifest Registry: config/agents.yaml (Zero Container Drift)  │
+│     - Asynchronous Agent Core SPI: packages/brainsOS-agent                  │
+│     - Isolated Tenancies: data/agent_workspaces/<tenant>/ & memories/       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
 │     - Standalone Packages: packages/brainsOS-memory/, brainsOS-queue/, etc. │
@@ -355,10 +355,7 @@ make emergency-stop # Instantly terminate all agent containers
 ./scripts/control/start-control-plane.sh status
 docker compose ps
 docker compose logs -f caddy
-docker compose logs -f agent-primary
-
-# Reconcile fleet changes after editing config/agents.yaml
-./scripts/control/sync-agents.sh
+docker compose logs -f hermes-runner
 ```
 
 ---
@@ -379,7 +376,6 @@ brainsOS/
 ├── README.md                 # System vision, architecture, and quickstart guide
 ├── AGENTS.md                 # Agent operating discipline and safety rules
 ├── docker-compose.yml        # Declarative service topology and isolated networks
-├── docker-compose.agents.yml # Auto-generated multi-agent fleet units (sync-agents.sh)
 ├── .env.example              # Environment variables template
 ├── agent_apps/               # Decoupled tenant workspaces
 │   └── cindypawford/
@@ -394,6 +390,7 @@ brainsOS/
 │   ├── hermes/               # Upstream agent personas and configs
 │   └── egress/               # In-transit credential injection proxy rules
 ├── packages/
+│   ├── brainsOS-agent/       # Standalone AgentRuntime SPI & dynamic profile registry
 │   ├── brainsOS-memory/      # Standalone OKF memory engine & VectorStore SPI
 │   ├── brainsOS-mail/        # Standalone RFC-compliant asynchronous email client
 │   ├── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
