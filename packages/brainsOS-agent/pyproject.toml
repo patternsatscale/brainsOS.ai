@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brainsOS-agent"
+version = "0.1.0"
+description = "brainsOS: Decoupled autonomous agent runtime SPI and context assembly"
+readme = "README.md"
+authors = [
+    { name = "Patterns at Scale", email = "community@patternsatscale.com" }
+]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "brainsOS-mail>=0.1.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+]
