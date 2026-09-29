@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 from aiohttp import web
-
 from brainsos_mail.client import BrainsOSMailClient
 from brainsos_mail.parser import parse_inbound_mime
 from brainsos_queue import FIFOQueueWorker, Task, WorkQueue
