@@ -26,6 +26,10 @@ RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/pack
 COPY packages/brainsOS-mcp /opt/hermes/packages/brainsOS-mcp
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-mcp
 
+# Install standalone brainsOS-agent package (Agent Runtime & Dynamic Profile SPI)
+COPY packages/brainsOS-agent /opt/hermes/packages/brainsOS-agent
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-agent
+
 # Install GitHub CLI (gh), Git tooling, and configure safe container defaults
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends gh git ca-certificates && \

@@ -241,6 +241,39 @@ services:
           - firewall
 
   # ============================================================================
+  # L2: Shared Warm Stateless Hermes Agent Runner
+  # Serves all agents defined in config/agents.yaml via stateless API mode (port 8642)
+  # Rule 2: Routes strictly through LiteLLM (http://host.docker.internal:4000/v1)
+  # Rule 4: Unprivileged, no docker socket mounts
+  # ============================================================================
+  hermes-runner:
+    build:
+      context: .
+      dockerfile: docker/hermes/Dockerfile
+    image: brainsos-hermes-runner:latest
+    container_name: brainsos-agent-hermes-runner
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${HERMES_RUNNER_PORT:-8642}:8642"
+    environment:
+      - API_SERVER_ENABLED=true
+      - PORT=8642
+      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server
+    volumes:
+      - ${BRAINSOS_MEMORIES_DIR:-./data/agent_memories}:/data/agent_memories
+      - ${BRAINSOS_WORKSPACES_DIR:-./data/agent_workspaces}:/data/agent_workspaces
+      - ./config/hermes:/config/hermes:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - brainsos-internal
+
+  # ============================================================================
   # L4: Routing & Security Plane
   # Control plane persistence: Dedicated PostgreSQL Database for LiteLLM
   # Decoupled dynamic persistence for models, virtual keys, rate limits & budgets
