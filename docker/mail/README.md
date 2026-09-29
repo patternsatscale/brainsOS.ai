@@ -91,8 +91,7 @@ Rather than deploying heavyweight enterprise mail servers (which routinely consu
 * **Authentication**: File-based passdb (`/etc/mail-brainsos/users`) with encrypted or plaintext schemes—requiring zero external database dependencies.
 * **Storage Engine**: Native `Maildir` layout with mmap indexing (`dovecot.index`), ensuring instant header parsing and thread search without persistent SQL indexing.
 * **Shared Namespaces**: Exposes `Agent Fleet/<agent>/` to the administrator mailbox.
-* **ACL Enforcement**: Enforces RFC 4314 access control lists prohibiting agents from expunging messages.
-* **Extension Hook**: Script `/usr/lib/dovecot/sieve-pipe/agent-webhook.sh` pipes incoming email metadata to target agent containers (`http://brainsos-agent-<name>:<port>/webhook`) to wake agents up asynchronously.
+* **Extension Hook**: Script `/usr/lib/dovecot/sieve-pipe/agent-webhook.sh` spools incoming RFC 822 emails to disk (`/var/spool/brainsos/inbound/`) and streams them to the control plane ingress endpoint (`${BRAINSOS_INGRESS_URL}`) in <200ms.
 
 ### C. SOGo Groupware
 * **Role**: Modern, web-based groupware cockpit for operator oversight, CalDAV task planning, and email communications.
@@ -337,11 +336,11 @@ EOF
 
 To prevent LLM split-brain, context runaway, and accidental auto-reply feedback loops, autonomous agents operate under a **Tool-First Model**:
 1. **Platform Gateway Disabled**: The default chat auto-reply gateway (`platforms.email.enabled: false`) is strictly disabled.
-2. **Doorbell Inbound Wake-Up (Push)**:
-   - When an email arrives for any `@brainsos.local` fleet address, Dovecot Pigeonhole Sieve triggers `/etc/dovecot/sieve/default.sieve` via `sieve_before`.
-   - The script uses `vnd.dovecot.pipe` to execute `/usr/lib/dovecot/sieve-pipe/agent-webhook.sh`.
-   - `agent-webhook.sh` extracts RFC 822 headers (`To`, `From`, `Subject`, `Message-ID`, `In-Reply-To`, `Date`) into JSON, maps the recipient to the agent's port (`terrastella: 8642`, `marvin: 8643`, `bawtford: 8644`), and dispatches an asynchronous `POST /webhook` to `http://brainsos-agent-<name>:<port>/webhook`.
-   - The agent webhook endpoint responds immediately with `HTTP 200 OK`, logs the event to `/memories/logs/email_inbound.md` (Rule 1 compliant OKF Markdown), and wakes the agent runtime via a background self-post.
+2. **Doorbell Inbound Wake-Up (Push & Spool)**:
+   - When an email arrives for any address, Dovecot Pigeonhole Sieve triggers `/etc/dovecot/sieve/default.sieve` via `sieve_before`.
+   - The script uses `vnd.dovecot.pipe` to execute `/usr/lib/dovecot/sieve-pipe/agent-webhook.sh` with the envelope recipient parameter.
+   - `agent-webhook.sh` writes a zero-loss disk copy of the raw RFC 822 stream to `/var/spool/brainsos/inbound/$(date +%s%N).eml` and streams the payload via HTTP POST to the control plane ingress endpoint (`http://control-plane:8000/api/v1/mail/inbound`) with a 3s timeout.
+   - Sieve execution returns in `<200ms`, preventing LMTP delivery timeouts while preserving local Maildir delivery and decoupling agent inference from mail transport.
 3. **Explicit Tool Actions (Pull & Send)**:
    - The agent actively inspects and processes emails using the `brainsos-mail` toolset:
      - `search_emails(query=..., subject=..., from_addr=..., unread_only=...)`: Queries the IMAP server for matching messages.

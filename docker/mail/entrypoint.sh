@@ -4,8 +4,10 @@ set -e
 echo "[BRAINSOS-MAIL] Initializing brainsOS Mail Server (Postfix + Dovecot)..."
 
 # Ensure directories exist
-mkdir -p /var/mail/vmail /etc/mail-brainsos /var/run/dovecot /var/spool/postfix
+mkdir -p /var/mail/vmail /etc/mail-brainsos /var/run/dovecot /var/spool/postfix /var/spool/brainsos/inbound
 touch /var/mail/vmail/shared-mailboxes.db
+chown -R vmail:vmail /var/spool/brainsos 2>/dev/null || true
+chmod -R 775 /var/spool/brainsos 2>/dev/null || true
 
 # Ensure vmail user & group exist
 addgroup -g 5000 vmail 2>/dev/null || true
@@ -78,7 +80,7 @@ chown dovecot:dovecot /var/log/dovecot.log 2>/dev/null || true
 tail -n 0 -F /var/log/dovecot.log &
 
 # Export environment variables for Dovecot Sieve child scripts
-env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_)' > /etc/environment || true
+env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_|BRAINSOS_INGRESS_URL|BRAINSOS_SPOOL_DIR)' > /etc/environment || true
 chmod 644 /etc/environment
 
 # Start Dovecot
