@@ -7,7 +7,7 @@ title: "brainsOS: Open-Source Edge Agent Operating System & Governance Runtime"
 version: 0.1.0-alpha
 date-released: 2026-09-27
 url: "https://brainsos.ai"
-repository-code: "https://github.com/patternsatscale/brainsOS"
+repository-code: "https://github.com/patternsatscale/brainsOS.ai"
 license: Apache-2.0
 keywords:
   - "autonomous agents"

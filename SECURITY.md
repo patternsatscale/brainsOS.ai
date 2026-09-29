@@ -75,7 +75,7 @@ If you discover a security vulnerability, security boundary bypass, unauthorized
 
 Instead, report the issue responsibly via one of the following methods:
 
-1. **Private GitHub Security Advisory**: Navigate to the [Security Advisories tab](https://github.com/patternsatscale/project-titan/security/advisories) on GitHub and click **"Report a vulnerability"**.
+1. **Private GitHub Security Advisory**: Navigate to the [Security Advisories tab](https://github.com/patternsatscale/brainsOS.ai/security/advisories) on GitHub and click **"Report a vulnerability"**.
 2. **Direct Email**: Send details to:
    - **`security@patternsatscale.com`**
 
