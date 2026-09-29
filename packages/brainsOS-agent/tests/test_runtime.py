@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from brainsos_mail.models import ParsedInboundEmail
 from brainsos_agent.context import ContextAssembler, sanitize_thread_filename
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime
+from brainsos_mail.models import ParsedInboundEmail
 
 
 class MockEchoRuntime(AgentRuntime):
@@ -21,7 +20,7 @@ class MockEchoRuntime(AgentRuntime):
         email: ParsedInboundEmail,
         profile: AgentProfile,
     ) -> OutboundEmail:
-        messages = ContextAssembler.assemble_messages(email, profile, record_inbound=True)
+        _ = ContextAssembler.assemble_messages(email, profile, record_inbound=True)
         response_text = f"Acknowledged '{email.subject}': {email.clean_body}"
 
         ContextAssembler.record_turn(

@@ -6,9 +6,10 @@ import logging
 import os
 from pathlib import Path
 from typing import Any
-import httpx
 
+import httpx
 from brainsos_mail.models import ParsedInboundEmail
+
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime
@@ -113,7 +114,8 @@ class HermesMailAdapter(AgentRuntime):
         )
 
         # 3. Stateless API dispatch to Hermes (POST /v1/chat/completions)
-        endpoint = f"{self.runner_url.rstrip('/')}/chat/completions"
+        runner_url = (self.runner_url or "http://127.0.0.1:8642/v1").rstrip("/")
+        endpoint = f"{runner_url}/chat/completions"
         request_payload = {
             "model": profile.model,
             "messages": messages,

@@ -52,11 +52,41 @@ class BrainsOSMailClient:
     @classmethod
     def from_env(cls) -> BrainsOSMailClient:
         """Initialize client from container or host environment variables."""
+        smtp_host = os.getenv("BRAINSOS_MAIL_SMTP_HOST", os.getenv("MAIL_SERVER_HOST"))
+        imap_host = os.getenv("BRAINSOS_MAIL_IMAP_HOST", os.getenv("MAIL_SERVER_HOST"))
+
+        if not smtp_host:
+            try:
+                import socket
+                socket.gethostbyname("mail-server")
+                smtp_host = "mail-server"
+                default_smtp_port = "25"
+            except (socket.gaierror, OSError):
+                smtp_host = "127.0.0.1"
+                default_smtp_port = os.getenv("MAIL_SMTP_PORT", "10025")
+        else:
+            default_smtp_port = "25"
+
+        if not imap_host:
+            try:
+                import socket
+                socket.gethostbyname("mail-server")
+                imap_host = "mail-server"
+                default_imap_port = "143"
+            except (socket.gaierror, OSError):
+                imap_host = "127.0.0.1"
+                default_imap_port = os.getenv("MAIL_IMAP_PORT", "10143")
+        else:
+            default_imap_port = "143"
+
+        smtp_port = int(os.getenv("BRAINSOS_MAIL_SMTP_PORT", default_smtp_port))
+        imap_port = int(os.getenv("BRAINSOS_MAIL_IMAP_PORT", default_imap_port))
+
         return cls(
-            smtp_host=os.getenv("BRAINSOS_MAIL_SMTP_HOST", os.getenv("MAIL_SERVER_HOST", "mail-server")),
-            smtp_port=int(os.getenv("BRAINSOS_MAIL_SMTP_PORT", os.getenv("MAIL_SMTP_PORT", "25"))),
-            imap_host=os.getenv("BRAINSOS_MAIL_IMAP_HOST", os.getenv("MAIL_SERVER_HOST", "mail-server")),
-            imap_port=int(os.getenv("BRAINSOS_MAIL_IMAP_PORT", os.getenv("MAIL_IMAP_PORT", "143"))),
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            imap_host=imap_host,
+            imap_port=imap_port,
             username=os.getenv("AGENT_MAIL_USER"),
             password=os.getenv("AGENT_MAIL_PASSWORD"),
         )

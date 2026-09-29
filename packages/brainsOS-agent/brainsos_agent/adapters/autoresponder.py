@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from brainsos_mail.models import ParsedInboundEmail
+
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime

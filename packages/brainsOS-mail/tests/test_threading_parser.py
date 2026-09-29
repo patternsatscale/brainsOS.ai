@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import email.message
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import pytest
 
-from brainsos_mail.models import Attachment, ParsedInboundEmail
-from brainsos_mail.parser import clean_email_body, extract_message_ids, parse_inbound_mime, resolve_thread_id
+from brainsos_mail.models import ParsedInboundEmail
+from brainsos_mail.parser import clean_email_body, parse_inbound_mime, resolve_thread_id
 
 
 class TestThreadResolution:
@@ -54,7 +52,7 @@ class TestThreadResolution:
         assert resolve_thread_id(headers) == "root-id@brainsos.local"
 
     def test_missing_message_id_generates_safe_fallback(self) -> None:
-        headers = {}
+        headers: dict[str, str] = {}
         thread_id = resolve_thread_id(headers)
         assert thread_id.startswith("<unthreaded-")
         assert thread_id.endswith("@brainsos.local>")
@@ -82,15 +80,14 @@ Operator wrote:
         assert cleaned == "Approved."
 
     def test_clean_standard_signature_block(self) -> None:
-        body = """Please find the updated metrics below.
-
-Everything looks healthy.
-
--- 
-Dr. Jane Doe
-Director of AI Systems
-BrainsOS Autonomous Fleet
-"""
+        body = (
+            "Please find the updated metrics below.\n\n"
+            "Everything looks healthy.\n\n"
+            "-- \n"
+            "Dr. Jane Doe\n"
+            "Director of AI Systems\n"
+            "BrainsOS Autonomous Fleet\n"
+        )
         cleaned = clean_email_body(body)
         assert cleaned == "Please find the updated metrics below.\n\nEverything looks healthy."
 

@@ -335,6 +335,7 @@ Once running, the following local services are accessible in your browser:
 | **Sports Analytics UI** | [http://marvin.brainsos.local](http://marvin.brainsos.local) | `9120` | `admin` / `${MARVIN_MAIL_PASSWORD}` | Sports companion dashboard |
 | **Bawtford Designer UI** | [http://bawtford.brainsos.local](http://bawtford.brainsos.local) | `9121` | `admin` / `${BAWTFORD_MAIL_PASSWORD}` | Autonomous fashion designer atelier |
 | **SOGo Groupware** | [http://mail.brainsos.local](http://mail.brainsos.local) | `20000` / `80` | `operator@brainsos.local` / `${OPERATOR_MAIL_PASSWORD}` | Webmail, agent shared mailboxes & CalDAV |
+| **Agent Queue & Ingress** | `http://127.0.0.1:8000` | `8000` | *Internal* | Non-blocking email webhook ingestion & queue worker daemon |
 | **LiteLLM Gateway** | [http://proxy.brainsos.local](http://proxy.brainsos.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing & budget proxy |
 | **Langfuse Tracing** | [http://langfuse.brainsos.local:3001](http://langfuse.brainsos.local:3001) | `3001` | *Local account* | Distributed tracing & token telemetry |
 

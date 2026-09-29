@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import email
+import re
+import uuid
 from email import policy
 from email.header import decode_header
 from html.parser import HTMLParser
-import io
-import re
-import uuid
-from typing import Any
+from typing import Any, cast
 
 from .models import Attachment, ParsedInboundEmail
+
+
+def _extract_payload_bytes(part: Any) -> bytes:
+    """Safely extracts decoded payload bytes from an email message or part."""
+    payload = part.get_payload(decode=True)
+    if isinstance(payload, bytes):
+        return payload
+    if isinstance(payload, str):
+        return payload.encode("utf-8", errors="replace")
+    return b""
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -176,7 +185,7 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
         msg = email.message_from_bytes(raw_bytes, policy=policy.default)
     except Exception:
         # Fallback to compat policy if default parser encounters an unhandled structure
-        msg = email.message_from_bytes(raw_bytes, policy=policy.compat32)
+        msg = email.message_from_bytes(raw_bytes, policy=cast(Any, policy.compat32))
 
     # Collect headers into dictionary
     headers: dict[str, str] = {}
@@ -206,7 +215,7 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
             content_type = str(part.get_content_type() or "").lower()
 
             if disposition == "attachment" or (filename and disposition != "inline"):
-                payload = part.get_payload(decode=True) or b""
+                payload = _extract_payload_bytes(part)
                 attachments.append(
                     Attachment(
                         filename=_decode_header_str(filename or "attachment.bin"),
@@ -219,7 +228,7 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
                 try:
                     text = part.get_content()
                 except Exception:
-                    payload_bytes = part.get_payload(decode=True) or b""
+                    payload_bytes = _extract_payload_bytes(part)
                     charset = part.get_content_charset() or "utf-8"
                     text = payload_bytes.decode(charset, errors="replace")
                 plain_text_parts.append(text)
@@ -227,7 +236,7 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
                 try:
                     html_content = part.get_content()
                 except Exception:
-                    payload_bytes = part.get_payload(decode=True) or b""
+                    payload_bytes = _extract_payload_bytes(part)
                     charset = part.get_content_charset() or "utf-8"
                     html_content = payload_bytes.decode(charset, errors="replace")
                 html_parts.append(html_content)
@@ -237,14 +246,14 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
             try:
                 plain_text_parts.append(msg.get_content())
             except Exception:
-                payload_bytes = msg.get_payload(decode=True) or b""
+                payload_bytes = _extract_payload_bytes(msg)
                 charset = msg.get_content_charset() or "utf-8"
                 plain_text_parts.append(payload_bytes.decode(charset, errors="replace"))
         elif content_type == "text/html":
             try:
                 html_parts.append(msg.get_content())
             except Exception:
-                payload_bytes = msg.get_payload(decode=True) or b""
+                payload_bytes = _extract_payload_bytes(msg)
                 charset = msg.get_content_charset() or "utf-8"
                 html_parts.append(payload_bytes.decode(charset, errors="replace"))
 

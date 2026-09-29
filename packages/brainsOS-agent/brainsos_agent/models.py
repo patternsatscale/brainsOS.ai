@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Annotated, Any
+
 import yaml
 from pydantic import AfterValidator, BaseModel, Field
 
@@ -49,7 +50,7 @@ class AgentProfile(BaseModel):
         elif isinstance(raw_email, dict):
             email_addr = raw_email.get("address") or f"{agent_id}@brainsos.local"
         elif email_info.get("address"):
-            email_addr = email_info.get("address")
+            email_addr = str(email_info.get("address"))
         else:
             email_addr = f"{agent_id}@brainsos.local" if agent_id else "agent@brainsos.local"
 
@@ -117,15 +118,15 @@ class AgentProfile(BaseModel):
                 base = p.parent.resolve()
         else:
             doc = yaml.safe_load(str(manifest_source))
-            base = base_path or Path(".").resolve()
+            base = Path(base_path).resolve() if base_path else Path(".").resolve()
 
         agents_list = doc.get("agents", []) if isinstance(doc, dict) else []
         profiles = [cls.from_agent_dict(a, base_path=base) for a in agents_list if isinstance(a, dict)]
 
         if agent_id:
-            for p in profiles:
-                if p.id == agent_id or p.name == agent_id or p.email.startswith(f"{agent_id}@"):
-                    return p
+            for prof in profiles:
+                if prof.id == agent_id or prof.name == agent_id or prof.email.startswith(f"{agent_id}@"):
+                    return prof
             raise ValueError(f"Agent with id '{agent_id}' not found in manifest")
         return profiles
 

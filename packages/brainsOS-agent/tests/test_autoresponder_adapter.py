@@ -5,12 +5,11 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-from brainsos_mail.models import ParsedInboundEmail
 from brainsos_agent.adapters import AutoResponderAdapter, HermesMailAdapter, get_runtime_adapter
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile
+from brainsos_mail.models import ParsedInboundEmail
 
 
 class TestAutoResponderAdapter(unittest.IsolatedAsyncioTestCase):

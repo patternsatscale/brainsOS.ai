@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from brainsos_agent.runtime import AgentRuntime
+
 from .autoresponder import AutoResponderAdapter
 from .hermes import HermesMailAdapter, WorkspaceBoundaryViolation
 

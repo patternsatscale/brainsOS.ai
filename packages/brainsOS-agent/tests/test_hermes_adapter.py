@@ -6,12 +6,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-import httpx
 
-from brainsos_mail.models import ParsedInboundEmail
+import httpx
 from brainsos_agent.adapters.hermes import HermesMailAdapter, WorkspaceBoundaryViolation
-from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile
+from brainsos_mail.models import ParsedInboundEmail
 
 
 class TestHermesAdapter(unittest.IsolatedAsyncioTestCase):

@@ -69,7 +69,11 @@ class TestBrainsOSMailClient(unittest.TestCase):
             subject=subject,
             body=body,
         )
-        self.assertTrue(msg_id.startswith("<") and msg_id.endswith("@brainsos.local>"))
+        domain = os.getenv("BRAINSOS_DOMAIN", "brainsos.local")
+        self.assertTrue(
+            msg_id.startswith("<")
+            and (msg_id.endswith(f"@{domain}>") or msg_id.endswith("@brainsos.local>"))
+        )
 
         # Wait a moment for LMTP local delivery
         import time
@@ -120,7 +124,10 @@ class TestBrainsOSMailClient(unittest.TestCase):
             in_reply_to=msg_id,
             references=msg_id,
         )
-        self.assertTrue(reply_msg_id.startswith("<") and reply_msg_id.endswith("@brainsos.local>"))
+        self.assertTrue(
+            reply_msg_id.startswith("<")
+            and (reply_msg_id.endswith(f"@{domain}>") or reply_msg_id.endswith("@brainsos.local>"))
+        )
 
         time.sleep(1.5)
 

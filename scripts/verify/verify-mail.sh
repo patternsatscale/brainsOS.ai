@@ -49,6 +49,11 @@ ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
 AGENT_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
 BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 
+PYTHON_BIN="python3"
+if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
+    PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+fi
+
 # Detect Webmail Client (SOGo per Ticket #166, with SnappyMail fallback)
 if docker compose ps --services | grep -q "^sogo$"; then
     WEBMAIL_SVC="sogo"
@@ -309,7 +314,7 @@ log_success "Memory plane purity verified: zero mail, database, or mailbox leaka
 # ------------------------------------------------------------------------------
 MAIL_PKG_DIR="${REPO_ROOT}/packages/brainsOS-mail"
 log_info "Step 9: Running standalone brainsOS-mail package test suite..."
-PYTHONPATH="${MAIL_PKG_DIR}" python3 -m unittest discover "${MAIL_PKG_DIR}/tests"
+PYTHONPATH="${MAIL_PKG_DIR}" "${PYTHON_BIN}" -m unittest discover "${MAIL_PKG_DIR}/tests"
 log_success "Standalone brainsOS-mail unit tests passed cleanly."
 
 # ------------------------------------------------------------------------------

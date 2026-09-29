@@ -37,6 +37,7 @@ OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me
 TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
 BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
 MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
 
 echo "[INFO] Generating account directory in $CONFIG_DIR/users..."
 cat << EOF > "$CONFIG_DIR/users"
@@ -45,6 +46,7 @@ operator@brainsos.local:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operato
 terrastella@brainsos.local:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
 bawtford@brainsos.local:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
 marvin@brainsos.local:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
+ping@brainsos.local:{PLAIN}$PING_PASS:5000:5000::/var/mail/vmail/ping::
 EOF
 
 cat << 'EOF' > "$CONFIG_DIR/vmailbox"
@@ -53,6 +55,7 @@ operator@brainsos.local operator
 terrastella@brainsos.local terrastella
 bawtford@brainsos.local bawtford
 marvin@brainsos.local marvin
+ping@brainsos.local ping
 EOF
 
 cat << 'EOF' > "$CONFIG_DIR/virtual"
@@ -61,7 +64,7 @@ root@brainsos.local admin@brainsos.local
 EOF
 
 # Scaffold mailbox folders for all accounts
-for user in admin operator terrastella bawtford marvin; do
+for user in admin operator terrastella bawtford marvin ping; do
     mkdir -p "$VMAIL_DIR/$user/Maildir/new" \
              "$VMAIL_DIR/$user/Maildir/cur" \
              "$VMAIL_DIR/$user/Maildir/tmp"

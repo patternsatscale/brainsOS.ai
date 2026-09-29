@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import email
-from email.message import EmailMessage
 import imaplib
-import smtplib
 import unittest
+from email.message import EmailMessage
 from unittest.mock import MagicMock, patch
 
 from brainsos_mail.client import BrainsOSMailClient, _format_msg_id

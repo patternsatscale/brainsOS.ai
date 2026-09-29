@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from brainsos_mail.models import ParsedInboundEmail
+
 from brainsos_agent.models import AgentProfile, OutboundEmail
 
 

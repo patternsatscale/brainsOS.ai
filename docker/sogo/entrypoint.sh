@@ -21,13 +21,16 @@ OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me
 TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
 BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
 MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
 
-# 1. Wait for isolated SOGo database to become available
+# 1. Wait for isolated SOGo database host to become available
 echo "[BRAINSOS-SOGO] Waiting for database ${DB_HOST}:${DB_PORT}..."
-until pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" >/dev/null 2>&1; do
+until pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" >/dev/null 2>&1; do
     sleep 1
 done
-echo "[BRAINSOS-SOGO] Database connected successfully."
+echo "[BRAINSOS-SOGO] Database server reachable. Ensuring database '${DB_NAME}' exists..."
+psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" 2>/dev/null | grep -q 1 || \
+psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || true
 
 # 2. Initialize sogo_users table and seed fleet accounts if missing
 echo "[BRAINSOS-SOGO] Ensuring sogo_users schema and seeding accounts..."
@@ -46,11 +49,13 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
         ('terrastella@brainsos.local', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@brainsos.local'),
         ('bawtford@brainsos.local', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@brainsos.local'),
         ('marvin@brainsos.local', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@brainsos.local'),
+        ('ping@brainsos.local', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@brainsos.local'),
         ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@brainsos.local'),
         ('operator', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@brainsos.local'),
         ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@brainsos.local'),
         ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@brainsos.local'),
-        ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@brainsos.local')
+        ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@brainsos.local'),
+        ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@brainsos.local')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password;
 EOSQL
 echo "[BRAINSOS-SOGO] sogo_users verification complete."
