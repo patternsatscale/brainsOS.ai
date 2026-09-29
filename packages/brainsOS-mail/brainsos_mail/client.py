@@ -8,11 +8,26 @@ from __future__ import annotations
 
 import email
 import imaplib
+import logging
 import os
+import re
 import smtplib
+import time
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Any
+
+logger = logging.getLogger("brainsos_mail.client")
+
+
+def _format_msg_id(val: str) -> str:
+    """Ensures message ID is enclosed in RFC 5322 angle brackets."""
+    v = val.strip()
+    if not v:
+        return ""
+    if not v.startswith("<") and not v.endswith(">"):
+        return f"<{v}>"
+    return v
 
 
 class BrainsOSMailClient:
@@ -46,6 +61,45 @@ class BrainsOSMailClient:
             password=os.getenv("AGENT_MAIL_PASSWORD"),
         )
 
+    def sync_to_sent_folder(
+        self,
+        msg: EmailMessage | bytes,
+        sent_folder: str = "Sent",
+        flags: str = "\\Seen",
+    ) -> bool:
+        """Appends the raw RFC 822 email payload to the mailbox's Sent folder.
+
+        Logs warnings without failing delivery if IMAP append encounters a transient error.
+        """
+        if not self.username or not self.password:
+            logger.debug("IMAP sync skipped: username or password not configured")
+            return False
+
+        try:
+            raw_bytes = msg.as_bytes() if isinstance(msg, EmailMessage) else msg
+            msg_id = msg.get("Message-ID", "") if isinstance(msg, EmailMessage) else ""
+
+            with imaplib.IMAP4(self.imap_host, self.imap_port) as imap:
+                imap.login(self.username, self.password)
+                mailbox = f'"{sent_folder}"' if " " in sent_folder and not sent_folder.startswith('"') else sent_folder
+                internal_date = imaplib.Time2Internaldate(time.time())
+
+                status, response = imap.append(mailbox, flags, internal_date, raw_bytes)
+                if status == "OK":
+                    logger.debug("Successfully synced message %s to IMAP %s", msg_id, sent_folder)
+                    return True
+                else:
+                    logger.warning(
+                        "IMAP append to '%s' returned status %s: %s",
+                        sent_folder,
+                        status,
+                        response,
+                    )
+                    return False
+        except Exception as e:
+            logger.warning("Transient error syncing message to IMAP folder '%s': %s", sent_folder, e)
+            return False
+
     def send_mail(
         self,
         to: str,
@@ -55,8 +109,10 @@ class BrainsOSMailClient:
         in_reply_to: str | None = None,
         references: str | None = None,
         extra_headers: dict[str, str] | None = None,
+        sync_imap: bool = True,
+        sent_folder: str = "Sent",
     ) -> str:
-        """Compose and dispatch an RFC-compliant email message.
+        """Compose and dispatch an RFC-compliant email message with dual-dispatch IMAP sync.
 
         Returns the generated Message-ID.
         """
@@ -69,11 +125,29 @@ class BrainsOSMailClient:
         msg["Date"] = formatdate(localtime=True)
         msg["From"] = sender
         msg["To"] = to
-        msg["Subject"] = subject
 
+        # Threading header injection:
+        # Subject: Re: <inbound.subject> avoiding duplicate Re: Re: prefixes
+        clean_subj = subject.strip()
         if in_reply_to:
-            msg["In-Reply-To"] = in_reply_to
-            msg["References"] = references or in_reply_to
+            raw_subj = re.sub(r"^(re:\s*)+", "", clean_subj, flags=re.IGNORECASE).strip()
+            msg["Subject"] = f"Re: {raw_subj}"
+
+            reply_id = _format_msg_id(in_reply_to)
+            msg["In-Reply-To"] = reply_id
+
+            if references:
+                ref_tokens = [_format_msg_id(t) for t in references.strip().split() if t.strip()]
+                if reply_id not in ref_tokens:
+                    ref_tokens.append(reply_id)
+                msg["References"] = " ".join(ref_tokens)
+            else:
+                msg["References"] = reply_id
+        else:
+            msg["Subject"] = clean_subj
+            if references:
+                ref_tokens = [_format_msg_id(t) for t in references.strip().split() if t.strip()]
+                msg["References"] = " ".join(ref_tokens)
 
         if extra_headers:
             for k, v in extra_headers.items():
@@ -81,6 +155,7 @@ class BrainsOSMailClient:
 
         msg.set_content(body)
 
+        # Step 1: SMTP Dispatch
         with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
             if self.username and self.password:
                 try:
@@ -89,6 +164,10 @@ class BrainsOSMailClient:
                     # Fallback to direct submission if unauthenticated local relay is allowed
                     pass
             server.send_message(msg)
+
+        # Step 2: IMAP Synchronization (Dual-Dispatch to Sent folder)
+        if sync_imap and self.username and self.password:
+            self.sync_to_sent_folder(msg, sent_folder=sent_folder)
 
         return msg_id
 
