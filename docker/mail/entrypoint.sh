@@ -24,6 +24,7 @@ operator@brainsos.local:{PLAIN}operator_secret_pass:5000:5000::/var/mail/vmail/o
 terrastella@brainsos.local:{PLAIN}terrastella_secret_pass:5000:5000::/var/mail/vmail/terrastella::
 bawtford@brainsos.local:{PLAIN}bawtford_secret_pass:5000:5000::/var/mail/vmail/bawtford::
 marvin@brainsos.local:{PLAIN}marvin_secret_pass:5000:5000::/var/mail/vmail/marvin::
+ping@brainsos.local:{PLAIN}ping_secret_pass:5000:5000::/var/mail/vmail/ping::
 EOF
 fi
 
@@ -34,6 +35,7 @@ operator@brainsos.local operator
 terrastella@brainsos.local terrastella
 bawtford@brainsos.local bawtford
 marvin@brainsos.local marvin
+ping@brainsos.local ping
 EOF
 fi
 

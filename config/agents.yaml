@@ -215,3 +215,28 @@ agents:
     # Cross-Cutting: Observability & Evaluation
     observability:
       otel_tracing: true
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Ping - Auto-Responder & Workflow Verification Agent
+  # ----------------------------------------------------------------------------
+  - id: "ping"
+    name: "Ping - Auto-Responder & Verification Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "ping@brainsos.local"
+      user_env: "PING_MAIL_USER"
+      password_env: "PING_MAIL_PASSWORD"
+
+    # L2: Agent Core Runtime (Zero LLM / GPU overhead)
+    runtime: "autoresponder"
+    persona: "config/hermes/ping/SOUL.md"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/ping"
+    workspace:
+      path: "./data/agent_workspaces/ping"
+

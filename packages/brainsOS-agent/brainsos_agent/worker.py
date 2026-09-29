@@ -17,14 +17,14 @@ from typing import Any
 from brainsos_mail.client import BrainsOSMailClient
 from brainsos_mail.parser import parse_inbound_mime
 from brainsos_queue import FIFOQueueWorker, Task, WorkQueue
-from brainsos_agent.adapters.hermes import HermesMailAdapter
+from brainsos_agent.adapters import get_runtime_adapter
 from brainsos_agent.models import AgentProfile
 
 logger = logging.getLogger("brainsos_agent.worker")
 
 
 class AgentQueueWorkerDaemon:
-    """Daemon running FIFOQueueWorker hooked to HermesMailAdapter."""
+    """Daemon running FIFOQueueWorker hooked to dynamic runtime adapters."""
 
     def __init__(
         self,
@@ -38,7 +38,6 @@ class AgentQueueWorkerDaemon:
         from brainsos_queue.backends.sqlite import SQLiteQueueBackend
         self.backend = SQLiteQueueBackend(db_path=str(self.queue_db_path))
         self.queue = WorkQueue("inbound_emails", backend=self.backend)
-        self.adapter = HermesMailAdapter()
         self.worker: FIFOQueueWorker | None = None
         self._stop_event = asyncio.Event()
 
@@ -108,8 +107,9 @@ class AgentQueueWorkerDaemon:
             profile.email,
         )
 
-        # 4. Dispatch through stateless Hermes runner
-        outbound = await self.adapter.process_message(inbound_email, profile)
+        # 4. Dispatch through matched runtime adapter (Hermes, AutoResponder, etc.)
+        adapter = get_runtime_adapter(profile.runtime)
+        outbound = await adapter.process_message(inbound_email, profile)
 
         # 5. Dual-dispatch reply via SMTP & IMAP Sent folder
         client = BrainsOSMailClient.from_env()

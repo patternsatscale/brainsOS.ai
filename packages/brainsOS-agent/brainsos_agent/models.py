@@ -109,7 +109,12 @@ class AgentProfile(BaseModel):
             p = Path(manifest_source)
             with open(p, "r", encoding="utf-8") as f:
                 doc = yaml.safe_load(f)
-            base = base_path or p.parent.resolve()
+            if base_path:
+                base = Path(base_path).resolve()
+            elif p.parent.name == "config":
+                base = p.parent.parent.resolve()
+            else:
+                base = p.parent.resolve()
         else:
             doc = yaml.safe_load(str(manifest_source))
             base = base_path or Path(".").resolve()
