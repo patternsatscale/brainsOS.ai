@@ -5,10 +5,6 @@
 
 name: brainsos
 
-# Include dynamically managed agent units from fleet manifest
-include:
-  - docker-compose.agents.yml
-
 services:
   # ============================================================================
   # L7: Communications & UX Plane
@@ -44,6 +40,8 @@ services:
       - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
       - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
       - ACME_EMAIL=${ACME_EMAIL:-}
+    command: >
+      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
@@ -85,7 +83,17 @@ services:
     volumes:
       - ${BRAINSOS_COMMS_DIR:-./data/comms}/email/vmail:/var/mail/vmail
       - ${BRAINSOS_COMMS_DIR:-./data/comms}/email/config:/etc/mail-brainsos
+      - ${BRAINSOS_COMMS_DIR:-./data/comms}/spool:/var/spool/brainsos/inbound
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "control-plane:host-gateway"
     environment:
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}
+      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
+      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
+      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
+      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
@@ -148,6 +156,7 @@ services:
       - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
       - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
       - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
+      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
 
   # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
   code-server:
@@ -239,6 +248,39 @@ services:
           - tool-egress-proxy
           - efw
           - firewall
+
+  # ============================================================================
+  # L2: Shared Warm Stateless Hermes Agent Runner
+  # Serves all agents defined in config/agents.yaml via stateless API mode (port 8642)
+  # Rule 2: Routes strictly through LiteLLM (http://host.docker.internal:4000/v1)
+  # Rule 4: Unprivileged, no docker socket mounts
+  # ============================================================================
+  hermes-runner:
+    build:
+      context: .
+      dockerfile: docker/hermes/Dockerfile
+    image: brainsos-hermes-runner:latest
+    container_name: brainsos-agent-hermes-runner
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${HERMES_RUNNER_PORT:-8642}:8642"
+    environment:
+      - API_SERVER_ENABLED=true
+      - PORT=8642
+      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server
+    volumes:
+      - ${BRAINSOS_MEMORIES_DIR:-./data/agent_memories}:/data/agent_memories
+      - ${BRAINSOS_WORKSPACES_DIR:-./data/agent_workspaces}:/data/agent_workspaces
+      - ./config/hermes:/config/hermes:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - brainsos-internal
 
   # ============================================================================
   # L4: Routing & Security Plane

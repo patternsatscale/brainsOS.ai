@@ -6,3 +6,9 @@
 (brainsos_tls) {
 	tls internal
 }
+
+(route53_tls) {
+	tls admin@brainsos.ai {
+		dns route53
+	}
+}

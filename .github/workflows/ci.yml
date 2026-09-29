@@ -2,9 +2,9 @@ name: CI Matrix & Test Suite
 
 on:
   push:
-    branches: [main, rebrand-brainsos]
+    branches: [main, rebrand-brainsos, brainsos]
   pull_request:
-    branches: [main, rebrand-brainsos]
+    branches: [main, rebrand-brainsos, brainsos]
 
 permissions:
   contents: read

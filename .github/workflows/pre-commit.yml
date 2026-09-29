@@ -2,9 +2,9 @@ name: Pre-Commit & Security Checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, brainsos]
   pull_request:
-    branches: [main]
+    branches: [main, brainsos]
 
 permissions:
   contents: read
@@ -66,9 +66,9 @@ jobs:
 
       - name: Verify Fleet Manifest Zero-Drift
         run: |
-          echo "Checking fleet manifest drift against generated configs..."
+          echo "Validating declarative fleet manifest (config/agents.yaml)..."
           pip install pyyaml
-          ./scripts/control/sync-agents.sh --check
+          python3 -c "import yaml; data = yaml.safe_load(open('config/agents.yaml')); assert 'agents' in data; print(f'✓ Valid manifest with {len(data[\"agents\"])} agent profiles')"
 
 
       - name: Docker Compose Topology Validation

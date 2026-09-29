@@ -59,6 +59,9 @@ DATA_DIRS=(
   "${REPO_ROOT}/data/agent_logs"
   "${REPO_ROOT}/data/caddy"
   "${REPO_ROOT}/data/litellm"
+  "${REPO_ROOT}/data/comms"
+  "${REPO_ROOT}/data/queue"
+  "${REPO_ROOT}/data/control_plane"
 )
 
 for dir in "${DATA_DIRS[@]}"; do
@@ -67,6 +70,13 @@ for dir in "${DATA_DIRS[@]}"; do
     log_info "Created directory: ${dir}"
   fi
 done
+
+# Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory
+if [ ! -f "${REPO_ROOT}/data/control_plane/caddy_root.crt" ]; then
+  touch "${REPO_ROOT}/data/control_plane/caddy_root.crt"
+  chmod 664 "${REPO_ROOT}/data/control_plane/caddy_root.crt" 2>/dev/null || true
+  log_info "Initialized ${REPO_ROOT}/data/control_plane/caddy_root.crt placeholder"
+fi
 
 # 3. Python Virtual Environment & Packages
 if command -v uv >/dev/null 2>&1; then

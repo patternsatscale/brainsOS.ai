@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import time
 from pathlib import Path
+from typing import Any
 
 from brainsos_queue.backends.base import QueueBackend
 from brainsos_queue.models import Task, TaskStatus
@@ -49,9 +51,12 @@ class SQLiteQueueBackend(QueueBackend):
                     queue TEXT NOT NULL,
                     payload TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    partition_key TEXT,
                     created_at REAL NOT NULL,
                     started_at REAL,
                     completed_at REAL,
+                    locked_at REAL,
+                    locked_by TEXT,
                     retries INTEGER NOT NULL DEFAULT 0,
                     max_retries INTEGER NOT NULL DEFAULT 3,
                     error TEXT,
@@ -59,7 +64,18 @@ class SQLiteQueueBackend(QueueBackend):
                 )
                 """
             )
+            # Automatic schema migration for existing databases
+            cursor = conn.execute("PRAGMA table_info(tasks)")
+            existing_cols = {col["name"] for col in cursor.fetchall()}
+            if "partition_key" not in existing_cols:
+                conn.execute("ALTER TABLE tasks ADD COLUMN partition_key TEXT")
+            if "locked_at" not in existing_cols:
+                conn.execute("ALTER TABLE tasks ADD COLUMN locked_at REAL")
+            if "locked_by" not in existing_cols:
+                conn.execute("ALTER TABLE tasks ADD COLUMN locked_by TEXT")
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_queue_status ON tasks(queue, status, created_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_partition_status ON tasks(partition_key, status)")
             conn.commit()
 
     def _get_event(self, queue_name: str) -> asyncio.Event:
@@ -68,14 +84,18 @@ class SQLiteQueueBackend(QueueBackend):
         return self._notify_events[queue_name]
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
+        row_keys = row.keys()
         return Task(
             id=row["id"],
             queue=row["queue"],
             payload=json.loads(row["payload"]),
             status=TaskStatus(row["status"]),
+            partition_key=row["partition_key"] if "partition_key" in row_keys else None,
             created_at=row["created_at"],
             started_at=row["started_at"],
             completed_at=row["completed_at"],
+            locked_at=row["locked_at"] if "locked_at" in row_keys else None,
+            locked_by=row["locked_by"] if "locked_by" in row_keys else None,
             retries=row["retries"],
             max_retries=row["max_retries"],
             error=row["error"],
@@ -87,17 +107,23 @@ class SQLiteQueueBackend(QueueBackend):
             with self._get_connection() as conn:
                 conn.execute(
                     """
-                    INSERT INTO tasks (id, queue, payload, status, created_at, started_at, completed_at, retries, max_retries, error, result)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO tasks (
+                        id, queue, payload, status, partition_key, created_at, started_at,
+                        completed_at, locked_at, locked_by, retries, max_retries, error, result
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task.id,
                         task.queue,
                         json.dumps(task.payload),
                         task.status.value,
+                        task.partition_key,
                         task.created_at,
                         task.started_at,
                         task.completed_at,
+                        task.locked_at,
+                        task.locked_by,
                         task.retries,
                         task.max_retries,
                         task.error,
@@ -110,33 +136,93 @@ class SQLiteQueueBackend(QueueBackend):
         return task
 
     async def dequeue(self, queue_name: str) -> Task | None:
+        return await self.acquire_task(worker_id="default-sqlite-worker", queue_name=queue_name)
+
+    async def acquire_task(
+        self,
+        worker_id: str,
+        lease_timeout_sec: float = 120.0,
+        queue_name: str | None = None,
+    ) -> Task | None:
+        """Atomically acquires the oldest queued task whose partition is not currently executing."""
         async with self._lock:
+            now = time.time()
+            active_cutoff = now - lease_timeout_sec
+
             with self._get_connection() as conn:
-                # Find oldest task with status 'queued' or 'failed' where retries < max_retries
-                cursor = conn.execute(
+                # Begin immediate transaction to guarantee atomic conditional checkout
+                conn.isolation_level = None
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    # 1. Automatically reclaim partition locks if locked_at exceeds lease_timeout_sec
+                    conn.execute(
+                        """
+                        UPDATE tasks
+                        SET status = 'failed',
+                            error = 'Lease timeout exceeded (worker crashed)',
+                            retries = retries + 1,
+                            locked_at = NULL,
+                            locked_by = NULL
+                        WHERE status = 'processing'
+                          AND locked_at IS NOT NULL
+                          AND locked_at <= ?
+                        """,
+                        (active_cutoff,),
+                    )
+
+                    # 2. Query for oldest queued/failed task whose partition_key is either NULL
+                    # OR does not exist in any active processing task with locked_at > active_cutoff
+                    query = """
+                        SELECT * FROM tasks
+                        WHERE status IN ('queued', 'failed')
+                          AND retries < max_retries
+                          AND (
+                              partition_key IS NULL
+                              OR partition_key NOT IN (
+                                  SELECT partition_key FROM tasks
+                                  WHERE status = 'processing'
+                                    AND partition_key IS NOT NULL
+                                    AND locked_at IS NOT NULL
+                                    AND locked_at > ?
+                              )
+                          )
                     """
-                    SELECT * FROM tasks
-                    WHERE queue = ? AND status IN ('queued', 'failed') AND retries < max_retries
-                    ORDER BY created_at ASC
-                    LIMIT 1
-                    """,
-                    (queue_name,),
-                )
-                row = cursor.fetchone()
-                if not row:
-                    event = self._get_event(queue_name)
-                    event.clear()
-                    return None
+                    params: list[Any] = [active_cutoff]
+                    if queue_name is not None:
+                        query += " AND queue = ?"
+                        params.append(queue_name)
 
-                task = self._row_to_task(row)
-                task.mark_started()
+                    query += " ORDER BY created_at ASC LIMIT 1"
 
-                conn.execute(
-                    "UPDATE tasks SET status = ?, started_at = ? WHERE id = ?",
-                    (task.status.value, task.started_at, task.id),
-                )
-                conn.commit()
-                return task
+                    cursor = conn.execute(query, tuple(params))
+                    row = cursor.fetchone()
+
+                    if not row:
+                        conn.execute("COMMIT")
+                        if queue_name is not None:
+                            event = self._get_event(queue_name)
+                            event.clear()
+                        return None
+
+                    task = self._row_to_task(row)
+                    task.mark_started(worker_id=worker_id)
+
+                    conn.execute(
+                        """
+                        UPDATE tasks
+                        SET status = ?,
+                            started_at = ?,
+                            locked_at = ?,
+                            locked_by = ?
+                        WHERE id = ?
+                        """,
+                        (task.status.value, task.started_at, task.locked_at, task.locked_by, task.id),
+                    )
+                    conn.execute("COMMIT")
+                    return task
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
 
     async def peek(self, queue_name: str) -> Task | None:
         async with self._lock:
@@ -162,6 +248,8 @@ class SQLiteQueueBackend(QueueBackend):
                         status = ?,
                         started_at = ?,
                         completed_at = ?,
+                        locked_at = ?,
+                        locked_by = ?,
                         retries = ?,
                         error = ?,
                         result = ?
@@ -171,6 +259,8 @@ class SQLiteQueueBackend(QueueBackend):
                         task.status.value,
                         task.started_at,
                         task.completed_at,
+                        task.locked_at,
+                        task.locked_by,
                         task.retries,
                         task.error,
                         json.dumps(task.result) if task.result is not None else None,
@@ -178,9 +268,9 @@ class SQLiteQueueBackend(QueueBackend):
                     ),
                 )
                 conn.commit()
-            if task.status in (TaskStatus.QUEUED, TaskStatus.FAILED):
-                event = self._get_event(task.queue)
-                event.set()
+            # Notify waiting workers on any state transition so released partitions can be scheduled
+            event = self._get_event(task.queue)
+            event.set()
         return task
 
     async def get_task(self, task_id: str) -> Task | None:

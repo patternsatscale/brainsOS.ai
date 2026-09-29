@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import OrderedDict
 
 from brainsos_queue.backends.base import QueueBackend
@@ -31,14 +32,45 @@ class MemoryQueueBackend(QueueBackend):
         return task
 
     async def dequeue(self, queue_name: str) -> Task | None:
+        return await self.acquire_task(worker_id="default-memory-worker", queue_name=queue_name)
+
+    async def acquire_task(
+        self,
+        worker_id: str,
+        lease_timeout_sec: float = 120.0,
+        queue_name: str | None = None,
+    ) -> Task | None:
         async with self._lock:
+            now = time.time()
+            active_cutoff = now - lease_timeout_sec
+
+            # 1. Reclaim expired leases
             for task in self._tasks.values():
-                if task.queue == queue_name and task.status in (TaskStatus.QUEUED, TaskStatus.FAILED):
-                    task.mark_started()
-                    return task
-            # No eligible tasks; clear notification event
-            event = self._get_event(queue_name)
-            event.clear()
+                if task.status == TaskStatus.PROCESSING and task.locked_at is not None and task.locked_at <= active_cutoff:
+                    task.mark_failed("Lease timeout exceeded (worker crashed)")
+
+            # 2. Identify active partition keys
+            active_partitions = {
+                t.partition_key
+                for t in self._tasks.values()
+                if t.status == TaskStatus.PROCESSING
+                and t.partition_key is not None
+                and t.locked_at is not None
+                and t.locked_at > active_cutoff
+            }
+
+            # 3. Find oldest queued/failed task not blocked by an active partition lock
+            for task in self._tasks.values():
+                if queue_name and task.queue != queue_name:
+                    continue
+                if task.status in (TaskStatus.QUEUED, TaskStatus.FAILED) and task.retries < task.max_retries:
+                    if task.partition_key is None or task.partition_key not in active_partitions:
+                        task.mark_started(worker_id=worker_id)
+                        return task
+
+            if queue_name:
+                event = self._get_event(queue_name)
+                event.clear()
             return None
 
     async def peek(self, queue_name: str) -> Task | None:

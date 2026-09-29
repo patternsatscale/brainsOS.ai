@@ -4,8 +4,10 @@ set -e
 echo "[BRAINSOS-MAIL] Initializing brainsOS Mail Server (Postfix + Dovecot)..."
 
 # Ensure directories exist
-mkdir -p /var/mail/vmail /etc/mail-brainsos /var/run/dovecot /var/spool/postfix
+mkdir -p /var/mail/vmail /etc/mail-brainsos /var/run/dovecot /var/spool/postfix /var/spool/brainsos/inbound
 touch /var/mail/vmail/shared-mailboxes.db
+chown -R vmail:vmail /var/spool/brainsos 2>/dev/null || true
+chmod -R 775 /var/spool/brainsos 2>/dev/null || true
 
 # Ensure vmail user & group exist
 addgroup -g 5000 vmail 2>/dev/null || true
@@ -13,17 +15,23 @@ adduser -D -u 5000 -G vmail -h /var/mail/vmail vmail 2>/dev/null || true
 addgroup dovecot vmail 2>/dev/null || true
 addgroup postfix vmail 2>/dev/null || true
 
-# Initialize configuration files if not present in mounted volume
-if [ ! -f /etc/mail-brainsos/users ]; then
-    echo "[BRAINSOS-MAIL] Seeding default accounts in /etc/mail-brainsos/users..."
-    cat << 'EOF' > /etc/mail-brainsos/users
-admin@brainsos.local:{PLAIN}admin_secret_pass:5000:5000::/var/mail/vmail/admin::
-operator@brainsos.local:{PLAIN}operator_secret_pass:5000:5000::/var/mail/vmail/operator::
-terrastella@brainsos.local:{PLAIN}terrastella_secret_pass:5000:5000::/var/mail/vmail/terrastella::
-bawtford@brainsos.local:{PLAIN}bawtford_secret_pass:5000:5000::/var/mail/vmail/bawtford::
-marvin@brainsos.local:{PLAIN}marvin_secret_pass:5000:5000::/var/mail/vmail/marvin::
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}"
+TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+
+# Provision configuration files in mounted volume
+echo "[BRAINSOS-MAIL] Provisioning accounts in /etc/mail-brainsos/users..."
+cat << EOF > /etc/mail-brainsos/users
+admin@brainsos.local:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
+operator@brainsos.local:{PLAIN}${OPERATOR_PASS}:5000:5000::/var/mail/vmail/operator::
+terrastella@brainsos.local:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastella::
+bawtford@brainsos.local:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
+marvin@brainsos.local:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
+ping@brainsos.local:{PLAIN}${PING_PASS}:5000:5000::/var/mail/vmail/ping::
 EOF
-fi
 
 if [ ! -f /etc/mail-brainsos/vmailbox ]; then
     cat << 'EOF' > /etc/mail-brainsos/vmailbox
@@ -32,6 +40,7 @@ operator@brainsos.local operator
 terrastella@brainsos.local terrastella
 bawtford@brainsos.local bawtford
 marvin@brainsos.local marvin
+ping@brainsos.local ping
 EOF
 fi
 
@@ -47,6 +56,9 @@ fi
 postmap lmdb:/etc/mail-brainsos/vmailbox
 postmap lmdb:/etc/mail-brainsos/virtual
 newaliases
+
+# Clean up any stale lock files from previous unclean shutdowns
+find /var/mail/vmail -name "*.lock" -delete 2>/dev/null || true
 
 # Enforce secure permissions
 chown -R vmail:vmail /var/mail/vmail
@@ -78,7 +90,7 @@ chown dovecot:dovecot /var/log/dovecot.log 2>/dev/null || true
 tail -n 0 -F /var/log/dovecot.log &
 
 # Export environment variables for Dovecot Sieve child scripts
-env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_)' > /etc/environment || true
+env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_|BRAINSOS_INGRESS_URL|BRAINSOS_SPOOL_DIR)' > /etc/environment || true
 chmod 644 /etc/environment
 
 # Start Dovecot
