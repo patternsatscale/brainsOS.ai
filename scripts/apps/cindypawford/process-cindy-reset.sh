@@ -52,7 +52,11 @@ ARCHIVE_DIR="${CINDY_ROOT}/archive"
 TRIGGER_FILE="${SITE_DIR}/.archive-ready"
 RECAP_FILE="${SITE_DIR}/recap.json"
 ERAS_FILE="${ARCHIVE_DIR}/eras.json"
-MODEL_POOL_FILE="${REPO_ROOT}/config/hermes/model_pool.json"
+if [ -f "${REPO_ROOT}/data/runners/hermes/model_pool.json" ]; then
+  MODEL_POOL_FILE="${REPO_ROOT}/data/runners/hermes/model_pool.json"
+else
+  MODEL_POOL_FILE="${REPO_ROOT}/config/default_runners/hermes/model_pool.json"
+fi
 LITELLM_CONFIG="${REPO_ROOT}/config/litellm/config.yaml"
 CLEAN_SLATE_DIR="${CINDY_ROOT}/clean-slate"
 

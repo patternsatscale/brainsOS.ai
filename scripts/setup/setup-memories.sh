@@ -81,7 +81,11 @@ log_success "Memory plane storage directory initialized."
 # ------------------------------------------------------------------------------
 # 3. Seed Starter OKF Templates & Fleet Index
 # ------------------------------------------------------------------------------
-TEMPLATE_DIR="${REPO_ROOT}/config/memories"
+if [ -d "${REPO_ROOT}/config/default_memories" ]; then
+  TEMPLATE_DIR="${REPO_ROOT}/config/default_memories"
+else
+  TEMPLATE_DIR="${REPO_ROOT}/config/memories"
+fi
 
 if [ -d "${TEMPLATE_DIR}" ]; then
   log_info "Seeding starter OKF templates from ${TEMPLATE_DIR}..."

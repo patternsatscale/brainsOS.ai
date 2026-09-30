@@ -110,11 +110,19 @@ if [ -f "config/litellm/config.yaml" ]; then
 fi
 
 # Hermes config
-if [ -f "config/hermes/config.yaml" ]; then
-  if grep -q "otlp:" config/hermes/config.yaml && grep -q "endpoint:" config/hermes/config.yaml; then
-    pass_check "Hermes configuration: OTLP monitoring export configured in config/hermes/config.yaml."
+HERMES_CONFIG_CANDIDATE=""
+for cand in "data/runners/hermes/config.yaml" "config/default_runners/hermes/config.yaml" "config/hermes/config.yaml"; do
+  if [ -f "$cand" ]; then
+    HERMES_CONFIG_CANDIDATE="$cand"
+    break
+  fi
+done
+
+if [ -n "$HERMES_CONFIG_CANDIDATE" ]; then
+  if grep -q "otlp:" "$HERMES_CONFIG_CANDIDATE" && grep -q "endpoint:" "$HERMES_CONFIG_CANDIDATE"; then
+    pass_check "Hermes configuration: OTLP monitoring export configured in $HERMES_CONFIG_CANDIDATE."
   else
-    fail_check "Hermes configuration: missing OTLP export in config/hermes/config.yaml."
+    fail_check "Hermes configuration: missing OTLP export in $HERMES_CONFIG_CANDIDATE."
   fi
 fi
 

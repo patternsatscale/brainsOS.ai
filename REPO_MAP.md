@@ -19,13 +19,16 @@ ProjectTitan/
 │       ├── clean-slate/        # Baseline web templates
 │       ├── info/               # Domain informational portal
 │       └── AGENT_BOUNDARIES.md # Strict tenant containment rules
-├── config/                     # Declarative appliance configurations
-│   ├── agents.yaml             # Canonical fleet manifest authority
+├── config/                     # Declarative appliance configurations & default templates
+│   ├── default_settings/       # Canonical default manifests (agents.yaml, runners.yaml, README.md)
+│   ├── default_runners/        # Default runner starter templates (hermes, claude-sdk, openai-sdk)
+│   ├── default_memories/       # Default OKF memory structure & templates (knowledge, rules, logs)
 │   ├── caddy/                  # L7 reverse proxy configuration (Caddyfile, agents.caddy)
 │   ├── egress/                 # Tool Egress Gateway mitmproxy configuration & addons
-│   ├── hermes/                 # Agent personas (SOUL.md) and sub-agent hierarchies
 │   └── litellm/                # LiteLLM routing, virtual keys, and spend control
 ├── data/                       # Local host runtime persistence (strictly git-ignored)
+│   ├── settings/               # Live fleet and runner manifest overrides (seeded on bootstrap)
+│   ├── runners/                # Live runner execution scripts and configurations
 │   ├── agent_memories/         # Pure OKF Markdown partitions (<tenant_id>/knowledge, rules)
 │   ├── agent_workspaces/       # Isolated execution sandboxes (<tenant_id>/scratch, tools)
 │   └── agent_logs/             # Execution and telemetry logbooks

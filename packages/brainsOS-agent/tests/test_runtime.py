@@ -71,9 +71,13 @@ class TestAgentRuntime(unittest.IsolatedAsyncioTestCase):
         self.tmpdir.cleanup()
 
     def test_parse_live_manifest_yaml(self):
-        """Validate AgentProfile against repo config/agents.yaml."""
-        manifest_path = Path("config/agents.yaml")
-        self.assertTrue(manifest_path.exists(), "config/agents.yaml must exist")
+        """Validate AgentProfile against repo config/default_settings/agents.yaml."""
+        manifest_path = (
+            Path("data/settings/agents.yaml")
+            if Path("data/settings/agents.yaml").exists()
+            else Path("config/default_settings/agents.yaml")
+        )
+        self.assertTrue(manifest_path.exists(), f"Manifest must exist at {manifest_path}")
 
         profiles = AgentProfile.from_manifest_yaml(manifest_path)
         self.assertIsInstance(profiles, list)

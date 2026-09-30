@@ -250,17 +250,19 @@ services:
           - firewall
 
   # ============================================================================
-  # L2: Shared Warm Stateless Hermes Agent Runner
-  # Serves all agents defined in config/agents.yaml via stateless API mode (port 8642)
+  # L2: Cognitive Compute Plane - Runner Fleet
+  # Serves agent turns via universal IPC (/v1/agent/run) across ecosystems
   # Rule 2: Routes strictly through LiteLLM (http://host.docker.internal:4000/v1)
   # Rule 4: Unprivileged, no docker socket mounts
   # ============================================================================
-  hermes-runner:
+
+  # Hermes Warm Runner (Port 8642)
+  runner-hermes:
     build:
       context: .
-      dockerfile: docker/hermes/Dockerfile
-    image: brainsos-hermes-runner:latest
-    container_name: brainsos-agent-hermes-runner
+      dockerfile: docker/runners/hermes/Dockerfile
+    image: brainsos-runner-hermes:latest
+    container_name: brainsos-runner-hermes
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
@@ -269,6 +271,8 @@ services:
     environment:
       - API_SERVER_ENABLED=true
       - PORT=8642
+      - OPENAI_BASE_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
       - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
@@ -276,11 +280,79 @@ services:
     volumes:
       - ${BRAINSOS_MEMORIES_DIR:-./data/agent_memories}:/data/agent_memories
       - ${BRAINSOS_WORKSPACES_DIR:-./data/agent_workspaces}:/data/agent_workspaces
-      - ./config/hermes:/config/hermes:ro
+      - ${BRAINSOS_RUNNERS_DIR:-./data/runners}/hermes:/config/hermes:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - brainsos-internal
+      brainsos-internal:
+        aliases:
+          - runner-hermes
+          - hermes-runner
+          - brainsos-agent-hermes-runner
+
+  # OpenAI SDK Warm Runner (Port 8002)
+  runner-openai:
+    build:
+      context: .
+      dockerfile: docker/runners/openai-sdk/Dockerfile
+    image: brainsos-runner-openai:latest
+    container_name: brainsos-runner-openai
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${OPENAI_RUNNER_PORT:-8002}:8002"
+    environment:
+      - OPENAI_BASE_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
+    volumes:
+      - ./data/runners:/data/runners:ro
+      - ${BRAINSOS_WORKSPACES_DIR:-./data/agent_workspaces}:/data/agent_workspaces:rw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      brainsos-internal:
+        aliases:
+          - runner-openai
+          - brainsos-runner-openai
+
+  # Claude SDK Warm Runner (Port 8001)
+  runner-claude:
+    build:
+      context: .
+      dockerfile: docker/runners/claude-sdk/Dockerfile
+    image: brainsos-runner-claude:latest
+    container_name: brainsos-runner-claude
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${CLAUDE_RUNNER_PORT:-8001}:8001"
+    environment:
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-${LITELLM_URL:-http://host.docker.internal:4000}}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
+      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
+    volumes:
+      - ${BRAINSOS_RUNNERS_DIR:-./data/runners}:/data/runners:ro
+      - ${BRAINSOS_WORKSPACES_DIR:-./data/agent_workspaces}:/data/agent_workspaces:rw
+      - ${HOME}/.aws:/root/.aws:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      brainsos-internal:
+        aliases:
+          - runner-claude
+          - brainsos-runner-claude
 
   # ============================================================================
   # L4: Routing & Security Plane

@@ -64,7 +64,25 @@ class AgentProfile(BaseModel):
             or "brainsos-core"
         )
 
-        persona_str = data.get("persona") or data.get("soul_path") or f"config/hermes/{agent_id}/SOUL.md"
+        persona_str = (
+            data.get("persona")
+            or data.get("soul_path")
+            or f"config/default_runners/hermes/{agent_id}/SOUL.md"
+        )
+        persona_path = base / persona_str
+        if not persona_path.exists():
+            for candidate in [
+                base / "data" / "runners" / "hermes" / agent_id / "SOUL.md",
+                base / "config" / "default_runners" / "hermes" / agent_id / "SOUL.md",
+                base / "data" / "runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
+                base / "config" / "default_runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
+                base / "data" / "runners" / agent_id / "SOUL.md",
+                base / "config" / "default_runners" / agent_id / "SOUL.md",
+                base / "config" / "hermes" / agent_id / "SOUL.md",
+            ]:
+                if candidate.exists():
+                    persona_path = candidate
+                    break
         memory_str = (
             data.get("memory_root")
             or (data.get("memory", {}).get("path") if isinstance(data.get("memory"), dict) else None)
@@ -76,7 +94,7 @@ class AgentProfile(BaseModel):
             or f"./data/agent_workspaces/{agent_id}"
         )
 
-        soul_path = Path(persona_str) if Path(persona_str).is_absolute() else base / persona_str
+        soul_path = Path(persona_str) if Path(persona_str).is_absolute() else persona_path
         memory_root = Path(memory_str) if Path(memory_str).is_absolute() else base / memory_str
         workspace_root = Path(workspace_str) if Path(workspace_str).is_absolute() else base / workspace_str
 
@@ -105,15 +123,31 @@ class AgentProfile(BaseModel):
     ) -> list[AgentProfile] | AgentProfile:
         """Parse agent profiles directly from a YAML file or string."""
         if isinstance(manifest_source, Path) or (
-            isinstance(manifest_source, str) and "\n" not in manifest_source and Path(manifest_source).exists()
+            isinstance(manifest_source, str) and "\n" not in manifest_source
         ):
             p = Path(manifest_source)
+            if not p.exists():
+                if p.name in ("agents.yaml", "default_agents.yaml"):
+                    for cand in [
+                        Path("data/settings/agents.yaml"),
+                        Path("config/default_settings/agents.yaml"),
+                        Path("config/agents.yaml"),
+                    ]:
+                        if cand.exists():
+                            p = cand
+                            break
+
+            if not p.exists():
+                raise FileNotFoundError(f"Manifest file not found: {manifest_source}")
+
             with open(p, "r", encoding="utf-8") as f:
                 doc = yaml.safe_load(f)
             if base_path:
                 base = Path(base_path).resolve()
             elif p.parent.name == "config":
                 base = p.parent.parent.resolve()
+            elif p.parent.name in ("default_settings", "settings") and p.parent.parent.name in ("config", "data"):
+                base = p.parent.parent.parent.resolve()
             else:
                 base = p.parent.resolve()
         else:
