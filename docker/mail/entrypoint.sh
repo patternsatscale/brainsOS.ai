@@ -22,6 +22,8 @@ BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me
 MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
 PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
 
+MAIL_DOMAIN="${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}"
+
 # Provision configuration files in mounted volume
 echo "[BRAINSOS-MAIL] Provisioning accounts in /etc/mail-brainsos/users..."
 cat << EOF > /etc/mail-brainsos/users
@@ -33,8 +35,18 @@ marvin@brainsos.local:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
 ping@brainsos.local:{PLAIN}${PING_PASS}:5000:5000::/var/mail/vmail/ping::
 EOF
 
-if [ ! -f /etc/mail-brainsos/vmailbox ]; then
-    cat << 'EOF' > /etc/mail-brainsos/vmailbox
+if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
+cat << EOF >> /etc/mail-brainsos/users
+admin@${MAIL_DOMAIN}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
+operator@${MAIL_DOMAIN}:{PLAIN}${OPERATOR_PASS}:5000:5000::/var/mail/vmail/operator::
+terrastella@${MAIL_DOMAIN}:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastella::
+bawtford@${MAIL_DOMAIN}:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
+marvin@${MAIL_DOMAIN}:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
+ping@${MAIL_DOMAIN}:{PLAIN}${PING_PASS}:5000:5000::/var/mail/vmail/ping::
+EOF
+fi
+
+cat << EOF > /etc/mail-brainsos/vmailbox
 admin@brainsos.local admin
 operator@brainsos.local operator
 terrastella@brainsos.local terrastella
@@ -42,15 +54,30 @@ bawtford@brainsos.local bawtford
 marvin@brainsos.local marvin
 ping@brainsos.local ping
 EOF
+
+if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
+cat << EOF >> /etc/mail-brainsos/vmailbox
+admin@${MAIL_DOMAIN} admin
+operator@${MAIL_DOMAIN} operator
+terrastella@${MAIL_DOMAIN} terrastella
+bawtford@${MAIL_DOMAIN} bawtford
+marvin@${MAIL_DOMAIN} marvin
+ping@${MAIL_DOMAIN} ping
+EOF
 fi
 
 if [ ! -f /etc/mail-brainsos/virtual ]; then
-    cat << 'EOF' > /etc/mail-brainsos/virtual
+    cat << EOF > /etc/mail-brainsos/virtual
 # Alias mappings
 postmaster@brainsos.local admin@brainsos.local
 root@brainsos.local admin@brainsos.local
+postmaster@${MAIL_DOMAIN} admin@brainsos.local
+root@${MAIL_DOMAIN} admin@brainsos.local
 EOF
 fi
+
+# Configure Postfix virtual mailbox domains
+postconf -e "virtual_mailbox_domains = brainsos.local, ${MAIL_DOMAIN}"
 
 # Compile Postfix lookup databases
 postmap lmdb:/etc/mail-brainsos/vmailbox
@@ -102,11 +129,14 @@ sleep 1
 # 1. Agent owners get read, write, seen, insert, and post rights — but CANNOT delete, expunge, or modify ACLs
 # 2. Administrator gets full management access (including write-deleted and expunge)
 for user in $(cut -d: -f1 /etc/mail-brainsos/users); do
-    if [ "$user" != "admin@brainsos.local" ]; then
+    if [ "$user" != "admin@brainsos.local" ] && [ "$user" != "admin@${MAIL_DOMAIN}" ]; then
         # Restrict agent owner: no write-deleted (t), no expunge (e), no admin (a)
         doveadm acl set -u "$user" INBOX owner lookup read write write-seen insert post 2>/dev/null || true
         # Grant admin full oversight & expunge capabilities
         doveadm acl set -u "$user" INBOX user=admin@brainsos.local lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+        if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
+            doveadm acl set -u "$user" INBOX user=admin@${MAIL_DOMAIN} lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+        fi
     fi
 done
 

@@ -52,13 +52,17 @@ class TestBrainsOSMailClient(unittest.TestCase):
         except OSError:
             self.skipTest(f"Live mail server not reachable on {self.smtp_host}:{self.smtp_port}")
 
+        mail_domain = os.getenv("BRAINSOS_MAIL_DOMAIN", os.getenv("BRAINSOS_DOMAIN", "brainsos.local"))
+        terra_user = f"terrastella@{mail_domain}"
+        admin_user = f"admin@{mail_domain}"
+
         # 1. Initialize agent client
         agent_client = BrainsOSMailClient(
             smtp_host=self.smtp_host,
             smtp_port=self.smtp_port,
             imap_host=self.smtp_host,
             imap_port=self.imap_port,
-            username="terrastella@brainsos.local",
+            username=terra_user,
             password=self.agent_pass,
         )
 
@@ -66,13 +70,18 @@ class TestBrainsOSMailClient(unittest.TestCase):
         subject = "Unit Test: Status Ping"
         body = "Automated unit test validating RFC threading and shared mailbox access."
         msg_id = agent_client.send_mail(
-            to="admin@brainsos.local",
+            to=admin_user,
             subject=subject,
             body=body,
         )
         domain = os.getenv("BRAINSOS_DOMAIN", "brainsos.local")
         self.assertTrue(
-            msg_id.startswith("<") and (msg_id.endswith(f"@{domain}>") or msg_id.endswith("@brainsos.local>"))
+            msg_id.startswith("<")
+            and (
+                msg_id.endswith(f"@{domain}>")
+                or msg_id.endswith(f"@{mail_domain}>")
+                or msg_id.endswith("@brainsos.local>")
+            )
         )
 
         # Wait a moment for LMTP local delivery
@@ -86,14 +95,14 @@ class TestBrainsOSMailClient(unittest.TestCase):
             smtp_port=self.smtp_port,
             imap_host=self.smtp_host,
             imap_port=self.imap_port,
-            username="admin@brainsos.local",
+            username=admin_user,
             password=self.admin_pass,
         )
 
         messages = admin_client.fetch_messages(folder="INBOX", limit=5)
         matching = [m for m in messages if m["subject"] == subject]
         self.assertTrue(len(matching) >= 1)
-        self.assertEqual(matching[-1]["from"], "terrastella@brainsos.local")
+        self.assertIn("terrastella@", matching[-1]["from"])
         self.assertIn("Automated unit test validating", matching[-1]["body"])
 
         # 4. Admin verifies shared folders list
@@ -119,7 +128,7 @@ class TestBrainsOSMailClient(unittest.TestCase):
         reply_subject = f"Re: {subject}"
         reply_body = "Directive confirmed. Executing instructions."
         reply_msg_id = admin_client.send_mail(
-            to="terrastella@brainsos.local",
+            to=terra_user,
             subject=reply_subject,
             body=reply_body,
             in_reply_to=msg_id,
@@ -127,7 +136,11 @@ class TestBrainsOSMailClient(unittest.TestCase):
         )
         self.assertTrue(
             reply_msg_id.startswith("<")
-            and (reply_msg_id.endswith(f"@{domain}>") or reply_msg_id.endswith("@brainsos.local>"))
+            and (
+                reply_msg_id.endswith(f"@{domain}>")
+                or reply_msg_id.endswith(f"@{mail_domain}>")
+                or reply_msg_id.endswith("@brainsos.local>")
+            )
         )
 
         time.sleep(1.5)

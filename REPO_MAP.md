@@ -44,7 +44,7 @@ ProjectTitan/
 │   └── brainsOS-telemetry/     # Decoupled Observer/Observable bus & SyntheticEnergyObserver
 ├── scripts/                    # Idempotent operational shell scripts (domain-separated)
 │   ├── setup/                  # Host, container, memory, and network provisioning
-│   ├── control/                # Lifecycle (bootstrap-env, sync-agents, emergency-stop, backup)
+│   ├── control/                # Lifecycle (bootstrap-env, generate-env, show-urls, reload-env, backup)
 │   ├── verify/                 # Automated validation suites and test harnesses
 │   └── apps/                   # Application deployment, preview servers, and rollback scripts
 ├── .env.example                # Canonical environment template (secrets never committed)

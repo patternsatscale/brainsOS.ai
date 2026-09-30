@@ -4,10 +4,9 @@
 }
 
 # ==============================================================================
-# brainsOS: TLS Policy Snippet & Multi-Agent Fleet Ingress Routes
+# brainsOS: TLS Policy Snippet
 # ==============================================================================
 import tls_policy.caddy
-import agents.caddy
 
 # ==============================================================================
 # Control Plane Gateway (LiteLLM)
@@ -79,7 +78,7 @@ http://editor.localhost, https://editor.localhost, http://code.localhost, https:
 }
 
 
-http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local} {
+http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local}, http://{$BRAINSOS_MAIL_DOMAIN:mail.brainsos.local}, https://{$BRAINSOS_MAIL_DOMAIN:mail.brainsos.local} {
 	import brainsos_tls
 	import sogo_backend
 }
@@ -661,82 +660,107 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
           <span class="layer-badge badge-l67">Levels 6 &amp; 7</span>
           <div class="layer-title-group">
             <span class="layer-name">Autonomous Multi-Agent Fleet &amp; Communications Plane</span>
-            <span class="layer-subtitle">Manifest-driven autonomous agent units, interactive web consoles, and multi-channel ingress</span>
+            <span class="layer-subtitle">Manifest-driven dynamic agent personas, universal groupware webmail, and asynchronous execution</span>
           </div>
+        </div>
+
+        <!-- Communications Hub: SOGo Webmail -->
+        <div class="grid-1" style="margin-bottom: 18px;">
+          <a href="http://mail.localhost" target="_blank" rel="noopener noreferrer" class="card" style="border-top: 3px solid #0284c7;" data-subdomain="mail">
+            <div>
+              <div class="card-header">
+                <span class="plane-tag" style="background: #e0f2fe; color: #0284c7;">Universal Communications Hub</span>
+                <span class="port-indicator">:20000 / :10025 / :10143</span>
+              </div>
+              <div class="card-title">
+                <span>brainsOS Webmail &amp; Groupware &bull; Universal Agent Message Bus</span>
+              </div>
+              <p class="card-desc">SOGo groupware client and universal mail substrate mediating asynchronous operator-agent dialogue and cross-agent coordination via Postfix SMTP and Dovecot IMAP. Ingests RFC-compliant email threads into the agent queue worker.</p>
+              <div class="meta-pills">
+                <span class="meta-pill">Webmail: <strong>SOGo Port 20000</strong></span>
+                <span class="meta-pill">Relay: <strong>Postfix SMTP (10025)</strong></span>
+                <span class="meta-pill">Mailboxes: <strong>admin, operator, terrastella, marvin, bawtford, ping</strong></span>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span class="launch-btn" style="color: #0284c7;"><span class="primary-link" style="color: #0284c7;">mail.localhost</span> &rarr;</span>
+              <span class="external-badge">Webmail Client &#x2197;</span>
+            </div>
+          </a>
         </div>
 
         <div class="grid-3">
           <!-- Terrastella -->
-          <a href="http://terrastella.localhost" target="_blank" rel="noopener noreferrer" class="card card-terrastella" data-subdomain="terrastella">
+          <div class="card-static card-terrastella">
             <div>
               <div class="card-header">
                 <span class="plane-tag tag-terrastella">Primary Agent</span>
-                <span class="port-indicator">:9119 / :8642</span>
+                <span class="port-indicator">Stateless Runner :8642</span>
               </div>
               <div class="card-title">
                 <span>Terrastella</span>
               </div>
               <div class="card-role">Primary Operations &amp; Fleet Orchestrator</div>
-              <p class="card-desc">Coordinates multi-agent fleet operations, verifies Open Knowledge Format memory purity, and executes sandboxed research and tooling.</p>
+              <p class="card-desc">Coordinates multi-agent fleet operations, verifies Open Knowledge Format memory purity, and executes sandboxed research and tooling via the shared stateless runner.</p>
               <div class="meta-pills">
                 <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
-                <span class="meta-pill">Budget: <strong>$50/mo</strong></span>
-                <span class="meta-pill">Signal Daemon</span>
+                <span class="meta-pill">Mailbox: <strong>terrastella@{$BRAINSOS_MAIL_DOMAIN:brainsos.local}</strong></span>
+                <span class="meta-pill">Memory: <strong>OKF Pure Markdown</strong></span>
               </div>
             </div>
             <div class="card-footer">
-              <span class="launch-btn"><span class="primary-link">terrastella.localhost</span> &rarr;</span>
-              <span class="external-badge">Console &#x2197;</span>
+              <span style="font-size: 12px; color: var(--text-muted);">Dynamic Persona &bull; Injected Turn Context</span>
+              <span class="external-badge">Stateless Runner</span>
             </div>
-          </a>
+          </div>
 
           <!-- Bawtford -->
-          <a href="http://bawtford.localhost" target="_blank" rel="noopener noreferrer" class="card card-cindy" data-subdomain="bawtford">
+          <div class="card-static card-cindy">
             <div>
               <div class="card-header">
                 <span class="plane-tag tag-cindy">Creative Director</span>
-                <span class="port-indicator">:9121 / :8644</span>
+                <span class="port-indicator">Stateless Runner :8642</span>
               </div>
               <div class="card-title">
                 <span>Bawtford</span>
               </div>
               <div class="card-role">Creative Director &amp; Supermodel CEO</div>
-              <p class="card-desc">Autonomous digital fashion director, public canvas publisher, and website builder sub-agent orchestrator (cindypawford.com).</p>
+              <p class="card-desc">Autonomous digital fashion director, public canvas publisher, and website builder sub-agent orchestrator. Persona and workspace injected into the shared stateless runner per turn.</p>
               <div class="meta-pills">
                 <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
-                <span class="meta-pill">Budget: <strong>$25/mo</strong></span>
-                <span class="meta-pill">Telegram Bot</span>
+                <span class="meta-pill">Mailbox: <strong>bawtford@{$BRAINSOS_MAIL_DOMAIN:brainsos.local}</strong></span>
+                <span class="meta-pill">Workspace: <strong>cindypawford/site</strong></span>
               </div>
             </div>
             <div class="card-footer">
-              <span class="launch-btn" style="color: #db2777;"><span class="primary-link" style="color: #db2777;">bawtford.localhost</span> &rarr;</span>
-              <span class="external-badge">Console &#x2197;</span>
+              <span style="font-size: 12px; color: var(--text-muted);">Dynamic Persona &bull; Injected Turn Context</span>
+              <span class="external-badge" style="color: #db2777;">Stateless Runner</span>
             </div>
-          </a>
+          </div>
 
           <!-- Marvin -->
-          <a href="http://marvin.localhost" target="_blank" rel="noopener noreferrer" class="card card-dan" data-subdomain="marvin">
+          <div class="card-static card-dan">
             <div>
               <div class="card-header">
                 <span class="plane-tag tag-dan">Sports Analytics</span>
-                <span class="port-indicator">:9120 / :8643</span>
+                <span class="port-indicator">Stateless Runner :8642</span>
               </div>
               <div class="card-title">
                 <span>Marvin</span>
               </div>
               <div class="card-role">Sports Analytics &amp; Prediction</div>
-              <p class="card-desc">Quantitative sports analytics unit generating predictive match models, mathematical simulations, and automated telemetry reports.</p>
+              <p class="card-desc">Quantitative sports analytics unit generating predictive match models, mathematical simulations, and automated telemetry reports via the shared stateless runner.</p>
               <div class="meta-pills">
                 <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
-                <span class="meta-pill">Budget: <strong>$25/mo</strong></span>
-                <span class="meta-pill">Telegram Bot</span>
+                <span class="meta-pill">Mailbox: <strong>marvin@{$BRAINSOS_MAIL_DOMAIN:brainsos.local}</strong></span>
+                <span class="meta-pill">Memory: <strong>OKF Pure Markdown</strong></span>
               </div>
             </div>
             <div class="card-footer">
-              <span class="launch-btn" style="color: #d97706;"><span class="primary-link" style="color: #d97706;">marvin.localhost</span> &rarr;</span>
-              <span class="external-badge">Console &#x2197;</span>
+              <span style="font-size: 12px; color: var(--text-muted);">Dynamic Persona &bull; Injected Turn Context</span>
+              <span class="external-badge" style="color: #d97706;">Stateless Runner</span>
             </div>
-          </a>
+          </div>
         </div>
       </section>
 
@@ -998,7 +1022,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
       <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
         All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.brainsos.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
       </p>
-      <div class="code-snippet">echo "127.0.0.1 brainsos.local terrastella.brainsos.local bawtford.brainsos.local marvin.brainsos.local proxy.brainsos.local editor.brainsos.local code.brainsos.local dgx.brainsos.local langfuse.brainsos.local efw.brainsos.local firewall.brainsos.local" | sudo tee -a /etc/hosts</div>
+      <div class="code-snippet">echo "127.0.0.1 brainsos.local proxy.brainsos.local editor.brainsos.local code.brainsos.local mail.brainsos.local dgx.brainsos.local langfuse.brainsos.local efw.brainsos.local firewall.brainsos.local" | sudo tee -a /etc/hosts</div>
     </div>
 
     <footer>

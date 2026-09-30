@@ -35,6 +35,7 @@ services:
       brainsos-operator-net:
     environment:
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-mail.brainsos.local}
       - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
       - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
       - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
@@ -88,6 +89,8 @@ services:
       - "host.docker.internal:host-gateway"
       - "control-plane:host-gateway"
     environment:
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
       - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}
       - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}
       - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
@@ -157,6 +160,8 @@ services:
       - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
       - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
       - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
 
   # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
   code-server:

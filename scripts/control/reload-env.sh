@@ -3,11 +3,12 @@
 # brainsOS: Environment Synchronization & Reload Utility (reload-env.sh)
 #
 # Reloads and applies all .env configuration across all planes without data loss:
-#   1. Synchronizes PostgreSQL user passwords in brainsos-infra-litellm-db & brainsos-langfuse-db
+#   1. Synchronizes PostgreSQL user passwords in LiteLLM DB & SOGo DB & Langfuse DB
 #   2. Recreates Docker containers with updated environment variables & extra_hosts
-#   3. Restarts host control plane (LiteLLM, Ollama, DGX bridge) with new variables
+#   3. Restarts host control plane (LiteLLM, Ollama, Langfuse, Queue Worker)
 #   4. Reloads Caddy ingress reverse proxy
 #   5. Verifies service health
+#   6. Displays updated service directory & credentials (show-urls.sh)
 # ==============================================================================
 
 set -euo pipefail
@@ -17,7 +18,7 @@ REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || tru
 if [ -z "${REPO_ROOT}" ]; then
   _check_dir="${SCRIPT_DIR}"
   while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
-    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -f "${_check_dir}/config/default_settings/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
       REPO_ROOT="${_check_dir}"
       break
     fi
@@ -38,14 +39,59 @@ NC="\033[0m"
 log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+# Parse arguments
+FORMAT_ENV=false
+SKIP_URLS=false
+URLS_ARGS=()
+
+show_help() {
+  echo -e "${BOLD}brainsOS Environment Reload & Password Synchronization${NC}"
+  echo ""
+  echo "Usage:"
+  echo "  $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  --format, --clean Clean and format .env before reloading"
+  echo "  --mask-secrets    Mask passwords and API tokens in the service directory output"
+  echo "  --apply-hosts     Automatically apply missing /etc/hosts mappings (requires sudo)"
+  echo "  --no-hosts        Skip checking or updating /etc/hosts"
+  echo "  --no-urls         Skip displaying the service directory table after reloading"
+  echo "  -h, --help        Show this help documentation"
+  echo ""
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --format|--clean)
+      FORMAT_ENV=true
+      shift
+      ;;
+    --no-urls|--skip-urls)
+      SKIP_URLS=true
+      shift
+      ;;
+    --mask-secrets|--apply-hosts|--no-hosts)
+      URLS_ARGS+=("$1")
+      shift
+      ;;
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    *)
+      URLS_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
 
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
 echo -e "${BLUE}${BOLD}brainsOS: Environment Reload & Password Synchronization${NC}"
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
 
-# Optional formatting flag (--format or --clean)
-if [ "${1:-}" = "--format" ] || [ "${1:-}" = "--clean" ]; then
+if [ "${FORMAT_ENV}" = true ]; then
   "${SCRIPT_DIR}/format-env.sh"
 fi
 
@@ -63,7 +109,7 @@ set +a
 # ------------------------------------------------------------------------------
 # 1. Synchronize LiteLLM PostgreSQL Database Password (Zero Data Loss)
 # ------------------------------------------------------------------------------
-log_info "Step 1/5: Checking LiteLLM database credentials..."
+log_info "Step 1/6: Checking LiteLLM database credentials..."
 
 DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(infra-)?litellm-db$' | head -n 1 || true)"
 if [ -n "${DB_CONTAINER}" ]; then
@@ -90,10 +136,37 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Synchronize Langfuse Database Password (if local container is running)
+# 2. Synchronize SOGo Groupware Database Password (Zero Data Loss)
+# ------------------------------------------------------------------------------
+log_info "Step 2/6: Checking SOGo database credentials..."
+
+SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-sogo-db$' | head -n 1 || true)"
+if [ -n "${SOGO_DB_CONTAINER}" ]; then
+  SOGO_DB_USER="${SOGO_DB_USER:-sogo}"
+  SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
+  SOGO_DB_PASSWORD="${SOGO_DB_PASSWORD:-sogo_secret_pass}"
+
+  log_info "Synchronizing database password for user '${SOGO_DB_USER}' in ${SOGO_DB_CONTAINER}..."
+  if docker exec "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" \
+      -c "ALTER USER \"${SOGO_DB_USER}\" WITH PASSWORD '${SOGO_DB_PASSWORD}';" >/dev/null 2>&1; then
+    log_success "SOGo database password synchronized with .env (Zero data loss)."
+  else
+    if docker exec "${SOGO_DB_CONTAINER}" psql -U postgres \
+        -c "ALTER USER \"${SOGO_DB_USER}\" WITH PASSWORD '${SOGO_DB_PASSWORD}';" >/dev/null 2>&1; then
+      log_success "SOGo database password synchronized via postgres role."
+    else
+      log_warn "Could not automatically alter SOGo password. Database may be initializing."
+    fi
+  fi
+else
+  log_info "SOGo database container is not running (skipping)."
+fi
+
+# ------------------------------------------------------------------------------
+# 3. Synchronize Langfuse Database Password (if local container is running)
 # ------------------------------------------------------------------------------
 if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
-  log_info "Step 2/5: Synchronizing local Langfuse database credentials..."
+  log_info "Step 3/6: Synchronizing local Langfuse database credentials..."
   LANGFUSE_ENV_FILE="${REPO_ROOT}/docker/langfuse/.env"
   if [ -f "${LANGFUSE_ENV_FILE}" ]; then
     LF_DB_PASS=$(grep "^LANGFUSE_DB_PASSWORD=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || true)
@@ -122,26 +195,26 @@ if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
     fi
   fi
 else
-  log_info "Step 2/5: Langfuse database is not running locally (skipping)."
+  log_info "Step 3/6: Langfuse database is not running locally (skipping)."
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Recreate / Update Docker Compose Services
+# 4. Recreate / Update Docker Compose Services
 # ------------------------------------------------------------------------------
-log_info "Step 3/5: Updating Docker container configurations..."
+log_info "Step 4/6: Updating Docker container configurations..."
 docker compose up -d
 log_success "Docker services updated with current .env configurations."
 
 # ------------------------------------------------------------------------------
-# 4. Restart Control Plane Gateway & Host Services
+# 5. Restart Control Plane Gateway & Host Services
 # ------------------------------------------------------------------------------
-log_info "Step 4/5: Restarting control plane (LiteLLM, Ollama, Langfuse)..."
+log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue)..."
 "${SCRIPT_DIR}/start-control-plane.sh" restart
 
 # ------------------------------------------------------------------------------
-# 5. Reload Caddy Ingress Gateway
+# 6. Reload Caddy Ingress Gateway
 # ------------------------------------------------------------------------------
-log_info "Step 5/5: Reloading Caddy ingress proxy..."
+log_info "Step 6/6: Reloading Caddy ingress proxy..."
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
   docker compose restart caddy >/dev/null 2>&1
   log_success "Caddy ingress reloaded."
@@ -154,6 +227,14 @@ echo ""
 echo -e "${GREEN}${BOLD}==============================================================================${NC}"
 echo -e "${GREEN}${BOLD}brainsOS: Environment Successfully Reloaded${NC}"
 echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-echo -e "All updated .env values and database credentials have been applied."
+echo -e "All updated .env values, domains, and database credentials have been applied."
 echo ""
 "${SCRIPT_DIR}/start-control-plane.sh" status
+
+# ------------------------------------------------------------------------------
+# Display Service Directory & URLs
+# ------------------------------------------------------------------------------
+if [ "${SKIP_URLS}" = false ]; then
+  echo ""
+  "${SCRIPT_DIR}/show-urls.sh" "${URLS_ARGS[@]}"
+fi

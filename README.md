@@ -256,6 +256,12 @@ cd brainsOS
 
 # Bootstrap environment: copies .env, creates data directories, installs virtualenv & packages
 make setup
+
+# Generate cryptographically secure passwords, configure domains/URLs, and reload services
+make env
+
+# Display all service URLs, credentials, and automatically synchronize /etc/hosts
+make urls
 ```
 
 ##### Decoupled Private Fleet Mode (Two-Repository Architecture)
@@ -352,6 +358,9 @@ Once running, the following local services are accessible in your browser:
 ```bash
 # Standardized lifecycle commands via root Makefile
 make setup          # Bootstrap .env, data dirs, venv, and editable packages
+make env            # Generate .env with secure passwords, configure URLs, and rebuild
+make reload_env     # Reload .env, synchronize passwords across DBs/containers, and show URLs
+make urls           # Display all service URLs & credentials, and synchronize /etc/hosts
 make up             # Synchronize fleet manifest and start Docker fleet
 make down           # Gracefully stop all Docker services
 make test           # Run pytest suite across all packages
