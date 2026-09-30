@@ -50,6 +50,7 @@ class AgentQueueWorkerDaemon:
         self.spool_dir.mkdir(parents=True, exist_ok=True)
 
         from brainsos_queue.backends.sqlite import SQLiteQueueBackend
+
         self.backend = SQLiteQueueBackend(db_path=str(self.queue_db_path))
         self.queue = WorkQueue("inbound_emails", backend=self.backend)
         self.worker: FIFOQueueWorker | None = None
@@ -72,6 +73,7 @@ class AgentQueueWorkerDaemon:
     def find_profile_for_recipient(self, recipient: str, profiles: list[AgentProfile]) -> AgentProfile | None:
         """Finds matching active AgentProfile for recipient email address."""
         from email.utils import parseaddr
+
         _, clean_addr = parseaddr(recipient)
         clean_recip = (clean_addr or recipient).lower().strip()
         for p in profiles:
@@ -112,11 +114,13 @@ class AgentQueueWorkerDaemon:
             target_profile = self.find_profile_for_recipient(recipient, profiles)
             if not target_profile:
                 logger.debug("Skipping inbound email for non-agent recipient '%s'", recipient)
-                return web.json_response({
-                    "status": "ignored",
-                    "reason": "non_agent_recipient",
-                    "recipient": recipient,
-                })
+                return web.json_response(
+                    {
+                        "status": "ignored",
+                        "reason": "non_agent_recipient",
+                        "recipient": recipient,
+                    }
+                )
 
             task = await self.queue.enqueue(
                 payload={
@@ -132,23 +136,27 @@ class AgentQueueWorkerDaemon:
                 recipient,
                 partition_key,
             )
-            return web.json_response({
-                "status": "enqueued",
-                "task_id": task.id,
-                "thread_id": partition_key,
-                "recipient": recipient,
-            })
+            return web.json_response(
+                {
+                    "status": "enqueued",
+                    "task_id": task.id,
+                    "thread_id": partition_key,
+                    "recipient": recipient,
+                }
+            )
         except Exception as e:
             logger.error("Ingress error processing inbound email: %s", e)
             return web.Response(status=500, text=f"Ingress error: {e}")
 
     async def handle_health(self, request: web.Request) -> web.Response:
         """Health check endpoint (GET /health/liveness)."""
-        return web.json_response({
-            "status": "ok",
-            "service": "brainsos-agent-worker",
-            "queue": self.queue.name,
-        })
+        return web.json_response(
+            {
+                "status": "ok",
+                "service": "brainsos-agent-worker",
+                "queue": self.queue.name,
+            }
+        )
 
     async def _spool_scanner_loop(self) -> None:
         """Background fallback scanner ingesting spooled .eml files not received via HTTP."""
@@ -214,6 +222,7 @@ class AgentQueueWorkerDaemon:
         elif "body" in payload and "sender" in payload:
             # Synthetic task fallback
             from email.message import EmailMessage
+
             em = EmailMessage()
             em["From"] = payload.get("sender", "unknown@brainsos.local")
             em["To"] = payload.get("recipient", "agent@brainsos.local")
@@ -256,11 +265,9 @@ class AgentQueueWorkerDaemon:
         # Set agent identity for sender
         client.username = profile.email
         # Resolve password for specific agent from environment
-        agent_pass = (
-            os.getenv(f"{profile.id.upper()}_MAIL_PASSWORD")
-            if profile.id
-            else None
-        ) or os.getenv("AGENT_MAIL_PASSWORD")
+        agent_pass = (os.getenv(f"{profile.id.upper()}_MAIL_PASSWORD") if profile.id else None) or os.getenv(
+            "AGENT_MAIL_PASSWORD"
+        )
         if agent_pass:
             client.password = agent_pass
 
@@ -307,7 +314,11 @@ class AgentQueueWorkerDaemon:
         await self._http_runner.setup()
         site = web.TCPSite(self._http_runner, host=self.ingress_host, port=self.ingress_port)
         await site.start()
-        logger.info("Mail Ingress HTTP endpoint listening on http://%s:%d/api/v1/mail/inbound", self.ingress_host, self.ingress_port)
+        logger.info(
+            "Mail Ingress HTTP endpoint listening on http://%s:%d/api/v1/mail/inbound",
+            self.ingress_host,
+            self.ingress_port,
+        )
 
         # Start spool scanner loop
         scanner_task = asyncio.create_task(self._spool_scanner_loop())

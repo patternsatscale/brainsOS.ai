@@ -121,7 +121,7 @@ class TestAgentRuntime(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(str(thread_file).endswith(".md"))
 
         content = thread_file.read_text(encoding="utf-8")
-        self.assertIn("type: \"thread-dialogue\"", content)
+        self.assertIn('type: "thread-dialogue"', content)
         self.assertIn("## Turn 1: user", content)
         self.assertIn("## Turn 2: assistant", content)
 

@@ -9,6 +9,8 @@ from typing import Annotated, Any
 import yaml
 from pydantic import AfterValidator, BaseModel, Field
 
+from .souls import SoulNotFoundError, get_soul_path
+
 
 def _validate_email(v: str) -> str:
     cleaned = str(v).strip()
@@ -27,6 +29,7 @@ class AgentProfile(BaseModel):
     name: str
     email: EmailStr
     id: str | None = None
+    soul: str | None = None
     runtime: str = "hermes"
     model: str = "brainsos-core"
     soul_path: Path
@@ -54,35 +57,51 @@ class AgentProfile(BaseModel):
         else:
             email_addr = f"{agent_id}@brainsos.local" if agent_id else "agent@brainsos.local"
 
-        runtime = str(data.get("runtime", "hermes"))
+        runtime = str(data.get("runtime") or data.get("runner") or "hermes")
 
         # Model extraction
         models = data.get("models", {}) if isinstance(data.get("models"), dict) else {}
-        model = str(
-            data.get("model")
-            or models.get("default")
-            or "brainsos-core"
-        )
+        model = str(data.get("model") or models.get("default") or "brainsos-core")
 
-        persona_str = (
-            data.get("persona")
-            or data.get("soul_path")
-            or f"config/default_runners/hermes/{agent_id}/SOUL.md"
-        )
-        persona_path = base / persona_str
-        if not persona_path.exists():
-            for candidate in [
-                base / "data" / "runners" / "hermes" / agent_id / "SOUL.md",
-                base / "config" / "default_runners" / "hermes" / agent_id / "SOUL.md",
-                base / "data" / "runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
-                base / "config" / "default_runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
-                base / "data" / "runners" / agent_id / "SOUL.md",
-                base / "config" / "default_runners" / agent_id / "SOUL.md",
-                base / "config" / "hermes" / agent_id / "SOUL.md",
-            ]:
-                if candidate.exists():
-                    persona_path = candidate
-                    break
+        soul_name = data.get("soul") or (agent_id if agent_id else None)
+        soul_path: Path | None = None
+
+        # Direct soul_path override (e.g. from tests)
+        if "soul_path" in data and isinstance(data["soul_path"], Path):
+            soul_path = data["soul_path"]
+            if not soul_name:
+                soul_name = soul_path.stem
+
+        if soul_path is None and soul_name:
+            try:
+                soul_path = get_soul_path(soul_name, base_dir=base)
+            except SoulNotFoundError:
+                soul_path = None
+
+        if soul_path is None:
+            persona_str = (
+                data.get("persona")
+                or (str(data.get("soul_path")) if data.get("soul_path") else None)
+                or f"config/default_runners/hermes/{agent_id}/SOUL.md"
+            )
+            persona_path = base / persona_str
+            if not persona_path.exists():
+                for candidate in [
+                    base / "config" / "default_souls" / f"{agent_id}.md",
+                    base / "data" / "souls" / f"{agent_id}.md",
+                    base / "data" / "runners" / "hermes" / agent_id / "SOUL.md",
+                    base / "config" / "default_runners" / "hermes" / agent_id / "SOUL.md",
+                    base / "data" / "runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
+                    base / "config" / "default_runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
+                    base / "data" / "runners" / agent_id / "SOUL.md",
+                    base / "config" / "default_runners" / agent_id / "SOUL.md",
+                    base / "config" / "hermes" / agent_id / "SOUL.md",
+                ]:
+                    if candidate.exists():
+                        persona_path = candidate
+                        break
+            soul_path = Path(persona_str) if Path(persona_str).is_absolute() else persona_path
+
         memory_str = (
             data.get("memory_root")
             or (data.get("memory", {}).get("path") if isinstance(data.get("memory"), dict) else None)
@@ -94,7 +113,6 @@ class AgentProfile(BaseModel):
             or f"./data/agent_workspaces/{agent_id}"
         )
 
-        soul_path = Path(persona_str) if Path(persona_str).is_absolute() else persona_path
         memory_root = Path(memory_str) if Path(memory_str).is_absolute() else base / memory_str
         workspace_root = Path(workspace_str) if Path(workspace_str).is_absolute() else base / workspace_str
 
@@ -105,6 +123,7 @@ class AgentProfile(BaseModel):
         return cls(
             name=name,
             id=agent_id,
+            soul=str(soul_name) if soul_name else None,
             email=email_addr,
             runtime=runtime,
             model=model,
@@ -122,9 +141,7 @@ class AgentProfile(BaseModel):
         base_path: Path | str | None = None,
     ) -> list[AgentProfile] | AgentProfile:
         """Parse agent profiles directly from a YAML file or string."""
-        if isinstance(manifest_source, Path) or (
-            isinstance(manifest_source, str) and "\n" not in manifest_source
-        ):
+        if isinstance(manifest_source, Path) or (isinstance(manifest_source, str) and "\n" not in manifest_source):
             p = Path(manifest_source)
             if not p.exists():
                 if p.name in ("agents.yaml", "default_agents.yaml"):
@@ -154,7 +171,20 @@ class AgentProfile(BaseModel):
             doc = yaml.safe_load(str(manifest_source))
             base = Path(base_path).resolve() if base_path else Path(".").resolve()
 
-        agents_list = doc.get("agents", []) if isinstance(doc, dict) else []
+        agents_raw = doc.get("agents", []) if isinstance(doc, dict) else []
+        if isinstance(agents_raw, dict):
+            agents_list = []
+            for k, v in agents_raw.items():
+                if isinstance(v, dict):
+                    entry = {"id": k, **v}
+                    if "soul" not in entry:
+                        entry["soul"] = k
+                    agents_list.append(entry)
+        elif isinstance(agents_raw, list):
+            agents_list = [a for a in agents_raw if isinstance(a, dict)]
+        else:
+            agents_list = []
+
         profiles = [cls.from_agent_dict(a, base_path=base) for a in agents_list if isinstance(a, dict)]
 
         if agent_id:

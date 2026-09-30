@@ -150,7 +150,7 @@ async def test_agent_loop():
         root = Path(tmpdir)
         mem_dir = root / "data" / "agent_memories" / "terrastella"
         ws_dir = root / "data" / "agent_workspaces" / "terrastella"
-        soul = root / "config" / "hermes" / "terrastella" / "SOUL.md"
+        soul = root / "config" / "default_souls" / "terrastella.md"
         mem_dir.mkdir(parents=True, exist_ok=True)
         ws_dir.mkdir(parents=True, exist_ok=True)
         soul.parent.mkdir(parents=True, exist_ok=True)
@@ -159,6 +159,7 @@ async def test_agent_loop():
         profile = AgentProfile(
             name="Terrastella",
             id="terrastella",
+            soul="terrastella",
             email="terrastella@brainsos.local",
             runtime="hermes",
             model="brainsos-core",

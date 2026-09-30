@@ -137,6 +137,7 @@ class TestHermesAdapter(unittest.IsolatedAsyncioTestCase):
 
     async def test_tool_calls_extraction(self):
         """Verify adapter extracts tool calls and metadata properly."""
+
         def mock_transport(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 status_code=200,
@@ -193,6 +194,38 @@ class TestHermesAdapter(unittest.IsolatedAsyncioTestCase):
         # Attempt to access root filesystem
         with self.assertRaises(WorkspaceBoundaryViolation):
             adapter.validate_workspace_path("/etc/passwd", self.bawtford_profile)
+
+    async def test_resolved_soul_override_in_process_message(self):
+        """Verify passing explicit resolved_soul overrides profile persona in system prompt."""
+        captured_prompts: list[str] = []
+
+        def mock_transport(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.read())
+            captured_prompts.append(body["messages"][0]["content"])
+            return httpx.Response(
+                status_code=200,
+                json={"choices": [{"message": {"role": "assistant", "content": "Done", "tool_calls": []}}]},
+            )
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(mock_transport))
+        adapter = HermesMailAdapter(http_client=client)
+
+        email = ParsedInboundEmail(
+            message_id="<test-001@brainsos.local>",
+            thread_id="<test-001@brainsos.local>",
+            sender="operator@brainsos.local",
+            recipient="bawtford@brainsos.local",
+            subject="Test",
+            clean_body="Ping",
+            raw_mime=b"",
+        )
+
+        await adapter.process_message(
+            email,
+            self.bawtford_profile,
+            resolved_soul="Overridden dynamic soul text",
+        )
+        self.assertIn("Overridden dynamic soul text", captured_prompts[0])
 
 
 if __name__ == "__main__":

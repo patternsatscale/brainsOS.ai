@@ -13,7 +13,7 @@ authors = [
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2.0.0",
 ]
 
 [project.scripts]
@@ -23,6 +23,7 @@ brainsos-mcp = "brainsos_mcp.server:main"
 test = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "tiktoken",
 ]
 
 [tool.pytest.ini_options]

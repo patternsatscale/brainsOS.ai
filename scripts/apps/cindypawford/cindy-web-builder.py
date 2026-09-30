@@ -86,20 +86,27 @@ def resolve_memory_dir(explicit: Optional[str] = None) -> Path:
 
 
 def resolve_persona_path(explicit: Optional[str] = None) -> Path:
-    """Resolve website builder sub-agent SOUL.md persona file."""
+    """Resolve website builder sub-agent persona file."""
     if explicit and Path(explicit).exists():
         return Path(explicit)
     # Check in container subagents partition
     container_soul = Path("/opt/data/subagents/web-developer/SOUL.md")
     if container_soul.exists():
         return container_soul
-    # Check repo canonical path
     repo_root = find_repo_root()
+    # Check live override in data/souls/
+    live_soul = repo_root / "data" / "souls" / "bawtford.web-developer.md"
+    if live_soul.exists() and live_soul.stat().st_size > 0:
+        return live_soul
+    # Check baseline in config/default_souls/
+    default_soul = repo_root / "config" / "default_souls" / "bawtford.web-developer.md"
+    if default_soul.exists():
+        return default_soul
+    # Legacy path fallback
     repo_soul = repo_root / "config" / "hermes" / "bawtford" / "web-developer" / "SOUL.md"
     if repo_soul.exists():
         return repo_soul
-    # Fallback to local file relative to script
-    return repo_root / "config" / "hermes" / "bawtford" / "web-developer" / "SOUL.md"
+    return default_soul
 
 
 def sanitize_code_content(raw_code: str, file_name: str) -> Tuple[str, List[str]]:
