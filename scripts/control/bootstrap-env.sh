@@ -136,6 +136,13 @@ if [ -d "${REPO_ROOT}/config/sample_agent_app" ]; then
   cp -n -R "${REPO_ROOT}/config/sample_agent_app/"* "${DATA_ROOT}/agent_apps/" 2>/dev/null || true
 fi
 
+# Seed backup and restore harness into backups if not already present
+if [ -d "${REPO_ROOT}/config/templates/backups" ]; then
+  log_info "Seeding standalone backup harness from config/templates/backups into ${DATA_ROOT}/backups..."
+  cp -n -R "${REPO_ROOT}/config/templates/backups/"* "${DATA_ROOT}/backups/" 2>/dev/null || true
+  chmod +x "${DATA_ROOT}/backups/"*.sh 2>/dev/null || true
+fi
+
 # Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory
 if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
   touch "${DATA_ROOT}/control_plane/caddy_root.crt"

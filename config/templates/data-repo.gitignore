@@ -24,7 +24,7 @@ comms/spool/*
 !comms/spool/.gitkeep
 comms/maildir/*
 !comms/maildir/.gitkeep
-comms/email/vmail/**
+comms/email/**
 comms/sogo/**
 comms/signal/**
 
@@ -36,8 +36,12 @@ telemetry/minio/**
 telemetry/postgres/**
 
 # --- Backups ---
-backups/*
+backups/*.tar.gz
+backups/*.tgz
+backups/*.zip
 !backups/.gitkeep
+!backups/*.sh
+!backups/README.md
 
 # --- OS / Editor Artifacts ---
 .DS_Store
