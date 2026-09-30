@@ -181,7 +181,7 @@ services:
       - ${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data/agent_memories}}:/memories
       - ${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_WORKSPACE_DIR:-./data/agent_workspaces}}:/data/workspace
       - ${BRAINSOS_COMMS_DIR:-./data/comms}:/data/comms
-      - ./agent_apps/cindypawford/site:/agent_apps/cindypawford/site
+      - ${BRAINSOS_AGENT_APPS_DIR:-./data/agent_apps}/cindypawford/site:/data/agent_apps/cindypawford/site
       - ./config/editor/brainsos.code-workspace:/workspace/brainsos.code-workspace:ro
       - ./docker/editor/entrypoint.sh:/usr/local/bin/brainsos-editor-entrypoint.sh:ro
       - ./data/control_plane/caddy_root.crt:/etc/ssl/caddy/root.crt:ro

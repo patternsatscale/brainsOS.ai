@@ -50,7 +50,7 @@ BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/agent_apps/cindypawford/site"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
 MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/${AGENT_ID}"
 WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}/${AGENT_ID}"
 
@@ -124,9 +124,9 @@ fi
 # Check required vanilla web files on host
 for file in index.html styles.css app.js; do
   if [ -f "${SITE_DIR}/${file}" ]; then
-    log_success "Verified host site file: agent_apps/cindypawford/site/${file}"
+    log_success "Verified host site file: data/agent_apps/cindypawford/site/${file}"
   else
-    log_error "Missing required site file: agent_apps/cindypawford/site/${file}"
+    log_error "Missing required site file: data/agent_apps/cindypawford/site/${file}"
     exit 1
   fi
 done
@@ -140,7 +140,7 @@ else
   exit 1
 fi
 
-# Verify container /app/html mount points to agent_apps/cindypawford/site
+# Verify container /app/html mount points to data/agent_apps/cindypawford/site
 HTML_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
 if [ "${HTML_MOUNT_CHECK}" = "${SITE_DIR}" ]; then
   log_success "Verified container '/app/html' bind-mount maps directly to '${SITE_DIR}'."
@@ -154,7 +154,7 @@ TEST_WRITE_FILE="/app/html/.test_cindy_perm_$(date +%s)"
 docker exec "${CONTAINER}" bash -c "echo 'cindy_write_ok' > ${TEST_WRITE_FILE}"
 
 if [ -f "${SITE_DIR}/$(basename "${TEST_WRITE_FILE}")" ]; then
-  log_success "Verified: Agent has verified write access to agent_apps/cindypawford/site from /app/html."
+  log_success "Verified: Agent has verified write access to data/agent_apps/cindypawford/site from /app/html."
   docker exec "${CONTAINER}" rm -f "${TEST_WRITE_FILE}"
 else
   log_error "Write test failed: Host did not observe file created from container /app/html."

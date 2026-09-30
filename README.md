@@ -104,7 +104,7 @@ graph TD
         SOGO["SOGo / Postfix<br/>(mail.brainsos.local :20000)"]:::l7
     end
 
-    subgraph "L6: Autonomous Agent Fleet Units (agent_apps/ & config/agents.yaml)"
+    subgraph "L6: Autonomous Agent Fleet Units (data/agent_apps/ & config/default_settings/agents.yaml)"
         CINDY["Cindy Pawford<br/>(site/ & pipeline/ :9122)"]:::l6
         TERRA["Terra Stella Operations<br/>(:8642 / :9119)"]:::l6
         MARVIN["Marvin Sports Analytics<br/>(:8643 / :9120)"]:::l6
@@ -378,17 +378,14 @@ brainsOS/
 ├── AGENTS.md                 # Agent operating discipline and safety rules
 ├── docker-compose.yml        # Declarative service topology and isolated networks
 ├── .env.example              # Environment variables template
-├── agent_apps/               # Decoupled tenant workspaces
-│   └── cindypawford/
-│       ├── site/             # Untrusted agent-authored web frontend (HTML/CSS/JS)
-│       ├── pipeline/         # Host-executed deployment infrastructure (SST Ion, AWS)
-│       └── AGENT_BOUNDARIES.md # Agent containment rules
 ├── config/  
-│   ├── agents.yaml           # Declarative multi-agent fleet manifest
+│   ├── default_settings/     # Declarative fleet and runner manifests (agents.yaml)
+│   ├── default_runners/      # Runner templates (hermes, claude-sdk, openai-sdk)
+│   ├── default_souls/        # Centralized baseline agent personas (bawtford, marvin, terrastella, ping)
+│   ├── sample_agent_app/     # Sample agent web application templates (cindypawford)
 │   ├── caddy/                # Ingress reverse proxy configuration
 │   ├── editor/               # Operator IDE workspace and Continue configs
 │   ├── litellm/              # Rate-limiting, model aliases, and DB settings
-│   ├── hermes/               # Upstream agent personas and configs
 │   └── egress/               # In-transit credential injection proxy rules
 ├── packages/
 │   ├── brainsOS-agent/       # Standalone AgentRuntime SPI & dynamic profile registry
@@ -402,7 +399,7 @@ brainsOS/
 │   ├── project-titan/        # Historical ticket & walkthrough archive (September 2026)
 │   ├── reference-architecture-tenets.md  # Core security tenets (TN-1 to TN-9)
 │   └── lab-work/             # Claude documentation & critique area (Rule 11)
-├── data/                     # Partitioned host volumes (memories, workspaces, databases)
+├── data/                     # Partitioned host volumes (memories, workspaces, databases, agent_apps)
 └── scripts/                  # Structured operational scripts
     ├── setup/                # Host, container, memory, and network provisioning
     ├── control/              # Runtime lifecycle, fleet management, and kill-switch

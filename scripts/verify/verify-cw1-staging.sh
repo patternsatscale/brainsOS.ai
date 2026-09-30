@@ -21,8 +21,8 @@ if [ -z "${REPO_ROOT}" ]; then
 fi
 ROOT_DIR="${REPO_ROOT}"
 
-INFRA_DIR="${ROOT_DIR}/agent_apps/cindypawford/pipeline"
-SITE_DIR="${ROOT_DIR}/agent_apps/cindypawford/site"
+INFRA_DIR="${ROOT_DIR}/data/agent_apps/cindypawford/pipeline"
+SITE_DIR="${ROOT_DIR}/data/agent_apps/cindypawford/site"
 
 PASS=0
 FAIL=0
@@ -84,7 +84,7 @@ echo "--- 1. Agent Boundary & Compartmentalization (Rules 4 & 7) ---"
 
 assert_output_not_contains \
   "Agent container compose has NO pipeline mount" \
-  "./agent_apps/cindypawford/pipeline" \
+  "./data/agent_apps/cindypawford/pipeline" \
   cat "${ROOT_DIR}/docker-compose.agents.yml"
 
 assert_output_not_contains \
@@ -94,7 +94,7 @@ assert_output_not_contains \
 
 assert_output_contains \
   "Agent container mounts ONLY site to /app/html" \
-  "./agent_apps/cindypawford/site:/app/html" \
+  "./data/agent_apps/cindypawford/site:/app/html" \
   cat "${ROOT_DIR}/docker-compose.agents.yml"
 
 # ------------------------------------------------------------------------------
@@ -104,7 +104,7 @@ echo
 echo "--- 2. SST Ion Infrastructure Scaffold ---"
 
 assert_success \
-  "agent_apps/cindypawford/pipeline/package.json exists" \
+  "data/agent_apps/cindypawford/pipeline/package.json exists" \
   test -f "${INFRA_DIR}/package.json"
 
 assert_output_contains \

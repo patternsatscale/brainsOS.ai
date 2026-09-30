@@ -10,6 +10,7 @@
 !config/default_runners/**
 !config/default_settings/**
 !config/default_souls/**
+!config/sample_agent_app/**
 
 # Local Manifest Overrides (Host-specific fleet customization)
 config/agents.local.yaml
@@ -46,13 +47,17 @@ data/runners/*
 !data/runners/.gitkeep
 data/souls/*
 !data/souls/.gitkeep
+data/agent_apps/*
+!data/agent_apps/.gitkeep
 *.tar.gz
 *.vsix
 
 # Agent Public Web Canvas (cloned dedicated repositories)
 apps/cindypawford/site/
-agent_apps/*/site/
-agent_apps/cindypawford/site/
+data/agent_apps/*/site/*
+!data/agent_apps/*/site/.gitkeep
+config/sample_agent_app/*/site/*
+!config/sample_agent_app/*/site/.gitkeep
 
 # Local Volume Mounts & Caches
 data/litellm_db/

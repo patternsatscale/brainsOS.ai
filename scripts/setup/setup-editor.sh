@@ -70,7 +70,7 @@ log_info "  - Config: ${CONFIG_DIR}"
 log_info "  - Data:   ${DATA_DIR}"
 
 # Ensure canvas site directory exists
-mkdir -p "${REPO_ROOT}/agent_apps/cindypawford/site"
+mkdir -p "${REPO_ROOT}/data/agent_apps/cindypawford/site"
 
 # Ensure Caddy root CA certificate is exported for in-container SSL trust
 mkdir -p "${REPO_ROOT}/data/control_plane"

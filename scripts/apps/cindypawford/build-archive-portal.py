@@ -18,7 +18,7 @@ def find_repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 REPO_ROOT = find_repo_root()
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "agent_apps", "cindypawford", "archive")
+ARCHIVE_DIR = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "archive")
 LOGBOOK_JSON_PATH = os.path.join(ARCHIVE_DIR, "logbook.json")
 ERAS_JSON_PATH = os.path.join(ARCHIVE_DIR, "eras.json")
 OUTPUT_HTML_PATH = os.path.join(ARCHIVE_DIR, "index.html")

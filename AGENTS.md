@@ -71,7 +71,7 @@ The walkthrough document must record:
 2. **Acceptance Criteria Verification**: Evidence that all checkboxes in the ticket are satisfied.
 3. **Automated & Manual Test Logs**: Exact terminal commands and outputs validating functionality.
 4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
-5. **Local Web Preview URLs**: For tickets touching web applications, canvases, portals, or frontend UI components (e.g. `apps/cindypawford/`), the agent must ensure a local preview server is running and explicitly provide clickable localhost and LAN URLs with instructions on specific rendering and interaction points to test (including mobile viewport emulation).
+5. **Local Web Preview URLs**: For tickets touching web applications, canvases, portals, or frontend UI components (e.g. `data/agent_apps/cindypawford/`), the agent must ensure a local preview server is running and explicitly provide clickable localhost and LAN URLs with instructions on specific rendering and interaction points to test (including mobile viewport emulation).
 
 > [!IMPORTANT]
 > **Internal Pre-Commit Review Gate**:
@@ -179,7 +179,7 @@ Agents must never violate the following zero-trust operational boundaries:
 
 ### Rule 9: Multi-Tenant Partitioning & Shared Runner Registry Authority
 - **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/default_settings/agents.yaml` (seeded to `data/settings/agents.yaml` on bootstrap). The manifest serves as the authoritative dynamic registry consumed by `packages/brainsOS-agent` and the shared stateless runner (`hermes-runner`). Adding, removing, or updating agent profiles requires zero container rebuilds or Docker daemon restarts.
-- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/agent_workspaces/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/agent_memories/<tenant_id>`), and its own isolated virtual key. The shared stateless runner dynamically validates path boundaries and injects isolated persona and memory partitions on a per-request basis. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
+- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/agent_workspaces/<tenant_id>` or dedicated web app workspace like `data/agent_apps/<app_name>/site`), its own pure OKF memory partition (`/data/agent_memories/<tenant_id>`), and its own isolated virtual key. The shared stateless runner dynamically validates path boundaries and injects isolated persona and memory partitions on a per-request basis. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
 - **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as `packages/brainsOS-agent/`, `packages/brainsOS-queue/`, `packages/brainsOS-mail/`, and `packages/brainsOS-memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
 
 ### Rule 10: In-Transit Egress Credential Injection

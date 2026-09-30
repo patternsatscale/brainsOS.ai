@@ -19,7 +19,7 @@ if [ -z "${REPO_ROOT}" ]; then
   [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 fi
 ROOT_DIR="${REPO_ROOT}"
-SITE_DIR="${ROOT_DIR}/agent_apps/cindypawford/site"
+SITE_DIR="${ROOT_DIR}/data/agent_apps/cindypawford/site"
 
 COMMIT_OR_TAG="${1:-HEAD~1}"
 DRY_RUN=false

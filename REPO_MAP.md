@@ -10,25 +10,23 @@ This document provides a comprehensive structural guide to **brainsOS** ([brains
 ProjectTitan/
 ├── .github/
 │   └── workflows/              # GitHub Actions CI matrix, pre-commit, and SST deployment
-├── agent_apps/                 # Isolated application tenants and agent deployment workspaces
-│   └── cindypawford/
-│       ├── site/               # Untrusted agent-authored web application (HTML/CSS/JS)
-│       ├── pipeline/           # Host-executed deployment infrastructure (SST Ion, AWS SDKs)
-│       ├── archive/            # Historical snapshots and logbooks
-│       ├── assets/             # Media and static assets
-│       ├── clean-slate/        # Baseline web templates
-│       ├── info/               # Domain informational portal
-│       └── AGENT_BOUNDARIES.md # Strict tenant containment rules
 ├── config/                     # Declarative appliance configurations & default templates
 │   ├── default_settings/       # Canonical default manifests (agents.yaml, runners.yaml, README.md)
 │   ├── default_runners/        # Default runner starter templates (hermes, claude-sdk, openai-sdk)
+│   ├── default_souls/          # Centralized baseline agent personas (bawtford, marvin, terrastella, ping)
 │   ├── default_memories/       # Default OKF memory structure & templates (knowledge, rules, logs)
-│   ├── caddy/                  # L7 reverse proxy configuration (Caddyfile, agents.caddy)
+│   ├── sample_agent_app/       # Template seeds for agent application canvases (cindypawford)
+│   ├── caddy/                  # L7 reverse proxy configuration (Caddyfile)
 │   ├── egress/                 # Tool Egress Gateway mitmproxy configuration & addons
 │   └── litellm/                # LiteLLM routing, virtual keys, and spend control
 ├── data/                       # Local host runtime persistence (strictly git-ignored)
 │   ├── settings/               # Live fleet and runner manifest overrides (seeded on bootstrap)
 │   ├── runners/                # Live runner execution scripts and configurations
+│   ├── souls/                  # Live agent persona overrides (seeded on bootstrap)
+│   ├── agent_apps/             # Isolated application tenants and agent deployment workspaces
+│   │   └── cindypawford/       # Active Cindy Pawford tenant workspace
+│   │       ├── site/           # Untrusted agent-authored web application (HTML/CSS/JS)
+│   │       └── pipeline/       # Host-executed deployment infrastructure (SST Ion, AWS SDKs)
 │   ├── agent_memories/         # Pure OKF Markdown partitions (<tenant_id>/knowledge, rules)
 │   ├── agent_workspaces/       # Isolated execution sandboxes (<tenant_id>/scratch, tools)
 │   └── agent_logs/             # Execution and telemetry logbooks

@@ -46,7 +46,7 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-CINDY_ROOT="${REPO_ROOT}/agent_apps/cindypawford"
+CINDY_ROOT="${REPO_ROOT}/data/agent_apps/cindypawford"
 SITE_DIR="${CINDY_ROOT}/site"
 ARCHIVE_DIR="${CINDY_ROOT}/archive"
 TRIGGER_FILE="${SITE_DIR}/.archive-ready"
