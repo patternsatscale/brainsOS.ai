@@ -76,6 +76,21 @@ MAX_BACKUPS="${MAX_BACKUPS:-14}"
 
 mkdir -p "${BACKUP_DIR}"
 
+# Delegate to colocated backup/restore harness in DATA_ROOT/backups if present
+if [ -x "${BACKUP_DIR}/backup.sh" ]; then
+  case "${1:-}" in
+    --restore)
+      if [ -x "${BACKUP_DIR}/restore.sh" ]; then
+        shift
+        exec "${BACKUP_DIR}/restore.sh" "$@"
+      fi
+      ;;
+    *)
+      exec "${BACKUP_DIR}/backup.sh" "$@"
+      ;;
+  esac
+fi
+
 # ------------------------------------------------------------------------------
 # Help & Usage
 # ------------------------------------------------------------------------------

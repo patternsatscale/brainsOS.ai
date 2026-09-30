@@ -9,7 +9,7 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude
+.PHONY: help setup up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore
 
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
@@ -18,6 +18,8 @@ help:
 	@echo "  make down           - Stop all Docker services and host control plane"
 	@echo "  make stop-all       - Stop all Docker containers, host LiteLLM, Ollama, and workers"
 	@echo "  make nuke           - Forcefully terminate all brainsOS containers and background processes (battery saver)"
+	@echo "  make backup         - Create a full data plane backup archive"
+	@echo "  make restore        - Restore data planes from latest archive (or ARCHIVE=<file>)"
 	@echo "  make test           - Run full pytest test suite across packages"
 	@echo "  make lint           - Run ruff linter and mypy type checks"
 	@echo "  make runner-base    - Build base runner container image (brainsos-runner-base:latest)"
@@ -71,3 +73,9 @@ lint:
 
 emergency-stop:
 	@docker compose kill hermes-runner 2>/dev/null || true
+
+backup:
+	@scripts/control/backup.sh
+
+restore:
+	@scripts/control/backup.sh --restore $(if $(ARCHIVE),$(ARCHIVE),latest)
