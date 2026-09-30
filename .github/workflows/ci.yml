@@ -34,7 +34,7 @@ jobs:
       - name: Install Development Dependencies & Packages
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-asyncio ruff mypy
+          pip install pytest pytest-asyncio ruff mypy tiktoken
           pip install -e packages/brainsOS-mail -e packages/brainsOS-memory -e packages/brainsOS-queue -e packages/brainsOS-telemetry -e packages/brainsOS-mcp -e packages/brainsOS-runner -e packages/brainsOS-agent
 
       - name: Code Quality & Linting (Ruff)
