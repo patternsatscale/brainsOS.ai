@@ -93,7 +93,10 @@ fi
 
 # 4. Rule 1 Memory Plane Purity Verification
 log_info "Step 4: Asserting Rule 1 (Memory Plane Purity) for queue artifacts..."
-MEMORIES_DIR="./data/agent_memories"
+MEMORIES_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
+if [[ "$MEMORIES_DIR" != /* ]]; then
+  MEMORIES_DIR="${REPO_ROOT}/${MEMORIES_DIR#./}"
+fi
 if [ -d "${MEMORIES_DIR}" ]; then
   ILLEGAL_FILES=$(find "${MEMORIES_DIR}" -type f \( -name "*.db" -o -name "*.sqlite" -o -name "*.queue" \))
   if [ -n "${ILLEGAL_FILES}" ]; then

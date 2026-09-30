@@ -37,6 +37,7 @@ fi
 cd "${REPO_ROOT}"
 
 # Load environment configuration
+_EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-}"
 if [ -f .env ]; then
   set -a
   . ./.env
@@ -45,6 +46,9 @@ elif [ -f .env.example ]; then
   set -a
   . ./.env.example
   set +a
+fi
+if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
+  BRAINSOS_DATA_DIR="${_EXPLICIT_DATA_DIR}"
 fi
 
 # Resolve directories
@@ -59,14 +63,14 @@ resolve_path() {
   fi
 }
 
-MEMORIES_DIR=$(resolve_path "${BRAINSOS_AGENT_MEMORIES_DIR:-}" "./data/agent_memories")
-WORKSPACE_DIR=$(resolve_path "${BRAINSOS_AGENT_WORKSPACES_DIR:-}" "./data/agent_workspaces")
-COMMS_DIR=$(resolve_path "${BRAINSOS_COMMS_DIR:-}" "./data/comms")
-DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "./data/control_plane/litellm_db")
+DATA_ROOT=$(resolve_path "${BRAINSOS_DATA_DIR:-}" "./data")
+MEMORIES_DIR=$(resolve_path "${BRAINSOS_AGENT_MEMORIES_DIR:-}" "${DATA_ROOT}/agent_memories")
+WORKSPACE_DIR=$(resolve_path "${BRAINSOS_AGENT_WORKSPACES_DIR:-}" "${DATA_ROOT}/agent_workspaces")
+COMMS_DIR=$(resolve_path "${BRAINSOS_COMMS_DIR:-}" "${DATA_ROOT}/comms")
+DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "${DATA_ROOT}/control_plane/litellm_db")
 if [ ! -d "${DB_DIR}" ] && [ -d "${REPO_ROOT}/data/litellm_db" ]; then
   DB_DIR="${REPO_ROOT}/data/litellm_db"
 fi
-DATA_ROOT="${REPO_ROOT}/data"
 BACKUP_DIR="${DATA_ROOT}/backups"
 MAX_BACKUPS="${MAX_BACKUPS:-14}"
 

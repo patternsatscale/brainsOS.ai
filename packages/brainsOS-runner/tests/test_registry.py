@@ -157,4 +157,3 @@ def test_registry_get_warm_http_runner():
     client = registry.get_runner("hermes-warm")
     assert isinstance(client, WarmHttpRunnerClient)
     assert client.endpoint == "http://runner-hermes:8642"
-

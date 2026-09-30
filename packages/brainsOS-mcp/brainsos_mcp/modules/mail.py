@@ -30,12 +30,14 @@ def register_mail_tools(mcp: FastMCP) -> list[str]:
                 body=body,
                 in_reply_to=reply_to_id if reply_to_id else None,
             )
-            return json.dumps({
-                "success": True,
-                "message_id": msg_id,
-                "to": to,
-                "subject": subject,
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "message_id": msg_id,
+                    "to": to,
+                    "subject": subject,
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 

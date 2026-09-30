@@ -110,17 +110,19 @@ def handle_read_okf_note(args: dict[str, Any], engine: OKFEngine | None = None, 
 
     try:
         note = engine.read_note(rel_path)
-        return json.dumps({
-            "success": True,
-            "path": note.rel_path,
-            "title": note.title,
-            "type": note.note_type,
-            "tags": note.tags,
-            "active": note.active,
-            "priority": note.priority,
-            "body": note.body,
-            "metadata": note.metadata,
-        })
+        return json.dumps(
+            {
+                "success": True,
+                "path": note.rel_path,
+                "title": note.title,
+                "type": note.note_type,
+                "tags": note.tags,
+                "active": note.active,
+                "priority": note.priority,
+                "body": note.body,
+                "metadata": note.metadata,
+            }
+        )
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})
 
@@ -144,16 +146,18 @@ def handle_write_okf_note(args: dict[str, Any], engine: OKFEngine | None = None,
             active=args.get("active", True),
             priority=args.get("priority", "normal"),
         )
-        return json.dumps({
-            "success": True,
-            "path": note.rel_path,
-            "title": note.title,
-            "type": note.note_type,
-            "tags": note.tags,
-            "active": note.active,
-            "priority": note.priority,
-            "size": len(note.serialize()),
-        })
+        return json.dumps(
+            {
+                "success": True,
+                "path": note.rel_path,
+                "title": note.title,
+                "type": note.note_type,
+                "tags": note.tags,
+                "active": note.active,
+                "priority": note.priority,
+                "size": len(note.serialize()),
+            }
+        )
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})
 
@@ -164,10 +168,12 @@ def handle_synthesize_active_rules(args: dict[str, Any], engine: OKFEngine | Non
     max_chars = args.get("max_chars")
     try:
         rules_text = engine.get_active_rules_context(max_chars=max_chars)
-        return json.dumps({
-            "success": True,
-            "rules_context": rules_text,
-            "character_count": len(rules_text),
-        })
+        return json.dumps(
+            {
+                "success": True,
+                "rules_context": rules_text,
+                "character_count": len(rules_text),
+            }
+        )
     except Exception as e:
         return json.dumps({"success": False, "error": str(e)})

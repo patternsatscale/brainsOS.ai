@@ -11,7 +11,7 @@ from brainsos_mail.calendar import generate_ics_event, write_ics_file
 class TestCalendar(unittest.TestCase):
     def test_generate_ics_event_basic(self):
         start = 1727280000.0  # Unix timestamp
-        end = 1727283600.0    # +1 hour
+        end = 1727283600.0  # +1 hour
 
         ics = generate_ics_event(
             summary="Test Workload Task",
@@ -72,4 +72,3 @@ class TestCalendar(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

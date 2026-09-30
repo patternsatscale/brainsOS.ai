@@ -12,8 +12,13 @@ if TYPE_CHECKING:
 
 def get_memory_root() -> str:
     """Resolve active OKF memories directory."""
+    data_dir = os.environ.get("BRAINSOS_DATA_DIR", "./data")
+    memories_dir = os.environ.get("BRAINSOS_MEMORIES_DIR", os.environ.get("BRAINSOS_AGENT_MEMORIES_DIR", ""))
     candidates = [
         os.environ.get("BRAINSOS_MEMORY_ROOT", ""),
+        memories_dir,
+        os.path.join(data_dir, "agent_memories"),
+        os.path.join(data_dir, "agent_memories", "default"),
         "/memories",
         os.path.abspath("./data/agent_memories"),
         os.path.abspath("./data/agent_memories/default"),
@@ -21,7 +26,7 @@ def get_memory_root() -> str:
     ]
     for c in candidates:
         if c and os.path.isdir(c):
-            return c
+            return os.path.abspath(c)
     return os.environ.get("BRAINSOS_MEMORY_ROOT") or "/memories"
 
 
@@ -35,13 +40,15 @@ def register_memory_tools(mcp: FastMCP) -> list[str]:
         engine = OKFEngine(root_dir=get_memory_root())
         try:
             note = engine.read_note(rel_path)
-            return json.dumps({
-                "success": True,
-                "rel_path": rel_path,
-                "title": note.title,
-                "body": note.body,
-                "metadata": note.metadata,
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "rel_path": rel_path,
+                    "title": note.title,
+                    "body": note.body,
+                    "metadata": note.metadata,
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -51,12 +58,14 @@ def register_memory_tools(mcp: FastMCP) -> list[str]:
         engine = OKFEngine(root_dir=get_memory_root())
         try:
             note = engine.write_note(rel_path=rel_path, content=content, title=title)
-            return json.dumps({
-                "success": True,
-                "rel_path": rel_path,
-                "title": note.title,
-                "size_bytes": len(note.serialize()),
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "rel_path": rel_path,
+                    "title": note.title,
+                    "size_bytes": len(note.serialize()),
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 

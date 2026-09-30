@@ -34,11 +34,13 @@ from brainsos_queue import WorkQueue, FIFOQueueWorker, Task
 # 1. Initialize named queue
 queue = WorkQueue("email_inbound")
 
+
 # 2. Define async task handler
 async def process_email(task: Task):
     print(f"Processing email task {task.id}: {task.payload['subject']}")
     # invoke agent reasoning or tool...
     return {"status": "replied"}
+
 
 # 3. Start FIFO worker with concurrency=1 (Rule 3 compliant)
 worker = FIFOQueueWorker(queue=queue, handler=process_email, concurrency=1)

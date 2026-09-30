@@ -16,10 +16,11 @@ ProjectTitan/
 │   ├── default_souls/          # Centralized baseline agent personas (bawtford, marvin, terrastella, ping)
 │   ├── default_memories/       # Default OKF memory structure & templates (knowledge, rules, logs)
 │   ├── sample_agent_app/       # Template seeds for agent application canvases (cindypawford)
+│   ├── templates/              # Repository seed templates (data-repo.gitignore)
 │   ├── caddy/                  # L7 reverse proxy configuration (Caddyfile)
 │   ├── egress/                 # Tool Egress Gateway mitmproxy configuration & addons
 │   └── litellm/                # LiteLLM routing, virtual keys, and spend control
-├── data/                       # Local host runtime persistence (strictly git-ignored)
+├── data/                       # Host runtime persistence / private fleet repository (via BRAINSOS_DATA_DIR)
 │   ├── settings/               # Live fleet and runner manifest overrides (seeded on bootstrap)
 │   ├── runners/                # Live runner execution scripts and configurations
 │   ├── souls/                  # Live agent persona overrides (seeded on bootstrap)
@@ -34,10 +35,12 @@ ProjectTitan/
 │   └── hermes/                 # Sandboxed agent runtime image (PUID/PGID 1000)
 ├── docs/                       # Project documentation, architecture specs, and walkthroughs
 ├── packages/                   # Standalone, reusable Python domain libraries
+│   ├── brainsOS-agent/         # Asynchronous agent runtime SPI, dynamic soul resolution & worker
 │   ├── brainsOS-mail/          # Decoupled agent SMTP/IMAP & CalDAV groupware client
 │   ├── brainsOS-mcp/           # Dynamic brainsOS MCP Server exposing tools across packages
 │   ├── brainsOS-memory/        # L5 OKF memory engine, purity enforcer & vector SPI
 │   ├── brainsOS-queue/         # Asynchronous FIFO task queue, SQLite/Memory backends & worker
+│   ├── brainsOS-runner/        # Stateless runner adapter framework & agent registry
 │   └── brainsOS-telemetry/     # Decoupled Observer/Observable bus & SyntheticEnergyObserver
 ├── scripts/                    # Idempotent operational shell scripts (domain-separated)
 │   ├── setup/                  # Host, container, memory, and network provisioning
@@ -95,15 +98,39 @@ graph TD
 ```
 
 ### Package Summaries
-1. **`brainsOS-memory`**: High-performance Open Knowledge Format (OKF) storage parser and purity validator. Rejects non-Markdown files (`.db`, `.py`, `.bin`) from the `/memories` mount and indexes active rules and working memory.
-2. **`brainsOS-queue`**: Asynchronous task queue supporting both in-memory and SQLite-backed persistence with concurrency control, task prioritization, retry mechanisms, and telemetry event hooks.
-3. **`brainsOS-telemetry`**: Decoupled Observer/Observable architecture for distributed telemetry. Computes synthetic energy expenditure based on task duration and token consumption down to the millijoule ($mJ = ms \times 25.0 + tokens \times 80.0$).
-4. **`brainsOS-mail`**: Comprehensive email and calendar client for agent-human interaction, parsing multipart messages, attachments, and CalDAV scheduling events.
-5. **`brainsOS-mcp`**: Dynamic Model Context Protocol (FastMCP) server exposing tools and capabilities across all brainsOS packages (`memory`, `queue`, `mail`, `telemetry`) via stdio with zero native Hermes tool injection and lean schema footprints (< 800 tokens).
+1. **`brainsOS-agent`**: Asynchronous agent runtime SPI, dynamic persona (`SOUL.md`) resolution, sub-agent hierarchical prompt composition, and runtime worker integration.
+2. **`brainsOS-runner`**: Stateless runner adapter framework (Docker and HTTP adapters) with dynamic agent manifest parsing and schema validation.
+3. **`brainsOS-memory`**: High-performance Open Knowledge Format (OKF) storage parser and purity validator. Rejects non-Markdown files (`.db`, `.py`, `.bin`) from the `/memories` mount and indexes active rules and working memory.
+4. **`brainsOS-queue`**: Asynchronous task queue supporting both in-memory and SQLite-backed persistence with concurrency control, task prioritization, retry mechanisms, and telemetry event hooks.
+5. **`brainsOS-telemetry`**: Decoupled Observer/Observable architecture for distributed telemetry. Computes synthetic energy expenditure based on task duration and token consumption down to the millijoule ($mJ = ms \times 25.0 + tokens \times 80.0$).
+6. **`brainsOS-mail`**: Comprehensive email and calendar client for agent-human interaction, parsing multipart messages, attachments, and CalDAV scheduling events.
+7. **`brainsOS-mcp`**: Dynamic Model Context Protocol (FastMCP) server exposing tools and capabilities across all brainsOS packages (`memory`, `queue`, `mail`, `telemetry`) via stdio with zero native Hermes tool injection and lean schema footprints (< 800 tokens).
 
 ---
 
-## 3. Rules of Engagement for External Agents & Contributors
+## 3. The Two-Repository Architecture (Core Platform vs. Private Fleet Repository)
+
+brainsOS enforces a clean architectural separation between the open-source platform core and private agent intellectual property:
+
+1. **Open-Source Platform Core (`brainsOS` / `brainsOS.ai`)**:
+   - The public execution harness, container topologies (`docker-compose.yml`), Python core packages (`packages/`), operational shell scripts (`scripts/`), and baseline configuration templates (`config/`).
+   - Zero proprietary agent personas, confidential memories, or private client codebases are tracked in this repository.
+
+2. **Private Fleet Repository (`BRAINSOS_DATA_DIR`)**:
+   - Stores all private intellectual property, runtime state, and persistent data:
+     - `souls/`: Proprietary agent personas and sub-agent prompt specializations.
+     - `agent_memories/`: Live Open Knowledge Format (OKF) Markdown knowledge bases, rules, and daily logs.
+     - `settings/`: Dynamic multi-agent fleet manifests (`agents.yaml`, `runners.yaml`).
+     - `agent_workspaces/`: Agent scratchpads, tools, and execution environments.
+     - `agent_apps/`: Untrusted agent-authored applications (e.g., Cindy Pawford canvas site).
+     - `control_plane/`: LiteLLM database and operator configurations.
+   - Initialized with `config/templates/data-repo.gitignore` to ignore binary caches, `.db`/`.sqlite` state, and process sockets while tracking all Markdown and YAML assets in Git.
+   - Configured via `BRAINSOS_DATA_DIR` in `.env` (e.g. `BRAINSOS_DATA_DIR=/Users/pats/Development/project_mJ`).
+   - Managed with automated git snapshots via `./scripts/control/snapshot-memories.sh` to commit and push memory changes to the private remote.
+
+---
+
+## 4. Rules of Engagement for External Agents & Contributors
 
 Any autonomous agent or human developer working within this repository must adhere to the following mandatory protocols:
 

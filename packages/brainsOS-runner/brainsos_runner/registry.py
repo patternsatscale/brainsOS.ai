@@ -1,5 +1,6 @@
 """Runner Registry and Configuration Loader for brainsOS cognitive compute nodes."""
 
+import os
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
@@ -67,7 +68,14 @@ class RunnerRegistry:
         config_path = Path(path)
         if not config_path.is_file():
             if config_path.name in ("runners.yaml", "default_runners.yaml"):
+                settings_dir = Path(
+                    os.getenv(
+                        "BRAINSOS_SETTINGS_DIR",
+                        Path(os.getenv("BRAINSOS_DATA_DIR", "./data")) / "settings",
+                    )
+                )
                 for cand in [
+                    settings_dir / "runners.yaml",
                     Path("data/settings/runners.yaml"),
                     Path("config/default_settings/runners.yaml"),
                     Path("config/runners.yaml"),
@@ -86,9 +94,7 @@ class RunnerRegistry:
             raise InvalidRunnerConfigError(f"Failed to parse YAML from {config_path}: {e}") from e
 
         if not isinstance(data, dict) or "runners" not in data:
-            raise InvalidRunnerConfigError(
-                f"Invalid runner manifest at {config_path}: missing top-level 'runners' key"
-            )
+            raise InvalidRunnerConfigError(f"Invalid runner manifest at {config_path}: missing top-level 'runners' key")
 
         raw_runners = data.get("runners")
         if not isinstance(raw_runners, list):

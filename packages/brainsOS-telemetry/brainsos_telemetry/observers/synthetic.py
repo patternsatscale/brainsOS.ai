@@ -44,9 +44,7 @@ class SyntheticEnergyObserver:
         """Compute synthetic energy for completed/executed tasks and record metrics."""
         duration_ms = float(event.metadata.get("duration_ms", 0.0))
         tokens = int(
-            event.metadata.get("tokens")
-            or event.metadata.get("total_tokens")
-            or event.metadata.get("token_count", 0)
+            event.metadata.get("tokens") or event.metadata.get("total_tokens") or event.metadata.get("token_count", 0)
         )
 
         computed_mj = self.calculate_energy(duration_ms=duration_ms, tokens=tokens)

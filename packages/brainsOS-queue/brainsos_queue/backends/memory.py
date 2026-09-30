@@ -46,7 +46,11 @@ class MemoryQueueBackend(QueueBackend):
 
             # 1. Reclaim expired leases
             for task in self._tasks.values():
-                if task.status == TaskStatus.PROCESSING and task.locked_at is not None and task.locked_at <= active_cutoff:
+                if (
+                    task.status == TaskStatus.PROCESSING
+                    and task.locked_at is not None
+                    and task.locked_at <= active_cutoff
+                ):
                     task.mark_failed("Lease timeout exceeded (worker crashed)")
 
             # 2. Identify active partition keys

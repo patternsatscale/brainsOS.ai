@@ -5,13 +5,23 @@ from __future__ import annotations
 import os
 
 FORBIDDEN_EXTENSIONS = {
-    ".db", ".sqlite", ".sqlite3", ".pyc", ".pyo", ".so", ".bin",
-    ".tar", ".gz", ".zip", ".lock", ".log", ".tmp", ".bak"
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".bin",
+    ".tar",
+    ".gz",
+    ".zip",
+    ".lock",
+    ".log",
+    ".tmp",
+    ".bak",
 }
 
-FORBIDDEN_DIRECTORIES = {
-    "__pycache__", "node_modules", ".cache", ".venv", "venv", ".git"
-}
+FORBIDDEN_DIRECTORIES = {"__pycache__", "node_modules", ".cache", ".venv", "venv", ".git"}
 
 
 def resolve_safe_path(root_dir: str, rel_path: str) -> str:

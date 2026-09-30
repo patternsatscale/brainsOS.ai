@@ -98,6 +98,37 @@ class TestOKFEngine(unittest.TestCase):
             self.assertIn("Rule 1: Unprivileged", context)
             self.assertNotIn("Rule 2: Inactive", context)
 
+    def test_get_memory_dir_resolution(self):
+        from brainsos_memory.okf.engine import get_memory_dir
+
+        old_mem = os.environ.get("MEMORY_DIR")
+        old_b_mem = os.environ.get("BRAINSOS_MEMORIES_DIR")
+        old_data = os.environ.get("BRAINSOS_DATA_DIR")
+
+        try:
+            for k in ["MEMORY_DIR", "BRAINSOS_MEMORIES_DIR", "BRAINSOS_AGENT_MEMORIES_DIR", "BRAINSOS_DATA_DIR"]:
+                os.environ.pop(k, None)
+            self.assertEqual(get_memory_dir(), "/memories")
+
+            os.environ["BRAINSOS_DATA_DIR"] = "/tmp/ext_data"
+            self.assertEqual(get_memory_dir(), "/tmp/ext_data/agent_memories")
+
+            os.environ["BRAINSOS_MEMORIES_DIR"] = "/tmp/custom_memories"
+            self.assertEqual(get_memory_dir(), "/tmp/custom_memories")
+
+            os.environ["MEMORY_DIR"] = "/container_memories"
+            self.assertEqual(get_memory_dir(), "/container_memories")
+        finally:
+            for k, v in [
+                ("MEMORY_DIR", old_mem),
+                ("BRAINSOS_MEMORIES_DIR", old_b_mem),
+                ("BRAINSOS_DATA_DIR", old_data),
+            ]:
+                if v is not None:
+                    os.environ[k] = v
+                else:
+                    os.environ.pop(k, None)
+
 
 if __name__ == "__main__":
     unittest.main()

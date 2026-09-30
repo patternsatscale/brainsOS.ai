@@ -45,7 +45,7 @@ SILVERBULLET_PORT="${SILVERBULLET_PORT:-3000}"
 CADDY_PORT="${CADDY_HTTP_PORT:-80}"
 HERMES_PORT="${HERMES_PORT:-8642}"
 API_SERVER_KEY="${API_SERVER_KEY:-}"
-DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -135,6 +135,7 @@ log_info "Testing bi-directional memory synchronization (SilverBullet <-> Hermes
 # Test 2A: Host write -> Hermes read
 SYNC_FILE="knowledge/brainsos_sync_test.md"
 SYNC_FULL_PATH="${AGENT_MEMORIES_DIR}/${SYNC_FILE}"
+mkdir -p "$(dirname "${SYNC_FULL_PATH}")"
 cat << 'EOF' > "${SYNC_FULL_PATH}"
 ---
 title: Bi-directional Sync Test Note

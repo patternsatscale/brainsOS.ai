@@ -158,9 +158,7 @@ def test_agent_turn_response_completed():
                 output="OK",
             )
         ],
-        memory_deltas=[
-            MemoryDelta(action="append", key="logs", value="checked status")
-        ],
+        memory_deltas=[MemoryDelta(action="append", key="logs", value="checked status")],
         metrics=ExecutionMetrics(prompt_tokens=40, completion_tokens=10, duration_ms=200),
     )
     assert resp.status == "completed"

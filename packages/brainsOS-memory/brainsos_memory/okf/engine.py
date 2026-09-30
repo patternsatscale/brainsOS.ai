@@ -33,7 +33,15 @@ from brainsos_memory.vector.null import NullVectorStore
 
 def get_memory_dir() -> str:
     """Return configured memory plane root directory."""
-    return os.environ.get("MEMORY_DIR", "/memories")
+    if "MEMORY_DIR" in os.environ:
+        return os.environ["MEMORY_DIR"]
+    if "BRAINSOS_MEMORIES_DIR" in os.environ:
+        return os.environ["BRAINSOS_MEMORIES_DIR"]
+    if "BRAINSOS_AGENT_MEMORIES_DIR" in os.environ:
+        return os.environ["BRAINSOS_AGENT_MEMORIES_DIR"]
+    if "BRAINSOS_DATA_DIR" in os.environ:
+        return os.path.join(os.environ["BRAINSOS_DATA_DIR"], "agent_memories")
+    return "/memories"
 
 
 def get_context_window() -> int:
@@ -86,22 +94,26 @@ class OKFEngine:
                         with open(full_path, "r", encoding="utf-8") as f:
                             content = f.read()
                         note = OKFNote.parse(rel_path, content)
-                        results.append({
-                            "path": rel_path,
-                            "title": note.title,
-                            "type": note.note_type,
-                            "tags": note.tags,
-                            "active": note.active,
-                            "priority": note.priority,
-                            "size": os.path.getsize(full_path),
-                            "modified": os.path.getmtime(full_path),
-                        })
+                        results.append(
+                            {
+                                "path": rel_path,
+                                "title": note.title,
+                                "type": note.note_type,
+                                "tags": note.tags,
+                                "active": note.active,
+                                "priority": note.priority,
+                                "size": os.path.getsize(full_path),
+                                "modified": os.path.getmtime(full_path),
+                            }
+                        )
                     except Exception as e:
-                        results.append({
-                            "path": rel_path,
-                            "title": fname,
-                            "error": str(e),
-                        })
+                        results.append(
+                            {
+                                "path": rel_path,
+                                "title": fname,
+                                "error": str(e),
+                            }
+                        )
         return results
 
     def read_note(self, rel_path: str) -> OKFNote:
@@ -206,13 +218,15 @@ class OKFEngine:
                     else:
                         snippet = note.body[:120].strip() + ("..." if len(note.body) > 120 else "")
 
-                    results.append({
-                        "path": rel_path,
-                        "title": note.title,
-                        "type": note.note_type,
-                        "tags": note.tags,
-                        "snippet": snippet,
-                    })
+                    results.append(
+                        {
+                            "path": rel_path,
+                            "title": note.title,
+                            "type": note.note_type,
+                            "tags": note.tags,
+                            "snippet": snippet,
+                        }
+                    )
             except Exception:
                 continue
 

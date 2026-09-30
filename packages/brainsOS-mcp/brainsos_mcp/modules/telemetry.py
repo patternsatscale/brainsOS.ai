@@ -30,11 +30,13 @@ def register_telemetry_tools(mcp: FastMCP) -> list[str]:
                 calc_mj = (duration_ms * 25.0) + (tokens * 80.0)
             else:
                 calc_mj = energy_observer.total_energy_millijoules
-            return json.dumps({
-                "success": True,
-                "energy_millijoules": calc_mj,
-                "total_recorded_millijoules": energy_observer.total_energy_millijoules,
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "energy_millijoules": calc_mj,
+                    "total_recorded_millijoules": energy_observer.total_energy_millijoules,
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -48,12 +50,14 @@ def register_telemetry_tools(mcp: FastMCP) -> list[str]:
                 event_type=event_type,
             )
             bus.notify_sync(event)
-            return json.dumps({
-                "success": True,
-                "event_type": event.event_type,
-                "task_id": event.task_id,
-                "timestamp": event.timestamp,
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "event_type": event.event_type,
+                    "task_id": event.task_id,
+                    "timestamp": event.timestamp,
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 

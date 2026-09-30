@@ -63,7 +63,14 @@ def get_soul_path(soul_name: str | Path, base_dir: Path | str | None = None) -> 
         if not souls_dir.is_absolute():
             souls_dir = (base / souls_dir).resolve()
     else:
-        souls_dir = (base / "data" / "souls").resolve()
+        data_dir_env = os.environ.get("BRAINSOS_DATA_DIR")
+        if data_dir_env:
+            data_dir = Path(data_dir_env)
+            if not data_dir.is_absolute():
+                data_dir = (base / data_dir).resolve()
+            souls_dir = (data_dir / "souls").resolve()
+        else:
+            souls_dir = (base / "data" / "souls").resolve()
 
     # Determine config default souls directory
     default_souls_dir_env = os.environ.get("BRAINSOS_DEFAULT_SOULS_DIR")

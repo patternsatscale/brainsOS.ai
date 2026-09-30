@@ -24,6 +24,7 @@ from brainsos_mail.parser import parse_inbound_mime
 from brainsos_queue import FIFOQueueWorker, Task, WorkQueue
 
 from brainsos_agent.adapters import get_runtime_adapter
+from brainsos_agent.config import get_comms_dir, get_data_dir
 from brainsos_agent.models import AgentProfile
 
 logger = logging.getLogger("brainsos_agent.worker")
@@ -35,18 +36,18 @@ class AgentQueueWorkerDaemon:
     def __init__(
         self,
         manifest_path: str | Path = "config/agents.yaml",
-        queue_db_path: str | Path = "./data/queue/tasks.db",
+        queue_db_path: str | Path | None = None,
         concurrency: int = 1,
         ingress_host: str = "0.0.0.0",
         ingress_port: int = 8000,
-        spool_dir: str | Path = "./data/comms/spool",
+        spool_dir: str | Path | None = None,
     ) -> None:
         self.manifest_path = Path(manifest_path)
-        self.queue_db_path = Path(queue_db_path)
+        self.queue_db_path = Path(queue_db_path) if queue_db_path else (get_data_dir() / "queue" / "tasks.db")
         self.concurrency = concurrency
         self.ingress_host = ingress_host
         self.ingress_port = ingress_port
-        self.spool_dir = Path(spool_dir)
+        self.spool_dir = Path(spool_dir) if spool_dir else (get_comms_dir() / "spool")
         self.spool_dir.mkdir(parents=True, exist_ok=True)
 
         from brainsos_queue.backends.sqlite import SQLiteQueueBackend
@@ -348,11 +349,11 @@ async def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     manifest = os.getenv("BRAINSOS_AGENTS_MANIFEST", "config/agents.yaml")
-    db_path = os.getenv("BRAINSOS_QUEUE_DB", "./data/queue/tasks.db")
+    db_path = os.getenv("BRAINSOS_QUEUE_DB", str(get_data_dir() / "queue" / "tasks.db"))
     concurrency = int(os.getenv("BRAINSOS_QUEUE_CONCURRENCY", "1"))
     ingress_host = os.getenv("BRAINSOS_INGRESS_HOST", "0.0.0.0")
     ingress_port = int(os.getenv("BRAINSOS_INGRESS_PORT", "8000"))
-    spool_dir = os.getenv("BRAINSOS_SPOOL_DIR", "./data/comms/spool")
+    spool_dir = os.getenv("BRAINSOS_SPOOL_DIR", str(get_comms_dir() / "spool"))
 
     daemon = AgentQueueWorkerDaemon(
         manifest_path=manifest,

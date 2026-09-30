@@ -154,9 +154,7 @@ async def test_container_timeout_and_kill(sample_request: AgentTurnRequest):
         assert "timed out" in (response.error_message or "").lower()
 
         # Check that docker kill and rm were called
-        kill_or_rm_calls = [
-            call[0] for call in mock_exec.call_args_list if "kill" in call[0] or "rm" in call[0]
-        ]
+        kill_or_rm_calls = [call[0] for call in mock_exec.call_args_list if "kill" in call[0] or "rm" in call[0]]
         assert len(kill_or_rm_calls) >= 1
 
 

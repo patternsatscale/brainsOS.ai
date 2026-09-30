@@ -316,8 +316,14 @@ if [ -f "${REPO_ROOT}/scripts/setup/setup-memories.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-memories.sh"
 fi
 
-DATA_DIR=$(grep -E '^BRAINSOS_AGENT_MEMORIES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
-DATA_DIR="${DATA_DIR:-./data/agent_memories}"
+DATA_ROOT=$(grep -E '^BRAINSOS_DATA_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data")
+DATA_ROOT="${DATA_ROOT:-./data}"
+if [[ "$DATA_ROOT" != /* ]]; then
+  DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
+fi
+
+DATA_DIR=$(grep -E '^BRAINSOS_AGENT_MEMORIES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "${DATA_ROOT}/agent_memories")
+DATA_DIR="${DATA_DIR:-${DATA_ROOT}/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -325,14 +331,14 @@ else
   TARGET_MEMORIES_DIR="${DATA_DIR}"
 fi
 
-mkdir -p "${REPO_ROOT}/data/backups"
-mkdir -p "${REPO_ROOT}/data/control_plane"
-mkdir -p "${REPO_ROOT}/data/comms"
-mkdir -p "${REPO_ROOT}/data/telemetry"
+mkdir -p "${DATA_ROOT}/backups"
+mkdir -p "${DATA_ROOT}/control_plane"
+mkdir -p "${DATA_ROOT}/comms"
+mkdir -p "${DATA_ROOT}/telemetry"
 
 # LiteLLM Dedicated Control Plane Database Storage (isolated from memories)
-DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/control_plane/litellm_db")
-DB_DATA_DIR="${DB_DATA_DIR:-./data/control_plane/litellm_db}"
+DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "${DATA_ROOT}/control_plane/litellm_db")
+DB_DATA_DIR="${DB_DATA_DIR:-${DATA_ROOT}/control_plane/litellm_db}"
 
 if [[ "$DB_DATA_DIR" != /* ]]; then
   TARGET_DB_DIR="${REPO_ROOT}/${DB_DATA_DIR#./}"
@@ -353,8 +359,8 @@ else
 fi
 
 # Hermes Agent Runtime Workspace Storage (tools, caches, packages, isolated from memories)
-WORKSPACE_DIR=$(grep -E '^BRAINSOS_AGENT_WORKSPACES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_workspaces")
-WORKSPACE_DIR="${WORKSPACE_DIR:-./data/agent_workspaces}"
+WORKSPACE_DIR=$(grep -E '^BRAINSOS_AGENT_WORKSPACES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "${DATA_ROOT}/agent_workspaces")
+WORKSPACE_DIR="${WORKSPACE_DIR:-${DATA_ROOT}/agent_workspaces}"
 
 if [[ "$WORKSPACE_DIR" != /* ]]; then
   TARGET_WORKSPACE_DIR="${REPO_ROOT}/${WORKSPACE_DIR#./}"

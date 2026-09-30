@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -13,15 +14,25 @@ from brainsos_queue.backends.base import QueueBackend
 from brainsos_queue.models import Task, TaskStatus
 
 
+def get_default_queue_db_path() -> str:
+    """Return default queue database path from environment or container default."""
+    if "BRAINSOS_QUEUE_DB" in os.environ:
+        return os.environ["BRAINSOS_QUEUE_DB"]
+    if "BRAINSOS_DATA_DIR" in os.environ:
+        return str(Path(os.environ["BRAINSOS_DATA_DIR"]) / "queue" / "tasks.db")
+    return "/workspace/queue.db"
+
+
 class SQLiteQueueBackend(QueueBackend):
     """Persistent SQLite-backed work queue.
 
     Enforces Rule 1 (Memory Plane Purity): Database path must never be placed inside /memories.
     """
 
-    def __init__(self, db_path: str = "/workspace/queue.db") -> None:
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        target_path = str(db_path) if db_path is not None else get_default_queue_db_path()
         # Enforce Rule 1 Memory Plane Purity
-        resolved = Path(db_path).resolve()
+        resolved = Path(target_path).resolve()
         path_str = str(resolved)
         if "/memories" in path_str or "agent_memories" in path_str:
             raise ValueError(

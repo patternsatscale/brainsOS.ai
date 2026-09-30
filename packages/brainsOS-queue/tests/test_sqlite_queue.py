@@ -69,6 +69,29 @@ class TestSQLiteQueue(unittest.IsolatedAsyncioTestCase):
             if os.path.exists(db_path):
                 os.remove(db_path)
 
+    def test_default_queue_db_path_resolution(self):
+        from brainsos_queue.backends.sqlite import get_default_queue_db_path
+
+        old_q = os.environ.get("BRAINSOS_QUEUE_DB")
+        old_d = os.environ.get("BRAINSOS_DATA_DIR")
+
+        try:
+            os.environ.pop("BRAINSOS_QUEUE_DB", None)
+            os.environ.pop("BRAINSOS_DATA_DIR", None)
+            self.assertEqual(get_default_queue_db_path(), "/workspace/queue.db")
+
+            os.environ["BRAINSOS_DATA_DIR"] = "/tmp/ext_data"
+            self.assertEqual(get_default_queue_db_path(), "/tmp/ext_data/queue/tasks.db")
+
+            os.environ["BRAINSOS_QUEUE_DB"] = "/tmp/custom_queue.db"
+            self.assertEqual(get_default_queue_db_path(), "/tmp/custom_queue.db")
+        finally:
+            for k, v in [("BRAINSOS_QUEUE_DB", old_q), ("BRAINSOS_DATA_DIR", old_d)]:
+                if v is not None:
+                    os.environ[k] = v
+                else:
+                    os.environ.pop(k, None)
+
 
 if __name__ == "__main__":
     unittest.main()

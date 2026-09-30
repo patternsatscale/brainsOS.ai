@@ -38,6 +38,7 @@ $$\text{Energy (mJ)} = (\text{Duration ms} \times 25.0) + (\text{Tokens} \times 
 import asyncio
 from brainsos_telemetry import TelemetryBus, TelemetryEvent, SyntheticEnergyObserver
 
+
 async def main():
     bus = TelemetryBus()
     energy_observer = SyntheticEnergyObserver()
@@ -52,6 +53,7 @@ async def main():
 
     await bus.notify(event)
     print(f"Energy: {event.energy_millijoules} mJ")
+
 
 asyncio.run(main())
 ```

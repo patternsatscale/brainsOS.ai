@@ -53,7 +53,7 @@ log_info "Initializing brainsOS Memory Plane from ${REPO_ROOT}..."
 # ------------------------------------------------------------------------------
 # 1. Resolve Target Memories Directory
 # ------------------------------------------------------------------------------
-DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"

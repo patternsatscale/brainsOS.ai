@@ -51,21 +51,53 @@ else
   log_info ".env already exists. Preserving existing configuration."
 fi
 
+# Load active .env to read BRAINSOS_DATA_DIR if not already provided in environment
+_EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-}"
+if [ -f "${REPO_ROOT}/.env" ]; then
+  set -a
+  . "${REPO_ROOT}/.env"
+  set +a
+fi
+if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
+  BRAINSOS_DATA_DIR="${_EXPLICIT_DATA_DIR}"
+fi
+
+DATA_ROOT="${BRAINSOS_DATA_DIR:-./data}"
+if [[ "$DATA_ROOT" != /* ]]; then
+  DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
+fi
+
+log_info "Resolved target runtime data directory: ${DATA_ROOT}"
+
+# Check if target data directory is an active Git repository
+if [ -d "${DATA_ROOT}/.git" ]; then
+  log_warn "Detected active Git repository in ${DATA_ROOT}. Operating in decoupled private repository mode."
+  if [ ! -f "${DATA_ROOT}/.gitignore" ] && [ -f "${REPO_ROOT}/config/templates/data-repo.gitignore" ]; then
+    log_info "Installing data-repo.gitignore into ${DATA_ROOT}/.gitignore..."
+    cp "${REPO_ROOT}/config/templates/data-repo.gitignore" "${DATA_ROOT}/.gitignore"
+  fi
+fi
+
 # 2. Host Storage Directories
-log_info "Scaffolding local host runtime data directories..."
+log_info "Scaffolding runtime data directories in ${DATA_ROOT}..."
 DATA_DIRS=(
-  "${REPO_ROOT}/data/agent_memories"
-  "${REPO_ROOT}/data/agent_workspaces"
-  "${REPO_ROOT}/data/agent_logs"
-  "${REPO_ROOT}/data/caddy"
-  "${REPO_ROOT}/data/litellm"
-  "${REPO_ROOT}/data/comms"
-  "${REPO_ROOT}/data/queue"
-  "${REPO_ROOT}/data/runners"
-  "${REPO_ROOT}/data/settings"
-  "${REPO_ROOT}/data/control_plane"
-  "${REPO_ROOT}/data/souls"
-  "${REPO_ROOT}/data/agent_apps"
+  "${DATA_ROOT}/agent_memories"
+  "${DATA_ROOT}/agent_workspaces"
+  "${DATA_ROOT}/agent_logs"
+  "${DATA_ROOT}/comms"
+  "${DATA_ROOT}/comms/spool"
+  "${DATA_ROOT}/comms/maildir"
+  "${DATA_ROOT}/queue"
+  "${DATA_ROOT}/runners"
+  "${DATA_ROOT}/settings"
+  "${DATA_ROOT}/control_plane"
+  "${DATA_ROOT}/control_plane/litellm_db"
+  "${DATA_ROOT}/control_plane/vscode_config"
+  "${DATA_ROOT}/control_plane/vscode_data"
+  "${DATA_ROOT}/souls"
+  "${DATA_ROOT}/agent_apps"
+  "${DATA_ROOT}/telemetry"
+  "${DATA_ROOT}/backups"
 )
 
 for dir in "${DATA_DIRS[@]}"; do
@@ -75,35 +107,40 @@ for dir in "${DATA_DIRS[@]}"; do
   fi
 done
 
-# Seed default settings into data/settings if not already present
+# Touch .gitkeep files in comms and backups
+touch "${DATA_ROOT}/comms/spool/.gitkeep" 2>/dev/null || true
+touch "${DATA_ROOT}/comms/maildir/.gitkeep" 2>/dev/null || true
+touch "${DATA_ROOT}/backups/.gitkeep" 2>/dev/null || true
+
+# Seed default settings into settings if not already present
 if [ -d "${REPO_ROOT}/config/default_settings" ]; then
-  log_info "Seeding default configuration manifests from config/default_settings into data/settings..."
-  cp -n -R "${REPO_ROOT}/config/default_settings/"* "${REPO_ROOT}/data/settings/" 2>/dev/null || true
+  log_info "Seeding default configuration manifests from config/default_settings into ${DATA_ROOT}/settings..."
+  cp -n -R "${REPO_ROOT}/config/default_settings/"* "${DATA_ROOT}/settings/" 2>/dev/null || true
 fi
 
-# Seed default runner templates into data/runners if not already present
+# Seed default runner templates into runners if not already present
 if [ -d "${REPO_ROOT}/config/default_runners" ]; then
-  log_info "Seeding default runner templates from config/default_runners into data/runners..."
-  cp -n -R "${REPO_ROOT}/config/default_runners/"* "${REPO_ROOT}/data/runners/" 2>/dev/null || true
+  log_info "Seeding default runner templates from config/default_runners into ${DATA_ROOT}/runners..."
+  cp -n -R "${REPO_ROOT}/config/default_runners/"* "${DATA_ROOT}/runners/" 2>/dev/null || true
 fi
 
-# Seed default souls into data/souls if not already present
+# Seed default souls into souls if not already present
 if [ -d "${REPO_ROOT}/config/default_souls" ]; then
-  log_info "Seeding default souls from config/default_souls into data/souls..."
-  cp -n -R "${REPO_ROOT}/config/default_souls/"* "${REPO_ROOT}/data/souls/" 2>/dev/null || true
+  log_info "Seeding default souls from config/default_souls into ${DATA_ROOT}/souls..."
+  cp -n -R "${REPO_ROOT}/config/default_souls/"* "${DATA_ROOT}/souls/" 2>/dev/null || true
 fi
 
-# Seed sample agent app templates into data/agent_apps if not already present
+# Seed sample agent app templates into agent_apps if not already present
 if [ -d "${REPO_ROOT}/config/sample_agent_app" ]; then
-  log_info "Seeding sample agent app from config/sample_agent_app into data/agent_apps..."
-  cp -n -R "${REPO_ROOT}/config/sample_agent_app/"* "${REPO_ROOT}/data/agent_apps/" 2>/dev/null || true
+  log_info "Seeding sample agent app from config/sample_agent_app into ${DATA_ROOT}/agent_apps..."
+  cp -n -R "${REPO_ROOT}/config/sample_agent_app/"* "${DATA_ROOT}/agent_apps/" 2>/dev/null || true
 fi
 
 # Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory
-if [ ! -f "${REPO_ROOT}/data/control_plane/caddy_root.crt" ]; then
-  touch "${REPO_ROOT}/data/control_plane/caddy_root.crt"
-  chmod 664 "${REPO_ROOT}/data/control_plane/caddy_root.crt" 2>/dev/null || true
-  log_info "Initialized ${REPO_ROOT}/data/control_plane/caddy_root.crt placeholder"
+if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
+  touch "${DATA_ROOT}/control_plane/caddy_root.crt"
+  chmod 664 "${DATA_ROOT}/control_plane/caddy_root.crt" 2>/dev/null || true
+  log_info "Initialized ${DATA_ROOT}/control_plane/caddy_root.crt placeholder"
 fi
 
 # 3. Python Virtual Environment & Packages

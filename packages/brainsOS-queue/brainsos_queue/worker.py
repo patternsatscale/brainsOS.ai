@@ -178,6 +178,7 @@ class FIFOQueueWorker:
 
             try:
                 from brainsos_telemetry import TelemetryEvent
+
                 event = TelemetryEvent(
                     task_id=task.id,
                     agent_id=agent_id,
@@ -185,6 +186,7 @@ class FIFOQueueWorker:
                     metadata=metadata,
                 )
             except ImportError:
+
                 class _EventStub:
                     def __init__(self, task_id: str, agent_id: str, event_type: str, metadata: dict[str, Any]):
                         self.task_id = task_id
@@ -193,6 +195,7 @@ class FIFOQueueWorker:
                         self.metadata = metadata
                         self.energy_millijoules = 0.0
                         self.thermal_celsius = None
+
                 event = _EventStub(task.id, agent_id, event_type, metadata)  # type: ignore
 
             res = self.telemetry_bus.notify(event)

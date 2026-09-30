@@ -58,7 +58,7 @@ OPERATOR_USER="${OPERATOR_USER:-operator}"
 CODE_SERVER_PASSWORD="${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
 OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
 BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
-DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-./data/agent_memories}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"

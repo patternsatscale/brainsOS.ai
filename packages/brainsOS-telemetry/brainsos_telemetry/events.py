@@ -24,9 +24,7 @@ class TelemetryEvent:
     task_id: str
     agent_id: str
     event_type: str
-    timestamp: float = field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp()
-    )
+    timestamp: float = field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).timestamp())
     energy_millijoules: float = 0.0
     thermal_celsius: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

@@ -11,6 +11,7 @@ from typing import Any
 
 class TaskStatus(str, Enum):
     """Lifecycle state of a queued task."""
+
     QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -21,6 +22,7 @@ class TaskStatus(str, Enum):
 @dataclass
 class Task:
     """A discrete unit of asynchronous work."""
+
     queue: str
     payload: dict[str, Any]
     id: str = field(default_factory=lambda: str(uuid.uuid4()))

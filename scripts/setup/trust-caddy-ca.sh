@@ -19,9 +19,19 @@ else
   log_error() { echo -e "\033[1;31m[ERROR]\033[0m $*"; }
 fi
 
-TARGET_CERT_DIR="${REPO_ROOT}/data/control_plane"
+# Source .env if present
+if [ -f "${REPO_ROOT}/.env" ]; then
+  set -a
+  . "${REPO_ROOT}/.env"
+  set +a
+fi
+
+TARGET_CERT_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
 TARGET_CERT_FILE="${TARGET_CERT_DIR}/caddy_root.crt"
 mkdir -p "${TARGET_CERT_DIR}"
+if [ -d "${TARGET_CERT_FILE}" ]; then
+  rm -rf "${TARGET_CERT_FILE}"
+fi
 
 log_info "Exporting Caddy internal root CA certificate from Docker volume..."
 

@@ -53,8 +53,13 @@ log_info "Setting up brainsOS Operator IDE from ${REPO_ROOT}..."
 # ------------------------------------------------------------------------------
 # 1. Scaffold Storage Directories
 # ------------------------------------------------------------------------------
-CONFIG_DIR="${BRAINSOS_CODE_SERVER_CONFIG:-./data/control_plane/vscode_config}"
-DATA_DIR="${BRAINSOS_CODE_SERVER_DATA:-./data/control_plane/vscode_data}"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-./data}"
+if [[ "$DATA_ROOT" != /* ]]; then
+  DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
+fi
+
+CONFIG_DIR="${BRAINSOS_CODE_SERVER_CONFIG:-${DATA_ROOT}/control_plane/vscode_config}"
+DATA_DIR="${BRAINSOS_CODE_SERVER_DATA:-${DATA_ROOT}/control_plane/vscode_data}"
 
 if [[ "$CONFIG_DIR" != /* ]]; then
   CONFIG_DIR="${REPO_ROOT}/${CONFIG_DIR#./}"
@@ -70,12 +75,20 @@ log_info "  - Config: ${CONFIG_DIR}"
 log_info "  - Data:   ${DATA_DIR}"
 
 # Ensure canvas site directory exists
-mkdir -p "${REPO_ROOT}/data/agent_apps/cindypawford/site"
+APPS_DIR="${BRAINSOS_AGENT_APPS_DIR:-${DATA_ROOT}/agent_apps}"
+if [[ "$APPS_DIR" != /* ]]; then
+  APPS_DIR="${REPO_ROOT}/${APPS_DIR#./}"
+fi
+mkdir -p "${APPS_DIR}/cindypawford/site"
 
 # Ensure Caddy root CA certificate is exported for in-container SSL trust
-mkdir -p "${REPO_ROOT}/data/control_plane"
-touch "${REPO_ROOT}/data/control_plane/caddy_root.crt"
-chmod 664 "${REPO_ROOT}/data/control_plane/caddy_root.crt" 2>/dev/null || true
+CONTROL_PLANE_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${DATA_ROOT}/control_plane}"
+if [[ "$CONTROL_PLANE_DIR" != /* ]]; then
+  CONTROL_PLANE_DIR="${REPO_ROOT}/${CONTROL_PLANE_DIR#./}"
+fi
+mkdir -p "${CONTROL_PLANE_DIR}"
+touch "${CONTROL_PLANE_DIR}/caddy_root.crt"
+chmod 664 "${CONTROL_PLANE_DIR}/caddy_root.crt" 2>/dev/null || true
 if [ -x "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" ]; then
   "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" --export-only >/dev/null 2>&1 || true
 fi

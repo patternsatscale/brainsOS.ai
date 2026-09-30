@@ -50,7 +50,7 @@ if [ -f .env ]; then
   fi
 fi
 
-PID_DIR="${REPO_ROOT}/data/control_plane"
+PID_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
 mkdir -p "${PID_DIR}"
 
 OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"

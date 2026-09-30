@@ -45,6 +45,7 @@ class TestBrainsOSMailClient(unittest.TestCase):
     def test_live_smtp_and_imap_shared_roundtrip(self):
         """End-to-end integration test across SMTP submission and IMAP shared folder read."""
         import socket
+
         try:
             with socket.create_connection((self.smtp_host, self.smtp_port), timeout=0.5):
                 pass
@@ -71,12 +72,12 @@ class TestBrainsOSMailClient(unittest.TestCase):
         )
         domain = os.getenv("BRAINSOS_DOMAIN", "brainsos.local")
         self.assertTrue(
-            msg_id.startswith("<")
-            and (msg_id.endswith(f"@{domain}>") or msg_id.endswith("@brainsos.local>"))
+            msg_id.startswith("<") and (msg_id.endswith(f"@{domain}>") or msg_id.endswith("@brainsos.local>"))
         )
 
         # Wait a moment for LMTP local delivery
         import time
+
         time.sleep(1.5)
 
         # 3. Admin client reads message
@@ -141,4 +142,3 @@ class TestBrainsOSMailClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

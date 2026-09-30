@@ -21,12 +21,14 @@ def register_queue_tools(mcp: FastMCP) -> list[str]:
             payload["task_type"] = task_type
             queue = get_queue()
             task = await queue.enqueue(payload=payload)
-            return json.dumps({
-                "success": True,
-                "task_id": task.id,
-                "queue": task.queue,
-                "status": task.status.value,
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "task_id": task.id,
+                    "queue": task.queue,
+                    "status": task.status.value,
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -38,13 +40,15 @@ def register_queue_tools(mcp: FastMCP) -> list[str]:
             task = await queue.get_task(task_id)
             if not task:
                 return json.dumps({"success": False, "error": f"Task '{task_id}' not found"})
-            return json.dumps({
-                "success": True,
-                "task_id": task.id,
-                "status": task.status.value,
-                "result": task.result,
-                "error": task.error,
-            })
+            return json.dumps(
+                {
+                    "success": True,
+                    "task_id": task.id,
+                    "status": task.status.value,
+                    "result": task.result,
+                    "error": task.error,
+                }
+            )
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 

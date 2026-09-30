@@ -78,10 +78,6 @@ http://editor.localhost, https://editor.localhost, http://code.localhost, https:
 	}
 }
 
-http://mail.local.brainsos.ai, https://mail.local.brainsos.ai {
-	import route53_tls
-	import sogo_backend
-}
 
 http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local} {
 	import brainsos_tls

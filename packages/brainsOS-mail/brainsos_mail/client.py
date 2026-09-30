@@ -58,6 +58,7 @@ class BrainsOSMailClient:
         if not smtp_host:
             try:
                 import socket
+
                 socket.gethostbyname("mail-server")
                 smtp_host = "mail-server"
                 default_smtp_port = "25"
@@ -70,6 +71,7 @@ class BrainsOSMailClient:
         if not imap_host:
             try:
                 import socket
+
                 socket.gethostbyname("mail-server")
                 imap_host = "mail-server"
                 default_imap_port = "143"
@@ -245,9 +247,7 @@ class BrainsOSMailClient:
                         if part.get_content_type() == "text/plain":
                             payload = part.get_payload(decode=True)
                             if isinstance(payload, bytes):
-                                body = payload.decode(
-                                    part.get_content_charset() or "utf-8", errors="replace"
-                                )
+                                body = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
                             break
                 else:
                     payload = msg.get_payload(decode=True)
@@ -377,9 +377,7 @@ class BrainsOSMailClient:
                         if part.get_content_type() == "text/plain":
                             payload = part.get_payload(decode=True)
                             if isinstance(payload, bytes):
-                                body = payload.decode(
-                                    part.get_content_charset() or "utf-8", errors="replace"
-                                )
+                                body = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
                             break
                 else:
                     payload = msg.get_payload(decode=True)

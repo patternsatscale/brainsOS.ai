@@ -17,4 +17,3 @@ __all__ = [
     "write_ics_file",
 ]
 __version__ = "0.1.0"
-

@@ -12,6 +12,7 @@ from brainsos_memory.okf.models import OKFNote
 @dataclass
 class SearchResult:
     """Represents a vector or hybrid search result."""
+
     rel_path: str
     title: str
     score: float

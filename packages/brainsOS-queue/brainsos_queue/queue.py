@@ -47,7 +47,9 @@ class WorkQueue:
 
     async def acquire_task(self, worker_id: str, lease_timeout_sec: float = 120.0) -> Task | None:
         """Atomically acquire the next available task respecting partition locks."""
-        return await self.backend.acquire_task(worker_id=worker_id, lease_timeout_sec=lease_timeout_sec, queue_name=self.name)
+        return await self.backend.acquire_task(
+            worker_id=worker_id, lease_timeout_sec=lease_timeout_sec, queue_name=self.name
+        )
 
     async def peek(self) -> Task | None:
         """Peek at the next available task without dequeuing."""

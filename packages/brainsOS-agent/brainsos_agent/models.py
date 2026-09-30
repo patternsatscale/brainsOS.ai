@@ -9,6 +9,14 @@ from typing import Annotated, Any
 import yaml
 from pydantic import AfterValidator, BaseModel, Field
 
+from .config import (
+    get_data_dir,
+    get_memories_dir,
+    get_runners_dir,
+    get_settings_dir,
+    get_souls_dir,
+    get_workspaces_dir,
+)
 from .souls import SoulNotFoundError, get_soul_path
 
 
@@ -88,7 +96,9 @@ class AgentProfile(BaseModel):
             if not persona_path.exists():
                 for candidate in [
                     base / "config" / "default_souls" / f"{agent_id}.md",
+                    get_souls_dir() / f"{agent_id}.md",
                     base / "data" / "souls" / f"{agent_id}.md",
+                    get_runners_dir() / "hermes" / agent_id / "SOUL.md",
                     base / "data" / "runners" / "hermes" / agent_id / "SOUL.md",
                     base / "config" / "default_runners" / "hermes" / agent_id / "SOUL.md",
                     base / "data" / "runners" / f"{agent_id}-sdk" / agent_id / "SOUL.md",
@@ -102,15 +112,18 @@ class AgentProfile(BaseModel):
                         break
             soul_path = Path(persona_str) if Path(persona_str).is_absolute() else persona_path
 
+        default_memory = str(get_memories_dir() / agent_id)
+        default_workspace = str(get_workspaces_dir() / agent_id)
+
         memory_str = (
             data.get("memory_root")
             or (data.get("memory", {}).get("path") if isinstance(data.get("memory"), dict) else None)
-            or f"./data/agent_memories/{agent_id}"
+            or default_memory
         )
         workspace_str = (
             data.get("workspace_root")
             or (data.get("workspace", {}).get("path") if isinstance(data.get("workspace"), dict) else None)
-            or f"./data/agent_workspaces/{agent_id}"
+            or default_workspace
         )
 
         memory_root = Path(memory_str) if Path(memory_str).is_absolute() else base / memory_str
@@ -146,6 +159,8 @@ class AgentProfile(BaseModel):
             if not p.exists():
                 if p.name in ("agents.yaml", "default_agents.yaml"):
                     for cand in [
+                        get_settings_dir() / "agents.yaml",
+                        get_data_dir() / "settings" / "agents.yaml",
                         Path("data/settings/agents.yaml"),
                         Path("config/default_settings/agents.yaml"),
                         Path("config/agents.yaml"),
@@ -193,6 +208,8 @@ class AgentProfile(BaseModel):
                     return prof
             raise ValueError(f"Agent with id '{agent_id}' not found in manifest")
         return profiles
+
+    from_dict = from_agent_dict
 
 
 class OutboundEmail(BaseModel):

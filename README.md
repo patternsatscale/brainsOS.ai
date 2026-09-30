@@ -258,6 +258,12 @@ cd brainsOS
 make setup
 ```
 
+##### Decoupled Private Fleet Mode (Two-Repository Architecture)
+By default, runtime data resides locally in `./data`. To keep proprietary agent intellectual property, OKF memories, custom personas, and fleet manifests in an external private Git repository:
+1. Clone or initialize your private fleet repo (e.g., at `/path/to/my-fleet-repo` using template `config/templates/data-repo.gitignore`).
+2. Set `BRAINSOS_DATA_DIR=/path/to/my-fleet-repo` in `.env`.
+3. Container volumes, Python core packages, and scripts will automatically bind to your private repository. Run `./scripts/control/snapshot-memories.sh` to take automated Git snapshots and push them directly to your private remote.
+
 #### 2. Run Host Baseline Setup
 Execute the idempotent setup script to audit system permissions, install dependencies, configure native loopback inference (Ollama), and seed the default model:
 ```bash
@@ -352,6 +358,10 @@ make test           # Run pytest suite across all packages
 make lint           # Run ruff check and mypy across all packages
 make emergency-stop # Instantly terminate all agent containers
 
+# Fleet snapshots & backups
+./scripts/control/snapshot-memories.sh # Automated Git commit/push of private fleet repo
+./scripts/control/backup.sh            # Compressed tarball backup of all data planes
+
 # Inspect runtime services & logs
 ./scripts/control/start-control-plane.sh status
 docker compose ps
@@ -382,6 +392,7 @@ brainsOS/
 │   ├── default_settings/     # Declarative fleet and runner manifests (agents.yaml)
 │   ├── default_runners/      # Runner templates (hermes, claude-sdk, openai-sdk)
 │   ├── default_souls/        # Centralized baseline agent personas (bawtford, marvin, terrastella, ping)
+│   ├── templates/            # Seed templates for private data repos (data-repo.gitignore)
 │   ├── sample_agent_app/     # Sample agent web application templates (cindypawford)
 │   ├── caddy/                # Ingress reverse proxy configuration
 │   ├── editor/               # Operator IDE workspace and Continue configs
@@ -389,8 +400,10 @@ brainsOS/
 │   └── egress/               # In-transit credential injection proxy rules
 ├── packages/
 │   ├── brainsOS-agent/       # Standalone AgentRuntime SPI & dynamic profile registry
+│   ├── brainsOS-runner/      # Stateless runner adapter framework & agent registry
 │   ├── brainsOS-memory/      # Standalone OKF memory engine & VectorStore SPI
 │   ├── brainsOS-mail/        # Standalone RFC-compliant asynchronous email client
+│   ├── brainsOS-mcp/         # Dynamic FastMCP server exposing tools across packages
 │   ├── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
 │   └── brainsOS-telemetry/   # Decoupled Observer/Observable bus & SyntheticEnergyObserver
 ├── docker/                   # Dockerfiles for mail, caddy, editor, hermes, langfuse
@@ -399,7 +412,7 @@ brainsOS/
 │   ├── project-titan/        # Historical ticket & walkthrough archive (September 2026)
 │   ├── reference-architecture-tenets.md  # Core security tenets (TN-1 to TN-9)
 │   └── lab-work/             # Claude documentation & critique area (Rule 11)
-├── data/                     # Partitioned host volumes (memories, workspaces, databases, agent_apps)
+├── data/                     # Partitioned host volumes / private fleet repo (via BRAINSOS_DATA_DIR)
 └── scripts/                  # Structured operational scripts
     ├── setup/                # Host, container, memory, and network provisioning
     ├── control/              # Runtime lifecycle, fleet management, and kill-switch

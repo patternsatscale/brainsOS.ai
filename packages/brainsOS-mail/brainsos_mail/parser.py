@@ -152,7 +152,9 @@ def clean_email_body(raw_body: str) -> str:
                 break
 
         # 4. Single-line attribution: "On <date>, <sender> wrote:" or "At <time>, <sender> wrote:"
-        if re.match(r"^on\s+.+wrote\s*:?$", stripped, re.IGNORECASE) or re.match(r"^at\s+.+wrote\s*:?$", stripped, re.IGNORECASE):
+        if re.match(r"^on\s+.+wrote\s*:?$", stripped, re.IGNORECASE) or re.match(
+            r"^at\s+.+wrote\s*:?$", stripped, re.IGNORECASE
+        ):
             break
 
         # 5. Two-line attribution: "On <date>,\n<sender> wrote:"
@@ -199,7 +201,11 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
 
     thread_id = resolve_thread_id(headers)
     sender = headers.get("From", "").strip()
-    recipient = headers.get("To", "").strip() or headers.get("Delivered-To", "").strip() or headers.get("X-Envelope-To", "").strip()
+    recipient = (
+        headers.get("To", "").strip()
+        or headers.get("Delivered-To", "").strip()
+        or headers.get("X-Envelope-To", "").strip()
+    )
     subject = headers.get("Subject", "").strip()
 
     # Extract text/plain body, falling back to text/html

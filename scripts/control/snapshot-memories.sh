@@ -33,17 +33,53 @@ fi
 
 # Read data dir from .env if available
 cd "${REPO_ROOT}"
-DATA_DIR=$(grep -E '^BRAINSOS_AGENT_MEMORIES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
-DATA_DIR="${DATA_DIR:-./data/agent_memories}"
+_EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-}"
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+fi
+if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
+  BRAINSOS_DATA_DIR="${_EXPLICIT_DATA_DIR}"
+fi
 
+DATA_ROOT="${BRAINSOS_DATA_DIR:-./data}"
+if [[ "$DATA_ROOT" != /* ]]; then
+  DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
+fi
+
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${DATA_ROOT}/agent_memories}"
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
 else
   MEMORIES_DIR="${DATA_DIR}"
 fi
 
-BACKUP_DIR="${REPO_ROOT}/data/backups"
+BACKUP_DIR="${DATA_ROOT}/backups"
 mkdir -p "${BACKUP_DIR}"
+
+# ------------------------------------------------------------------------------
+# Git-Backed Private Repository Snapshot Routine
+# ------------------------------------------------------------------------------
+if [ -d "${DATA_ROOT}/.git" ]; then
+  log_info "Detected Git repository in ${DATA_ROOT}. Creating automated Git snapshot..."
+  (
+    cd "${DATA_ROOT}"
+    git add souls/ agent_memories/ settings/ agent_workspaces/ agent_apps/ 2>/dev/null || git add .
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+      TIMESTAMP_UTC="$(date -u +'%Y-%m-%d %H:%M:%SZ')"
+      git commit -m "chore(snapshot): automated fleet memory & soul snapshot [${TIMESTAMP_UTC}]"
+      log_success "Created Git commit snapshot in ${DATA_ROOT}."
+      if git remote 2>/dev/null | grep -q "origin"; then
+        CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo "main")"
+        log_info "Pushing snapshot to remote origin/${CURRENT_BRANCH}..."
+        git push origin "${CURRENT_BRANCH}" || log_warn "Git push failed or remote was unreachable."
+      fi
+    else
+      log_info "No changes detected in fleet state."
+    fi
+  )
+fi
 
 # ------------------------------------------------------------------------------
 # Handle Restore Mode
