@@ -13,12 +13,14 @@ from brainsos_mail.models import ParsedInboundEmail
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime
+from brainsos_agent.souls import resolve_soul
 
 logger = logging.getLogger("brainsos_agent.hermes")
 
 
 class WorkspaceBoundaryViolation(ValueError):
     """Raised when a tool execution or path escapes the agent's isolated workspace partition."""
+
     pass
 
 
@@ -38,7 +40,9 @@ class HermesMailAdapter(AgentRuntime):
     def validate_workspace_path(self, target_path: str | Path, profile: AgentProfile) -> Path:
         """Enforces that file tool executions cannot read or mutate files outside workspace_root."""
         ws_root = profile.workspace_root.resolve()
-        resolved_target = (ws_root / target_path).resolve() if not Path(target_path).is_absolute() else Path(target_path).resolve()
+        resolved_target = (
+            (ws_root / target_path).resolve() if not Path(target_path).is_absolute() else Path(target_path).resolve()
+        )
         try:
             resolved_target.relative_to(ws_root)
         except ValueError:
@@ -47,19 +51,27 @@ class HermesMailAdapter(AgentRuntime):
             )
         return resolved_target
 
-    def _assemble_system_prompt_with_working_memory(self, profile: AgentProfile) -> str:
+    def _assemble_system_prompt_with_working_memory(
+        self, profile: AgentProfile, resolved_soul: str | None = None
+    ) -> str:
         """Injects persona (SOUL.md) and OKF working memory rules into system prompt."""
         parts: list[str] = []
 
-        # 1. Base Persona from SOUL.md
-        if profile.soul_path and profile.soul_path.exists():
+        # 1. Base Persona from SOUL.md / SoulResolver
+        persona_text = (resolved_soul or "").strip()
+        if not persona_text and profile.soul:
             try:
-                parts.append(profile.soul_path.read_text(encoding="utf-8").strip())
+                persona_text = resolve_soul(profile.soul)
+            except Exception:
+                persona_text = ""
+        if not persona_text and profile.soul_path and profile.soul_path.exists():
+            try:
+                persona_text = profile.soul_path.read_text(encoding="utf-8").strip()
             except Exception as e:
                 logger.warning("Failed to read SOUL.md at %s: %s", profile.soul_path, e)
-                parts.append(f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet.")
-        else:
-            parts.append(f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet.")
+        if not persona_text:
+            persona_text = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
+        parts.append(persona_text)
 
         # 2. Inject OKF working memory rules / guidelines from memory_root/rules
         rules_dir = profile.memory_root / "rules"
@@ -91,10 +103,11 @@ class HermesMailAdapter(AgentRuntime):
         self,
         email: ParsedInboundEmail,
         profile: AgentProfile,
+        resolved_soul: str | None = None,
     ) -> OutboundEmail:
         """Executes one turn through the shared Hermes runner in stateless API mode."""
         # 1. System Prompt with Persona & OKF Working Memory
-        system_prompt = self._assemble_system_prompt_with_working_memory(profile)
+        system_prompt = self._assemble_system_prompt_with_working_memory(profile, resolved_soul=resolved_soul)
 
         # 2. Historical Dialogue Turns & Current Inbound Email from pure OKF memory
         historical_turns = ContextAssembler.load_thread_turns(profile.memory_root, email.thread_id)

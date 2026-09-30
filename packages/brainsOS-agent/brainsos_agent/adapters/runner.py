@@ -13,6 +13,7 @@ from brainsos_runner import AgentTurnRequest, ChatMessage, WarmHttpRunnerClient
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime
+from brainsos_agent.souls import resolve_soul
 
 logger = logging.getLogger("brainsos_agent.adapters.runner")
 
@@ -31,18 +32,26 @@ class RunnerMailAdapter(AgentRuntime):
         self.endpoint = raw_endpoint.rstrip("/")
         self.timeout = timeout
 
-    def _assemble_system_prompt_with_working_memory(self, profile: AgentProfile) -> str:
+    def _assemble_system_prompt_with_working_memory(
+        self, profile: AgentProfile, resolved_soul: str | None = None
+    ) -> str:
         """Injects persona (SOUL.md) and OKF working memory rules into system prompt."""
         parts: list[str] = []
 
-        if profile.soul_path and profile.soul_path.exists():
+        persona_text = (resolved_soul or "").strip()
+        if not persona_text and profile.soul:
             try:
-                parts.append(profile.soul_path.read_text(encoding="utf-8").strip())
+                persona_text = resolve_soul(profile.soul)
+            except Exception:
+                persona_text = ""
+        if not persona_text and profile.soul_path and profile.soul_path.exists():
+            try:
+                persona_text = profile.soul_path.read_text(encoding="utf-8").strip()
             except Exception as e:
                 logger.warning("Failed to read SOUL.md at %s: %s", profile.soul_path, e)
-                parts.append(f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet.")
-        else:
-            parts.append(f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet.")
+        if not persona_text:
+            persona_text = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
+        parts.append(persona_text)
 
         # Memory guidelines from memory_root/rules
         rules_dir = profile.memory_root / "rules"

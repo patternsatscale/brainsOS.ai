@@ -9,6 +9,7 @@
 !config/default_memories/**
 !config/default_runners/**
 !config/default_settings/**
+!config/default_souls/**
 
 # Local Manifest Overrides (Host-specific fleet customization)
 config/agents.local.yaml
@@ -43,6 +44,8 @@ data/workspace/*
 !data/workspace/.gitkeep
 data/runners/*
 !data/runners/.gitkeep
+data/souls/*
+!data/souls/.gitkeep
 *.tar.gz
 *.vsix
 

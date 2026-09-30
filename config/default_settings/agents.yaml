@@ -30,7 +30,8 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/default_runners/hermes/terrastella/SOUL.md"
+    soul: "terrastella"
+    persona: "config/default_souls/terrastella.md"
     models:
       default: "brainsos-core"
       available:
@@ -82,7 +83,8 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/default_runners/hermes/marvin/SOUL.md"
+    soul: "marvin"
+    persona: "config/default_souls/marvin.md"
     models:
       default: "brainsos-core"
       available:
@@ -137,7 +139,8 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/default_runners/hermes/bawtford/SOUL.md"
+    soul: "bawtford"
+    persona: "config/default_souls/bawtford.md"
     models:
       default: "brainsos-core"
       available:
@@ -152,7 +155,8 @@ agents:
         name: "Website Builder Sub-Agent"
         tool_name: "build_website_feature"
         description: "Builds or updates HTML5, CSS, and JavaScript features on the public canvas (/app/html) under a clean software engineering persona without conversational artifacts."
-        persona: "config/default_runners/hermes/bawtford/web-developer/SOUL.md"
+        soul: "bawtford.web-developer"
+        persona: "config/default_souls/bawtford.web-developer.md"
         model: "cindy-active-coding-model"
         target_dir: "/app/html"
         parameters:
@@ -232,7 +236,8 @@ agents:
 
     # L2: Agent Core Runtime (Zero LLM / GPU overhead)
     runtime: "autoresponder"
-    persona: "config/default_runners/hermes/ping/SOUL.md"
+    soul: "ping"
+    persona: "config/default_souls/ping.md"
 
     # L3: Memory Plane & Tool Sandbox
     memory:
@@ -256,7 +261,8 @@ agents:
 
     # L2: Agent Core Runtime (Claude SDK Runner)
     runtime: "claude"
-    persona: "config/default_runners/claude-sdk/claude/SOUL.md"
+    soul: "claude"
+    persona: "config/default_souls/claude.md"
     models:
       default: "gemma2:2b"
 
@@ -282,7 +288,8 @@ agents:
 
     # L2: Agent Core Runtime (OpenAI SDK Runner)
     runtime: "openai"
-    persona: "config/default_runners/openai-sdk/gpt/SOUL.md"
+    soul: "gpt"
+    persona: "config/default_souls/gpt.md"
     models:
       default: "gemma2:2b"
 

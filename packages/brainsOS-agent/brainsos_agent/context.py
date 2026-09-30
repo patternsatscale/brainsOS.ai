@@ -9,6 +9,7 @@ from pathlib import Path
 from brainsos_mail.models import ParsedInboundEmail
 
 from brainsos_agent.models import AgentProfile
+from brainsos_agent.souls import resolve_soul
 
 
 def sanitize_thread_filename(thread_id: str) -> str:
@@ -86,10 +87,10 @@ class ContextAssembler:
             # Initialize with OKF YAML frontmatter
             frontmatter = (
                 f"---\n"
-                f"thread_id: \"{thread_id}\"\n"
-                f"subject: \"{subject}\"\n"
-                f"created_at: \"{timestamp_str}\"\n"
-                f"type: \"thread-dialogue\"\n"
+                f'thread_id: "{thread_id}"\n'
+                f'subject: "{subject}"\n'
+                f'created_at: "{timestamp_str}"\n'
+                f'type: "thread-dialogue"\n'
                 f"---\n\n"
                 f"# Thread: {subject}\n\n"
             )
@@ -99,10 +100,7 @@ class ContextAssembler:
         existing = cls.load_thread_turns(memory_root, thread_id)
         turn_number = len(existing) + 1
 
-        entry = (
-            f"\n## Turn {turn_number}: {role} ({author}) - {timestamp_str}\n\n"
-            f"{clean_text}\n"
-        )
+        entry = f"\n## Turn {turn_number}: {role} ({author}) - {timestamp_str}\n\n{clean_text}\n"
         with open(file_path, "a", encoding="utf-8") as f:
             f.write(entry)
 
@@ -121,12 +119,17 @@ class ContextAssembler:
 
         # 1. System Prompt (Soul / Persona)
         system_prompt = ""
-        if profile.soul_path and profile.soul_path.exists():
+        if profile.soul:
+            try:
+                system_prompt = resolve_soul(profile.soul)
+            except Exception:
+                system_prompt = ""
+        if not system_prompt and profile.soul_path and profile.soul_path.exists():
             try:
                 system_prompt = profile.soul_path.read_text(encoding="utf-8").strip()
             except Exception:
-                system_prompt = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
-        else:
+                pass
+        if not system_prompt:
             system_prompt = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
 
         messages.append({"role": "system", "content": system_prompt})

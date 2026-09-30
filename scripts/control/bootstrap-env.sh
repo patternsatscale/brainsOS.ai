@@ -64,6 +64,7 @@ DATA_DIRS=(
   "${REPO_ROOT}/data/runners"
   "${REPO_ROOT}/data/settings"
   "${REPO_ROOT}/data/control_plane"
+  "${REPO_ROOT}/data/souls"
 )
 
 for dir in "${DATA_DIRS[@]}"; do
@@ -83,6 +84,12 @@ fi
 if [ -d "${REPO_ROOT}/config/default_runners" ]; then
   log_info "Seeding default runner templates from config/default_runners into data/runners..."
   cp -n -R "${REPO_ROOT}/config/default_runners/"* "${REPO_ROOT}/data/runners/" 2>/dev/null || true
+fi
+
+# Seed default souls into data/souls if not already present
+if [ -d "${REPO_ROOT}/config/default_souls" ]; then
+  log_info "Seeding default souls from config/default_souls into data/souls..."
+  cp -n -R "${REPO_ROOT}/config/default_souls/"* "${REPO_ROOT}/data/souls/" 2>/dev/null || true
 fi
 
 # Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory
