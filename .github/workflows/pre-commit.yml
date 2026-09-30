@@ -66,9 +66,9 @@ jobs:
 
       - name: Verify Fleet Manifest Zero-Drift
         run: |
-          echo "Validating declarative fleet manifest (config/agents.yaml)..."
+          echo "Validating declarative fleet manifest..."
           pip install pyyaml
-          python3 -c "import yaml; data = yaml.safe_load(open('config/agents.yaml')); assert 'agents' in data; print(f'✓ Valid manifest with {len(data[\"agents\"])} agent profiles')"
+          python3 -c "import yaml, os; p = 'config/default_settings/agents.yaml' if os.path.exists('config/default_settings/agents.yaml') else 'config/agents.yaml'; data = yaml.safe_load(open(p)); assert 'agents' in data; print(f'✓ Valid manifest with {len(data[\"agents\"])} agent profiles')"
 
 
       - name: Docker Compose Topology Validation
