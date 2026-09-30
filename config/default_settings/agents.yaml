@@ -30,7 +30,7 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/terrastella/SOUL.md"
+    persona: "config/default_runners/hermes/terrastella/SOUL.md"
     models:
       default: "brainsos-core"
       available:
@@ -82,7 +82,7 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/marvin/SOUL.md"
+    persona: "config/default_runners/hermes/marvin/SOUL.md"
     models:
       default: "brainsos-core"
       available:
@@ -137,7 +137,7 @@ agents:
 
     # L2: Agent Core Runtime
     runtime: "hermes"
-    persona: "config/hermes/bawtford/SOUL.md"
+    persona: "config/default_runners/hermes/bawtford/SOUL.md"
     models:
       default: "brainsos-core"
       available:
@@ -152,7 +152,7 @@ agents:
         name: "Website Builder Sub-Agent"
         tool_name: "build_website_feature"
         description: "Builds or updates HTML5, CSS, and JavaScript features on the public canvas (/app/html) under a clean software engineering persona without conversational artifacts."
-        persona: "config/hermes/bawtford/web-developer/SOUL.md"
+        persona: "config/default_runners/hermes/bawtford/web-developer/SOUL.md"
         model: "cindy-active-coding-model"
         target_dir: "/app/html"
         parameters:
@@ -232,11 +232,64 @@ agents:
 
     # L2: Agent Core Runtime (Zero LLM / GPU overhead)
     runtime: "autoresponder"
-    persona: "config/hermes/ping/SOUL.md"
+    persona: "config/default_runners/hermes/ping/SOUL.md"
 
     # L3: Memory Plane & Tool Sandbox
     memory:
       path: "./data/agent_memories/ping"
     workspace:
       path: "./data/agent_workspaces/ping"
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Claude Demo Agent - Tells jokes about Claude
+  # ----------------------------------------------------------------------------
+  - id: "claude"
+    name: "Claude Demo Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "claude@brainsos.local"
+      user_env: "CLAUDE_MAIL_USER"
+      password_env: "CLAUDE_MAIL_PASSWORD"
+
+    # L2: Agent Core Runtime (Claude SDK Runner)
+    runtime: "claude"
+    persona: "config/default_runners/claude-sdk/claude/SOUL.md"
+    models:
+      default: "gemma2:2b"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/claude"
+    workspace:
+      path: "./data/agent_workspaces/claude"
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: GPT Demo Agent - Tells jokes about Sam Altman
+  # ----------------------------------------------------------------------------
+  - id: "gpt"
+    name: "GPT Demo Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "gpt@brainsos.local"
+      user_env: "GPT_MAIL_USER"
+      password_env: "GPT_MAIL_PASSWORD"
+
+    # L2: Agent Core Runtime (OpenAI SDK Runner)
+    runtime: "openai"
+    persona: "config/default_runners/openai-sdk/gpt/SOUL.md"
+    models:
+      default: "gemma2:2b"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/gpt"
+    workspace:
+      path: "./data/agent_workspaces/gpt"
+
 

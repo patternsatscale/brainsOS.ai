@@ -23,7 +23,7 @@ REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || tru
 if [ -z "${REPO_ROOT}" ]; then
   _check_dir="${SCRIPT_DIR}"
   while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
-    if [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
+    if [ -f "${_check_dir}/config/default_settings/agents.yaml" ] || [ -f "${_check_dir}/config/agents.yaml" ] || [ -d "${_check_dir}/.git" ]; then
       REPO_ROOT="${_check_dir}"
       break
     fi
@@ -61,6 +61,8 @@ DATA_DIRS=(
   "${REPO_ROOT}/data/litellm"
   "${REPO_ROOT}/data/comms"
   "${REPO_ROOT}/data/queue"
+  "${REPO_ROOT}/data/runners"
+  "${REPO_ROOT}/data/settings"
   "${REPO_ROOT}/data/control_plane"
 )
 
@@ -70,6 +72,18 @@ for dir in "${DATA_DIRS[@]}"; do
     log_info "Created directory: ${dir}"
   fi
 done
+
+# Seed default settings into data/settings if not already present
+if [ -d "${REPO_ROOT}/config/default_settings" ]; then
+  log_info "Seeding default configuration manifests from config/default_settings into data/settings..."
+  cp -n -R "${REPO_ROOT}/config/default_settings/"* "${REPO_ROOT}/data/settings/" 2>/dev/null || true
+fi
+
+# Seed default runner templates into data/runners if not already present
+if [ -d "${REPO_ROOT}/config/default_runners" ]; then
+  log_info "Seeding default runner templates from config/default_runners into data/runners..."
+  cp -n -R "${REPO_ROOT}/config/default_runners/"* "${REPO_ROOT}/data/runners/" 2>/dev/null || true
+fi
 
 # Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory
 if [ ! -f "${REPO_ROOT}/data/control_plane/caddy_root.crt" ]; then
