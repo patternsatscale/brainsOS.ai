@@ -20,12 +20,14 @@ RUN addgroup -g 5000 vmail 2>/dev/null || true && \
 RUN mkdir -p /var/mail/vmail \
              /etc/dovecot \
              /etc/postfix \
-             /etc/mail-titan \
+             /etc/mail-brainsos \
              /usr/lib/dovecot/sieve-pipe \
              /etc/dovecot/sieve \
-             /var/run/dovecot && \
-    chown -R vmail:vmail /var/mail/vmail && \
-    chmod -R 770 /var/mail/vmail
+             /var/run/dovecot \
+             /var/spool/brainsos/inbound && \
+    chown -R vmail:vmail /var/mail/vmail /var/spool/brainsos && \
+    chmod -R 770 /var/mail/vmail && \
+    chmod -R 775 /var/spool/brainsos
 
 COPY dovecot/dovecot.conf /etc/dovecot/dovecot.conf
 COPY postfix/main.cf /etc/postfix/main.cf

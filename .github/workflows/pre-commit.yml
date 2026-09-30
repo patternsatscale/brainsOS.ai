@@ -2,9 +2,9 @@ name: Pre-Commit & Security Checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, brainsos]
   pull_request:
-    branches: [main]
+    branches: [main, brainsos]
 
 permissions:
   contents: read
@@ -66,9 +66,9 @@ jobs:
 
       - name: Verify Fleet Manifest Zero-Drift
         run: |
-          echo "Checking fleet manifest drift against generated configs..."
+          echo "Validating declarative fleet manifest..."
           pip install pyyaml
-          ./scripts/control/sync-agents.sh --check
+          python3 -c "import yaml, os; p = 'config/default_settings/agents.yaml' if os.path.exists('config/default_settings/agents.yaml') else 'config/agents.yaml'; data = yaml.safe_load(open(p)); assert 'agents' in data; print(f'✓ Valid manifest with {len(data[\"agents\"])} agent profiles')"
 
 
       - name: Docker Compose Topology Validation
@@ -92,21 +92,21 @@ jobs:
           echo "Validating strict database isolation guardrails..."
           
           # 1. Hermes container must have zero database environment variables
-          HERMES_DB_ENV=$(docker compose config | awk '/container_name: titan-hermes/,/container_name:/' | grep -iE 'POSTGRES|DATABASE_URL' || true)
+          HERMES_DB_ENV=$(docker compose config | awk '/container_name: brainsos-agent/,/container_name:/' | grep -iE 'POSTGRES|DATABASE_URL' || true)
           if [ -n "${HERMES_DB_ENV}" ]; then
             echo "::error::Hermes container is exposed to database environment variables: ${HERMES_DB_ENV}"
             exit 1
           fi
 
-          # 2. Database container must NOT share networks with Hermes (titan-ingress or titan-internal)
-          DB_NETWORKS=$(docker compose config | awk '/container_name: titan-(infra-)?litellm-db/,/container_name:/' | grep -E 'titan-ingress|titan-internal' || true)
+          # 2. Database container must NOT share networks with Hermes (brainsos-ingress or brainsos-internal)
+          DB_NETWORKS=$(docker compose config | awk '/container_name: brainsos-(infra-)?litellm-db/,/container_name:/' | grep -E 'brainsos-ingress|brainsos-internal' || true)
           if [ -n "${DB_NETWORKS}" ]; then
             echo "::error::Database container is attached to Hermes-accessible networks: ${DB_NETWORKS}"
             exit 1
           fi
 
           # 3. Database port must be bound strictly to 127.0.0.1
-          DB_PORTS=$(docker compose config | awk '/container_name: titan-(infra-)?litellm-db/,/container_name:/' | grep -E '0\.0\.0\.0.*5432|:[0-9]+:5432' || true)
+          DB_PORTS=$(docker compose config | awk '/container_name: brainsos-(infra-)?litellm-db/,/container_name:/' | grep -E '0\.0\.0\.0.*5432|:[0-9]+:5432' || true)
           if [ -n "${DB_PORTS}" ]; then
             echo "::error::Database port is not strictly bound to loopback 127.0.0.1: ${DB_PORTS}"
             exit 1

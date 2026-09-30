@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Mail Infrastructure & Shared Mailbox Verification Suite
+# brainsOS: Mail Infrastructure & Shared Mailbox Verification Suite
 # Validates Postfix/Dovecot health, SnappyMail ingress, SMTP delivery, IMAP auth,
-# shared folder ACLs, multi-tenant isolation, memory purity, and titan_mail tests.
+# shared folder ACLs, multi-tenant isolation, memory purity, and brainsOS-mail tests.
 # Rule 8 compliant (Script-Driven Discipline) & Rule 13 compliant (Env Precondition)
 # ==============================================================================
 set -euo pipefail
@@ -23,7 +23,7 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 echo -e "${BOLD}=================================================================${NC}"
-echo -e "${BOLD} Project Titan: Internal Email & Shared Mailbox Test Suite      ${NC}"
+echo -e "${BOLD} brainsOS: Internal Email & Shared Mailbox Test Suite            ${NC}"
 echo -e "${BOLD}=================================================================${NC}"
 
 # ------------------------------------------------------------------------------
@@ -40,24 +40,29 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-MAIL_SERVER_CONTAINER="titan-net-mail-server"
-CADDY_CONTAINER="titan-net-caddy"
+MAIL_SERVER_CONTAINER="brainsos-net-mail-server"
+CADDY_CONTAINER="brainsos-net-caddy"
 
 SMTP_PORT="${MAIL_SMTP_PORT:-10025}"
 IMAP_PORT="${MAIL_IMAP_PORT:-10143}"
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-titan_admin_mail_secret_change_me}"
-AGENT_PASS="${TERRASTELLA_MAIL_PASSWORD:-titan_terrastella_mail_secret_change_me}"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
+AGENT_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
+
+PYTHON_BIN="python3"
+if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
+    PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+fi
 
 # Detect Webmail Client (SOGo per Ticket #166, with SnappyMail fallback)
 if docker compose ps --services | grep -q "^sogo$"; then
     WEBMAIL_SVC="sogo"
-    WEBMAIL_CONTAINER="titan-net-sogo"
+    WEBMAIL_CONTAINER="brainsos-net-sogo"
     WEBMAIL_PORT="${SOGO_PORT:-20000}"
     WEBMAIL_PATH="/SOGo"
 else
     WEBMAIL_SVC="snappymail"
-    WEBMAIL_CONTAINER="titan-net-snappymail"
+    WEBMAIL_CONTAINER="brainsos-net-snappymail"
     WEBMAIL_PORT="${SNAPPYMAIL_PORT:-8888}"
     WEBMAIL_PATH="/"
 fi
@@ -116,7 +121,7 @@ log_success "Mail stack memory footprint verified well within hardware limits."
 # ------------------------------------------------------------------------------
 log_info "Step 4: Verifying Caddy reverse-proxy routing for Webmail (${WEBMAIL_SVC})..."
 HTTP_CODE_LOCAL=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: mail.localhost" http://127.0.0.1:80 || true)
-HTTP_CODE_DOMAIN=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: mail.${TITAN_DOMAIN}" http://127.0.0.1:80 || true)
+HTTP_CODE_DOMAIN=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: mail.${BRAINSOS_DOMAIN}" http://127.0.0.1:80 || true)
 
 if [ "$HTTP_CODE_LOCAL" != "200" ] && [ "$HTTP_CODE_LOCAL" != "301" ] && [ "$HTTP_CODE_LOCAL" != "302" ]; then
     log_error "Caddy ingress failed for mail.localhost (HTTP $HTTP_CODE_LOCAL)."
@@ -125,10 +130,10 @@ fi
 log_success "Caddy ingress verified for mail.localhost (HTTP $HTTP_CODE_LOCAL)."
 
 if [ "$HTTP_CODE_DOMAIN" != "200" ] && [ "$HTTP_CODE_DOMAIN" != "301" ] && [ "$HTTP_CODE_DOMAIN" != "302" ]; then
-    log_error "Caddy ingress failed for mail.${TITAN_DOMAIN} (HTTP $HTTP_CODE_DOMAIN)."
+    log_error "Caddy ingress failed for mail.${BRAINSOS_DOMAIN} (HTTP $HTTP_CODE_DOMAIN)."
     exit 1
 fi
-log_success "Caddy ingress verified for mail.${TITAN_DOMAIN} (HTTP $HTTP_CODE_DOMAIN)."
+log_success "Caddy ingress verified for mail.${BRAINSOS_DOMAIN} (HTTP $HTTP_CODE_DOMAIN)."
 
 # Direct Webmail port check
 HTTP_CODE_DIRECT=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${WEBMAIL_PORT}${WEBMAIL_PATH}" || true)
@@ -153,20 +158,20 @@ import sys
 msg = EmailMessage()
 test_subject = f"Automated Fleet Health Verification - {int(time.time())}"
 msg["Subject"] = test_subject
-msg["From"] = "terrastella@titan.local"
-msg["To"] = "admin@titan.local"
+msg["From"] = "terrastella@brainsos.local"
+msg["To"] = "admin@brainsos.local"
 msg.set_content("Automated verification run: all core models and agents reporting green.")
 
 with smtplib.SMTP("127.0.0.1", ${SMTP_PORT}) as s:
     s.send_message(msg)
-print("   [INFO] Dispatched message from terrastella@titan.local to admin@titan.local via SMTP")
+print("   [INFO] Dispatched message from terrastella@brainsos.local to admin@brainsos.local via SMTP")
 
 # Allow brief moment for LMTP delivery to disk
 time.sleep(1.5)
 
 # 2. Check Admin INBOX via IMAP
 M = imaplib.IMAP4("127.0.0.1", ${IMAP_PORT})
-M.login("admin@titan.local", "${ADMIN_PASS}")
+M.login("admin@brainsos.local", "${ADMIN_PASS}")
 status, count = M.select("INBOX")
 if status != "OK":
     print("   [ERROR] Failed to select admin INBOX")
@@ -200,7 +205,7 @@ import imaplib
 import sys
 
 M = imaplib.IMAP4("127.0.0.1", ${IMAP_PORT})
-M.login("admin@titan.local", "${ADMIN_PASS}")
+M.login("admin@brainsos.local", "${ADMIN_PASS}")
 status, folders = M.list()
 if status != "OK" or not folders:
     print("   [ERROR] Failed to list folders for admin")
@@ -240,7 +245,7 @@ import imaplib
 import sys
 
 M = imaplib.IMAP4("127.0.0.1", ${IMAP_PORT})
-M.login("terrastella@titan.local", "${AGENT_PASS}")
+M.login("terrastella@brainsos.local", "${AGENT_PASS}")
 status, folders = M.list()
 folder_names = [f.decode("utf-8", errors="replace") for f in folders]
 
@@ -293,7 +298,7 @@ log_success "Multi-tenant isolation and anti-deletion protections strictly verif
 # 8. Memory Plane Purity Audit (Rule 1)
 # ------------------------------------------------------------------------------
 log_info "Step 8: Auditing Memory Plane Purity for Zero Mail/Database Leakage (Rule 1)..."
-MEMORIES_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-${REPO_ROOT}/data/agent_memories}}"
+MEMORIES_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}"
 LEAKS=$(find "${MEMORIES_DIR}" -type f \( -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" -o -name "*dovecot*" -o -name "*postfix*" -o -name "*.eml" -o -name "*snappymail*" \) 2>/dev/null || true)
 if [ -n "${LEAKS}" ]; then
     log_error "Memory plane purity violation: Forbidden mail/db files found in ${MEMORIES_DIR}:"
@@ -305,11 +310,12 @@ log_success "Memory plane purity verified: zero mail, database, or mailbox leaka
 
 
 # ------------------------------------------------------------------------------
-# 9. Standalone Python Package Unit Tests (packages/titan_mail)
+# 9. Standalone Python Package Unit Tests (packages/brainsOS-mail)
 # ------------------------------------------------------------------------------
-log_info "Step 9: Running standalone titan_mail package test suite..."
-PYTHONPATH="${REPO_ROOT}/packages/titan_mail" python3 -m unittest discover "${REPO_ROOT}/packages/titan_mail/tests"
-log_success "Standalone titan_mail unit tests passed cleanly."
+MAIL_PKG_DIR="${REPO_ROOT}/packages/brainsOS-mail"
+log_info "Step 9: Running standalone brainsOS-mail package test suite..."
+PYTHONPATH="${MAIL_PKG_DIR}" "${PYTHON_BIN}" -m unittest discover "${MAIL_PKG_DIR}/tests"
+log_success "Standalone brainsOS-mail unit tests passed cleanly."
 
 # ------------------------------------------------------------------------------
 # 10. Shell Syntax Check

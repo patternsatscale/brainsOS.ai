@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Platform Cloud Infrastructure Deployment Tool (infra/)
+# brainsOS: Platform Cloud Infrastructure Deployment Tool (infra/)
 # Deploys Route 53 DNS, public redirect, Caddy ACME IAM credentials, and SES.
 # ==============================================================================
 
@@ -66,22 +66,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 log_info "======================================================================"
-log_info "Project Titan: Deploying Platform Cloud Infrastructure"
+log_info "brainsOS: Deploying Platform Cloud Infrastructure"
 log_info "Stage: ${STAGE} | Dry Run: ${DRY_RUN}"
 log_info "======================================================================"
 
 # Map namespaced credentials to standard AWS environment variables for SST if provided;
 # otherwise SST falls back seamlessly to ~/.aws/credentials and the AWS credential chain.
-if [ -n "${TITAN_INFRA_AWS_ACCESS_KEY_ID:-}" ]; then
-  export AWS_ACCESS_KEY_ID="${TITAN_INFRA_AWS_ACCESS_KEY_ID}"
-  export AWS_SECRET_ACCESS_KEY="${TITAN_INFRA_AWS_SECRET_ACCESS_KEY:-}"
+if [ -n "${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-}" ]; then
+  export AWS_ACCESS_KEY_ID="${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID}"
+  export AWS_SECRET_ACCESS_KEY="${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-}"
   log_info "Using explicit AWS credentials from environment."
 else
   log_info "Using native AWS credentials chain (~/.aws/credentials / default profile)."
 fi
 
-if [ -n "${TITAN_INFRA_AWS_REGION:-}" ]; then
-  export AWS_REGION="${TITAN_INFRA_AWS_REGION}"
+if [ -n "${BRAINSOS_INFRA_AWS_REGION:-}" ]; then
+  export AWS_REGION="${BRAINSOS_INFRA_AWS_REGION}"
 elif [ -z "${AWS_REGION:-}" ]; then
   export AWS_REGION="us-east-1"
 fi

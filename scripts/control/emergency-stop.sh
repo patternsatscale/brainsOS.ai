@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Immediate Software Kill-Switch (L7: Communications & Operational Control)
+# brainsOS: Immediate Software Kill-Switch (L7: Communications & Operational Control)
 # Instantly halts agent loops by pausing/stopping containers and revoking LiteLLM keys.
 # Supports targeted single-tenant stop: ./scripts/control/emergency-stop.sh <tenant_id>
 # Or full fleet shutdown:              ./scripts/control/emergency-stop.sh [all]
@@ -54,7 +54,7 @@ LITELLM_URL="http://127.0.0.1:${LITELLM_PORT}"
 
 log_warn "========================================================"
 if [ "${TARGET_TENANT}" = "all" ]; then
-  log_warn "     TRIGGERING TITAN FLEET-WIDE EMERGENCY KILL-SWITCH  "
+  log_warn "     TRIGGERING BRAINSOS FLEET-WIDE EMERGENCY KILL-SWITCH  "
 else
   log_warn "     TRIGGERING TARGETED KILL-SWITCH FOR: ${TARGET_TENANT} "
 fi
@@ -83,16 +83,16 @@ if [ "${TARGET_TENANT}" != "all" ]; then
   # ----------------------------------------------------------------------------
   # Targeted Single-Tenant Emergency Intervention
   # ----------------------------------------------------------------------------
-  CONTAINER_NAME="titan-agent-${TARGET_TENANT}"
+  CONTAINER_NAME="brainsos-agent-${TARGET_TENANT}"
   SERVICE_NAME="agent-${TARGET_TENANT}"
 
   if docker ps --format '{{.Names}}' | grep -qw "${CONTAINER_NAME}"; then
     log_info "Pausing agent container '${CONTAINER_NAME}'..."
     docker pause "${CONTAINER_NAME}" || docker stop "${CONTAINER_NAME}"
     log_success "Agent container '${CONTAINER_NAME}' paused/halted."
-  elif docker ps --format '{{.Names}}' | grep -qw "titan-${TARGET_TENANT}"; then
-    docker pause "titan-${TARGET_TENANT}" || docker stop "titan-${TARGET_TENANT}"
-    log_success "Agent container 'titan-${TARGET_TENANT}' paused/halted."
+  elif docker ps --format '{{.Names}}' | grep -qw "brainsos-${TARGET_TENANT}"; then
+    docker pause "brainsos-${TARGET_TENANT}" || docker stop "brainsos-${TARGET_TENANT}"
+    log_success "Agent container 'brainsos-${TARGET_TENANT}' paused/halted."
   else
     log_info "Container for tenant '${TARGET_TENANT}' is not currently running."
   fi
@@ -102,23 +102,24 @@ if [ "${TARGET_TENANT}" != "all" ]; then
   TENANT_VAR_NAME="${UPPER_TENANT}_LITELLM_KEY"
   eval "KEY_VAL=\${${TENANT_VAR_NAME}:-}"
   if [ -z "${KEY_VAL}" ]; then
-    KEY_VAL="sk-titan-${TARGET_TENANT}-key"
+    KEY_VAL="sk-brainsos-${TARGET_TENANT}-key"
   fi
   revoke_key "${KEY_VAL}"
 
   log_success "Targeted emergency intervention complete for '${TARGET_TENANT}'."
   echo ""
   echo "To resume operations for '${TARGET_TENANT}':"
-  echo "  1. Audit memories: ./data/memories/${TARGET_TENANT} (or SilverBullet PKM)"
+  MEM_PATH="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}/${TARGET_TENANT}"
+  echo "  1. Audit memories: ${MEM_PATH}"
   echo "  2. Unpause container: docker unpause ${CONTAINER_NAME} (or docker start ${CONTAINER_NAME})"
-  echo "  3. Resync keys: ./scripts/control/sync-agents.sh --provision-keys"
+  echo "  3. Resume control plane: ./scripts/control/start-control-plane.sh restart"
   echo ""
 
 else
   # ----------------------------------------------------------------------------
   # Fleet-Wide Emergency Intervention (All Agents)
   # ----------------------------------------------------------------------------
-  ACTIVE_AGENTS=$(docker ps --format '{{.Names}}' | grep -E '^titan-(agent-|hermes)' || true)
+  ACTIVE_AGENTS=$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(agent-|hermes)' || true)
 
   if [ -n "${ACTIVE_AGENTS}" ]; then
     for c in ${ACTIVE_AGENTS}; do
@@ -149,7 +150,7 @@ if os.path.exists(manifest_path) and master_key:
     for a in data.get('agents', []):
         aid = a['id']
         key_name = a.get('routing', {}).get('virtual_key', f'{aid.upper().replace(\"-\", \"_\")}_LITELLM_KEY')
-        key_val = os.environ.get(key_name, f'sk-titan-{aid}-key')
+        key_val = os.environ.get(key_name, f'sk-brainsos-{aid}-key')
         req = urllib.request.Request(
             f'{litellm_url}/key/delete',
             data=json.dumps({'keys': [key_val]}).encode(),
@@ -169,6 +170,6 @@ if os.path.exists(manifest_path) and master_key:
   echo "To resume fleet operations:"
   echo "  1. Verify memories: bash scripts/control/snapshot-memories.sh"
   echo "  2. Unpause containers: docker compose unpause"
-  echo "  3. Resync keys: ./scripts/control/sync-agents.sh --provision-keys"
+  echo "  3. Resume control plane: ./scripts/control/start-control-plane.sh restart"
   echo ""
 fi

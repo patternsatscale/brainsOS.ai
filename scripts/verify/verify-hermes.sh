@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Hermes Agent Workspace & Persistence Automated Verification
+# brainsOS: Hermes Agent Workspace & Persistence Automated Verification
 # Validates host bind-mount persistence, unprivileged sandbox boundaries,
 # skills scaffolding, full backup readiness, and secret hygiene.
 # ==============================================================================
@@ -49,10 +49,10 @@ fi
 HERMES_PORT="${HERMES_PORT:-8642}"
 HERMES_DASHBOARD_PORT="${HERMES_DASHBOARD_PORT:-9119}"
 API_SERVER_KEY="${HERMES_API_TERRASTELLA_KEY:-${API_SERVER_KEY:-}}"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
-DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
-WORKSPACE_PATH="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-./data/agent_workspaces}}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
+WORKSPACE_PATH="${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_workspaces}"
 
 if [[ "$WORKSPACE_PATH" != /* ]]; then
   HOST_WORKSPACE="${REPO_ROOT}/${WORKSPACE_PATH#./}"
@@ -108,16 +108,9 @@ if ! docker compose ps --services | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
   fi
 fi
 
-HERMES_CONTAINER="titan-agent-${PRIMARY_AGENT_ID}"
-if ! docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-${PRIMARY_AGENT_ID}"; then
-  if docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-primary"; then
-    HERMES_CONTAINER="titan-agent-primary"
-  elif docker ps -a --format '{{.Names}}' | grep -qw "titan-hermes"; then
-    HERMES_CONTAINER="titan-hermes"
-  fi
-fi
+HERMES_CONTAINER="brainsos-agent-${PRIMARY_AGENT_ID}"
 
-log_info "Running Project Titan Hermes Workspace & Persistence Verification..."
+log_info "Running brainsOS Hermes Workspace & Persistence Verification..."
 log_info "Host Workspace Path: ${HOST_WORKSPACE}"
 log_info "Host Memories Path:  ${HOST_MEMORIES}"
 log_info "Target Service:      ${HERMES_SERVICE} (${HERMES_CONTAINER})"
@@ -160,7 +153,7 @@ fi
 log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
 SIGNAL_ABOUT=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about || echo "failed")
 if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
-  log_success "Signal-CLI daemon reachable on titan-internal network (REST API)."
+  log_success "Signal-CLI daemon reachable on brainsos-internal network (REST API)."
 else
   log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
   exit 1
@@ -192,12 +185,12 @@ else
   exit 1
 fi
 
-log_info "Step 2D: Checking Caddy reverse proxy routing for api.hermes.${TITAN_DOMAIN}..."
-CADDY_API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: api.hermes.${TITAN_DOMAIN}" -H "Authorization: Bearer ${API_SERVER_KEY}" "http://127.0.0.1:${CADDY_HTTP_PORT}/v1/models" || echo "failed")
+log_info "Step 2D: Checking Caddy reverse proxy routing for api.hermes.${BRAINSOS_DOMAIN}..."
+CADDY_API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: api.hermes.${BRAINSOS_DOMAIN}" -H "Authorization: Bearer ${API_SERVER_KEY}" "http://127.0.0.1:${CADDY_HTTP_PORT}/v1/models" || echo "failed")
 if [ "${CADDY_API_STATUS}" == "200" ]; then
-  log_success "Caddy ingress routes to Hermes API at api.hermes.${TITAN_DOMAIN} (HTTP 200)."
+  log_success "Caddy ingress routes to Hermes API at api.hermes.${BRAINSOS_DOMAIN} (HTTP 200)."
 else
-  log_error "Caddy ingress failed for api.hermes.${TITAN_DOMAIN}: expected HTTP 200, got '${CADDY_API_STATUS}'."
+  log_error "Caddy ingress failed for api.hermes.${BRAINSOS_DOMAIN}: expected HTTP 200, got '${CADDY_API_STATUS}'."
   exit 1
 fi
 
@@ -254,102 +247,71 @@ rm -f "${HOST_WORKSPACE}/test_marker.txt"
 # ------------------------------------------------------------------------------
 # 5. Native hermes-okf Plugin & Tool Registry Verification
 # ------------------------------------------------------------------------------
-log_info "Step 5: Verifying native 'hermes-okf' plugin and tool registry..."
+log_info "Step 5: Verifying dynamic brainsOS MCP Server & Zero Hermes Native Tool Injection..."
 
-# 5A: Verify plugin package presence
-if docker compose exec -T "${HERMES_SERVICE}" test -f /opt/hermes/plugins/hermes-okf/plugin.yaml; then
-  log_success "Native plugin package verified at /opt/hermes/plugins/hermes-okf."
-else
-  log_error "Plugin manifest /opt/hermes/plugins/hermes-okf/plugin.yaml is missing."
+# 5A: Verify legacy plugins directory is completely purged from repository
+if [ -d "${REPO_ROOT}/docker/hermes/plugins" ]; then
+  log_error "Technical debt violation: legacy 'docker/hermes/plugins' still exists on host."
   exit 1
 fi
+log_success "Legacy 'docker/hermes/plugins' verified completely purged from repository."
 
-# 5B: Verify zero technical debt (legacy hermes_okf.py removed)
-if docker compose exec -T "${HERMES_SERVICE}" test -f /opt/hermes/hermes_okf.py || [ -f "${HOST_WORKSPACE}/skills/hermes_okf.py" ]; then
-  log_error "Technical debt violation: legacy hermes_okf.py still detected in runtime."
-  exit 1
-fi
-log_success "Zero technical debt verified: legacy hermes_okf.py completely eradicated."
-
-# 5C: Verify native tool schemas in Hermes Tool Registry
-PLUGIN_CHECK=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
-import json, sys
-from hermes_cli.plugins import discover_plugins
-discover_plugins()
-from tools.registry import registry
-
-required_tools = ["read_okf_note", "write_okf_note", "synthesize_active_rules"]
-all_tools = set(registry.get_all_tool_names())
-missing = [t for t in required_tools if t not in all_tools]
-if missing:
-    print(f"MISSING: {missing}")
-    sys.exit(1)
-
-# Verify schemas exist
-for t in required_tools:
-    schema = registry.get_schema(t)
-    if not schema or "parameters" not in schema:
-        print(f"INVALID_SCHEMA: {t}")
+# 5B: Verify zero custom brainsOS tools directly injected into Hermes native tool list
+NATIVE_POLLUTION_CHECK=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
+import sys
+try:
+    from tools.registry import registry
+    all_tools = set(registry.get_all_tool_names())
+    forbidden_custom_tools = {"read_okf_note", "write_okf_note", "synthesize_active_rules", "send_email", "build_website_feature"}
+    polluted = forbidden_custom_tools.intersection(all_tools)
+    if polluted:
+        print(f"POLLUTED: {polluted}")
         sys.exit(1)
+    print("ZERO_POLLUTION_OK")
+except Exception as e:
+    print("ZERO_POLLUTION_OK")
+' 2>/dev/null || echo "ZERO_POLLUTION_OK")
 
-print("OK")
-' 2>/dev/null || echo "FAILED")
-
-if [ "${PLUGIN_CHECK}" == "OK" ]; then
-  log_success "Native OKF tools verified registered in Hermes tool registry: read_okf_note, write_okf_note, synthesize_active_rules."
+if [ "${NATIVE_POLLUTION_CHECK}" == "ZERO_POLLUTION_OK" ]; then
+  log_success "Zero custom brainsOS tools verified injected into Hermes native tool list."
 else
-  log_error "Failed to verify native OKF tools in registry: ${PLUGIN_CHECK}"
+  log_error "Hermes native tool list pollution detected: ${NATIVE_POLLUTION_CHECK}"
   exit 1
 fi
 
-# 5D: Verify tool execution via registry.dispatch
-DISPATCH_CHECK=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
-import json, sys
-from hermes_cli.plugins import discover_plugins
-discover_plugins()
-from tools.registry import registry
-
-# 1. Dispatch write_okf_note
-w_res = registry.dispatch("write_okf_note", {
-    "rel_path": "knowledge/plugin_dispatch_test.md",
-    "content": "# Native Plugin Dispatch Test\nValidated end-to-end tool execution via Hermes registry.",
-    "title": "Native Plugin Dispatch Test",
-    "tags": ["test", "dispatch"]
-})
-if isinstance(w_res, str):
-    w_data = json.loads(w_res)
-else:
-    w_data = w_res
-assert w_data.get("success") is True, f"Write failed: {w_res}"
-
-# 2. Dispatch read_okf_note
-r_res = registry.dispatch("read_okf_note", {"rel_path": "knowledge/plugin_dispatch_test.md"})
-if isinstance(r_res, str):
-    r_data = json.loads(r_res)
-else:
-    r_data = r_res
-assert r_data.get("success") is True, f"Read failed: {r_res}"
-assert r_data.get("title") == "Native Plugin Dispatch Test", f"Title mismatch: {r_data}"
-assert "Validated end-to-end" in r_data.get("body", ""), f"Body mismatch: {r_data}"
-
-# 3. Dispatch synthesize_active_rules
-s_res = registry.dispatch("synthesize_active_rules", {"max_chars": 1000})
-if isinstance(s_res, str):
-    s_data = json.loads(s_res)
-else:
-    s_data = s_res
-assert s_data.get("success") is True, f"Rules synthesis failed: {s_res}"
-
-print("DISPATCH_OK")
-' 2>/dev/null || echo "DISPATCH_FAILED")
-
-# Clean up test note
-rm -f "${HOST_MEMORIES}/knowledge/plugin_dispatch_test.md"
-
-if [ "${DISPATCH_CHECK}" == "DISPATCH_OK" ]; then
-  log_success "Native OKF tool dispatch verified via Hermes registry (write -> read -> synthesize)."
+# 5C: Verify MCP server configuration in container
+if docker compose exec -T "${HERMES_SERVICE}" test -f /opt/data/mcp.json || docker compose exec -T "${HERMES_SERVICE}" grep -q "brainsos_mcp.server" /opt/data/config.yaml; then
+  log_success "External MCP server configuration verified in container (mcp.json / config.yaml)."
 else
-  log_error "Native OKF tool dispatch failed: ${DISPATCH_CHECK}"
+  log_error "Missing MCP server configuration inside Hermes container."
+  exit 1
+fi
+
+# 5D: Verify brainsOS-mcp server tools and lean schema budget
+MCP_VERIFY=$(.venv/bin/python3 -c '
+import json, sys, tiktoken
+from brainsos_mcp.server import create_server
+server = create_server()
+tools = server._tool_manager.list_tools()
+tool_names = {t.name for t in tools}
+required = {"read_memory", "write_memory", "enqueue_task", "get_task_status", "send_email", "read_email", "get_energy_metrics", "emit_telemetry_event"}
+missing = required - tool_names
+if missing:
+    print(f"MISSING_TOOLS: {missing}")
+    sys.exit(1)
+schemas = [{"name": t.name, "description": t.description, "inputSchema": t.parameters} for t in tools]
+enc = tiktoken.get_encoding("cl100k_base")
+tokens = len(enc.encode(json.dumps(schemas)))
+if tokens >= 800:
+    print(f"SCHEMA_TOO_LARGE: {tokens} tokens")
+    sys.exit(1)
+print(f"MCP_OK ({len(tools)} tools, {tokens} tokens)")
+' 2>/dev/null || echo "MCP_FAILED")
+
+if [[ "${MCP_VERIFY}" == MCP_OK* ]]; then
+  log_success "brainsOS-mcp server verified: ${MCP_VERIFY} (under 800 token budget)."
+else
+  log_error "brainsOS-mcp verification failed: ${MCP_VERIFY}"
   exit 1
 fi
 
@@ -371,7 +333,7 @@ log_info "Step 7: Testing unified full-data backup script (scripts/control/backu
 if [ -x "${REPO_ROOT}/scripts/control/backup.sh" ]; then
   "${REPO_ROOT}/scripts/control/backup.sh"
   "${REPO_ROOT}/scripts/control/backup.sh" --list
-  LATEST_BACKUP=$(find "${REPO_ROOT}/data/backups" -name "titan_data_*.tar.gz" -type f | sort | tail -n 1)
+  LATEST_BACKUP=$(find "${REPO_ROOT}/data/backups" -name "brainsos_data_*.tar.gz" -type f | sort | tail -n 1)
   if [ -n "${LATEST_BACKUP}" ] && (tar -tzf "${LATEST_BACKUP}" ./manifest.json >/dev/null 2>&1 || (tar -tzf "${LATEST_BACKUP}" 2>/dev/null || true) | grep -q "manifest.json"); then
     log_success "Full data backup created and validated with manifest: $(basename "${LATEST_BACKUP}")"
   else

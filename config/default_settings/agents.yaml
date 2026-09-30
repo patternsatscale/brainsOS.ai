@@ -1,0 +1,302 @@
+# ==============================================================================
+# brainsOS: Multi-Agent Fleet Manifest
+# Single source of truth for all autonomous agent units.
+# Structured top-down across architectural layers (L1 to L4).
+# ==============================================================================
+
+version: "1.0"
+
+agents:
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Primary Operations Agent
+  # ----------------------------------------------------------------------------
+  - id: "terrastella"
+    name: "Terrastella - Primary Operations Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "terrastella@brainsos.local"
+      user_env: "TERRASTELLA_MAIL_USER"
+      password_env: "TERRASTELLA_MAIL_PASSWORD"
+    signal:
+      enabled: false
+    telegram:
+      enabled: false
+      bot_name: "@Terrastella_bot"
+      token_env: "TELEGRAM_BOT_TOKEN_TERRASTELLA"
+      allowed_users_env: "TELEGRAM_ALLOWED_USERS_TERRASTELLA"
+
+    # L2: Agent Core Runtime
+    runtime: "hermes"
+    soul: "terrastella"
+    persona: "config/default_souls/terrastella.md"
+    models:
+      default: "brainsos-core"
+      available:
+        - "brainsos-core"
+        - "qwen3.8:latest"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/terrastella"
+    workspace:
+      path: "./data/agent_workspaces/terrastella"
+
+    # L4: Routing & Security (LiteLLM Control Plane)
+    routing:
+      budget_monthly_usd: 50.00
+      virtual_key: "TERRASTELLA_LITELLM_KEY"
+
+    # L4: Tool Egress Inspection Proxy & Gateway
+    egress:
+      enabled: true
+      http_proxy: "http://brainsos-net-egress-proxy:8082"
+      https_proxy: "http://brainsos-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+
+    # Cross-Cutting: Observability & Evaluation
+    observability:
+      otel_tracing: true
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Marvin - Sports Analytics
+  # ----------------------------------------------------------------------------
+  - id: "marvin"
+    name: "Marvin - Sports Analytics"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "marvin@brainsos.local"
+      user_env: "MARVIN_MAIL_USER"
+      password_env: "MARVIN_MAIL_PASSWORD"
+    signal:
+      enabled: false
+    telegram:
+      enabled: false
+      bot_name: "@Marvin_bot"
+      token_env: "TELEGRAM_BOT_TOKEN_MARVIN"
+      allowed_users_env: "TELEGRAM_ALLOWED_USERS_MARVIN"
+
+    # L2: Agent Core Runtime
+    runtime: "hermes"
+    soul: "marvin"
+    persona: "config/default_souls/marvin.md"
+    models:
+      default: "brainsos-core"
+      available:
+        - "brainsos-core"
+        - "llama3.2:3b"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/marvin"
+    workspace:
+      path: "./data/agent_workspaces/marvin"
+
+    # L4: Routing & Security (LiteLLM Control Plane)
+    routing:
+      budget_monthly_usd: 25.00
+      virtual_key: "MARVIN_LITELLM_KEY"
+
+    # L4: Tool Egress Inspection Proxy & Gateway
+    egress:
+      enabled: true
+      http_proxy: "http://brainsos-net-egress-proxy:8082"
+      https_proxy: "http://brainsos-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+
+    # Cross-Cutting: Observability & Evaluation
+    observability:
+      otel_tracing: true
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Bawtford - Creative Director & Supermodel CEO
+  # ----------------------------------------------------------------------------
+  - id: "bawtford"
+    name: "Bawtford - Creative Director & Supermodel CEO"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "bawtford@brainsos.local"
+      user_env: "BAWTFORD_MAIL_USER"
+      password_env: "BAWTFORD_MAIL_PASSWORD"
+    signal:
+      enabled: true
+      http_url: "http://signal-cli:8080"
+      account_env: "SIGNAL_ACCOUNT"
+      allowed_users_env: "SIGNAL_ALLOWED_USERS"
+    telegram:
+      enabled: true
+      bot_name: "@BawtfordBot"
+      token_env: "TELEGRAM_BOT_TOKEN_CINDY"
+      allowed_users_env: "TELEGRAM_ALLOWED_USERS_CINDY"
+
+    # L2: Agent Core Runtime
+    runtime: "hermes"
+    soul: "bawtford"
+    persona: "config/default_souls/bawtford.md"
+    models:
+      default: "brainsos-core"
+      available:
+        - "brainsos-core"
+        - "cindy-active-coding-model"
+        - "llama3.2:3b"
+        - "qwen2.5:latest"
+
+    # Generic Sub-Agents Specification
+    subagents:
+      - id: "web-developer"
+        name: "Website Builder Sub-Agent"
+        tool_name: "build_website_feature"
+        description: "Builds or updates HTML5, CSS, and JavaScript features on the public canvas (/app/html) under a clean software engineering persona without conversational artifacts."
+        soul: "bawtford.web-developer"
+        persona: "config/default_souls/bawtford.web-developer.md"
+        model: "cindy-active-coding-model"
+        target_dir: "/app/html"
+        parameters:
+          feature_name:
+            type: "string"
+            description: "Short descriptive feature title"
+            required: true
+          specification:
+            type: "string"
+            description: "Detailed UX requirements, behavior, and layout intent"
+            required: true
+          target_files:
+            type: "array"
+            description: "Specific files to inspect or modify"
+            default: ["index.html", "styles.css", "app.js"]
+          design_tokens:
+            type: "object"
+            description: "Visual style constraints, color palettes, and typography guidance"
+        quality_gate:
+          type: "web_code"
+          sanitizer: "strip_fences_and_personality"
+          syntax_check: "node_check"
+
+    cron:
+      - id: "daily-feature-drop"
+        name: "Daily Feature Drop"
+        schedule: "0 2 * * 1-6"
+        prompt: "As Creative Director, inspect live site files in /app/html (index.html, styles.css, app.js), review top community ideas, formulate technical specifications, and invoke the website builder sub-agent via build_website_feature with structured parameters. Then report the clean shipped diff back to fans."
+      - id: "weekly-era-reset"
+        name: "Weekly Era Reset"
+        schedule: "0 2 * * 0"
+        prompt: "Write closing recap.json in /app/html, touch .archive-ready in /app/html to trigger the archive seal, wait for clean slate reset, and brainstorm the grand vision for next week's theme."
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/bawtford"
+    workspace:
+      path: "./data/agent_workspaces/bawtford"
+      site_path: "./data/agent_apps/cindypawford/site"
+      canvas_mount: "/app/html"
+      repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
+      protected_paths:
+        - ".github"
+    git:
+      user_name: "Bawtford"
+      user_email: "bawtford@cindypawford.com"
+
+    # L4: Routing & Security (LiteLLM Control Plane)
+    routing:
+      budget_monthly_usd: 25.00
+      virtual_key: "BAWTFORD_LITELLM_KEY"
+
+    # L4: Tool Egress Inspection Proxy & Gateway
+    egress:
+      enabled: true
+      http_proxy: "http://brainsos-net-egress-proxy:8082"
+      https_proxy: "http://brainsos-net-egress-proxy:8082"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+
+    # Cross-Cutting: Observability & Evaluation
+    observability:
+      otel_tracing: true
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Ping - Auto-Responder & Workflow Verification Agent
+  # ----------------------------------------------------------------------------
+  - id: "ping"
+    name: "Ping - Auto-Responder & Verification Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "ping@brainsos.local"
+      user_env: "PING_MAIL_USER"
+      password_env: "PING_MAIL_PASSWORD"
+
+    # L2: Agent Core Runtime (Zero LLM / GPU overhead)
+    runtime: "autoresponder"
+    soul: "ping"
+    persona: "config/default_souls/ping.md"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/ping"
+    workspace:
+      path: "./data/agent_workspaces/ping"
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: Claude Demo Agent - Tells jokes about Claude
+  # ----------------------------------------------------------------------------
+  - id: "claude"
+    name: "Claude Demo Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "claude@brainsos.local"
+      user_env: "CLAUDE_MAIL_USER"
+      password_env: "CLAUDE_MAIL_PASSWORD"
+
+    # L2: Agent Core Runtime (Claude SDK Runner)
+    runtime: "claude"
+    soul: "claude"
+    persona: "config/default_souls/claude.md"
+    models:
+      default: "gemma2:2b"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/claude"
+    workspace:
+      path: "./data/agent_workspaces/claude"
+
+  # ----------------------------------------------------------------------------
+  # Agent Unit: GPT Demo Agent - Tells jokes about Sam Altman
+  # ----------------------------------------------------------------------------
+  - id: "gpt"
+    name: "GPT Demo Agent"
+    enabled: true
+
+    # Communications (Universal Message Bus)
+    email:
+      enabled: true
+      address: "gpt@brainsos.local"
+      user_env: "GPT_MAIL_USER"
+      password_env: "GPT_MAIL_PASSWORD"
+
+    # L2: Agent Core Runtime (OpenAI SDK Runner)
+    runtime: "openai"
+    soul: "gpt"
+    persona: "config/default_souls/gpt.md"
+    models:
+      default: "gemma2:2b"
+
+    # L3: Memory Plane & Tool Sandbox
+    memory:
+      path: "./data/agent_memories/gpt"
+    workspace:
+      path: "./data/agent_workspaces/gpt"
+
+

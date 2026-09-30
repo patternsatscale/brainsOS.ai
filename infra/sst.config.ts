@@ -5,22 +5,22 @@ import { setupSes } from "./src/ses.js";
 export default $config({
   app(input) {
     return {
-      name: "titan-infra",
+      name: "brainsos-infra",
       removal: input?.stage === "production" ? "retain" : "remove",
       home: "aws",
       providers: {
         aws: {
-          region: (process.env.TITAN_INFRA_AWS_REGION || process.env.AWS_REGION || "us-east-1") as any,
+          region: (process.env.BRAINSOS_INFRA_AWS_REGION || process.env.AWS_REGION || "us-east-1") as any,
           version: "6.50.0",
         },
       },
     };
   },
   async run() {
-    const zoneName = process.env.TITAN_ZONE_NAME || "example.com";
-    const subdomain = process.env.TITAN_SUBDOMAIN || "titan";
-    const redirectUrl = process.env.TITAN_GITHUB_REDIRECT_URL || "https://github.com/patternsatscale/project-titan";
-    const createZone = process.env.TITAN_CREATE_ZONE === "true";
+    const zoneName = process.env.BRAINSOS_ZONE_NAME || "example.com";
+    const subdomain = process.env.BRAINSOS_SUBDOMAIN || "brainsos";
+    const redirectUrl = process.env.BRAINSOS_REDIRECT_URL || "https://brainsos.ai";
+    const createZone = process.env.BRAINSOS_CREATE_ZONE === "true";
     const rawSesDomains = process.env.SES_DOMAINS || zoneName;
     const sesDomains = rawSesDomains.split(",").map((d) => d.trim()).filter(Boolean);
 
@@ -31,7 +31,7 @@ export default $config({
     const ses = setupSes(sesDomains, dns.zoneId, zoneName);
 
     return {
-      titanDomain: `${subdomain}.${zoneName}`,
+      brainsosDomain: `${subdomain}.${zoneName}`,
       redirectUrl,
       publicDistribution: dns.distributionDomain,
       caddyAcmeAccessKeyId: dns.caddyAcmeAccessKeyId,

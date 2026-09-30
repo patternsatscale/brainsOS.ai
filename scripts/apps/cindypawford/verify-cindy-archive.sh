@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Cindy Pawford Archive & 'Seal & Reset' Verification Suite
+# brainsOS: Cindy Pawford Archive & 'Seal & Reset' Verification Suite
 # Ticket #88 (CW-0B): Genesis Preservation, Digital Museum & Seal-and-Reset
 # ==============================================================================
 
@@ -46,10 +46,10 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-AGENT_ID="cindy-pawford"
-CONTAINER="titan-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-ARCHIVE_DIR="${REPO_ROOT}/apps/cindypawford/archive"
+AGENT_ID="${AGENT_ID:-bawtford}"
+CONTAINER="brainsos-agent-${AGENT_ID}"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+ARCHIVE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/archive"
 GENESIS_DIR="${ARCHIVE_DIR}/2024-genesis"
 ERAS_FILE="${ARCHIVE_DIR}/eras.json"
 LITELLM_CONFIG="${REPO_ROOT}/config/litellm/config.yaml"
@@ -233,7 +233,7 @@ fi
 # Verification 6e: Verify era-info.json in site is sanitized (Rule 7: model engine hidden)
 ERA_INFO_FILE="${SITE_DIR}/era-info.json"
 if [ -f "${ERA_INFO_FILE}" ]; then
-  if grep -qiE "(qwen|llama|ollama|titan-core|gpt)" "${ERA_INFO_FILE}"; then
+  if grep -qiE "(qwen|llama|ollama|brainsos-core|gpt)" "${ERA_INFO_FILE}"; then
     log_error "Rule 7 violation: Model ID leaked into agent era-info.json!"
     exit 1
   else

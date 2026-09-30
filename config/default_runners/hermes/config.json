@@ -1,0 +1,60 @@
+{
+  "agent": {
+    "name": "hermes-brainsos",
+    "version": "1.0.0",
+    "description": "brainsOS Autonomous Agent Instance",
+    "soul_path": "/app/config/SOUL.md"
+  },
+  "llm": {
+    "provider": "openai_compatible",
+    "base_url": "http://litellm:4000/v1",
+    "model": "brainsos-core",
+    "api_key_env": "HERMES_LITELLM_KEY",
+    "temperature": 0.2,
+    "max_tokens": 4096,
+    "context_window_env": "INFERENCE_NUM_CTX"
+  },
+  "memory": {
+    "format": "OKF",
+    "storage_path": "/memories",
+    "plugin": {
+      "name": "hermes-okf",
+      "enabled": true,
+      "rule_injection": {
+        "enabled": true,
+        "require_active_tag": false
+      },
+      "retrieval": {
+        "on_demand_only": true,
+        "knowledge_injection": false,
+        "logs_injection": false
+      },
+      "enforce_purity": true
+    },
+    "rules": {
+      "format_only": "markdown",
+      "disallowed_content": [
+        "binary_files",
+        "sqlite_databases",
+        "python_packages",
+        "cache_directories"
+      ],
+      "structure": {
+        "knowledge": "/memories/knowledge",
+        "rules": "/memories/rules",
+        "logs": "/memories/logs"
+      }
+    }
+  },
+  "workspace": {
+    "path": "/workspace",
+    "description": "Internal sandbox for runtime packages, tools, caches, and local databases",
+    "skills_path": "/workspace/skills"
+  },
+  "capabilities": {
+    "shell_enabled": true,
+    "browser_enabled": true,
+    "python_enabled": true,
+    "network_egress": true
+  }
+}

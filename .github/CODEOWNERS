@@ -1,0 +1,17 @@
+# brainsOS Code Owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repository
+* @patternsatscale
+
+# Critical security, control plane, and kill switches
+/scripts/control/ @patternsatscale
+/config/egress/ @patternsatscale
+/docker/ @patternsatscale
+/.github/workflows/ @patternsatscale
+
+# Governance standard and security policies
+/docs/cohumain/ @patternsatscale
+/SECURITY.md @patternsatscale
+/LICENSE @patternsatscale
+/NOTICE @patternsatscale

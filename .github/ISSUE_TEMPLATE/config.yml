@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a Question or Discuss Ideas
+    url: https://github.com/patternsatscale/brainsOS/discussions
+    about: Please ask questions and discuss new ideas or edge hardware configurations in GitHub Discussions.
+  - name: Report a Security Vulnerability
+    url: https://github.com/patternsatscale/brainsOS/security/advisories/new
+    about: Please report security vulnerabilities privately via GitHub Security Advisories or to security@patternsatscale.com.
+  - name: Visit brainsOS Website
+    url: https://brainsos.ai
+    about: Learn more about the brainsOS open-source edge agent operating system.

@@ -1,5 +1,5 @@
 # ==============================================================================
-# Project Titan: Operator IDE Container Image
+# brainsOS: Operator IDE Container Image
 # Built on codercom/code-server:latest (native ARM64 / AMD64 parity)
 # Pre-configured with Multi-Root Workspace, Aider, Goose, and PKM extensions
 # ==============================================================================
@@ -31,8 +31,8 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
     chmod -R a+rx /opt/uv-python /opt/uv-tools
 
 # Install fleet chat helper script
-COPY docker/editor/titan-chat /usr/local/bin/titan-chat
-RUN chmod +x /usr/local/bin/titan-chat
+COPY docker/editor/brainsos-chat /usr/local/bin/brainsos-chat
+RUN chmod +x /usr/local/bin/brainsos-chat
 
 # Pre-create extensions directory with coder ownership
 RUN mkdir -p /opt/code-server/extensions && chown -R coder:coder /opt/code-server
@@ -45,8 +45,8 @@ RUN code-server --extensions-dir /opt/code-server/extensions --install-extension
 
 # Copy entrypoint wrapper
 USER root
-COPY docker/editor/entrypoint.sh /usr/local/bin/titan-editor-entrypoint.sh
-RUN chmod +x /usr/local/bin/titan-editor-entrypoint.sh
+COPY docker/editor/entrypoint.sh /usr/local/bin/brainsos-editor-entrypoint.sh
+RUN chmod +x /usr/local/bin/brainsos-editor-entrypoint.sh
 
 # Environment settings
 ENV OPENAI_API_BASE=http://litellm:4000/v1
@@ -57,4 +57,4 @@ WORKDIR /workspace
 
 EXPOSE 8443
 
-ENTRYPOINT ["/usr/local/bin/titan-editor-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/brainsos-editor-entrypoint.sh"]

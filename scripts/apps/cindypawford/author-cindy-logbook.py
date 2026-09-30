@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Project Titan: Autonomous Cindy Logbook Authoring Pipeline Tool
+brainsOS: Autonomous Cindy Logbook Authoring Pipeline Tool
 Ticket #129: Equips Cindy Pawford and sub-agents to author and commit structured
 declassified operational records, incident telemetry, and CIP proposals to archive/logbook.json.
 """

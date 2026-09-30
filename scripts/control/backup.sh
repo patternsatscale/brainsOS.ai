@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Unified Data Plane Backup & Restore Manager
-# Backs up the entire Titan data layout (memories, workspace, and database)
+# brainsOS: Unified Data Plane Backup & Restore Manager
+# Backs up the entire brainsOS data layout (memories, workspace, and database)
 # into timestamped gzip archives with retention pruning and safe restoration.
 # ==============================================================================
 
@@ -37,6 +37,7 @@ fi
 cd "${REPO_ROOT}"
 
 # Load environment configuration
+_EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-}"
 if [ -f .env ]; then
   set -a
   . ./.env
@@ -45,6 +46,9 @@ elif [ -f .env.example ]; then
   set -a
   . ./.env.example
   set +a
+fi
+if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
+  BRAINSOS_DATA_DIR="${_EXPLICIT_DATA_DIR}"
 fi
 
 # Resolve directories
@@ -59,14 +63,14 @@ resolve_path() {
   fi
 }
 
-MEMORIES_DIR=$(resolve_path "${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-}}" "./data/agent_memories")
-WORKSPACE_DIR=$(resolve_path "${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-}}" "./data/agent_workspaces")
-COMMS_DIR=$(resolve_path "${TITAN_COMMS_DIR:-}" "./data/comms")
-DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "./data/control_plane/litellm_db")
+DATA_ROOT=$(resolve_path "${BRAINSOS_DATA_DIR:-}" "./data")
+MEMORIES_DIR=$(resolve_path "${BRAINSOS_AGENT_MEMORIES_DIR:-}" "${DATA_ROOT}/agent_memories")
+WORKSPACE_DIR=$(resolve_path "${BRAINSOS_AGENT_WORKSPACES_DIR:-}" "${DATA_ROOT}/agent_workspaces")
+COMMS_DIR=$(resolve_path "${BRAINSOS_COMMS_DIR:-}" "${DATA_ROOT}/comms")
+DB_DIR=$(resolve_path "${LITELLM_DB_DATA_DIR:-}" "${DATA_ROOT}/control_plane/litellm_db")
 if [ ! -d "${DB_DIR}" ] && [ -d "${REPO_ROOT}/data/litellm_db" ]; then
   DB_DIR="${REPO_ROOT}/data/litellm_db"
 fi
-DATA_ROOT="${REPO_ROOT}/data"
 BACKUP_DIR="${DATA_ROOT}/backups"
 MAX_BACKUPS="${MAX_BACKUPS:-14}"
 
@@ -76,7 +80,7 @@ mkdir -p "${BACKUP_DIR}"
 # Help & Usage
 # ------------------------------------------------------------------------------
 show_help() {
-  echo -e "${BOLD}Project Titan Unified Backup & Restore Utility${NC}"
+  echo -e "${BOLD}brainsOS Unified Backup & Restore Utility${NC}"
   echo ""
   echo "Usage:"
   echo "  $0 [options]"
@@ -101,10 +105,10 @@ show_help() {
 # List Backups
 # ------------------------------------------------------------------------------
 list_backups() {
-  echo -e "${BOLD}Available Titan Data Archives in ${BACKUP_DIR}:${NC}"
+  echo -e "${BOLD}Available brainsOS Data Archives in ${BACKUP_DIR}:${NC}"
   echo "--------------------------------------------------------------------------------"
   local count=0
-  for archive in "${BACKUP_DIR}"/titan_data_*.tar.gz; do
+  for archive in "${BACKUP_DIR}"/brainsos_data_*.tar.gz; do
     if [ -f "${archive}" ]; then
       count=$((count + 1))
       local size
@@ -128,12 +132,12 @@ list_backups() {
 create_backup() {
   local timestamp
   timestamp=$(date +"%Y%m%d_%H%M%S")
-  local archive_name="titan_data_${timestamp}.tar.gz"
+  local archive_name="brainsos_data_${timestamp}.tar.gz"
   local archive_path="${BACKUP_DIR}/${archive_name}"
   local staging_dir
-  staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/titan_backup_XXXXXX")
+  staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/brainsos_backup_XXXXXX")
 
-  log_info "Initializing Project Titan full data plane backup..."
+  log_info "Initializing brainsOS full data plane backup..."
   log_info "Packaging planes:"
   log_info "  - Memories:  ${MEMORIES_DIR}"
   log_info "  - Workspace: ${WORKSPACE_DIR}"
@@ -207,12 +211,12 @@ EOF
 # ------------------------------------------------------------------------------
 prune_retention() {
   local total_backups
-  total_backups=$(find "${BACKUP_DIR}" -maxdepth 1 -name "titan_data_*.tar.gz" | wc -l | tr -d ' ')
+  total_backups=$(find "${BACKUP_DIR}" -maxdepth 1 -name "brainsos_data_*.tar.gz" | wc -l | tr -d ' ')
 
   if [ "${total_backups}" -gt "${MAX_BACKUPS}" ]; then
     local excess=$((total_backups - MAX_BACKUPS))
     log_info "Pruning ${excess} oldest archive(s) to enforce retention limit of ${MAX_BACKUPS}..."
-    find "${BACKUP_DIR}" -maxdepth 1 -name "titan_data_*.tar.gz" -type f | sort | head -n "${excess}" | while read -r old_file; do
+    find "${BACKUP_DIR}" -maxdepth 1 -name "brainsos_data_*.tar.gz" -type f | sort | head -n "${excess}" | while read -r old_file; do
       rm -f "${old_file}"
       log_info "  Pruned: $(basename "${old_file}")"
     done
@@ -257,7 +261,7 @@ restore_backup() {
 
   log_info "Unpacking archive into target data planes..."
   local extract_dir
-  extract_dir=$(mktemp -d "${TMPDIR:-/tmp}/titan_restore_XXXXXX")
+  extract_dir=$(mktemp -d "${TMPDIR:-/tmp}/brainsos_restore_XXXXXX")
   tar -xzf "${archive_file}" -C "${extract_dir}"
 
   if [ -d "${extract_dir}/memories" ]; then
@@ -288,7 +292,7 @@ restore_backup() {
   fi
 
   rm -rf "${extract_dir}"
-  log_success "Titan data planes successfully restored from ${archive_file}."
+  log_success "brainsOS data planes successfully restored from ${archive_file}."
 }
 
 # ------------------------------------------------------------------------------

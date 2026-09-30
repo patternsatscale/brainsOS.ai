@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Caddy Internal Root CA Trust Utility
+# brainsOS: Caddy Internal Root CA Trust Utility
 # Exports Caddy's local root CA certificate and installs it into host trust store
 # ==============================================================================
 set -euo pipefail
@@ -19,9 +19,19 @@ else
   log_error() { echo -e "\033[1;31m[ERROR]\033[0m $*"; }
 fi
 
-TARGET_CERT_DIR="${REPO_ROOT}/data/control_plane"
+# Source .env if present
+if [ -f "${REPO_ROOT}/.env" ]; then
+  set -a
+  . "${REPO_ROOT}/.env"
+  set +a
+fi
+
+TARGET_CERT_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
 TARGET_CERT_FILE="${TARGET_CERT_DIR}/caddy_root.crt"
 mkdir -p "${TARGET_CERT_DIR}"
+if [ -d "${TARGET_CERT_FILE}" ]; then
+  rm -rf "${TARGET_CERT_FILE}"
+fi
 
 log_info "Exporting Caddy internal root CA certificate from Docker volume..."
 
@@ -31,8 +41,8 @@ if docker compose ps -q caddy >/dev/null 2>&1 && [ -n "$(docker compose ps -q ca
 fi
 
 if [ ! -s "${TARGET_CERT_FILE}" ]; then
-  # Fallback: run temporary lightweight container mounting titan_caddy_data volume
-  docker run --rm -v titan_caddy_data:/data alpine cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
+  # Fallback: run temporary lightweight container mounting brainsos_caddy_data volume
+  docker run --rm -v brainsos_caddy_data:/data alpine cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
 fi
 
 if [ ! -s "${TARGET_CERT_FILE}" ]; then
@@ -54,14 +64,14 @@ if [ ${INSTALL_STORE} -eq 1 ]; then
     if [ "$(id -u)" -ne 0 ]; then
       log_info "Installing to Linux system trust store requires sudo:"
       if command -v sudo >/dev/null 2>&1; then
-        sudo cp "${TARGET_CERT_FILE}" /usr/local/share/ca-certificates/titan_caddy_root.crt
+        sudo cp "${TARGET_CERT_FILE}" /usr/local/share/ca-certificates/brainsos_caddy_root.crt
         sudo update-ca-certificates
         log_success "Installed Caddy root CA to /usr/local/share/ca-certificates and updated system trust store."
       else
         log_warn "sudo not available. Please run as root: cp ${TARGET_CERT_FILE} /usr/local/share/ca-certificates/ && update-ca-certificates"
       fi
     else
-      cp "${TARGET_CERT_FILE}" /usr/local/share/ca-certificates/titan_caddy_root.crt
+      cp "${TARGET_CERT_FILE}" /usr/local/share/ca-certificates/brainsos_caddy_root.crt
       update-ca-certificates
       log_success "Installed Caddy root CA and updated system trust store."
     fi
@@ -73,4 +83,4 @@ fi
 
 log_info "Browser / Client Notice:"
 echo "  - Google Chrome & Chromium browsers treat '*.localhost' as a secure context automatically (http://editor.localhost)."
-echo "  - For HTTPS on '*.titan.local', import '${TARGET_CERT_FILE}' as an Authority / Trusted Root Certificate in your browser settings."
+echo "  - For HTTPS on '*.brainsos.local', import '${TARGET_CERT_FILE}' as an Authority / Trusted Root Certificate in your browser settings."

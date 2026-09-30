@@ -6,17 +6,31 @@
 !.env.example
 
 # Explicitly ensure config templates are tracked
-!config/memories/**
+!config/default_memories/**
+!config/default_runners/**
+!config/default_settings/**
+!config/default_souls/**
+!config/sample_agent_app/**
 
 # Local Manifest Overrides (Host-specific fleet customization)
 config/agents.local.yaml
 config/agents.override.yaml
+data/settings/*
+!data/settings/.gitkeep
+*.code-workspace
 
 # Live Agent Memories (Keep root gitkeep, live notes remain git-ignored)
+memories/**/*
+!memories/**/.gitkeep
 data/agent_memories/*
 !data/agent_memories/.gitkeep
 data/memories/*
 !data/memories/.gitkeep
+
+# Databases & Proxies
+*.db
+*.sqlite
+.mitmproxy/
 
 # Snapshots, Runtime State & Backups
 data/backups/
@@ -30,11 +44,21 @@ data/agent_workspaces/*
 !data/agent_workspaces/.gitkeep
 data/workspace/*
 !data/workspace/.gitkeep
+data/runners/*
+!data/runners/.gitkeep
+data/souls/*
+!data/souls/.gitkeep
+data/agent_apps/*
+!data/agent_apps/.gitkeep
 *.tar.gz
 *.vsix
 
 # Agent Public Web Canvas (cloned dedicated repositories)
 apps/cindypawford/site/
+data/agent_apps/*/site/*
+!data/agent_apps/*/site/.gitkeep
+config/sample_agent_app/*/site/*
+!config/sample_agent_app/*/site/.gitkeep
 
 # Local Volume Mounts & Caches
 data/litellm_db/
@@ -52,6 +76,8 @@ __pycache__/
 *$py.class
 .pytest_cache/
 *.egg-info/
+.ruff_cache/
+.mypy_cache/
 # Build & Dependencies
 node_modules/
 .sst/

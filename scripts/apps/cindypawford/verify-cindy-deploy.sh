@@ -37,8 +37,9 @@ fi
 cd "${REPO_ROOT}"
 
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
-CONTAINER="titan-agent-cindy-pawford"
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
+AGENT_ID="${AGENT_ID:-bawtford}"
+CONTAINER="brainsos-agent-${AGENT_ID}"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
 
 log_info "================================================================="
 log_info "  Running Cindy Pawford Protected CI/CD Verification Suite (#98) "
@@ -62,7 +63,7 @@ log_info "Test 2: Verifying container filesystem masking on /app/html/.github...
 
 if ! docker ps --format '{{.Names}}' | grep -qw "${CONTAINER}"; then
   log_info "Starting agent container '${CONTAINER}'..."
-  docker compose up -d agent-cindy-pawford
+  docker compose up -d "agent-${AGENT_ID}"
   sleep 2
 fi
 
@@ -156,7 +157,7 @@ PR_URL=$(gh pr create --repo "${REMOTE_REPO}" \
   --base main \
   --head "${TEST_BRANCH}" \
   --title "chore(test): automated PR deployment verification ${TIMESTAMP}" \
-  --body "> 🤖 **Automated CI/CD Verification Probe** — *Project Titan Ticket #98*
+  --body "> 🤖 **Automated CI/CD Verification Probe** — *brainsOS Ticket #98*
 Testing end-to-end PR guard check and automated deployment pipeline.")
 
 PR_NUM=$(echo "${PR_URL}" | grep -oE '[0-9]+$')

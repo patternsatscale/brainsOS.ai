@@ -4,7 +4,7 @@
 }
 
 # ==============================================================================
-# Project Titan: TLS Policy Snippet & Multi-Agent Fleet Ingress Routes
+# brainsOS: TLS Policy Snippet & Multi-Agent Fleet Ingress Routes
 # ==============================================================================
 import tls_policy.caddy
 import agents.caddy
@@ -23,12 +23,12 @@ import agents.caddy
 	}
 }
 
-http://proxy.{$TITAN_DOMAIN:titan.local}, https://proxy.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+http://proxy.{$BRAINSOS_DOMAIN:brainsos.local}, https://proxy.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import proxy_backend
 }
 
-http://proxy.localhost, https://proxy.localhost, http://proxy.titan.local, https://proxy.titan.local {
+http://proxy.localhost, https://proxy.localhost {
 	tls internal
 	import proxy_backend
 }
@@ -52,18 +52,18 @@ http://proxy.localhost, https://proxy.localhost, http://proxy.titan.local, https
 	}
 }
 
-http://editor.{$TITAN_DOMAIN:titan.local}, https://editor.{$TITAN_DOMAIN:titan.local}, http://code.{$TITAN_DOMAIN:titan.local}, https://code.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+http://editor.{$BRAINSOS_DOMAIN:brainsos.local}, https://editor.{$BRAINSOS_DOMAIN:brainsos.local}, http://code.{$BRAINSOS_DOMAIN:brainsos.local}, https://code.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import editor_backend
 }
 
-http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost, http://editor.titan.local, https://editor.titan.local, http://code.titan.local, https://code.titan.local {
+http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost {
 	tls internal
 	import editor_backend
 }
 
 # ==============================================================================
-# Communications Plane: SOGo Groupware & Webmail Client Gateway (Ticket #166)
+# Communications Plane: SOGo Groupware & Webmail Client Gateway
 # ==============================================================================
 (sogo_backend) {
 	encode gzip zstd
@@ -78,31 +78,15 @@ http://editor.localhost, https://editor.localhost, http://code.localhost, https:
 	}
 }
 
-http://mail.{$TITAN_DOMAIN:titan.local}, https://mail.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+
+http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import sogo_backend
 }
 
-http://mail.localhost, https://mail.localhost, http://mail.titan.local, https://mail.titan.local {
+http://mail.localhost, https://mail.localhost {
 	tls internal
 	import sogo_backend
-}
-
-
-# Legacy Memory Plane Redirect (SilverBullet -> Operator IDE)
-http://memory.localhost, http://memory.titan.local {
-	redir http://editor.titan.local{uri} permanent
-}
-https://memory.localhost, https://memory.titan.local {
-	tls internal
-	redir https://editor.titan.local{uri} permanent
-}
-http://memory.{$TITAN_DOMAIN:titan.local} {
-	redir http://editor.{$TITAN_DOMAIN:titan.local}{uri} permanent
-}
-https://memory.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
-	redir https://editor.{$TITAN_DOMAIN:titan.local}{uri} permanent
 }
 
 # ==============================================================================
@@ -119,12 +103,12 @@ https://memory.{$TITAN_DOMAIN:titan.local} {
 	}
 }
 
-http://dgx.{$TITAN_DOMAIN:titan.local}, https://dgx.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+http://dgx.{$BRAINSOS_DOMAIN:brainsos.local}, https://dgx.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import dgx_backend
 }
 
-http://dgx.localhost, https://dgx.localhost, http://dgx.titan.local, https://dgx.titan.local {
+http://dgx.localhost, https://dgx.localhost {
 	tls internal
 	import dgx_backend
 }
@@ -143,18 +127,18 @@ http://dgx.localhost, https://dgx.localhost, http://dgx.titan.local, https://dgx
 	}
 }
 
-http://langfuse.{$TITAN_DOMAIN:titan.local}, https://langfuse.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+http://langfuse.{$BRAINSOS_DOMAIN:brainsos.local}, https://langfuse.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import langfuse_backend
 }
 
-http://langfuse.localhost, https://langfuse.localhost, http://langfuse.titan.local, https://langfuse.titan.local {
+http://langfuse.localhost, https://langfuse.localhost {
 	tls internal
 	import langfuse_backend
 }
 
 # ==============================================================================
-# Security Hardening: Tool Egress Gateway & Inspection Proxy (Ticket #146)
+# Security Hardening: Tool Egress Gateway & Inspection Proxy
 # Relays operator web traffic to mitmweb console for real-time flow and log audit
 # ==============================================================================
 (efw_backend) {
@@ -169,12 +153,12 @@ http://langfuse.localhost, https://langfuse.localhost, http://langfuse.titan.loc
 	}
 }
 
-http://efw.{$TITAN_DOMAIN:titan.local}, https://efw.{$TITAN_DOMAIN:titan.local}, http://firewall.{$TITAN_DOMAIN:titan.local}, https://firewall.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+http://efw.{$BRAINSOS_DOMAIN:brainsos.local}, https://efw.{$BRAINSOS_DOMAIN:brainsos.local}, http://firewall.{$BRAINSOS_DOMAIN:brainsos.local}, https://firewall.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import efw_backend
 }
 
-http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost, http://efw.titan.local, https://efw.titan.local, http://firewall.titan.local, https://firewall.titan.local {
+http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost {
 	tls internal
 	import efw_backend
 }
@@ -190,14 +174,14 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ASUS Ascent GX10 - Project Titan Control Center</title>
+  <title>ASUS Ascent GX10 - brainsOS Control Center</title>
   <style>
     :root {
       --gx10-blue: #0082c9;
       --gx10-blue-hover: #006fae;
       --gx10-blue-light: #e0f2fe;
       --gx10-blue-glow: rgba(0, 130, 201, 0.25);
-      --titan-cyan: #0284c7;
+      --brainsos-cyan: #0284c7;
       --surface-white: #ffffff;
       --surface-card: rgba(255, 255, 255, 0.94);
       --surface-card-hover: #ffffff;
@@ -658,7 +642,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
         <div class="pulse-dot"></div>
         ASUS Ascent GX10 Appliance &bull; Online
       </div>
-      <h1>Project Titan Control Center</h1>
+      <h1>brainsOS Control Center</h1>
       <p class="subtitle">Hardware-Accelerated Autonomous Multi-Agent Suite &amp; L1&ndash;L7 Systems Architecture Portal</p>
 
       <div class="spec-bar">
@@ -695,7 +679,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
               <div class="card-role">Primary Operations &amp; Fleet Orchestrator</div>
               <p class="card-desc">Coordinates multi-agent fleet operations, verifies Open Knowledge Format memory purity, and executes sandboxed research and tooling.</p>
               <div class="meta-pills">
-                <span class="meta-pill">Model: <strong>titan-core</strong></span>
+                <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
                 <span class="meta-pill">Budget: <strong>$50/mo</strong></span>
                 <span class="meta-pill">Signal Daemon</span>
               </div>
@@ -706,50 +690,50 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
             </div>
           </a>
 
-          <!-- Cindy Pawford -->
-          <a href="http://cindypawford.localhost" target="_blank" rel="noopener noreferrer" class="card card-cindy" data-subdomain="cindypawford">
+          <!-- Bawtford -->
+          <a href="http://bawtford.localhost" target="_blank" rel="noopener noreferrer" class="card card-cindy" data-subdomain="bawtford">
             <div>
               <div class="card-header">
                 <span class="plane-tag tag-cindy">Creative Director</span>
                 <span class="port-indicator">:9121 / :8644</span>
               </div>
               <div class="card-title">
-                <span>Cindy Pawford</span>
+                <span>Bawtford</span>
               </div>
               <div class="card-role">Creative Director &amp; Supermodel CEO</div>
               <p class="card-desc">Autonomous digital fashion director, public canvas publisher, and website builder sub-agent orchestrator (cindypawford.com).</p>
               <div class="meta-pills">
-                <span class="meta-pill">Model: <strong>cindy-coding</strong></span>
+                <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
                 <span class="meta-pill">Budget: <strong>$25/mo</strong></span>
                 <span class="meta-pill">Telegram Bot</span>
               </div>
             </div>
             <div class="card-footer">
-              <span class="launch-btn" style="color: #db2777;"><span class="primary-link" style="color: #db2777;">cindypawford.localhost</span> &rarr;</span>
+              <span class="launch-btn" style="color: #db2777;"><span class="primary-link" style="color: #db2777;">bawtford.localhost</span> &rarr;</span>
               <span class="external-badge">Console &#x2197;</span>
             </div>
           </a>
 
-          <!-- Football Dan -->
-          <a href="http://football-dan.localhost" target="_blank" rel="noopener noreferrer" class="card card-dan" data-subdomain="football-dan">
+          <!-- Marvin -->
+          <a href="http://marvin.localhost" target="_blank" rel="noopener noreferrer" class="card card-dan" data-subdomain="marvin">
             <div>
               <div class="card-header">
                 <span class="plane-tag tag-dan">Sports Analytics</span>
                 <span class="port-indicator">:9120 / :8643</span>
               </div>
               <div class="card-title">
-                <span>Football Dan</span>
+                <span>Marvin</span>
               </div>
               <div class="card-role">Sports Analytics &amp; Prediction</div>
               <p class="card-desc">Quantitative sports analytics unit generating predictive match models, mathematical simulations, and automated telemetry reports.</p>
               <div class="meta-pills">
-                <span class="meta-pill">Model: <strong>llama3.2:3b</strong></span>
+                <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
                 <span class="meta-pill">Budget: <strong>$25/mo</strong></span>
                 <span class="meta-pill">Telegram Bot</span>
               </div>
             </div>
             <div class="card-footer">
-              <span class="launch-btn" style="color: #d97706;"><span class="primary-link" style="color: #d97706;">football-dan.localhost</span> &rarr;</span>
+              <span class="launch-btn" style="color: #d97706;"><span class="primary-link" style="color: #d97706;">marvin.localhost</span> &rarr;</span>
               <span class="external-badge">Console &#x2197;</span>
             </div>
           </a>
@@ -774,7 +758,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
                 <span class="port-indicator">:8443</span>
               </div>
               <div class="card-title">
-                <span>Titan Operator IDE &bull; Containerized VS Code &amp; AI Pair Console</span>
+                <span>brainsOS Operator IDE &bull; Containerized VS Code &amp; AI Pair Console</span>
               </div>
               <p class="card-desc">Authoritative L7 Operator Management IDE (OpenVSCode / Code-Server) with Multi-Root Workspace layout (Repo root, /memories, /data/workspace, Cindy canvas), Aider pair-programming, and Goose agent integration routed strictly through LiteLLM.</p>
               <div class="meta-pills">
@@ -816,7 +800,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
               <div class="meta-pills">
                 <span class="meta-pill">Serialization: <strong>max_parallel_requests: 1</strong></span>
                 <span class="meta-pill">Bus Protection: <strong>LPDDR5x Guard</strong></span>
-                <span class="meta-pill">Security: <strong>titan-litellm-net Isolation</strong></span>
+                <span class="meta-pill">Security: <strong>brainsos-litellm-net Isolation</strong></span>
                 <span class="meta-pill">Store: <strong>PostgreSQL 16</strong></span>
               </div>
             </div>
@@ -839,7 +823,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
               <p class="card-desc">Dedicated outbound security gateway and inspection firewall intercepting, logging, and auditing agent tool traffic in real time while enforcing strict internal plane bypass (NO_PROXY).</p>
               <div class="meta-pills">
                 <span class="meta-pill">Proxy: <strong>mitmproxy / mitmweb</strong></span>
-                <span class="meta-pill">Console: <strong>efw.titan.local</strong></span>
+                <span class="meta-pill">Console: <strong>efw.brainsos.local</strong></span>
                 <span class="meta-pill">Inspection: <strong>Real-Time Flows &amp; Logs</strong></span>
                 <span class="meta-pill">Bypass: <strong>NO_PROXY Isolated</strong></span>
               </div>
@@ -898,7 +882,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
               </div>
               <p class="card-desc">Multi-tier bridge networks isolating ingress reverse proxy traffic, internal agent egress, and control plane persistence. Containers run with unprivileged UID 1000 and dropped root capabilities.</p>
               <div class="meta-pills">
-                <span class="meta-pill">Networks: <strong>titan-ingress, titan-internal, titan-litellm-net</strong></span>
+                <span class="meta-pill">Networks: <strong>brainsos-ingress, brainsos-internal, brainsos-litellm-net</strong></span>
                 <span class="meta-pill">Profile: <strong>UID 1000 Sandboxed</strong></span>
                 <span class="meta-pill">Caps: <strong>cap_drop: [ALL]</strong></span>
               </div>
@@ -972,7 +956,7 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
               <div class="meta-pills">
                 <span class="meta-pill">Tracing: <strong>OpenTelemetry (OTel)</strong></span>
                 <span class="meta-pill">Metrics: <strong>Latency &amp; Token Spend</strong></span>
-                <span class="meta-pill">Persistence: <strong>titan-langfuse-db</strong></span>
+                <span class="meta-pill">Persistence: <strong>brainsos-langfuse-db</strong></span>
               </div>
             </div>
             <div class="card-footer">
@@ -1009,12 +993,12 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
 
     <div class="hosts-box">
       <div class="hosts-header">
-        <span>Custom Domain Resolution (*.titan.local)</span>
+        <span>Custom Domain Resolution (*.brainsos.local)</span>
       </div>
       <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
-        All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.titan.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
+        All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.brainsos.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
       </p>
-      <div class="code-snippet">echo "127.0.0.1 titan.local terrastella.titan.local cindypawford.titan.local football-dan.titan.local proxy.titan.local editor.titan.local code.titan.local memory.titan.local dgx.titan.local langfuse.titan.local efw.titan.local firewall.titan.local" | sudo tee -a /etc/hosts</div>
+      <div class="code-snippet">echo "127.0.0.1 brainsos.local terrastella.brainsos.local bawtford.brainsos.local marvin.brainsos.local proxy.brainsos.local editor.brainsos.local code.brainsos.local dgx.brainsos.local langfuse.brainsos.local efw.brainsos.local firewall.brainsos.local" | sudo tee -a /etc/hosts</div>
     </div>
 
     <footer>
@@ -1027,8 +1011,8 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
       var hostname = window.location.hostname;
       var protocol = window.location.protocol;
       if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-        var isTitanLocal = hostname.indexOf("titan.local") !== -1;
-        var domain = isTitanLocal ? hostname : "{$TITAN_DOMAIN:titan.local}";
+        var isBrainsOSLocal = hostname.indexOf("brainsos.local") !== -1;
+        var domain = isBrainsOSLocal ? hostname : "{$BRAINSOS_DOMAIN:brainsos.local}";
         var cards = document.querySelectorAll("a.card[data-subdomain]");
         for (var i = 0; i < cards.length; i++) {
           var card = cards[i];
@@ -1048,12 +1032,12 @@ http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://
 EOF 200
 }
 
-http://{$TITAN_DOMAIN:titan.local}, https://{$TITAN_DOMAIN:titan.local}, http://*.{$TITAN_DOMAIN:titan.local}, https://*.{$TITAN_DOMAIN:titan.local} {
-	import titan_tls
+http://{$BRAINSOS_DOMAIN:brainsos.local}, https://{$BRAINSOS_DOMAIN:brainsos.local}, http://*.{$BRAINSOS_DOMAIN:brainsos.local}, https://*.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
 	import landing_page_content
 }
 
-http://localhost, https://localhost, http://titan.local, https://titan.local, :80, :443 {
+http://localhost, https://localhost, :80, :443 {
 	tls internal
 	import landing_page_content
 }

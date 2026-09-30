@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Signal Operator Onboarding & Device Linking
+# brainsOS: Signal Operator Onboarding & Device Linking
 # Script-first operational onboarding for Signal Private Operator Backchannel
 # ==============================================================================
 set -euo pipefail
@@ -36,14 +36,10 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-SIGNAL_CONTAINER="titan-net-signal-cli"
-HERMES_CONTAINER="titan-agent-terrastella"
-COMMS_DIR="${TITAN_COMMS_DIR:-${REPO_ROOT}/data/comms}"
-if [ -d "${COMMS_DIR}/signal" ] || [ ! -d "${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}/signal" ]; then
-    SIGNAL_STORAGE="${COMMS_DIR}/signal"
-else
-    SIGNAL_STORAGE="${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/workspace}/signal"
-fi
+SIGNAL_CONTAINER="brainsos-net-signal-cli"
+HERMES_CONTAINER="brainsos-agent-terrastella"
+COMMS_DIR="${BRAINSOS_COMMS_DIR:-${REPO_ROOT}/data/comms}"
+SIGNAL_STORAGE="${COMMS_DIR}/signal"
 
 # ------------------------------------------------------------------------------
 # 1. Prerequisite & Permission Validation
@@ -127,7 +123,7 @@ render_qr() {
 cmd_status() {
     check_prerequisites
     echo ""
-    echo -e "${BOLD}Project Titan: Signal Messaging Gateway Status${NC}"
+    echo -e "${BOLD}brainsOS: Signal Messaging Gateway Status${NC}"
     echo "--------------------------------------------------------"
 
     ABOUT_JSON=$(docker exec "${SIGNAL_CONTAINER}" curl -s http://127.0.0.1:8080/v1/about)
@@ -286,8 +282,7 @@ update_env_prompt() {
         fi
     fi
 
-    log_info "Synchronizing fleet configurations..."
-    "${REPO_ROOT}/scripts/control/sync-agents.sh"
+    log_info "Signal configuration complete."
 }
 
 # ------------------------------------------------------------------------------
@@ -304,7 +299,7 @@ show_help() {
     echo "  --help                        Display this help dialog"
     echo ""
     echo "Examples:"
-    echo "  ./scripts/setup/link-signal.sh --link Titan-Operator"
+    echo "  ./scripts/setup/link-signal.sh --link brainsOS-Operator"
     echo "  ./scripts/setup/link-signal.sh --status"
     echo "  ./scripts/setup/link-signal.sh --register +15551234567"
     echo "  ./scripts/setup/link-signal.sh --verify +15551234567 123-456"

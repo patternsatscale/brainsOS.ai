@@ -1,11 +1,13 @@
 #!/bin/bash
 set -e
 
-echo "[TITAN-MAIL] Initializing Titan Mail Server (Postfix + Dovecot)..."
+echo "[BRAINSOS-MAIL] Initializing brainsOS Mail Server (Postfix + Dovecot)..."
 
 # Ensure directories exist
-mkdir -p /var/mail/vmail /etc/mail-titan /var/run/dovecot /var/spool/postfix
+mkdir -p /var/mail/vmail /etc/mail-brainsos /var/run/dovecot /var/spool/postfix /var/spool/brainsos/inbound
 touch /var/mail/vmail/shared-mailboxes.db
+chown -R vmail:vmail /var/spool/brainsos 2>/dev/null || true
+chmod -R 775 /var/spool/brainsos 2>/dev/null || true
 
 # Ensure vmail user & group exist
 addgroup -g 5000 vmail 2>/dev/null || true
@@ -13,47 +15,57 @@ adduser -D -u 5000 -G vmail -h /var/mail/vmail vmail 2>/dev/null || true
 addgroup dovecot vmail 2>/dev/null || true
 addgroup postfix vmail 2>/dev/null || true
 
-# Initialize configuration files if not present in mounted volume
-if [ ! -f /etc/mail-titan/users ]; then
-    echo "[TITAN-MAIL] Seeding default accounts in /etc/mail-titan/users..."
-    cat << 'EOF' > /etc/mail-titan/users
-admin@titan.local:{PLAIN}admin_secret_pass:5000:5000::/var/mail/vmail/admin::
-operator@titan.local:{PLAIN}operator_secret_pass:5000:5000::/var/mail/vmail/operator::
-terrastella@titan.local:{PLAIN}terrastella_secret_pass:5000:5000::/var/mail/vmail/terrastella::
-bawtford@titan.local:{PLAIN}bawtford_secret_pass:5000:5000::/var/mail/vmail/bawtford::
-marvin@titan.local:{PLAIN}marvin_secret_pass:5000:5000::/var/mail/vmail/marvin::
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}"
+TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+
+# Provision configuration files in mounted volume
+echo "[BRAINSOS-MAIL] Provisioning accounts in /etc/mail-brainsos/users..."
+cat << EOF > /etc/mail-brainsos/users
+admin@brainsos.local:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
+operator@brainsos.local:{PLAIN}${OPERATOR_PASS}:5000:5000::/var/mail/vmail/operator::
+terrastella@brainsos.local:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastella::
+bawtford@brainsos.local:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
+marvin@brainsos.local:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
+ping@brainsos.local:{PLAIN}${PING_PASS}:5000:5000::/var/mail/vmail/ping::
+EOF
+
+if [ ! -f /etc/mail-brainsos/vmailbox ]; then
+    cat << 'EOF' > /etc/mail-brainsos/vmailbox
+admin@brainsos.local admin
+operator@brainsos.local operator
+terrastella@brainsos.local terrastella
+bawtford@brainsos.local bawtford
+marvin@brainsos.local marvin
+ping@brainsos.local ping
 EOF
 fi
 
-if [ ! -f /etc/mail-titan/vmailbox ]; then
-    cat << 'EOF' > /etc/mail-titan/vmailbox
-admin@titan.local admin
-operator@titan.local operator
-terrastella@titan.local terrastella
-bawtford@titan.local bawtford
-marvin@titan.local marvin
-EOF
-fi
-
-if [ ! -f /etc/mail-titan/virtual ]; then
-    cat << 'EOF' > /etc/mail-titan/virtual
+if [ ! -f /etc/mail-brainsos/virtual ]; then
+    cat << 'EOF' > /etc/mail-brainsos/virtual
 # Alias mappings
-postmaster@titan.local admin@titan.local
-root@titan.local admin@titan.local
+postmaster@brainsos.local admin@brainsos.local
+root@brainsos.local admin@brainsos.local
 EOF
 fi
 
 # Compile Postfix lookup databases
-postmap lmdb:/etc/mail-titan/vmailbox
-postmap lmdb:/etc/mail-titan/virtual
+postmap lmdb:/etc/mail-brainsos/vmailbox
+postmap lmdb:/etc/mail-brainsos/virtual
 newaliases
+
+# Clean up any stale lock files from previous unclean shutdowns
+find /var/mail/vmail -name "*.lock" -delete 2>/dev/null || true
 
 # Enforce secure permissions
 chown -R vmail:vmail /var/mail/vmail
 chmod -R 770 /var/mail/vmail
 
 # Scaffold mailbox folders for all users
-for user in $(cut -d: -f1 /etc/mail-titan/users); do
+for user in $(cut -d: -f1 /etc/mail-brainsos/users); do
     name=$(echo "$user" | cut -d@ -f1)
     mkdir -p "/var/mail/vmail/$name/Maildir/new" \
              "/var/mail/vmail/$name/Maildir/cur" \
@@ -78,35 +90,35 @@ chown dovecot:dovecot /var/log/dovecot.log 2>/dev/null || true
 tail -n 0 -F /var/log/dovecot.log &
 
 # Export environment variables for Dovecot Sieve child scripts
-env | grep -E '^(HERMES_API_|TITAN_AGENT_)' > /etc/environment || true
+env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_|BRAINSOS_INGRESS_URL|BRAINSOS_SPOOL_DIR)' > /etc/environment || true
 chmod 644 /etc/environment
 
 # Start Dovecot
-echo "[TITAN-MAIL] Starting Dovecot daemon..."
+echo "[BRAINSOS-MAIL] Starting Dovecot daemon..."
 /usr/sbin/dovecot
 sleep 1
 
 # Register ACLs via doveadm:
 # 1. Agent owners get read, write, seen, insert, and post rights — but CANNOT delete, expunge, or modify ACLs
 # 2. Administrator gets full management access (including write-deleted and expunge)
-for user in $(cut -d: -f1 /etc/mail-titan/users); do
-    if [ "$user" != "admin@titan.local" ]; then
+for user in $(cut -d: -f1 /etc/mail-brainsos/users); do
+    if [ "$user" != "admin@brainsos.local" ]; then
         # Restrict agent owner: no write-deleted (t), no expunge (e), no admin (a)
         doveadm acl set -u "$user" INBOX owner lookup read write write-seen insert post 2>/dev/null || true
         # Grant admin full oversight & expunge capabilities
-        doveadm acl set -u "$user" INBOX user=admin@titan.local lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+        doveadm acl set -u "$user" INBOX user=admin@brainsos.local lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
     fi
 done
 
 # Start Postfix
-echo "[TITAN-MAIL] Starting Postfix daemon..."
+echo "[BRAINSOS-MAIL] Starting Postfix daemon..."
 /usr/sbin/postfix start
 
-echo "[TITAN-MAIL] Mail server running and ready for traffic (SMTP :25/:587, IMAP :143)."
+echo "[BRAINSOS-MAIL] Mail server running and ready for traffic (SMTP :25/:587, IMAP :143)."
 
 # Signal handler for graceful shutdown
 shutdown() {
-    echo "[TITAN-MAIL] Shutting down Postfix and Dovecot..."
+    echo "[BRAINSOS-MAIL] Shutting down Postfix and Dovecot..."
     /usr/sbin/postfix stop 2>/dev/null || true
     if [ -f /var/run/dovecot/master.pid ]; then
         kill -TERM $(cat /var/run/dovecot/master.pid 2>/dev/null) 2>/dev/null || true
@@ -119,11 +131,11 @@ trap shutdown SIGTERM SIGINT
 # Keep container alive while monitoring daemons
 while true; do
     if [ ! -f /var/run/dovecot/master.pid ] || ! kill -0 $(cat /var/run/dovecot/master.pid 2>/dev/null) 2>/dev/null; then
-        echo "[TITAN-MAIL] Dovecot process died!"
+        echo "[BRAINSOS-MAIL] Dovecot process died!"
         exit 1
     fi
     if ! /usr/sbin/postfix status >/dev/null 2>&1; then
-        echo "[TITAN-MAIL] Postfix process died!"
+        echo "[BRAINSOS-MAIL] Postfix process died!"
         exit 1
     fi
     sleep 5

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: End-to-End Multi-Agent & LiteLLM Telemetry Verification
+# brainsOS: End-to-End Multi-Agent & LiteLLM Telemetry Verification
 # Validates trace ingestion, model latency, token counts, and agent identity
 # across the LiteLLM control plane and Langfuse v4.38.0 observability stack.
 # ==============================================================================
@@ -50,9 +50,9 @@ LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_URL="http://127.0.0.1:${LITELLM_PORT}"
 LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
 LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
-HERMES_CINDY_LITELLM_KEY="${HERMES_CINDY_LITELLM_KEY:-sk-titan-cindy-pawford-key}"
+HERMES_BAWTFORD_LITELLM_KEY="${HERMES_BAWTFORD_LITELLM_KEY:-sk-brainsos-bawtford-key}"
 TEST_AGENT="${TEST_AGENT:-terrastella}"
-TEST_AGENT_KEY="${HERMES_LITELLM_KEY:-sk-titan-${TEST_AGENT}-key}"
+TEST_AGENT_KEY="${HERMES_LITELLM_KEY:-sk-brainsos-${TEST_AGENT}-key}"
 
 PASSED=0
 FAILED=0
@@ -74,7 +74,7 @@ warn_check() {
 }
 
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
-echo -e "${BLUE}${BOLD}Project Titan: End-to-End Agent Telemetry & Langfuse Verification${NC}"
+echo -e "${BLUE}${BOLD}brainsOS: End-to-End Agent Telemetry & Langfuse Verification${NC}"
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
 
 # ------------------------------------------------------------------------------
@@ -110,10 +110,10 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 2: Dispatching test inference completion under '${TEST_AGENT}' identity and session..."
 
-# Detect available model from local Ollama tags (prefers production titan-core, falls back to gemma2:2b / qwen2.5)
-TARGET_MODEL="titan-core"
+# Detect available model from local Ollama tags (prefers production brainsos-core, falls back to gemma2:2b / qwen2.5)
+TARGET_MODEL="brainsos-core"
 if curl -s "http://127.0.0.1:11434/api/tags" 2>/dev/null | grep -q "qwen3.8"; then
-  TARGET_MODEL="titan-core"
+  TARGET_MODEL="brainsos-core"
 elif curl -s "http://127.0.0.1:11434/api/tags" 2>/dev/null | grep -q "gemma2:2b"; then
   TARGET_MODEL="gemma2:2b"
 elif curl -s "http://127.0.0.1:11434/api/tags" 2>/dev/null | grep -q "qwen2.5"; then
@@ -124,7 +124,7 @@ fi
 log_info "Using inference model target: ${TARGET_MODEL}"
 
 TEST_ID="test-telemetry-$(date +%s)"
-TEST_SESSION_ID="titan-${TEST_AGENT}-${TEST_ID}"
+TEST_SESSION_ID="brainsos-${TEST_AGENT}-${TEST_ID}"
 
 TEST_PAYLOAD=$(cat <<EOF
 {
@@ -139,11 +139,11 @@ TEST_PAYLOAD=$(cat <<EOF
   "metadata": {
     "session_id": "${TEST_SESSION_ID}",
     "agent_id": "${TEST_AGENT}",
-    "project": "titan",
+    "project": "brainsos",
     "plane": "agent",
     "test_id": "${TEST_ID}",
     "environment": "verification",
-    "tags": ["${TEST_AGENT}", "titan", "verification"]
+    "tags": ["${TEST_AGENT}", "brainsos", "verification"]
   }
 }
 EOF
@@ -176,9 +176,9 @@ USER_MATCHED=false
 
 # Allow up to 25 seconds for the asynchronous Langfuse worker to process and flush queue
 log_info "Awaiting asynchronous trace & session ingestion in Langfuse v4..."
-TMP_TRACES="/tmp/titan_lf_traces_$$.json"
-TMP_OBS="/tmp/titan_lf_obs_$$.json"
-TMP_SESSIONS="/tmp/titan_lf_sessions_$$.json"
+TMP_TRACES="/tmp/brainsos_lf_traces_$$.json"
+TMP_OBS="/tmp/brainsos_lf_obs_$$.json"
+TMP_SESSIONS="/tmp/brainsos_lf_sessions_$$.json"
 trap 'rm -f "${TMP_TRACES}" "${TMP_OBS}" "${TMP_SESSIONS}"' EXIT
 
 for i in {1..25}; do
@@ -193,8 +193,8 @@ for i in {1..25}; do
     -H "Content-Type: application/json" > "${TMP_SESSIONS}" 2>/dev/null || true
 
   CH_COUNT=0
-  if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-clickhouse$"; then
-    CH_COUNT=$(docker exec titan-langfuse-clickhouse clickhouse-client -q "SELECT count() FROM default.traces WHERE (user_id='${TEST_AGENT}' OR session_id='${TEST_SESSION_ID}') AND timestamp >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
+  if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-clickhouse$"; then
+    CH_COUNT=$(docker exec brainsos-langfuse-clickhouse clickhouse-client -q "SELECT count() FROM default.traces WHERE (user_id='${TEST_AGENT}' OR session_id='${TEST_SESSION_ID}') AND timestamp >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
   fi
 
   MATCH_COUNT=$(python3 -c "
@@ -299,7 +299,7 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 5: Verifying Memory Plane Purity across fleet partitions..."
 
-MEMORIES_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-${REPO_ROOT}/data/agent_memories}}"
+MEMORIES_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}"
 if [ ! -d "${MEMORIES_DIR}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
   MEMORIES_DIR="${REPO_ROOT}/data/memories"
 fi

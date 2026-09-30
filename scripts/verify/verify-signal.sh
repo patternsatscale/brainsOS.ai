@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Signal Messaging Gateway Verification Suite
+# brainsOS: Signal Messaging Gateway Verification Suite
 # Validates Signal daemon health, operator accounts, Hermes adapter connectivity,
 # operator whitelisting, storage persistence, and zero-drift fleet synchronization.
 # ==============================================================================
@@ -22,7 +22,7 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 echo -e "${BOLD}=================================================================${NC}"
-echo -e "${BOLD} Project Titan: Signal Messaging Gateway Verification Suite     ${NC}"
+echo -e "${BOLD} brainsOS: Signal Messaging Gateway Verification Suite     ${NC}"
 echo -e "${BOLD}=================================================================${NC}"
 
 # ------------------------------------------------------------------------------
@@ -39,17 +39,13 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-SIGNAL_CONTAINER="titan-net-signal-cli"
-HERMES_CONTAINER="titan-agent-terrastella"
+SIGNAL_CONTAINER="brainsos-net-signal-cli"
+HERMES_CONTAINER="brainsos-agent-terrastella"
 HERMES_SERVICE="agent-terrastella"
 SIGNAL_SERVICE="signal-cli"
-COMMS_DIR="${TITAN_COMMS_DIR:-${REPO_ROOT}/data/comms}"
-WORKSPACE_DIR="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/agent_workspaces}}"
-if [ -d "${COMMS_DIR}/signal" ] || [ ! -d "${REPO_ROOT}/data/workspace/signal" ]; then
-    SIGNAL_STORAGE="${COMMS_DIR}/signal"
-else
-    SIGNAL_STORAGE="${REPO_ROOT}/data/workspace/signal"
-fi
+COMMS_DIR="${BRAINSOS_COMMS_DIR:-${REPO_ROOT}/data/comms}"
+WORKSPACE_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}"
+SIGNAL_STORAGE="${COMMS_DIR}/signal"
 
 # ------------------------------------------------------------------------------
 # 1. Daemon Running & Health Check
@@ -90,9 +86,9 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Hermes Reachability on titan-internal
+# 3. Hermes Reachability on brainsos-internal
 # ------------------------------------------------------------------------------
-log_info "Step 3: Verifying Hermes reachability to Signal daemon on titan-internal..."
+log_info "Step 3: Verifying Hermes reachability to Signal daemon on brainsos-internal..."
 if ! docker compose ps --services --filter "status=running" | grep -q "^${HERMES_SERVICE}$"; then
     log_warn "Hermes container (${HERMES_SERVICE}) is not running. Starting..."
     docker compose up -d "${HERMES_SERVICE}"
@@ -101,9 +97,9 @@ fi
 
 HERMES_TO_SIGNAL=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about 2>/dev/null || echo "failed")
 if echo "${HERMES_TO_SIGNAL}" | grep -q "json-rpc"; then
-    log_success "Hermes container successfully reaches signal-cli:8080 over titan-internal."
+    log_success "Hermes container successfully reaches signal-cli:8080 over brainsos-internal."
 else
-    log_error "Hermes failed to reach Signal daemon over titan-internal: ${HERMES_TO_SIGNAL}"
+    log_error "Hermes failed to reach Signal daemon over brainsos-internal: ${HERMES_TO_SIGNAL}"
     exit 1
 fi
 

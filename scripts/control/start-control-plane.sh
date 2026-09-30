@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Native Host Control Plane Service Manager
+# brainsOS: Native Host Control Plane Service Manager
 # Manages the host inference engine (Ollama) and AI proxy gateway (LiteLLM)
 # ==============================================================================
 
@@ -50,16 +50,18 @@ if [ -f .env ]; then
   fi
 fi
 
-PID_DIR="${REPO_ROOT}/data/control_plane"
+PID_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
 mkdir -p "${PID_DIR}"
 
 OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"
 LITELLM_PID_FILE="${PID_DIR}/litellm.pid"
 DGX_BRIDGE_PID_FILE="${PID_DIR}/dgx_bridge.pid"
+QUEUE_WORKER_PID_FILE="${PID_DIR}/queue_worker.pid"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_DB_PORT="${LITELLM_DB_PORT:-5432}"
 DGX_BRIDGE_PORT="${DGX_BRIDGE_PORT:-11001}"
 DGX_BRIDGE_BIND="${DGX_BRIDGE_BIND:-}"
+BRAINSOS_INGRESS_PORT="${BRAINSOS_INGRESS_PORT:-8000}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 HERMES_LITELLM_KEY="${HERMES_LITELLM_KEY:-}"
 DATABASE_URL="${DATABASE_URL:-}"
@@ -73,7 +75,7 @@ fi
 # Observability Plane (Langfuse & OpenTelemetry)
 LANGFUSE_AUTO_START="${LANGFUSE_AUTO_START:-false}"
 LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
-LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.titan.local:${LANGFUSE_PORT}}"
+LANGFUSE_HOST="${LANGFUSE_HOST:-http://langfuse.brainsos.local:${LANGFUSE_PORT}}"
 LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
 LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
 LANGFUSE_OTEL_AUTH="${LANGFUSE_OTEL_AUTH:-}"
@@ -117,7 +119,7 @@ is_gx10_hardware() {
 # Action: Stop
 # ------------------------------------------------------------------------------
 stop_services() {
-  log_info "Stopping Project Titan host control plane..."
+  log_info "Stopping brainsOS host control plane..."
   
   if [ -f "${LITELLM_PID_FILE}" ]; then
     PID=$(cat "${LITELLM_PID_FILE}")
@@ -154,6 +156,24 @@ stop_services() {
         done
       fi
       log_success "Port ${LITELLM_PORT} freed."
+    fi
+  fi
+
+  # Stop Unified Queue Worker if running
+  if [ -f "${QUEUE_WORKER_PID_FILE}" ]; then
+    PID=$(cat "${QUEUE_WORKER_PID_FILE}")
+    if kill -0 "${PID}" 2>/dev/null; then
+      log_info "Stopping Unified Queue Worker (PID: ${PID})..."
+      kill "${PID}" 2>/dev/null || true
+    fi
+    rm -f "${QUEUE_WORKER_PID_FILE}"
+    log_success "Unified Queue Worker stopped."
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    INGRESS_PIDS=$(lsof -ti :"${BRAINSOS_INGRESS_PORT}" 2>/dev/null || true)
+    if [ -n "${INGRESS_PIDS}" ]; then
+      for p in ${INGRESS_PIDS}; do kill "${p}" 2>/dev/null || true; done
     fi
   fi
 
@@ -205,7 +225,7 @@ stop_services() {
 # Action: Status
 # ------------------------------------------------------------------------------
 status_services() {
-  log_info "Checking Project Titan host control plane status..."
+  log_info "Checking brainsOS host control plane status..."
   
   # Ollama status
   if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
@@ -233,7 +253,7 @@ status_services() {
   REMOTE_LF_BODY=$(curl -s "${LANGFUSE_HOST}/api/public/health" 2>/dev/null || true)
 
   if [ -n "${LOCAL_LF_BODY}" ] && echo "${LOCAL_LF_BODY}" | grep -q '"status":"OK"'; then
-    log_success "Langfuse: RUNNING locally on http://localhost:${LANGFUSE_PORT} (http://langfuse.titan.local:${LANGFUSE_PORT})"
+    log_success "Langfuse: RUNNING locally on http://localhost:${LANGFUSE_PORT} (http://langfuse.brainsos.local:${LANGFUSE_PORT})"
   elif [ -n "${REMOTE_LF_BODY}" ] && echo "${REMOTE_LF_BODY}" | grep -q '"status":"OK"'; then
     log_success "Langfuse: RUNNING remotely at ${LANGFUSE_HOST}"
   else
@@ -249,13 +269,31 @@ status_services() {
       log_warn "DGX Bridge: NOT RUNNING on http://${BRIDGE_BIND}:${DGX_BRIDGE_PORT}"
     fi
   fi
+
+  # Unified Queue Worker & Ingress status
+  if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
+    if curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
+      log_success "Queue Worker & Ingress: RUNNING (PID: $(cat "${QUEUE_WORKER_PID_FILE}"), http://127.0.0.1:${BRAINSOS_INGRESS_PORT})"
+    else
+      log_success "Queue Worker: RUNNING (PID: $(cat "${QUEUE_WORKER_PID_FILE}"))"
+    fi
+  else
+    log_info "Queue Worker: NOT RUNNING"
+  fi
+
+  # Shared Stateless Hermes Runner status
+  if docker compose ps hermes-runner 2>/dev/null | grep -qE "(Up|running)"; then
+    log_success "Hermes Runner: RUNNING (brainsos-agent-hermes-runner:8642)"
+  else
+    log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d hermes-runner)"
+  fi
 }
 
 # ------------------------------------------------------------------------------
 # Action: Start
 # ------------------------------------------------------------------------------
 start_services() {
-  log_info "Starting Project Titan host control plane..."
+  log_info "Starting brainsOS host control plane..."
 
   # 1. Start Ollama if not already responding
   if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
@@ -288,7 +326,7 @@ start_services() {
   if check_db_ready; then
     log_info "LiteLLM PostgreSQL database is already responding on 127.0.0.1:${LITELLM_DB_PORT}."
   else
-    log_info "Starting dedicated LiteLLM PostgreSQL database (titan-litellm-db)..."
+    log_info "Starting dedicated LiteLLM PostgreSQL database (brainsos-infra-litellm-db)..."
     docker compose up -d litellm-db
     
     DB_READY=false
@@ -328,9 +366,9 @@ start_services() {
     LITELLM_SUCCESS_CALLBACKS="langfuse,otel"
     LITELLM_FAILURE_CALLBACKS="langfuse,otel"
     
-    # Resolve host-level endpoint: if LANGFUSE_HOST points to titan.local and does not resolve natively on host, use loopback
+    # Resolve host-level endpoint: if LANGFUSE_HOST points to brainsos.local and does not resolve natively on host, use loopback
     HOST_LANGFUSE_URL="${LANGFUSE_HOST}"
-    if [[ "${HOST_LANGFUSE_URL}" == *"langfuse.titan.local"* ]] && ! curl -s -m 1 "${HOST_LANGFUSE_URL}/api/public/health" >/dev/null 2>&1; then
+    if [[ "${HOST_LANGFUSE_URL}" == *"langfuse.brainsos.local"* ]] && ! curl -s -m 1 "${HOST_LANGFUSE_URL}/api/public/health" >/dev/null 2>&1; then
       HOST_LANGFUSE_URL="http://127.0.0.1:${LANGFUSE_PORT}"
     fi
 
@@ -348,8 +386,8 @@ start_services() {
   if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
     log_info "LiteLLM is already running on http://127.0.0.1:${LITELLM_PORT}."
   else
-    if [ ! -x ".venv/bin/litellm" ]; then
-      log_error "LiteLLM not found in .venv/bin/litellm. Please run ./scripts/setup/setup-host.sh first."
+    if [ ! -x ".venv/bin/python" ]; then
+      log_error "Python not found in .venv/bin/python. Please run ./scripts/setup/setup-host.sh first."
       exit 1
     fi
 
@@ -363,7 +401,7 @@ start_services() {
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
-    nohup ${SETSID_CMD} .venv/bin/litellm \
+    nohup ${SETSID_CMD} .venv/bin/python .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \
       --port "${LITELLM_PORT}" \
@@ -392,9 +430,7 @@ start_services() {
   fi
 
   # 4. Provision fleet virtual keys in LiteLLM control plane database
-  if [ -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
-    "${REPO_ROOT}/scripts/control/sync-agents.sh" --provision-keys || true
-  elif [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
+  if [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
     KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
       -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${HERMES_LITELLM_KEY}" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
@@ -407,6 +443,38 @@ start_services() {
         -H "Content-Type: application/json" \
         -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\", \"models\": []}" || true
       log_success "Hermes virtual key initialized in database."
+    fi
+  fi
+
+  # 5. Start Shared Stateless Hermes Agent Runner container
+  log_info "Ensuring shared stateless Hermes runner (hermes-runner) is running..."
+  docker compose up -d hermes-runner 2>/dev/null || log_warn "Could not start hermes-runner container (Docker may be inactive)."
+
+  # 6. Start Unified Asynchronous Queue Worker & Mail Ingress
+  if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
+    log_info "Unified Queue Worker is already running (PID: $(cat "${QUEUE_WORKER_PID_FILE}"))."
+  else
+    log_info "Starting Unified Asynchronous Queue Worker & Mail Ingress (port ${BRAINSOS_INGRESS_PORT})..."
+    BRAINSOS_INGRESS_PORT="${BRAINSOS_INGRESS_PORT}" \
+    PYTHONPATH="${REPO_ROOT}/packages/brainsOS-mail:${REPO_ROOT}/packages/brainsOS-queue:${REPO_ROOT}/packages/brainsOS-agent:${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" \
+    nohup ${SETSID_CMD} .venv/bin/python -m brainsos_agent.worker </dev/null >"${PID_DIR}/queue_worker.log" 2>&1 &
+    QUEUE_WORKER_PID=$!
+    disown "${QUEUE_WORKER_PID}" 2>/dev/null || true
+    echo "${QUEUE_WORKER_PID}" > "${QUEUE_WORKER_PID_FILE}"
+
+    # Wait for Ingress HTTP readiness
+    READY=false
+    for i in {1..30}; do
+      if curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
+        READY=true
+        break
+      fi
+      sleep 0.5
+    done
+    if [ "${READY}" = true ]; then
+      log_success "Unified Queue Worker & Mail Ingress started (PID: ${QUEUE_WORKER_PID}, port ${BRAINSOS_INGRESS_PORT})."
+    else
+      log_warn "Queue Worker started (PID: ${QUEUE_WORKER_PID}), ingress endpoint still pending."
     fi
   fi
 

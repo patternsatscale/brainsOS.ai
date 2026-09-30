@@ -13,9 +13,9 @@ export function setupDns(
   let zoneArn: any;
 
   if (createZone) {
-    const zone = new aws.route53.Zone("TitanHostedZone", {
+    const zone = new aws.route53.Zone("BrainsOSHostedZone", {
       name: zoneName,
-      comment: "Project Titan Split-Horizon Public DNS Zone",
+      comment: "brainsOS Split-Horizon Public DNS Zone",
     });
     zoneId = zone.zoneId;
     zoneArn = zone.arn;
@@ -27,12 +27,12 @@ export function setupDns(
     zoneArn = zone.arn;
   }
 
-  // 2. Public Split-Horizon Redirect (HTTP 301/302 to GitHub repository)
-  // Utilizes a CloudFront Function to instantly redirect public visitors to the open-source repo
-  const redirectFunction = new aws.cloudfront.Function("TitanPublicRedirectFn", {
-    name: `titan-redirect-${subdomain}-${zoneName.replace(/[^a-zA-Z0-9]/g, "-")}`,
+  // 2. Public Split-Horizon Redirect (HTTP 301/302 to destination URL)
+  // Utilizes a CloudFront Function to instantly redirect public visitors
+  const redirectFunction = new aws.cloudfront.Function("BrainsOSPublicRedirectFn", {
+    name: `brainsos-redirect-${subdomain}-${zoneName.replace(/[^a-zA-Z0-9]/g, "-")}`,
     runtime: "cloudfront-js-2.0",
-    comment: "Redirects public HTTP/HTTPS traffic to Project Titan GitHub repository",
+    comment: "Redirects public HTTP/HTTPS traffic to brainsOS",
     code: `function handler(event) {
     return {
         statusCode: 302,
@@ -46,12 +46,12 @@ export function setupDns(
   });
 
   // Request ACM public certificate in us-east-1 for CloudFront
-  const cert = new aws.acm.Certificate("TitanRedirectCert", {
+  const cert = new aws.acm.Certificate("BrainsOSRedirectCert", {
     domainName: fullDomain,
     validationMethod: "DNS",
   });
 
-  const certValidationRecord = new aws.route53.Record("TitanRedirectCertValidation", {
+  const certValidationRecord = new aws.route53.Record("BrainsOSRedirectCertValidation", {
     zoneId,
     name: cert.domainValidationOptions[0].resourceRecordName,
     type: cert.domainValidationOptions[0].resourceRecordType,
@@ -59,26 +59,26 @@ export function setupDns(
     ttl: 60,
   });
 
-  const certValidation = new aws.acm.CertificateValidation("TitanRedirectCertValidationWait", {
+  const certValidation = new aws.acm.CertificateValidation("BrainsOSRedirectCertValidationWait", {
     certificateArn: cert.arn,
     validationRecordFqdns: [certValidationRecord.fqdn],
   });
 
   // CloudFront Distribution without backend origin (CloudFront function handles the response directly)
   // S3 placeholder origin required by CloudFront schema
-  const dummyBucket = new aws.s3.Bucket("TitanDummyOriginBucket", {
-    bucket: `titan-origin-${subdomain}-${zoneName.replace(/[^a-zA-Z0-9]/g, "-")}`,
+  const dummyBucket = new aws.s3.Bucket("BrainsOSDummyOriginBucket", {
+    bucket: `brainsos-origin-${subdomain}-${zoneName.replace(/[^a-zA-Z0-9]/g, "-")}`,
     forceDestroy: true,
   });
 
-  const oac = new aws.cloudfront.OriginAccessControl("TitanDummyOAC", {
-    name: `titan-oac-${subdomain}`,
+  const oac = new aws.cloudfront.OriginAccessControl("BrainsOSDummyOAC", {
+    name: `brainsos-oac-${subdomain}`,
     originAccessControlOriginType: "s3",
     signingBehavior: "always",
     signingProtocol: "sigv4",
   });
 
-  const distribution = new aws.cloudfront.Distribution("TitanRedirectDistribution", {
+  const distribution = new aws.cloudfront.Distribution("BrainsOSRedirectDistribution", {
     enabled: true,
     aliases: [fullDomain],
     origins: [
@@ -117,7 +117,7 @@ export function setupDns(
   });
 
   // Route 53 Alias Record pointing to CloudFront
-  new aws.route53.Record("TitanRedirectAliasRecord", {
+  new aws.route53.Record("BrainsOSRedirectAliasRecord", {
     zoneId,
     name: fullDomain,
     type: "A",
@@ -131,8 +131,8 @@ export function setupDns(
   });
 
   // 3. Least-Privilege IAM User & Policy for Local Appliance Caddy ACME DNS-01 Challenge
-  const caddyAcmePolicy = new aws.iam.Policy("TitanCaddyAcmePolicy", {
-    name: `titan-caddy-acme-${subdomain}`,
+  const caddyAcmePolicy = new aws.iam.Policy("BrainsOSCaddyAcmePolicy", {
+    name: `brainsos-caddy-acme-${subdomain}`,
     description: "Least-privilege policy for Caddy ACME DNS-01 challenge in Route 53",
     policy: $interpolate`{
   "Version": "2012-10-17",
@@ -159,16 +159,16 @@ export function setupDns(
 }`,
   });
 
-  const caddyAcmeUser = new aws.iam.User("TitanCaddyAcmeUser", {
-    name: `titan-caddy-acme-${subdomain}`,
+  const caddyAcmeUser = new aws.iam.User("BrainsOSCaddyAcmeUser", {
+    name: `brainsos-caddy-acme-${subdomain}`,
   });
 
-  new aws.iam.UserPolicyAttachment("TitanCaddyAcmeUserAttachment", {
+  new aws.iam.UserPolicyAttachment("BrainsOSCaddyAcmeUserAttachment", {
     user: caddyAcmeUser.name,
     policyArn: caddyAcmePolicy.arn,
   });
 
-  const caddyAcmeAccessKey = new aws.iam.AccessKey("TitanCaddyAcmeKey", {
+  const caddyAcmeAccessKey = new aws.iam.AccessKey("BrainsOSCaddyAcmeKey", {
     user: caddyAcmeUser.name,
   });
 

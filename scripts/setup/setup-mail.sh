@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Mail Infrastructure Provisioning & Account Seeding
+# brainsOS: Mail Infrastructure Provisioning & Account Seeding
 # Codifies mail storage scaffolding, credentials, and SnappyMail configuration.
 # Rule 8 compliant (Script-Driven Discipline) & Rule 1 compliant (Data Isolation)
 # ==============================================================================
@@ -16,10 +16,10 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
 fi
 
 echo "[INFO] ======================================================================"
-echo "[INFO] Project Titan: Provisioning Internal Email & Webmail Subsystem"
+echo "[INFO] brainsOS: Provisioning Internal Email & Webmail Subsystem"
 echo "[INFO] ======================================================================"
 
-COMMS_DIR="${TITAN_COMMS_DIR:-$REPO_ROOT/data/comms}"
+COMMS_DIR="${BRAINSOS_COMMS_DIR:-$REPO_ROOT/data/comms}"
 MAIL_DIR="$COMMS_DIR/email"
 VMAIL_DIR="$MAIL_DIR/vmail"
 CONFIG_DIR="$MAIL_DIR/config"
@@ -32,36 +32,45 @@ fi
 mkdir -p "$VMAIL_DIR" "$CONFIG_DIR" "$SNAPPY_DIR"
 
 # 1. Seed Accounts and Credentials
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-titan_admin_mail_secret_change_me}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-titan_operator_mail_secret_change_me}"
-TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-titan_terrastella_mail_secret_change_me}"
-BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-titan_bawtford_mail_secret_change_me}"
-MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-titan_marvin_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}"
+TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
 echo "[INFO] Generating account directory in $CONFIG_DIR/users..."
 cat << EOF > "$CONFIG_DIR/users"
-admin@titan.local:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
-operator@titan.local:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operator::
-terrastella@titan.local:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
-bawtford@titan.local:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
-marvin@titan.local:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
+admin@brainsos.local:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
+operator@brainsos.local:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operator::
+terrastella@brainsos.local:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
+bawtford@brainsos.local:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
+marvin@brainsos.local:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
+ping@brainsos.local:{PLAIN}$PING_PASS:5000:5000::/var/mail/vmail/ping::
+claude@brainsos.local:{PLAIN}$CLAUDE_PASS:5000:5000::/var/mail/vmail/claude::
+gpt@brainsos.local:{PLAIN}$GPT_PASS:5000:5000::/var/mail/vmail/gpt::
 EOF
 
 cat << 'EOF' > "$CONFIG_DIR/vmailbox"
-admin@titan.local admin
-operator@titan.local operator
-terrastella@titan.local terrastella
-bawtford@titan.local bawtford
-marvin@titan.local marvin
+admin@brainsos.local admin
+operator@brainsos.local operator
+terrastella@brainsos.local terrastella
+bawtford@brainsos.local bawtford
+marvin@brainsos.local marvin
+ping@brainsos.local ping
+claude@brainsos.local claude
+gpt@brainsos.local gpt
 EOF
 
 cat << 'EOF' > "$CONFIG_DIR/virtual"
-postmaster@titan.local admin@titan.local
-root@titan.local admin@titan.local
+postmaster@brainsos.local admin@brainsos.local
+root@brainsos.local admin@brainsos.local
 EOF
 
 # Scaffold mailbox folders for all accounts
-for user in admin operator terrastella bawtford marvin; do
+for user in admin operator terrastella bawtford marvin ping claude gpt; do
     mkdir -p "$VMAIL_DIR/$user/Maildir/new" \
              "$VMAIL_DIR/$user/Maildir/cur" \
              "$VMAIL_DIR/$user/Maildir/tmp"
@@ -124,7 +133,7 @@ DOMAIN_JSON_CONTENT='{
     "whiteList": ""
 }'
 
-echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/titan.local.json"
+echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/brainsos.local.json"
 echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/default.json"
 
 # 3. Ensure Container Permissions
@@ -132,13 +141,13 @@ echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/default.json"
 docker run --rm -v "$MAIL_DIR:/mail" alpine sh -c "chmod -R 777 /mail && chown -R 82:82 /mail/snappymail" 2>/dev/null || true
 
 # 4. Build Mail Server Image
-echo "[INFO] Building titan-mail-server container image..."
-docker build -t titan-mail-server:latest "$REPO_ROOT/docker/mail"
+echo "[INFO] Building brainsos-mail-server container image..."
+docker build -t brainsos-mail-server:latest "$REPO_ROOT/docker/mail"
 
 echo "[SUCCESS] Mail infrastructure setup complete!"
 echo "[INFO] Accounts provisioned:"
-echo "       - admin@titan.local (Full shared access over all agent mailboxes)"
-echo "       - operator@titan.local"
-echo "       - terrastella@titan.local"
-echo "       - bawtford@titan.local"
-echo "       - marvin@titan.local"
+echo "       - admin@brainsos.local (Full shared access over all agent mailboxes)"
+echo "       - operator@brainsos.local"
+echo "       - terrastella@brainsos.local"
+echo "       - bawtford@brainsos.local"
+echo "       - marvin@brainsos.local"

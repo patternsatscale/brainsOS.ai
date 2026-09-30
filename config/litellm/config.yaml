@@ -1,11 +1,11 @@
 # ==============================================================================
-# Project Titan: LiteLLM Control Plane Configuration
+# brainsOS: LiteLLM Control Plane Configuration
 # Enforces rate limiting, hardware serialization, and virtual key routing
 # ==============================================================================
 
 model_list:
   # Primary Agent Model Alias
-  - model_name: titan-core
+  - model_name: brainsos-core
     litellm_params:
       model: ollama_chat/qwen3.8:latest
       api_base: http://127.0.0.1:11434
