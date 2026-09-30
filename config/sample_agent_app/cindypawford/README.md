@@ -9,7 +9,7 @@ This directory houses the host-side infrastructure, archives, clean-slate templa
 ## 1. Directory Topology
 
 ```text
-apps/cindypawford/
+data/agent_apps/cindypawford/
 ├── site/                     # Cloned repository (patternsatscale/CindyPawford-Online)
 │   │                         # Mounted into container at /app/html
 │   ├── index.html            # Autonomous HTML canvas
@@ -18,7 +18,7 @@ apps/cindypawford/
 │   └── _platform/            # Host-injected platform assets (auto-injected at build)
 │       ├── config.js         # Runtime API URL configuration fallback
 │       └── shell.js          # Un-nukeable Closed Shadow DOM platform dock
-├── infra/                    # Isolated SST Ion infrastructure (Host-only)
+├── pipeline/                 # Isolated SST Ion infrastructure (Host-only)
 │   ├── sst.config.ts         # S3, CloudFront, DynamoDB & ApiGatewayV2 (api.cindypawford.com)
 │   ├── package.json          # Node ESM dependencies (SST Ion 3.3.27, AWS SDK)
 │   └── src/
@@ -39,9 +39,9 @@ apps/cindypawford/
 
 ## 2. Inviolable Security & Isolation Guardrails
 
-- **Rule 4 (Host Sandboxing)**: The agent container has **zero AWS credentials**, zero SST configuration, and **zero filesystem visibility** into `apps/cindypawford/infra/`.
+- **Rule 4 (Host Sandboxing)**: The agent container has **zero AWS credentials**, zero SST configuration, and **zero filesystem visibility** into `data/agent_apps/cindypawford/pipeline/`.
 - **Rule 7 (Compartmentalization)**: Cindy has no knowledge of AWS S3, CloudFront distributions, SST Ion, or host infrastructure. Cindy believes she is strictly editing local HTML/CSS/JS files in her workspace.
-- **Rule 9 (Filesystem Isolation)**: Only `./apps/cindypawford/site` is mounted into the container (at `/app/html`). The master platform shell source (`infra/src/shell.js`), clean-slate templates, and archive vault reside entirely outside the container mount.
+- **Rule 9 (Filesystem Isolation)**: Only `./data/agent_apps/cindypawford/site` is mounted into the container (at `/app/html`). The master platform shell source (`pipeline/src/shell.js`), clean-slate templates, and archive vault reside entirely outside the container mount.
 
 ---
 

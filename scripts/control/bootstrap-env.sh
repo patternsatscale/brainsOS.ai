@@ -65,6 +65,7 @@ DATA_DIRS=(
   "${REPO_ROOT}/data/settings"
   "${REPO_ROOT}/data/control_plane"
   "${REPO_ROOT}/data/souls"
+  "${REPO_ROOT}/data/agent_apps"
 )
 
 for dir in "${DATA_DIRS[@]}"; do
@@ -90,6 +91,12 @@ fi
 if [ -d "${REPO_ROOT}/config/default_souls" ]; then
   log_info "Seeding default souls from config/default_souls into data/souls..."
   cp -n -R "${REPO_ROOT}/config/default_souls/"* "${REPO_ROOT}/data/souls/" 2>/dev/null || true
+fi
+
+# Seed sample agent app templates into data/agent_apps if not already present
+if [ -d "${REPO_ROOT}/config/sample_agent_app" ]; then
+  log_info "Seeding sample agent app from config/sample_agent_app into data/agent_apps..."
+  cp -n -R "${REPO_ROOT}/config/sample_agent_app/"* "${REPO_ROOT}/data/agent_apps/" 2>/dev/null || true
 fi
 
 # Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory

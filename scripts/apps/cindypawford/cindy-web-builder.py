@@ -62,7 +62,7 @@ def resolve_canvas_dir(explicit: Optional[str] = None) -> Path:
         return container_canvas
     # On host:
     repo_root = find_repo_root()
-    host_site = repo_root / "agent_apps" / "cindypawford" / "site"
+    host_site = repo_root / "data" / "agent_apps" / "cindypawford" / "site"
     if host_site.exists():
         return host_site
     return container_canvas

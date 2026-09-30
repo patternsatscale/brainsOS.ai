@@ -35,8 +35,8 @@ fi
 
 cd "${REPO_ROOT}"
 
-SITE_DIR="${REPO_ROOT}/agent_apps/cindypawford/site"
-ARCHIVE_DIR="${REPO_ROOT}/agent_apps/cindypawford/archive"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+ARCHIVE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/archive"
 ERAS_FILE="${ARCHIVE_DIR}/eras.json"
 
 DRY_RUN=0

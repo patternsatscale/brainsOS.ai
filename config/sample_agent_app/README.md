@@ -1,15 +1,17 @@
-# brainsOS: Agent Applications Architecture (`agent_apps/`)
+# brainsOS: Sample Agent Applications (`config/sample_agent_app/`)
 
-This directory houses application surfaces, digital canvases, and public web projects maintained or enhanced by autonomous agents on **brainsOS** ([brainsOS.ai](https://brainsos.ai)).
+This directory houses declarative template seeds, baseline digital canvases, and public web application blueprints for autonomous agents on **brainsOS** ([brainsOS.ai](https://brainsos.ai)).
+
+During environment initialization (`scripts/control/bootstrap-env.sh`), templates from `config/sample_agent_app/` are seeded into `data/agent_apps/` to provide editable runtime application workspaces for agent fleets.
 
 ---
 
 ## 1. The Blind Deployer & Workspace Isolation Architecture
 
-To ensure zero trust and prevent hostile or hallucinatory compromise of cloud infrastructure, `agent_apps/` strictly decouples untrusted agent-authored code from host-executed deployment pipelines:
+To ensure zero trust and prevent hostile or hallucinatory compromise of cloud infrastructure, `data/agent_apps/` strictly decouples untrusted agent-authored code from host-executed deployment pipelines:
 
 ```text
-agent_apps/<app_id>/
+data/agent_apps/<app_id>/
 ├── site/                     # UNTRUSTED AGENT OUTPUT
 │   ├── index.html            # - Mounted into agent container at /app/html
 │   ├── styles.css            # - Agents have write access strictly here
@@ -35,8 +37,8 @@ agent_apps/<app_id>/
 ## 2. Operator Security Guidelines
 
 1. **Untrusted Agent Territory (`site/`)**:
-   - Everything inside `agent_apps/<app_id>/site/` is considered autonomous agent output.
-   - The agent container binds `./agent_apps/<app_id>/site` to `/app/html` with restricted file permissions (`PUID:PGID 1000:1000`).
+   - Everything inside `data/agent_apps/<app_id>/site/` is considered autonomous agent output.
+   - The agent container binds `./data/agent_apps/<app_id>/site` to `/app/html` with restricted file permissions (`PUID:PGID 1000:1000`).
    - Protected subpaths (such as `.github/` inside `site/`) are mounted read-only (`:ro`) to prevent agents from modifying GitHub Actions workflows.
 
 2. **Protected Host Infrastructure (`pipeline/`)**:

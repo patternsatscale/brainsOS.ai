@@ -48,8 +48,8 @@ fi
 
 AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/agent_apps/cindypawford/site"
-ARCHIVE_DIR="${REPO_ROOT}/agent_apps/cindypawford/archive"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+ARCHIVE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/archive"
 GENESIS_DIR="${ARCHIVE_DIR}/2024-genesis"
 ERAS_FILE="${ARCHIVE_DIR}/eras.json"
 LITELLM_CONFIG="${REPO_ROOT}/config/litellm/config.yaml"

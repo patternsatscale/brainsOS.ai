@@ -48,7 +48,7 @@ fi
 
 AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/agent_apps/cindypawford/site"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
 MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/${AGENT_ID}"
 WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}/${AGENT_ID}"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
@@ -114,7 +114,7 @@ else
   exit 1
 fi
 
-# 3c. Verify /app/html mount maps to agent_apps/cindypawford/site
+# 3c. Verify /app/html mount maps to data/agent_apps/cindypawford/site
 HTML_MOUNT=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
 if [ "${HTML_MOUNT}" = "${SITE_DIR}" ]; then
   log_success "Verified container '/app/html' bind-mount maps to '${SITE_DIR}'."

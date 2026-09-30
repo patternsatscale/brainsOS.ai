@@ -1,13 +1,13 @@
 # Cindy Pawford: Autonomous Agent Boundary & Operating Guardrails
 
-This document establishes the mandatory operational boundaries and permissions for autonomous agents working on **Cindy Pawford** (`agent_apps/cindypawford/`).
+This document establishes the mandatory operational boundaries and permissions for autonomous agents working on **Cindy Pawford** (`data/agent_apps/cindypawford/`).
 
 ---
 
 ## 1. Permitted Scope of Work
 
 Autonomous agents operating on Cindy Pawford have write access strictly to the web canvas directory:
-- **Allowed Path**: `agent_apps/cindypawford/site/**` (mounted into the agent container as `/app/html/`).
+- **Allowed Path**: `data/agent_apps/cindypawford/site/**` (mounted into the agent container as `/app/html/`).
 - **Permitted File Types**: HTML (`.html`), CSS (`.css`), client-side JavaScript (`.js`), and static media assets (`.svg`, `.png`, `.jpg`, `.webp`).
 - **Development Goal**: Maintain and evolve the Cindy Pawford web atelier, enhance UI components, implement responsive styling, and author interactive features.
 
@@ -30,7 +30,7 @@ Autonomous agents are strictly forbidden from inspecting, modifying, moving, or 
 ## 3. Autonomous Deployment Protocol
 
 1. **Local Canvas Modification**:
-   - Write all code changes directly to `/app/html/` (`agent_apps/cindypawford/site/`).
+   - Write all code changes directly to `/app/html/` (`data/agent_apps/cindypawford/site/`).
    - Validate HTML5 semantic correctness, CSS styling, and client-side JavaScript in browser or via local test suites.
 
 2. **Git Commit & Egress**:
