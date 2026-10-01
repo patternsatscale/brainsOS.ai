@@ -1,6 +1,6 @@
 /// <reference path="./.sst/platform/config.d.ts" />
-import { setupDns } from "./src/dns.js";
-import { setupSes } from "./src/ses.js";
+import { setupPublicRedirectFlow } from "./src/flows/public-redirect.js";
+import { setupEmailIngressFlow } from "./src/flows/email-ingress.js";
 
 export default $config({
   app(input) {
@@ -17,6 +17,7 @@ export default $config({
     };
   },
   async run() {
+    const stage = $app.stage;
     const zoneName = process.env.BRAINSOS_ZONE_NAME || "example.com";
     const subdomain = process.env.BRAINSOS_SUBDOMAIN || "brainsos";
     const redirectUrl = process.env.BRAINSOS_REDIRECT_URL || "https://brainsos.ai";
@@ -24,20 +25,34 @@ export default $config({
     const rawSesDomains = process.env.SES_DOMAINS || zoneName;
     const sesDomains = rawSesDomains.split(",").map((d) => d.trim()).filter(Boolean);
 
-    // 1. Setup Route 53 DNS, Public Redirect, and Caddy ACME IAM credentials
-    const dns = setupDns(zoneName, subdomain, redirectUrl, createZone);
+    // Ingress domains: environment-specific email domain or default to sesDomains
+    const rawEmailDomain = process.env.BRAINSOS_EMAIL_DOMAIN;
+    const ingressDomains = rawEmailDomain
+      ? rawEmailDomain.split(",").map((d) => d.trim()).filter(Boolean)
+      : sesDomains;
 
-    // 2. Setup SES Domain Identities and DKIM/SPF/DMARC building blocks
-    const ses = setupSes(sesDomains, dns.zoneId, zoneName);
+    // Flow 1: Public Split-Horizon DNS & Redirect Flow
+    const redirectFlow = setupPublicRedirectFlow({
+      zoneName,
+      subdomain,
+      redirectUrl,
+      createZone,
+    });
+
+    // Flow 2: Multi-Stage Email Ingress Flow
+    const emailIngressFlow = setupEmailIngressFlow({
+      stage,
+      ingressDomains,
+      sesDomains,
+      zoneId: redirectFlow.zoneId,
+      zoneName,
+    });
 
     return {
-      brainsosDomain: `${subdomain}.${zoneName}`,
-      redirectUrl,
-      publicDistribution: dns.distributionDomain,
-      caddyAcmeAccessKeyId: dns.caddyAcmeAccessKeyId,
-      caddyAcmeSecretAccessKey: dns.caddyAcmeSecretAccessKey,
+      stage,
       sesDomains,
-      sesSenderPolicyArn: ses.senderPolicyArn,
+      ...redirectFlow.outputs,
+      ...emailIngressFlow.outputs,
     };
   },
 });

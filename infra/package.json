@@ -7,7 +7,8 @@
     "deploy": "sst deploy",
     "diff": "sst diff",
     "dev": "sst dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
