@@ -113,8 +113,14 @@ with open(env_file, "r", encoding="utf-8") as f:
         env[k.strip()] = v.rstrip("\r\n").strip('"\'')
 
 domain = env.get("BRAINSOS_DOMAIN", "brainsos.local")
-mail_domain = env.get("BRAINSOS_MAIL_DOMAIN", f"mail.{domain}")
-email_account_domain = mail_domain if ("." in mail_domain and not mail_domain.startswith("mail.")) else domain
+mail_env_val = env.get("BRAINSOS_MAIL_DOMAIN", "").strip()
+if not mail_env_val or mail_env_val == domain:
+    mail_web_host = f"mail.{domain}"
+    email_account_domain = domain
+else:
+    mail_web_host = mail_env_val
+    email_account_domain = mail_env_val if not mail_env_val.startswith("mail.") else domain
+mail_domain = mail_web_host
 
 caddy_http = env.get("CADDY_HTTP_PORT", "80")
 caddy_https = env.get("CADDY_HTTPS_PORT", "443")

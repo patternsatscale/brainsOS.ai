@@ -35,14 +35,23 @@ services:
       brainsos-operator-net:
     environment:
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
-      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-mail.brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
+      - BRAINSOS_MAIL_HOST=${BRAINSOS_MAIL_HOST:-}
       - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
       - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
       - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
       - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
       - ACME_EMAIL=${ACME_EMAIL:-}
     command: >
-      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi;
+      if [ -z "$${BRAINSOS_MAIL_HOST}" ]; then
+        if [ "$${BRAINSOS_MAIL_DOMAIN}" = "$${BRAINSOS_DOMAIN}" ] || [ -z "$${BRAINSOS_MAIL_DOMAIN}" ]; then
+          export BRAINSOS_MAIL_HOST="mail.$${BRAINSOS_DOMAIN}";
+        else
+          export BRAINSOS_MAIL_HOST="$${BRAINSOS_MAIL_DOMAIN}";
+        fi;
+      fi;
+      exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:

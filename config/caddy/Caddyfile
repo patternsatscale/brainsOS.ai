@@ -78,7 +78,7 @@ http://editor.localhost, https://editor.localhost, http://code.localhost, https:
 }
 
 
-http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local}, http://{$BRAINSOS_MAIL_DOMAIN:mail.brainsos.local}, https://{$BRAINSOS_MAIL_DOMAIN:mail.brainsos.local} {
+http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local}, http://{$BRAINSOS_MAIL_HOST:mail.brainsos.local}, https://{$BRAINSOS_MAIL_HOST:mail.brainsos.local} {
 	import brainsos_tls
 	import sogo_backend
 }
@@ -1058,10 +1058,34 @@ EOF 200
 
 http://{$BRAINSOS_DOMAIN:brainsos.local}, https://{$BRAINSOS_DOMAIN:brainsos.local}, http://*.{$BRAINSOS_DOMAIN:brainsos.local}, https://*.{$BRAINSOS_DOMAIN:brainsos.local} {
 	import brainsos_tls
-	import landing_page_content
+	handle /SOGo* {
+		reverse_proxy sogo:20000 {
+			flush_interval -1
+		}
+	}
+	handle /WebServerResources* {
+		reverse_proxy sogo:20000 {
+			flush_interval -1
+		}
+	}
+	handle {
+		import landing_page_content
+	}
 }
 
 http://localhost, https://localhost, :80, :443 {
 	tls internal
-	import landing_page_content
+	handle /SOGo* {
+		reverse_proxy sogo:20000 {
+			flush_interval -1
+		}
+	}
+	handle /WebServerResources* {
+		reverse_proxy sogo:20000 {
+			flush_interval -1
+		}
+	}
+	handle {
+		import landing_page_content
+	}
 }
