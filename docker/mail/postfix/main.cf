@@ -14,14 +14,18 @@ inet_protocols = ipv4
 # Trust Docker bridge networks
 mynetworks = 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 
-# Recipient restrictions
+# Recipient restrictions:
+# Enforces destination authorization to prevent external open relay,
+# while permitting local container networks (mynetworks) and SASL users
+# to inject mail for local agent domains without credentials.
 smtpd_recipient_restrictions =
-    permit_mynetworks,
+    reject_non_fqdn_recipient,
     permit_sasl_authenticated,
-    reject_unauth_destination
+    reject_unauth_destination,
+    permit_mynetworks
 
 # Virtual Mailbox domains (delivered via Dovecot LMTP)
-virtual_mailbox_domains = brainsos.local
+virtual_mailbox_domains = brainsos.local, local.brainsos.ai
 virtual_transport = lmtp:inet:127.0.0.1:24
 virtual_mailbox_maps = lmdb:/etc/mail-brainsos/vmailbox
 virtual_alias_maps = lmdb:/etc/mail-brainsos/virtual

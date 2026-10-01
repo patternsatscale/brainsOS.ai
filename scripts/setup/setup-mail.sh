@@ -42,32 +42,59 @@ CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
 GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
 echo "[INFO] Generating account directory in $CONFIG_DIR/users..."
-cat << EOF > "$CONFIG_DIR/users"
-admin@brainsos.local:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
-operator@brainsos.local:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operator::
-terrastella@brainsos.local:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
-bawtford@brainsos.local:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
-marvin@brainsos.local:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
-ping@brainsos.local:{PLAIN}$PING_PASS:5000:5000::/var/mail/vmail/ping::
-claude@brainsos.local:{PLAIN}$CLAUDE_PASS:5000:5000::/var/mail/vmail/claude::
-gpt@brainsos.local:{PLAIN}$GPT_PASS:5000:5000::/var/mail/vmail/gpt::
+SETUP_DOMAINS=("brainsos.local" "local.brainsos.ai")
+if [[ -n "${BRAINSOS_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_DOMAIN}"); fi
+if [[ -n "${BRAINSOS_MAIL_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_MAIL_DOMAIN}"); fi
+if [[ -n "${BRAINSOS_EMAIL_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_EMAIL_DOMAIN}"); fi
+
+UNIQUE_SETUP_DOMAINS=()
+for d in "${SETUP_DOMAINS[@]}"; do
+    skip=0
+    if [ ${#UNIQUE_SETUP_DOMAINS[@]} -gt 0 ]; then
+        for u in "${UNIQUE_SETUP_DOMAINS[@]}"; do
+            if [[ "$d" == "$u" ]]; then
+                skip=1
+                break
+            fi
+        done
+    fi
+    if [[ $skip -eq 0 ]]; then
+        UNIQUE_SETUP_DOMAINS+=("$d")
+    fi
+done
+
+> "$CONFIG_DIR/users"
+> "$CONFIG_DIR/vmailbox"
+> "$CONFIG_DIR/virtual"
+
+for d in "${UNIQUE_SETUP_DOMAINS[@]}"; do
+cat << EOF >> "$CONFIG_DIR/users"
+admin@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
+operator@${d}:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operator::
+terrastella@${d}:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
+bawtford@${d}:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
+marvin@${d}:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
+ping@${d}:{PLAIN}$PING_PASS:5000:5000::/var/mail/vmail/ping::
+claude@${d}:{PLAIN}$CLAUDE_PASS:5000:5000::/var/mail/vmail/claude::
+gpt@${d}:{PLAIN}$GPT_PASS:5000:5000::/var/mail/vmail/gpt::
 EOF
 
-cat << 'EOF' > "$CONFIG_DIR/vmailbox"
-admin@brainsos.local admin
-operator@brainsos.local operator
-terrastella@brainsos.local terrastella
-bawtford@brainsos.local bawtford
-marvin@brainsos.local marvin
-ping@brainsos.local ping
-claude@brainsos.local claude
-gpt@brainsos.local gpt
+cat << EOF >> "$CONFIG_DIR/vmailbox"
+admin@${d} admin
+operator@${d} operator
+terrastella@${d} terrastella
+bawtford@${d} bawtford
+marvin@${d} marvin
+ping@${d} ping
+claude@${d} claude
+gpt@${d} gpt
 EOF
 
-cat << 'EOF' > "$CONFIG_DIR/virtual"
-postmaster@brainsos.local admin@brainsos.local
-root@brainsos.local admin@brainsos.local
+cat << EOF >> "$CONFIG_DIR/virtual"
+postmaster@${d} admin@brainsos.local
+root@${d} admin@brainsos.local
 EOF
+done
 
 # Scaffold mailbox folders for all accounts
 for user in admin operator terrastella bawtford marvin ping claude gpt; do

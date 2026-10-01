@@ -22,17 +22,23 @@ class IngressConfig(BaseModel):
         description="AWS SQS Inbound Queue URL",
     )
     s3_bucket: str = Field(
-        default_factory=lambda: os.getenv("INGRESS_BUCKET_NAME", ""),
+        default_factory=lambda: os.getenv("INGRESS_BUCKET_NAME")
+        or os.getenv("INGRESS_S3_BUCKET")
+        or "",
         description="Default S3 bucket for approved emails",
     )
     local_smtp_host: str = Field(
-        default_factory=lambda: os.getenv("MAIL_SMTP_HOST")
-        or os.getenv("LOCAL_SMTP_HOST")
+        default_factory=lambda: os.getenv("LOCAL_SMTP_HOST")
+        or os.getenv("MAIL_SMTP_HOST")
         or "127.0.0.1",
         description="Local Postfix/SMTP server hostname or IP",
     )
     local_smtp_port: int = Field(
-        default_factory=lambda: int(os.getenv("MAIL_SMTP_PORT") or 25),
+        default_factory=lambda: int(
+            os.getenv("LOCAL_SMTP_PORT")
+            or os.getenv("MAIL_SMTP_PORT")
+            or 25
+        ),
         description="Local Postfix/SMTP server port (e.g. 25 or 10025)",
     )
     poll_wait_seconds: int = Field(

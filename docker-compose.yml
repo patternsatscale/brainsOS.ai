@@ -115,6 +115,12 @@ services:
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/sbin/postfix status >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       brainsos-internal:
         aliases:
@@ -122,6 +128,42 @@ services:
           - brainsos-mail-server
           - mail-server
           - mail
+
+  # Communications & Mail Plane: Inbound Email Ingress Daemon (AWS SQS/S3 -> Postfix)
+  mail-ingress:
+    build:
+      context: .
+      dockerfile: docker/mail/Dockerfile.ingress
+    image: brainsos-mail-ingress:latest
+    container_name: brainsos-net-mail-ingress
+    restart: unless-stopped
+    command: brainsos-mail-ingress
+    user: "1000:1000"
+    security_opt:
+      - "no-new-privileges:true"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    depends_on:
+      mail-server:
+        condition: service_healthy
+    networks:
+      brainsos-internal:
+        aliases:
+          - brainsos-net-mail-ingress
+          - brainsos-mail-ingress
+          - mail-ingress
+    environment:
+      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - INGRESS_QUEUE_URL=${INGRESS_QUEUE_URL:-}
+      - INGRESS_S3_BUCKET=${INGRESS_S3_BUCKET:-${INGRESS_BUCKET_NAME:-}}
+      - INGRESS_BUCKET_NAME=${INGRESS_BUCKET_NAME:-${INGRESS_S3_BUCKET:-}}
+      - LOCAL_SMTP_HOST=mail
+      - LOCAL_SMTP_PORT=25
+      - INGRESS_POLL_WAIT_SECONDS=${INGRESS_POLL_WAIT_SECONDS:-20}
+      - INGRESS_MAX_MESSAGES=${INGRESS_MAX_MESSAGES:-5}
 
   # Communications Plane: Dedicated Isolated SOGo Database (PostgreSQL 16)
   # Rule 6 Invariant: Completely isolated from brainsos-infra-litellm-db.
