@@ -236,5 +236,9 @@ echo ""
 # ------------------------------------------------------------------------------
 if [ "${SKIP_URLS}" = false ]; then
   echo ""
-  "${SCRIPT_DIR}/show-urls.sh" "${URLS_ARGS[@]}"
+  if [ ${#URLS_ARGS[@]} -gt 0 ]; then
+    "${SCRIPT_DIR}/show-urls.sh" "${URLS_ARGS[@]}"
+  else
+    "${SCRIPT_DIR}/show-urls.sh"
+  fi
 fi
