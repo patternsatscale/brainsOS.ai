@@ -195,7 +195,7 @@ def print_row(name, pub_url, local_url, auth_info=""):
 # Section 1: Ingress & UX (L7 Web Interfaces)
 print_row("Landing Page Portal", f"https://{domain}", f"http://localhost:{caddy_http}", "(public)")
 print_row("Operator IDE (VS Code)", f"https://editor.{domain}", f"http://localhost:{code_port}", f"user: {code_user} | pass: {mask(code_pass)}")
-print_row("Webmail & SOGo Groupware", f"https://{mail_domain}", f"http://localhost:{sogo_port}", f"user: operator@{email_account_domain} | pass: {mask(op_mail_pass)}")
+print_row("Webmail & SOGo Groupware", f"https://{mail_domain}", f"http://localhost:{sogo_port}", f"user: admin@{email_account_domain} | pass: {mask(admin_mail_pass)}")
 print_row("LiteLLM Proxy Admin UI", f"https://proxy.{domain}/ui", f"http://localhost:{litellm_port}/ui", f"key: {mask(litellm_key)}")
 print_row("Langfuse Observability", f"https://langfuse.{domain}", f"http://localhost:{langfuse_port}", f"user: {langfuse_user} | pass: {mask(langfuse_pass)}")
 print_row("Tool Egress Proxy (mitm)", f"https://efw.{domain}", f"http://localhost:{egress_port}", f"pass: {mask(egress_pass)}")

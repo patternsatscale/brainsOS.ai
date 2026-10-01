@@ -190,7 +190,17 @@ sync_user_password() {
     " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
     if [ -n "${user_hash}" ]; then
       docker exec -i brainsos-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
-        -c "UPDATE users SET password = '${user_hash}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';" >/dev/null 2>&1 || true
+        -c "
+          DO \$\$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM users WHERE email = '${LANGFUSE_INIT_USER_EMAIL}') THEN
+              UPDATE users SET password = '${user_hash}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';
+            ELSE
+              UPDATE users SET email = '${LANGFUSE_INIT_USER_EMAIL}', name = '${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}', password = '${user_hash}', updated_at = NOW()
+              WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
+            END IF;
+          END \$\$;
+        " >/dev/null 2>&1 || true
       log_success "Langfuse admin user password synchronized in PostgreSQL."
     fi
   fi

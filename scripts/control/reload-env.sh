@@ -181,6 +181,7 @@ if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
     # Synchronize Langfuse Web admin user password if updated
     LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-}"
     LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}"
+    LF_ADMIN_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
     if [ -n "${LF_ADMIN_PASS}" ] && docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$"; then
       LF_HASH=$(docker exec -i brainsos-langfuse-web node -e "
         const p = process.argv[1];
@@ -189,13 +190,39 @@ if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
       " "${LF_ADMIN_PASS}" 2>/dev/null || true)
       if [ -n "${LF_HASH}" ]; then
         docker exec -i brainsos-langfuse-db psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
-          -c "UPDATE users SET password = '${LF_HASH}', updated_at = NOW() WHERE email = '${LF_ADMIN_EMAIL}';" >/dev/null 2>&1 || true
+          -c "
+            DO \$\$
+            BEGIN
+              IF EXISTS (SELECT 1 FROM users WHERE email = '${LF_ADMIN_EMAIL}') THEN
+                UPDATE users SET password = '${LF_HASH}', updated_at = NOW() WHERE email = '${LF_ADMIN_EMAIL}';
+              ELSE
+                UPDATE users SET email = '${LF_ADMIN_EMAIL}', name = '${LF_ADMIN_NAME}', password = '${LF_HASH}', updated_at = NOW()
+                WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
+              END IF;
+            END \$\$;
+          " >/dev/null 2>&1 || true
         log_success "Langfuse admin user password synchronized."
       fi
     fi
   fi
 else
   log_info "Step 3/6: Langfuse database is not running locally (skipping)."
+fi
+
+# Synchronize Caddy Operator IDE Basic Auth Password Hash
+if [ -n "${CODE_SERVER_PASSWORD:-}" ] && docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
+  OP_HASH=$(docker exec brainsos-net-caddy caddy hash-password --plaintext "${CODE_SERVER_PASSWORD}" 2>/dev/null || true)
+  if [ -n "${OP_HASH}" ]; then
+    if grep -q "^OPERATOR_PASSWORD_HASH=" "${ENV_FILE}"; then
+      sed -i.bak "s|^OPERATOR_PASSWORD_HASH=.*|OPERATOR_PASSWORD_HASH='${OP_HASH}'|" "${ENV_FILE}" && rm -f "${ENV_FILE}.bak"
+    elif grep -q "^# *OPERATOR_PASSWORD_HASH=" "${ENV_FILE}"; then
+      sed -i.bak "s|^# *OPERATOR_PASSWORD_HASH=.*|OPERATOR_PASSWORD_HASH='${OP_HASH}'|" "${ENV_FILE}" && rm -f "${ENV_FILE}.bak"
+    else
+      echo "OPERATOR_PASSWORD_HASH='${OP_HASH}'" >> "${ENV_FILE}"
+    fi
+    export OPERATOR_PASSWORD_HASH="${OP_HASH}"
+    log_success "Synchronized OPERATOR_PASSWORD_HASH with CODE_SERVER_PASSWORD for Caddy Basic Auth."
+  fi
 fi
 
 # ------------------------------------------------------------------------------
