@@ -60,11 +60,18 @@ Before finalizing a ticket or opening a PR, the agent **must** review whether th
 - Documentation must never drift from the live codebase; all doc updates must be included within the ticket's branch and PR.
 
 ### Step 6: Walkthrough Documentation & Mandatory Pre-Commit Review Gate
-Every ticket completion **must** include a dedicated walkthrough document placed in the `docs/` directory using the naming convention:
-```text
-docs/YYYY-MM-DD-ticket<issue_number>.md
-```
-*(Example: `docs/2026-09-06-ticket1.md`)*
+Every ticket completion **must** include a dedicated walkthrough document:
+- **Standalone Tickets**: Placed in the `docs/` root directory using the naming convention:
+  ```text
+  docs/YYYY-MM-DD-ticket<issue_number>.md
+  ```
+  *(Example: `docs/2026-09-06-ticket1.md`)*
+- **Epic Sub-Tickets**: When working on tickets that are part of an Epic, the walkthrough document must be placed directly inside the epic's dedicated subfolder under `docs/epics/`:
+  ```text
+  docs/epics/<epic-name>/YYYY-MM-DD-ticket<issue_number>.md
+  ```
+  *(Example: `docs/epics/brainsOS-runner/2026-09-29-ticket186.md`)*
+
 
 The walkthrough document must record:
 1. **Summary of Changes**: Exact files created, modified, or deleted.
@@ -83,7 +90,7 @@ The walkthrough document must record:
 ### Step 7: Post-Approval Commit, Push & Pull Request
 Only after the human reviewer explicitly approves the walkthrough in Step 6:
 To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instantly readable without line truncation:
-1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
+1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/` or `docs/epics/`).
 2. **Front-Load the Ticket Number & Add Co-Authorship**:
    Include the `Co-authored-by` trailer so GitHub automatically displays Antigravity as a co-author and contributor:
    ```bash

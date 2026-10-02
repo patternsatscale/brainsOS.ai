@@ -33,6 +33,8 @@ HEADERS=(--header "Content-Type: message/rfc822")
 if [ -n "${1:-}" ]; then
     HEADERS+=(--header "X-Envelope-To: ${1}")
 fi
+HEADERS+=(--header "X-Spool-Filename: $(basename "${SPOOL_FILE}")")
+
 
 curl -sS -X POST "${INGRESS_URL}" \
     "${HEADERS[@]}" \

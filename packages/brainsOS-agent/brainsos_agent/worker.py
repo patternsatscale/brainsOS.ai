@@ -23,6 +23,13 @@ from brainsos_mail.client import BrainsOSMailClient
 from brainsos_mail.parser import parse_inbound_mime
 from brainsos_queue import FIFOQueueWorker, Task, WorkQueue
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 from brainsos_agent.adapters import get_runtime_adapter
 from brainsos_agent.config import get_comms_dir, get_data_dir
 from brainsos_agent.models import AgentProfile
@@ -35,14 +42,16 @@ class AgentQueueWorkerDaemon:
 
     def __init__(
         self,
-        manifest_path: str | Path = "config/agents.yaml",
+        manifest_path: str | Path | None = None,
         queue_db_path: str | Path | None = None,
         concurrency: int = 1,
         ingress_host: str = "0.0.0.0",
         ingress_port: int = 8000,
         spool_dir: str | Path | None = None,
     ) -> None:
-        self.manifest_path = Path(manifest_path)
+        from brainsos_agent.config import resolve_manifest_path
+
+        self.manifest_path = resolve_manifest_path(manifest_path)
         self.queue_db_path = Path(queue_db_path) if queue_db_path else (get_data_dir() / "queue" / "tasks.db")
         self.concurrency = concurrency
         self.ingress_host = ingress_host
@@ -58,12 +67,14 @@ class AgentQueueWorkerDaemon:
         self._stop_event = asyncio.Event()
         self._http_runner: web.AppRunner | None = None
         self._processed_spool_files: set[str] = set()
+        self._processed_message_ids: set[str] = set()
+
+        if self.spool_dir.exists():
+            for done_file in self.spool_dir.glob("*.done"):
+                self._processed_spool_files.add(done_file.with_suffix(".eml").name)
 
     def load_profiles(self) -> list[AgentProfile]:
         """Loads agent profiles from manifest."""
-        if not self.manifest_path.exists():
-            logger.warning("Manifest not found at %s", self.manifest_path)
-            return []
         try:
             profiles = AgentProfile.from_manifest_yaml(self.manifest_path)
             return profiles if isinstance(profiles, list) else [profiles]
@@ -95,20 +106,45 @@ class AgentQueueWorkerDaemon:
             if not raw_mime:
                 return web.Response(status=400, text="Empty RFC 822 payload")
 
-            # High-resolution spool file
-            spool_file = self.spool_dir / f"{time.time_ns()}.eml"
-            spool_file.write_bytes(raw_mime)
-            self._processed_spool_files.add(spool_file.name)
-
-            # Parse MIME to extract thread_id and recipient
+            # Parse MIME to extract thread_id, message_id, and recipient
             try:
                 inbound_email = parse_inbound_mime(raw_mime)
                 partition_key = inbound_email.thread_id
                 recipient = inbound_email.recipient
+                msg_id = inbound_email.message_id
             except Exception as pe:
                 logger.warning("Failed to parse MIME headers for partition key: %s", pe)
                 partition_key = "default"
                 recipient = request.headers.get("X-Envelope-To", "unknown@brainsos.local")
+                msg_id = None
+
+            # Deduplication: check if message ID was already ingested recently
+            if msg_id and msg_id in self._processed_message_ids:
+                logger.info("Ignoring duplicate inbound email with Message-ID %s", msg_id)
+                return web.json_response(
+                    {
+                        "status": "ignored",
+                        "reason": "duplicate_message_id",
+                        "message_id": msg_id,
+                    }
+                )
+
+            # Check X-Spool-Filename header from agent-webhook.sh
+            spool_filename = request.headers.get("X-Spool-Filename")
+            if spool_filename:
+                self._processed_spool_files.add(spool_filename)
+                if (self.spool_dir / spool_filename).exists():
+                    spool_file = self.spool_dir / spool_filename
+                else:
+                    spool_file = self.spool_dir / f"{time.time_ns()}.eml"
+                    spool_file.write_bytes(raw_mime)
+            else:
+                spool_file = self.spool_dir / f"{time.time_ns()}.eml"
+                spool_file.write_bytes(raw_mime)
+            self._processed_spool_files.add(spool_file.name)
+
+            if msg_id:
+                self._processed_message_ids.add(msg_id)
 
             # Ignore non-agent deliveries (e.g. human user or system notifications)
             profiles = self.load_profiles()
@@ -127,6 +163,7 @@ class AgentQueueWorkerDaemon:
                 payload={
                     "spool_path": str(spool_file),
                     "recipient": recipient,
+                    "message_id": msg_id,
                 },
                 partition_key=partition_key,
             )
@@ -177,20 +214,35 @@ class AgentQueueWorkerDaemon:
                             inbound = parse_inbound_mime(raw_mime)
                             partition_key = inbound.thread_id
                             recipient = inbound.recipient
+                            msg_id = inbound.message_id
                         except Exception as parse_err:
                             logger.warning("Spool scanner parse error on %s: %s", eml_file, parse_err)
                             partition_key = "default"
                             recipient = "unknown@brainsos.local"
+                            msg_id = None
+
+                        # Deduplication check against recently processed HTTP or scanner messages
+                        if msg_id and msg_id in self._processed_message_ids:
+                            self._processed_spool_files.add(eml_file.name)
+                            try:
+                                eml_file.with_suffix(".done").touch()
+                            except Exception:
+                                pass
+                            continue
 
                         profiles = self.load_profiles()
                         if not self.find_profile_for_recipient(recipient, profiles):
                             self._processed_spool_files.add(eml_file.name)
                             continue
 
+                        if msg_id:
+                            self._processed_message_ids.add(msg_id)
+
                         task = await self.queue.enqueue(
                             payload={
                                 "spool_path": str(eml_file),
                                 "recipient": recipient,
+                                "message_id": msg_id,
                             },
                             partition_key=partition_key,
                         )
@@ -272,11 +324,32 @@ class AgentQueueWorkerDaemon:
         if agent_pass:
             client.password = agent_pass
 
+        # Determine appropriate From address:
+        # When dispatching to an external recipient via SES, use the verified public domain
+        # so SPF, DKIM, and SES identity verification align.
+        sender_email = profile.email
+        to_domain = outbound.to.split("@")[-1].lower() if "@" in outbound.to else ""
+        is_external_dest = bool(to_domain and not to_domain.endswith(".local") and to_domain != "localhost")
+
+        configured_public_domain = (
+            os.getenv("BRAINSOS_EMAIL_DOMAIN", "").split(",")[0].strip()
+            or os.getenv("BRAINSOS_EXTERNAL_EMAIL_DOMAIN", "").split(",")[0].strip()
+            or (f"{os.getenv('BRAINSOS_STAGE')}.public.brainsos.ai" if os.getenv("BRAINSOS_STAGE") else None)
+        )
+
+        if is_external_dest:
+            if configured_public_domain:
+                sender_email = f"{profile.id}@{configured_public_domain}"
+            elif inbound_email and "@" in inbound_email.recipient:
+                inbound_dom = inbound_email.recipient.split("@")[-1].strip().lower()
+                if not inbound_dom.endswith(".local") and not inbound_dom.startswith("local."):
+                    sender_email = f"{profile.id}@{inbound_dom}"
+
         client.send_mail(
             to=outbound.to,
             subject=outbound.subject,
             body=outbound.body,
-            from_addr=profile.email,
+            from_addr=sender_email,
             in_reply_to=outbound.in_reply_to,
             references=outbound.references,
             sync_imap=True,
@@ -295,6 +368,9 @@ class AgentQueueWorkerDaemon:
                 self._processed_spool_files.add(spool_file.name)
             except Exception:
                 pass
+
+        if "message_id" in payload and payload["message_id"]:
+            self._processed_message_ids.add(payload["message_id"])
 
     async def run(self) -> None:
         """Starts the queue worker loop and HTTP ingress server."""
@@ -348,7 +424,7 @@ async def main() -> None:
         level=os.getenv("LOG_LEVEL", "INFO"),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    manifest = os.getenv("BRAINSOS_AGENTS_MANIFEST", "config/agents.yaml")
+    manifest = os.getenv("BRAINSOS_AGENTS_MANIFEST")
     db_path = os.getenv("BRAINSOS_QUEUE_DB", str(get_data_dir() / "queue" / "tasks.db"))
     concurrency = int(os.getenv("BRAINSOS_QUEUE_CONCURRENCY", "1"))
     ingress_host = os.getenv("BRAINSOS_INGRESS_HOST", "0.0.0.0")

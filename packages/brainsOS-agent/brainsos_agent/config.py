@@ -54,3 +54,22 @@ def get_runners_dir() -> Path:
 def get_comms_dir() -> Path:
     """Return active comms directory from BRAINSOS_COMMS_DIR or data_dir / comms."""
     return Path(os.getenv("BRAINSOS_COMMS_DIR", get_data_dir() / "comms")).resolve()
+
+
+def resolve_manifest_path(explicit_path: str | Path | None = None) -> Path:
+    """Resolves the canonical path to agents.yaml manifest across core and decoupled setups."""
+    if explicit_path:
+        p = Path(explicit_path)
+        if p.exists():
+            return p.resolve()
+    for cand in [
+        get_settings_dir() / "agents.yaml",
+        get_data_dir() / "settings" / "agents.yaml",
+        Path("data/settings/agents.yaml"),
+        Path("config/default_settings/agents.yaml"),
+        Path("config/agents.yaml"),
+    ]:
+        if cand.exists():
+            return cand.resolve()
+    return Path(explicit_path or "config/default_settings/agents.yaml").resolve()
+

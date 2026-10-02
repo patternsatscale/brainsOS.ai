@@ -1,0 +1,34 @@
+# ==============================================================================
+# brainsOS: External Mail Ingress Consumer & Injector Daemon
+# Long-polls AWS SQS, resolves S3 MIME bodies, injects into local Postfix SMTP.
+# ==============================================================================
+
+FROM python:3.12-slim-bookworm
+
+# Install ca-certificates and curl
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+ENV PYTHONUNBUFFERED=1 \
+    UV_SYSTEM_PYTHON=1
+
+# Create unprivileged brainsos user & group (UID 1000 / GID 1000)
+RUN groupadd -g 1000 brainsos && \
+    useradd -u 1000 -g brainsos -m -s /bin/bash brainsos
+
+# Install brainsOS-mail package
+WORKDIR /opt/brainsos
+COPY packages/brainsOS-mail /opt/brainsos/packages/brainsOS-mail
+RUN uv pip install --system "/opt/brainsos/packages/brainsOS-mail"
+
+# Execute as unprivileged user (Rule 4: Host Sandboxing)
+USER 1000:1000
+WORKDIR /workspace
+
+ENTRYPOINT ["brainsos-mail-ingress"]

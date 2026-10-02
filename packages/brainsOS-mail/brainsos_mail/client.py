@@ -132,6 +132,57 @@ class BrainsOSMailClient:
             logger.warning("Transient error syncing message to IMAP folder '%s': %s", sent_folder, e)
             return False
 
+    def _send_via_ses(
+        self,
+        msg: EmailMessage,
+        source: str | None = None,
+        destinations: list[str] | None = None,
+    ) -> str:
+        """Dispatches email via Amazon SES SendRawEmail API using boto3."""
+        import boto3
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        aws_region = (
+            os.getenv("BRAINSOS_INFRA_AWS_REGION")
+            or os.getenv("AWS_REGION")
+            or os.getenv("AWS_DEFAULT_REGION")
+            or "us-east-1"
+        )
+        aws_key = (
+            os.getenv("INGRESS_AWS_ACCESS_KEY_ID")
+            or os.getenv("BRAINSOS_INFRA_AWS_ACCESS_KEY_ID")
+            or os.getenv("AWS_ACCESS_KEY_ID")
+        )
+        aws_secret = (
+            os.getenv("INGRESS_AWS_SECRET_ACCESS_KEY")
+            or os.getenv("BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY")
+            or os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
+
+        client_kwargs: dict[str, Any] = {"region_name": aws_region}
+        if aws_key and aws_secret:
+            client_kwargs["aws_access_key_id"] = aws_key
+            client_kwargs["aws_secret_access_key"] = aws_secret
+
+        ses_client = boto3.client("ses", **client_kwargs)
+
+        send_args: dict[str, Any] = {
+            "RawMessage": {"Data": msg.as_bytes()},
+        }
+        if source:
+            send_args["Source"] = source
+        if destinations:
+            send_args["Destinations"] = destinations
+
+        try:
+            resp = ses_client.send_raw_email(**send_args)
+            msg_id = resp.get("MessageId", "")
+            logger.info("Email dispatched successfully via Amazon SES (MessageId: %s)", msg_id)
+            return msg_id
+        except (BotoCoreError, ClientError) as e:
+            logger.error("Failed to send email via Amazon SES: %s", e)
+            raise
+
     def send_mail(
         self,
         to: str,
@@ -143,6 +194,7 @@ class BrainsOSMailClient:
         extra_headers: dict[str, str] | None = None,
         sync_imap: bool = True,
         sent_folder: str = "Sent",
+        force_ses: bool = False,
     ) -> str:
         """Compose and dispatch an RFC-compliant email message with dual-dispatch IMAP sync.
 
@@ -187,15 +239,36 @@ class BrainsOSMailClient:
 
         msg.set_content(body)
 
-        # Step 1: SMTP Dispatch
-        with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-            if self.username and self.password:
-                try:
-                    server.login(self.username, self.password)
-                except Exception:
-                    # Fallback to direct submission if unauthenticated local relay is allowed
-                    pass
-            server.send_message(msg)
+        # Step 1: Outbound Dispatch
+        # Route external destinations (e.g. @gmail.com) through Amazon SES.
+        # Route internal domains (*.local, localhost) through local Postfix SMTP.
+        to_domain = to.split("@")[-1].lower() if "@" in to else ""
+        is_external = bool(to_domain and not to_domain.endswith(".local") and to_domain != "localhost")
+        use_ses = force_ses or (is_external and os.getenv("BRAINSOS_MAIL_OUTBOUND_BACKEND", "ses") != "smtp")
+
+        if use_ses:
+            try:
+                self._send_via_ses(msg, source=sender, destinations=[to])
+            except Exception as e:
+                logger.warning("SES outbound dispatch failed (%s), evaluating fallback...", e)
+                if os.getenv("BRAINSOS_MAIL_ALLOW_FALLBACK", "true").lower() == "true":
+                    with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                        if self.username and self.password:
+                            try:
+                                server.login(self.username, self.password)
+                            except Exception:
+                                pass
+                        server.send_message(msg)
+                else:
+                    raise
+        else:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                if self.username and self.password:
+                    try:
+                        server.login(self.username, self.password)
+                    except Exception:
+                        pass
+                server.send_message(msg)
 
         # Step 2: IMAP Synchronization (Dual-Dispatch to Sent folder)
         if sync_imap and self.username and self.password:
