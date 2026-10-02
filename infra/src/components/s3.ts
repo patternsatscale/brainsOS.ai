@@ -41,7 +41,7 @@ export function createMailIngressBucket(stage: string) {
     ],
   });
 
-  new aws.s3.BucketPolicy(`BrainsOSMailIngressBucketPolicy-${cleanStage}`, {
+  const bucketPolicy = new aws.s3.BucketPolicy(`BrainsOSMailIngressBucketPolicy-${cleanStage}`, {
     bucket: ingressBucket.id,
     policy: $interpolate`{
       "Version": "2012-10-17",
@@ -68,6 +68,7 @@ export function createMailIngressBucket(stage: string) {
     bucket: ingressBucket,
     bucketId: ingressBucket.id,
     bucketArn: ingressBucket.arn,
+    bucketPolicy,
   };
 }
 

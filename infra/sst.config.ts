@@ -2,6 +2,14 @@
 import { setupPublicRedirectFlow } from "./src/flows/public-redirect.js";
 import { setupEmailIngressFlow } from "./src/flows/email-ingress.js";
 
+// Load root .env if running directly from infra/ or repo root
+try {
+  process.loadEnvFile?.(process.cwd().endsWith("/infra") ? "../.env" : ".env");
+} catch { }
+
+const parseList = (val?: string) =>
+  val?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+
 export default $config({
   app(input) {
     return {
@@ -18,18 +26,17 @@ export default $config({
   },
   async run() {
     const stage = $app.stage;
-    const zoneName = process.env.BRAINSOS_ZONE_NAME || "example.com";
+    const zoneName = process.env.BRAINSOS_ZONE_NAME || "brainsos.ai";
     const subdomain = process.env.BRAINSOS_SUBDOMAIN || "brainsos";
-    const redirectUrl = process.env.BRAINSOS_REDIRECT_URL || "https://brainsos.ai";
+    const redirectUrl = process.env.BRAINSOS_REDIRECT_URL || "https://github.com/patternsatscale/brainsOS.ai/tree/brainsos";
     const createZone = process.env.BRAINSOS_CREATE_ZONE === "true";
-    const rawSesDomains = process.env.SES_DOMAINS || zoneName;
-    const sesDomains = rawSesDomains.split(",").map((d) => d.trim()).filter(Boolean);
-
-    // Ingress domains: environment-specific email domain or default to sesDomains
-    const rawEmailDomain = process.env.BRAINSOS_EMAIL_DOMAIN;
-    const ingressDomains = rawEmailDomain
-      ? rawEmailDomain.split(",").map((d) => d.trim()).filter(Boolean)
-      : sesDomains;
+    const sesDomains = parseList(process.env.SES_DOMAINS);
+    const ingressDomains = parseList(
+      process.env.BRAINSOS_EMAIL_DOMAIN || process.env.BRAINSOS_EXTERNAL_EMAIL_DOMAIN
+    );
+    if (ingressDomains.length === 0) {
+      ingressDomains.push(`${stage}.public.${zoneName}`);
+    }
 
     // Flow 1: Public Split-Horizon DNS & Redirect Flow
     const redirectFlow = setupPublicRedirectFlow({

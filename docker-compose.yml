@@ -100,12 +100,14 @@ services:
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-./data}/comms}/email/vmail:/var/mail/vmail
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-./data}/comms}/email/config:/etc/mail-brainsos
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-./data}/comms}/spool:/var/spool/brainsos/inbound
+      - ./docker/mail/agent-webhook.sh:/usr/lib/dovecot/sieve-pipe/agent-webhook.sh:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "control-plane:host-gateway"
     environment:
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
       - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
+      - BRAINSOS_EMAIL_DOMAIN=${BRAINSOS_EMAIL_DOMAIN:-}
       - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}
       - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}
       - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
@@ -137,7 +139,6 @@ services:
     image: brainsos-mail-ingress:latest
     container_name: brainsos-net-mail-ingress
     restart: unless-stopped
-    command: brainsos-mail-ingress
     user: "1000:1000"
     security_opt:
       - "no-new-privileges:true"
@@ -155,8 +156,10 @@ services:
           - mail-ingress
     environment:
       - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
-      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
-      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_ACCESS_KEY_ID=${INGRESS_AWS_ACCESS_KEY_ID:-${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}}
+      - AWS_SECRET_ACCESS_KEY=${INGRESS_AWS_SECRET_ACCESS_KEY:-${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}}
+      - INGRESS_AWS_ACCESS_KEY_ID=${INGRESS_AWS_ACCESS_KEY_ID:-}
+      - INGRESS_AWS_SECRET_ACCESS_KEY=${INGRESS_AWS_SECRET_ACCESS_KEY:-}
       - INGRESS_QUEUE_URL=${INGRESS_QUEUE_URL:-}
       - INGRESS_S3_BUCKET=${INGRESS_S3_BUCKET:-${INGRESS_BUCKET_NAME:-}}
       - INGRESS_BUCKET_NAME=${INGRESS_BUCKET_NAME:-${INGRESS_S3_BUCKET:-}}

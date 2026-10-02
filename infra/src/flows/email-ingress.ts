@@ -20,7 +20,9 @@ export function setupEmailIngressFlow(input: EmailIngressFlowInput) {
   const cleanStage = stage.toLowerCase().replace(/[^a-zA-Z0-9]/g, "-");
 
   // 1. SES Domain Identities & Outbound Send Policy
-  const sesIdentities = setupSesIdentities(sesDomains, zoneId, zoneName);
+  const region = process.env.BRAINSOS_INFRA_AWS_REGION || process.env.AWS_REGION || "us-east-1";
+  const allSesDomains = Array.from(new Set([...sesDomains, ...ingressDomains]));
+  const sesIdentities = setupSesIdentities(allSesDomains, zoneId, zoneName, region);
   const sesSenderPolicy = createSesSenderPolicy();
 
   // 2. Multi-Stage Ingress S3 Bucket with Expiration Lifecycles
@@ -30,7 +32,12 @@ export function setupEmailIngressFlow(input: EmailIngressFlowInput) {
   const ingressQueues = createMailIngressQueues(stage);
 
   // 4. SES Inbound Receipt Rule Set & Receipt Rules
-  const mailReceipt = createMailReceiptRule(stage, ingressDomains, ingressBucket.bucketId);
+  const mailReceipt = createMailReceiptRule(
+    stage,
+    ingressDomains,
+    ingressBucket.bucketId,
+    [ingressBucket.bucketPolicy]
+  );
 
   // 5. Ingress Sanitizer Lambda (Ticket #210)
   const sanitizerLambda = new sst.aws.Function(`BrainsOSMailSanitizer-${cleanStage}`, {

@@ -78,6 +78,15 @@ export function createMailWorkerCredentials(
             "s3:DeleteObject"
           ],
           "Resource": "${bucketArn}/approved/*"
+        },
+        {
+          "Sid": "SESSend",
+          "Effect": "Allow",
+          "Action": [
+            "ses:SendEmail",
+            "ses:SendRawEmail"
+          ],
+          "Resource": "*"
         }
       ]
     }`,

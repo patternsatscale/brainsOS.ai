@@ -19,7 +19,7 @@ echo "[INFO] ===================================================================
 echo "[INFO] brainsOS: Provisioning Internal Email & Webmail Subsystem"
 echo "[INFO] ======================================================================"
 
-COMMS_DIR="${BRAINSOS_COMMS_DIR:-$REPO_ROOT/data/comms}"
+COMMS_DIR="${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-$REPO_ROOT/data}/comms}"
 MAIL_DIR="$COMMS_DIR/email"
 VMAIL_DIR="$MAIL_DIR/vmail"
 CONFIG_DIR="$MAIL_DIR/config"
@@ -93,6 +93,7 @@ EOF
 cat << EOF >> "$CONFIG_DIR/virtual"
 postmaster@${d} admin@brainsos.local
 root@${d} admin@brainsos.local
+cindy@${d} bawtford@${d}
 EOF
 done
 

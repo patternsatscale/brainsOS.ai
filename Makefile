@@ -9,7 +9,9 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore
+.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test
+
+STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
@@ -24,6 +26,8 @@ help:
 	@echo "  make backup         - Create a full data plane backup archive"
 	@echo "  make restore        - Restore data planes from latest archive (or ARCHIVE=<file>)"
 	@echo "  make test           - Run full pytest test suite across packages"
+	@echo "  make email-ingress  - Deploy AWS SES, S3, SQS & Sanitizer Lambda via SST (STAGE=osx)"
+	@echo "  make email-test     - Run automated email ingress verification harness (optional: ARGS=--e2e)"
 	@echo "  make lint           - Run ruff linter and mypy type checks"
 	@echo "  make runner-base    - Build base runner container image (brainsos-runner-base:latest)"
 	@echo "  make runners        - Build all runner images (hermes, openai, claude)"
@@ -80,6 +84,12 @@ nuke: stop-all
 
 test:
 	@$(PYTEST) packages/*/tests
+
+email-ingress:
+	@set -a && [ -f .env ] && . .env && set +a && cd infra && npx sst deploy --stage $(STAGE)
+
+email-test:
+	@scripts/verify/verify-email-ingress.sh $(ARGS)
 
 lint:
 	@$(RUFF) check packages/

@@ -21,6 +21,8 @@ TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_
 BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
 MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
 PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
 # Collect and deduplicate domains
 RAW_DOMAINS=("brainsos.local" "local.brainsos.ai")
@@ -56,6 +58,8 @@ terrastella@${d}:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastel
 bawtford@${d}:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
 marvin@${d}:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
 ping@${d}:{PLAIN}${PING_PASS}:5000:5000::/var/mail/vmail/ping::
+claude@${d}:{PLAIN}${CLAUDE_PASS}:5000:5000::/var/mail/vmail/claude::
+gpt@${d}:{PLAIN}${GPT_PASS}:5000:5000::/var/mail/vmail/gpt::
 EOF
 
 cat << EOF >> /etc/mail-brainsos/vmailbox
@@ -65,11 +69,14 @@ terrastella@${d} terrastella
 bawtford@${d} bawtford
 marvin@${d} marvin
 ping@${d} ping
+claude@${d} claude
+gpt@${d} gpt
 EOF
 
 cat << EOF >> /etc/mail-brainsos/virtual
 postmaster@${d} admin@brainsos.local
 root@${d} admin@brainsos.local
+cindy@${d} bawtford@${d}
 EOF
 done
 
@@ -106,7 +113,7 @@ if [ -f /etc/dovecot/sieve/default.sieve ]; then
     chown -R vmail:vmail /etc/dovecot/sieve 2>/dev/null || true
 fi
 if [ -f /usr/lib/dovecot/sieve-pipe/agent-webhook.sh ]; then
-    chmod 755 /usr/lib/dovecot/sieve-pipe/agent-webhook.sh
+    chmod 755 /usr/lib/dovecot/sieve-pipe/agent-webhook.sh 2>/dev/null || true
 fi
 
 # Initialize Dovecot log file
