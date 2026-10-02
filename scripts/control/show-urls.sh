@@ -179,19 +179,26 @@ MAGENTA = "\033[0;35m"
 DIM = "\033[2m"
 NC = "\033[0m"
 
-sep_line = f"{CYAN}{'═' * 115}{NC}"
-sub_line = f"{DIM}{'─' * 115}{NC}"
+width = 78
+sep_line = f"{CYAN}{'═' * width}{NC}"
 
 print(sep_line)
 print(f"{CYAN}{BOLD}  brainsOS Platform Service Directory & Ingress Gateway{NC}")
 print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | Email Host: {BOLD}{mail_domain}{DIM} | Config: {env_file}{NC}")
 print(sep_line)
-print(f"{BOLD}{'SERVICE':<28} {'PUBLIC / LAN URL':<34} {'LOCALHOST FALLBACK':<24} {'CREDENTIALS / AUTH'}{NC}")
-print(sub_line)
+print("")
 
 def print_row(name, pub_url, local_url, auth_info=""):
-    print(f"{BOLD}{name:<28}{NC} {CYAN}{pub_url:<34}{NC} {DIM}{local_url:<24}{NC} {YELLOW}{auth_info}{NC}")
+    print(f"  {BOLD}● {name}{NC}")
+    if pub_url != "-":
+        print(f"    {DIM}Public:{NC}    {CYAN}{pub_url}{NC}")
+    if local_url != "-":
+        print(f"    {DIM}Localhost:{NC} {DIM}{local_url}{NC}")
+    print(f"    {DIM}Auth:{NC}      {YELLOW}{auth_info}{NC}")
+    print("")
 
+print(f"{DIM}── Ingress & UX (L7 Web Interfaces) {'─' * (width - 36)}{NC}")
+print("")
 # Section 1: Ingress & UX (L7 Web Interfaces)
 print_row("Landing Page Portal", f"https://{domain}", f"http://localhost:{caddy_http}", "(public)")
 print_row("Operator IDE (VS Code)", f"https://editor.{domain}", f"http://localhost:{code_port}", f"user: {code_user} | pass: {mask(code_pass)}")
@@ -201,13 +208,15 @@ print_row("Langfuse Observability", f"https://langfuse.{domain}", f"http://local
 print_row("Tool Egress Proxy (mitm)", f"https://efw.{domain}", f"http://localhost:{egress_port}", f"pass: {mask(egress_pass)}")
 print_row("NVIDIA DGX Telemetry", f"https://dgx.{domain}", "http://localhost:11001", "(system metrics)")
 
-print(sub_line)
+print(f"{DIM}── Cognitive Compute & Agent Runners (L2 IPC) {'─' * (width - 46)}{NC}")
+print("")
 # Section 2: Cognitive Compute & Agent Runners (L2 Internal IPC & Worker)
 print_row("Shared Hermes Runner (IPC)", "-", f"http://127.0.0.1:{hermes_runner_port}/v1", "(stateless runner)")
 print_row("OpenAI SDK Runner (IPC)", "-", f"http://127.0.0.1:{openai_runner_port}/v1", "(stateless runner)")
 print_row("Agent Queue & Webhook", "-", f"http://127.0.0.1:{agent_queue_port}/api/v1", "(async mail daemon)")
 
-print(sub_line)
+print(f"{DIM}── Multi-Agent Fleet & Communications {'─' * (width - 38)}{NC}")
+print("")
 # Section 3: Multi-Agent Fleet & Communications (Tenant Personas & Mailboxes)
 print_row("Terrastella (Primary Ops)", f"terrastella@{email_account_domain}", "-", f"pass: {mask(terra_mail_pass)}")
 print_row("Marvin (Sports Analytics)", f"marvin@{email_account_domain}", "-", f"pass: {mask(marvin_mail_pass)}")
@@ -216,7 +225,8 @@ print_row("Ping (Auto-Responder)", f"ping@{email_account_domain}", "-", f"pass: 
 print_row("Operator Mailbox", f"operator@{email_account_domain}", "-", f"pass: {mask(op_mail_pass)}")
 print_row("Admin Mailbox", f"admin@{email_account_domain}", "-", f"pass: {mask(admin_mail_pass)}")
 
-print(sub_line)
+print(f"{DIM}── Mail & Persistence Protocols (L4 Storage) {'─' * (width - 44)}{NC}")
+print("")
 # Section 4: Mail & Persistence Protocols (L4 Storage)
 print_row("Postfix SMTP Relay", f"smtp://{domain}:{mail_smtp_port}", f"127.0.0.1:{mail_smtp_port}", "STARTTLS optional")
 print_row("Dovecot IMAP Server", f"imap://{domain}:{mail_imap_port}", f"127.0.0.1:{mail_imap_port}", "Plain / LOGIN auth")
@@ -325,3 +335,8 @@ else:
     print(f"  echo \"{hosts_line}\" | sudo tee -a /etc/hosts\n")
 
 EOF
+
+# Check and display Caddy SSL Certificate Trust Status
+if [ -x "${SCRIPT_DIR}/../setup/trust-caddy-ca.sh" ]; then
+  "${SCRIPT_DIR}/../setup/trust-caddy-ca.sh"
+fi

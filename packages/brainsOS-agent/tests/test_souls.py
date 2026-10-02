@@ -16,8 +16,10 @@ from brainsos_agent.souls import (
 
 
 @pytest.fixture
-def souls_env(tmp_path: Path):
+def souls_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Fixture providing isolated data/souls and config/default_souls directories."""
+    monkeypatch.delenv("BRAINSOS_DATA_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_SOULS_DIR", raising=False)
     data_souls = tmp_path / "data" / "souls"
     config_default_souls = tmp_path / "config" / "default_souls"
     data_souls.mkdir(parents=True, exist_ok=True)

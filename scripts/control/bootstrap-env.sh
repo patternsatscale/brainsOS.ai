@@ -150,6 +150,11 @@ if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
   log_info "Initialized ${DATA_ROOT}/control_plane/caddy_root.crt placeholder"
 fi
 
+# Export active Caddy root CA certificate if Caddy container or caddy_data volume is available
+if [ -x "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" --export-only >/dev/null 2>&1 || true
+fi
+
 # 3. Python Virtual Environment & Packages
 if command -v uv >/dev/null 2>&1; then
   log_info "Found 'uv' package manager."

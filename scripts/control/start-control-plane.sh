@@ -84,6 +84,7 @@ LANGFUSE_OTEL_AUTH="${LANGFUSE_OTEL_AUTH:-}"
 export PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 export DATABASE_URL="${DATABASE_URL}"
 export INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX}"
+export BRAINSOS_CORE_MODEL="${BRAINSOS_CORE_MODEL:-ollama_chat/llama3.2:3b}"
 
 # Helper to detect Docker bridge gateway IP
 get_docker_gateway() {
@@ -401,6 +402,7 @@ start_services() {
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
+    BRAINSOS_CORE_MODEL="${BRAINSOS_CORE_MODEL}" \
     nohup ${SETSID_CMD} .venv/bin/python .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \

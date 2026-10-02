@@ -1,0 +1,53 @@
+[
+  {
+    "name": "LiteLLM",
+    "vendor": "litellm-connector",
+    "baseUrl": "http://litellm:4000",
+    "apiKey": "${OPENAI_API_KEY}"
+  },
+  {
+    "name": "LiteLLM (brainsOS)",
+    "vendor": "customendpoint",
+    "apiKey": "${OPENAI_API_KEY}",
+    "apiType": "chat-completions",
+    "url": "http://litellm:4000/v1",
+    "models": [
+      {
+        "id": "brainsos-core",
+        "name": "brainsOS Core (Default)",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "maxInputTokens": 32768,
+        "maxOutputTokens": 4096,
+        "toolCalling": true,
+        "vision": false
+      },
+      {
+        "id": "qwen2.5:latest",
+        "name": "Qwen 2.5",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "maxInputTokens": 32768,
+        "maxOutputTokens": 4096,
+        "toolCalling": true,
+        "vision": false
+      },
+      {
+        "id": "llama3.2:3b",
+        "name": "Llama 3.2 3B",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "maxInputTokens": 8192,
+        "maxOutputTokens": 4096,
+        "toolCalling": true,
+        "vision": false
+      },
+      {
+        "id": "gemma2:2b",
+        "name": "Gemma 2 2B",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "maxInputTokens": 8192,
+        "maxOutputTokens": 4096,
+        "toolCalling": true,
+        "vision": false
+      }
+    ]
+  }
+]

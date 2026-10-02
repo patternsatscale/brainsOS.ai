@@ -166,18 +166,69 @@ if echo "${CODE_ALIAS_STATUS}" | grep -qE '^(200|302)'; then
   log_success "Caddy ingress alias code.${BRAINSOS_DOMAIN} verified (HTTP ${CODE_ALIAS_STATUS})."
 fi
 
-# ------------------------------------------------------------------------------
-# 5. Verify Multi-Root Workspace & Memory Plane Purity (Rule 1)
-# ------------------------------------------------------------------------------
-log_info "Step 5: Verifying Multi-Root Workspace layout and filesystem mounts..."
+# Test TLS reachability over HTTPS with exported root CA
+log_info "Testing Caddy TLS ingress with exported root CA certificate..."
+TARGET_CERT="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-./data}/control_plane}/caddy_root.crt"
+if [[ "$TARGET_CERT" != /* ]]; then
+  TARGET_CERT="${REPO_ROOT}/${TARGET_CERT#./}"
+fi
 
-docker compose exec -T code-server test -f /workspace/brainsos.code-workspace || fail_check "Multi-root workspace file (/workspace/brainsos.code-workspace) not found inside container."
-docker compose exec -T code-server test -d /workspace/brainsos || fail_check "Repository root mount (/workspace/brainsos) missing inside container."
+if [ -s "${TARGET_CERT}" ]; then
+  TLS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    --cacert "${TARGET_CERT}" \
+    -u "${OPERATOR_USER}:${CODE_SERVER_PASSWORD}" \
+    "https://editor.${BRAINSOS_DOMAIN}/" || echo "000")
+  if echo "${TLS_STATUS}" | grep -qE '^(200|302)'; then
+    log_success "Caddy ingress TLS reachability verified (HTTP ${TLS_STATUS}) via exported root CA."
+  else
+    fail_check "Caddy ingress TLS request with CA cert to editor.${BRAINSOS_DOMAIN} returned unexpected HTTP ${TLS_STATUS}."
+  fi
+else
+  fail_check "Caddy root CA certificate not found or empty at: ${TARGET_CERT}"
+fi
+
+# ------------------------------------------------------------------------------
+# 5. Verify Workspace Layout & Memory Plane Purity (Rule 1)
+# ------------------------------------------------------------------------------
+log_info "Step 5: Verifying Workspace layout and filesystem mounts..."
+
+docker compose exec -T code-server test -f /workspace/brainsos.code-workspace -o -f /etc/brainsos/editor/brainsos.code-workspace || fail_check "Workspace file not found inside container."
+
+# Rule 14 Check: Engine platform repository must NOT be mounted into code-server
+if docker compose exec -T code-server test -d /workspace/brainsos 2>/dev/null; then
+  fail_check "Rule 14 Violation: Engine platform repository (/workspace/brainsos) is mounted into code-server!"
+else
+  log_success "Engine platform repository (/workspace/brainsos) is strictly absent from container."
+fi
+
+# Validate Fleet Data Repository mount (/data) as single workspace root
+docker compose exec -T code-server test -d /data || fail_check "Fleet data repository (/data) mount missing inside container."
+log_success "Fleet data repository (/data) mount verified inside container."
+
+# Verify coder.json specifies single folder /data
+if docker compose exec -T code-server grep -q '"folder": *"/data"' /home/coder/.local/share/code-server/coder.json 2>/dev/null; then
+  log_success "Single folder workspace root (/data) verified in coder.json."
+else
+  fail_check "Single folder workspace root (/data) not configured in coder.json!"
+fi
+
+# Verify workspace template defines only /data
+if docker compose exec -T code-server python3 -c '
+import json, sys, os
+p = "/etc/brainsos/editor/brainsos.code-workspace" if os.path.exists("/etc/brainsos/editor/brainsos.code-workspace") else "/workspace/brainsos.code-workspace"
+data = json.load(open(p))
+paths = [f.get("path") for f in data.get("folders", [])]
+if paths != ["/data"]:
+    print("Expected only [\"/data\"], got", paths)
+    sys.exit(1)
+' 2>/dev/null; then
+  log_success "Workspace definition strictly verified with single /data folder root."
+else
+  fail_check "Workspace definition contains multiple roots (expected only /data)!"
+fi
+
 docker compose exec -T code-server test -d /memories || fail_check "Memory plane mount (/memories) missing inside container."
-docker compose exec -T code-server test -d /data/workspace || fail_check "Agent workspaces mount (/data/workspace) missing inside container."
-docker compose exec -T code-server test -d /data/comms || fail_check "Communications gateways mount (/data/comms) missing inside container."
-docker compose exec -T code-server test -d /data/agent_apps/cindypawford/site || fail_check "App canvas mount (/data/agent_apps/cindypawford/site) missing inside container."
-log_success "All 5 Multi-Root Workspace mount points verified inside container."
+log_success "Workspace filesystem mounts verified inside container."
 
 # Rule 1 Purity Check: Ensure no .vscode or SQLite files in memories
 log_info "Auditing Memory Plane purity (ensuring zero .vscode directories in memories)..."
@@ -201,24 +252,25 @@ else
   fail_check "Aider CLI tooling (aider) not found inside container."
 fi
 
-# Continue VS Code extension check
-CONTINUE_EXT=$(docker compose exec -T code-server code-server --list-extensions 2>/dev/null | grep 'continue.continue' || echo "")
-if [ -n "${CONTINUE_EXT}" ]; then
-  log_success "Continue AI extension verified: ${CONTINUE_EXT}."
+# LiteLLM Connector for Copilot extension check
+LITELLM_COPILOT_EXT=$(docker compose exec -T code-server code-server --list-extensions 2>/dev/null | grep -i 'gethnet.litellm-connector-copilot' || echo "")
+if [ -n "${LITELLM_COPILOT_EXT}" ]; then
+  log_success "LiteLLM Connector for Copilot extension verified: ${LITELLM_COPILOT_EXT}."
 else
-  fail_check "Continue AI extension (continue.continue) not found inside container."
+  fail_check "LiteLLM Connector for Copilot extension (gethnet.litellm-connector-copilot) not found inside container."
 fi
 
-# Continue configuration and API endpoints check
-if docker compose exec -T code-server test -f /home/coder/.continue/config.yaml; then
-  log_success "Continue configuration verified at /home/coder/.continue/config.yaml."
-  docker compose exec -T code-server grep -qE "api\.(terrastella|cindypawford|bawtford)" /home/coder/.continue/config.yaml || \
-    fail_check "Continue config missing Agent API endpoint."
-  docker compose exec -T code-server grep -q "litellm:4000" /home/coder/.continue/config.yaml || \
-    fail_check "Continue config missing LiteLLM endpoint."
-  log_success "Continue API endpoints (LiteLLM & Agent APIs) verified in config.yaml."
+# Copilot Language Models Configuration (chatLanguageModels.json)
+log_info "Verifying Copilot LiteLLM Connector configuration in chatLanguageModels.json..."
+if docker compose exec -T code-server test -f /home/coder/.local/share/code-server/User/chatLanguageModels.json; then
+  log_success "chatLanguageModels.json verified at /home/coder/.local/share/code-server/User/chatLanguageModels.json."
+  docker compose exec -T code-server grep -q "litellm-connector" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing litellm-connector vendor."
+  docker compose exec -T code-server grep -q "litellm:4000" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing LiteLLM baseUrl (http://litellm:4000)."
+  log_success "LiteLLM Connector endpoint verified in chatLanguageModels.json."
 else
-  fail_check "Continue configuration (/home/coder/.continue/config.yaml) missing inside container."
+  fail_check "chatLanguageModels.json missing inside container."
 fi
 
 # Workspace trust and SSL bypass verification
@@ -227,6 +279,14 @@ if docker compose exec -T code-server grep -q '"security.workspace.trust.enabled
   log_success "Workspace trust is explicitly disabled in editor settings.json."
 else
   fail_check "Workspace trust is not disabled in editor settings.json!"
+fi
+
+# Dark Theme verification
+log_info "Verifying Default Dark Modern color theme in settings.json..."
+if docker compose exec -T code-server grep -qE '"workbench.colorTheme": *"(Default )?Dark Modern"' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Default dark theme ('Default Dark Modern') verified in code-server User settings."
+else
+  fail_check "Dark theme not configured in /home/coder/.local/share/code-server/User/settings.json!"
 fi
 
 # In-container Agent API DNS reachability check
@@ -258,6 +318,61 @@ if echo "${LITELLM_STATUS}" | grep -qE '^(200|401|405)'; then
   log_success "Container successfully connected to LiteLLM control plane (HTTP ${LITELLM_STATUS})."
 else
   log_warn "LiteLLM control plane at http://litellm:4000 returned HTTP ${LITELLM_STATUS} (may be standby)."
+fi
+
+# Terminal in editor area verification
+log_info "Verifying terminal front-and-center in editor area..."
+if docker compose exec -T code-server grep -q '"terminal.integrated.defaultLocation": *"editor"' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Terminal default location verified: 'editor' (front and center)."
+else
+  fail_check "Terminal default location is not set to 'editor' in settings.json!"
+fi
+
+# Startup terminal extension verification
+log_info "Verifying brainsos.system-terminal extension..."
+EXTS=$(docker compose exec -T code-server code-server --list-extensions 2>/dev/null || docker compose exec -T code-server code-server --list-extensions 2>/dev/null || echo "")
+if echo "${EXTS}" | grep -q 'brainsos.system-terminal'; then
+  log_success "Startup terminal extension (brainsos.system-terminal) verified."
+else
+  fail_check "Startup terminal extension (brainsos.system-terminal) not listed in code-server! Found: ${EXTS}"
+fi
+
+# VS Code AI settings & Language Models Custom Endpoint verification
+log_info "Verifying VS Code built-in AI settings and LiteLLM Custom Endpoint..."
+if docker compose exec -T code-server test -f /home/coder/.local/share/code-server/User/chatLanguageModels.json; then
+  log_success "chatLanguageModels.json verified at /home/coder/.local/share/code-server/User/chatLanguageModels.json."
+  docker compose exec -T code-server grep -q '"vendor": *"customendpoint"' /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing customendpoint vendor."
+  docker compose exec -T code-server grep -q "http://litellm:4000/v1" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing LiteLLM gateway endpoint."
+  log_success "VS Code built-in language models custom endpoint pointing to LiteLLM verified."
+else
+  fail_check "chatLanguageModels.json missing inside container."
+fi
+
+# In-container System Terminal Make commands verification
+log_info "Verifying 'make urls' command execution from /data inside container..."
+MAKE_URLS_OUT=$(docker compose exec -T -w /data code-server make urls 2>&1 || echo "ERROR")
+if echo "${MAKE_URLS_OUT}" | grep -q "Platform Service Directory"; then
+  log_success "'make urls' successfully executed from /data directory."
+else
+  fail_check "'make urls' execution failed inside container! Output: ${MAKE_URLS_OUT}"
+fi
+
+log_info "Verifying 'make status' command execution from /data inside container..."
+MAKE_STATUS_OUT=$(docker compose exec -T -w /data code-server make status 2>&1 || echo "ERROR")
+if echo "${MAKE_STATUS_OUT}" | grep -q "LiteLLM Gateway"; then
+  log_success "'make status' successfully executed from /data directory."
+else
+  fail_check "'make status' execution failed inside container! Output: ${MAKE_STATUS_OUT}"
+fi
+
+log_info "Verifying 'make models' command execution from /data inside container..."
+MAKE_MODELS_OUT=$(docker compose exec -T -w /data code-server make models 2>&1 || echo "ERROR")
+if echo "${MAKE_MODELS_OUT}" | grep -q "brainsos-core"; then
+  log_success "'make models' successfully executed from /data directory."
+else
+  fail_check "'make models' execution failed inside container! Output: ${MAKE_MODELS_OUT}"
 fi
 
 echo ""

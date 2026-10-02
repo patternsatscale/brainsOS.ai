@@ -7,7 +7,7 @@ model_list:
   # Primary Agent Model Alias
   - model_name: brainsos-core
     litellm_params:
-      model: ollama_chat/qwen3.8:latest
+      model: os.environ/BRAINSOS_CORE_MODEL
       api_base: http://127.0.0.1:11434
       # Hardware serialization: Protects unified LPDDR5x memory bus on GB10 / Apple Silicon
       max_parallel_requests: 1

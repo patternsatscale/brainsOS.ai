@@ -361,6 +361,8 @@ make setup          # Bootstrap .env, data dirs, venv, and editable packages
 make env            # Generate .env with secure passwords, configure URLs, and rebuild
 make reload_env     # Reload .env, synchronize passwords across DBs/containers, and show URLs
 make urls           # Display all service URLs & credentials, and synchronize /etc/hosts
+make trust-ca       # Export Caddy root CA and verify/install host SSL trust
+make certs          # Export Caddy root CA certificate to active data directory
 make up             # Synchronize fleet manifest and start Docker fleet
 make down           # Gracefully stop all Docker services
 make test           # Run pytest suite across all packages
@@ -414,7 +416,8 @@ brainsOS/
 │   ├── brainsOS-mail/        # Standalone RFC-compliant asynchronous email client
 │   ├── brainsOS-mcp/         # Dynamic FastMCP server exposing tools across packages
 │   ├── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
-│   └── brainsOS-telemetry/   # Decoupled Observer/Observable bus & SyntheticEnergyObserver
+│   ├── brainsOS-telemetry/   # Decoupled Observer/Observable bus & SyntheticEnergyObserver
+│   └── brainsOS-terminal/    # Interactive CLI & System Terminal tooling for Operator IDE
 ├── docker/                   # Dockerfiles for mail, caddy, editor, hermes, langfuse
 ├── docs/  
 │   ├── cohumain/             # COHUMAIN ACSG 25-control catalog & conformance roadmap

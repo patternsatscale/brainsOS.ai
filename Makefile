@@ -9,7 +9,7 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test
+.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test trust-ca certs
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
@@ -19,6 +19,8 @@ help:
 	@echo "  make env            - Generate .env with secure passwords, configure URLs, and rebuild"
 	@echo "  make reload_env     - Reload .env, synchronize passwords across DBs/containers, and show URLs"
 	@echo "  make urls           - Display all service URLs & credentials, and synchronize /etc/hosts"
+	@echo "  make trust-ca       - Export Caddy root CA and verify/install host SSL trust"
+	@echo "  make certs          - Export Caddy root CA certificate to active data directory"
 	@echo "  make up             - Start platform Docker services and shared runner"
 	@echo "  make down           - Stop all Docker services and host control plane"
 	@echo "  make stop-all       - Stop all Docker containers, host LiteLLM, Ollama, and workers"
@@ -60,6 +62,12 @@ reload-env:
 
 urls:
 	@scripts/control/show-urls.sh $(ARGS)
+
+trust-ca:
+	@scripts/setup/trust-caddy-ca.sh --install
+
+certs:
+	@scripts/setup/trust-caddy-ca.sh --export-only
 
 up:
 	@docker compose up -d

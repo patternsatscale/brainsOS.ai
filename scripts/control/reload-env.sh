@@ -247,6 +247,12 @@ if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
   log_success "Caddy ingress reloaded."
 fi
 
+# Synchronize Caddy root CA certificate into active data directory
+if [ -x "${SCRIPT_DIR}/../setup/trust-caddy-ca.sh" ]; then
+  log_info "Synchronizing Caddy root CA certificate into active control plane..."
+  "${SCRIPT_DIR}/../setup/trust-caddy-ca.sh" --export-only || log_warn "Could not refresh Caddy root CA certificate."
+fi
+
 # ------------------------------------------------------------------------------
 # Summary & Health Status
 # ------------------------------------------------------------------------------
