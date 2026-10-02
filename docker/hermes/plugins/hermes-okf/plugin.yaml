@@ -1,9 +1,0 @@
-name: hermes-okf
-version: 1.0.0
-description: "Project Titan Open Knowledge Format (OKF) Memory Integration"
-author: "Project Titan"
-kind: backend
-provides_tools:
-  - read_okf_note
-  - write_okf_note
-  - synthesize_active_rules

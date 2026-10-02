@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Network & Local Domain Configuration Script
+# brainsOS: Network & Local Domain Configuration Script
 # Configures static IP address (Netplan on Ubuntu/DGX OS or networksetup on macOS)
 # and registers local appliance domains in /etc/hosts with confirmation.
 # ==============================================================================
@@ -43,7 +43,7 @@ if [ -f "${REPO_ROOT}/.env" ]; then
 fi
 
 OS="$(uname -s)"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 
 # ------------------------------------------------------------------------------
 # Helpers: Validation and Conversion
@@ -137,9 +137,9 @@ Options:
   --ip <ip/cidr>         Static IP address with subnet mask CIDR (e.g. 192.168.1.150/24)
   --gateway <ip>         Default gateway IPv4 address (e.g. 192.168.1.1)
   --dns <ip1,ip2>        Comma-separated DNS nameservers (e.g. 1.1.1.1,8.8.8.8)
-  --domain <domain>      Local base domain suffix (default: ${TITAN_DOMAIN})
+  --domain <domain>      Local base domain suffix (default: ${BRAINSOS_DOMAIN})
   --hosts-target <ip>    IP to map domains to in /etc/hosts (default: 127.0.0.1 or static IP)
-  --langfuse-ip <ip>     Optional dedicated LAN IP for langfuse.${TITAN_DOMAIN} (if on separate machine)
+  --langfuse-ip <ip>     Optional dedicated LAN IP for langfuse.${BRAINSOS_DOMAIN} (if on separate machine)
   --skip-ip              Only configure /etc/hosts, skip static IP assignment
   --skip-hosts           Only configure static IP, skip /etc/hosts
   -y, --yes              Non-interactive mode: auto-confirm applying changes
@@ -179,7 +179,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
-echo -e "${BLUE}${BOLD}Project Titan: Network & Local Domain Setup${NC}"
+echo -e "${BLUE}${BOLD}brainsOS: Network & Local Domain Setup${NC}"
 echo -e "${BLUE}${BOLD}Target: ASUS Ascent GX10 / Linux (Netplan) & macOS Development Workstation${NC}"
 echo -e "${BLUE}${BOLD}==============================================================================${NC}"
 
@@ -239,7 +239,7 @@ SELECTED_IFACE="${ARG_IFACE:-$DETECTED_IFACE}"
 SELECTED_IP="${ARG_IP:-$DETECTED_IP_CIDR}"
 SELECTED_GATEWAY="${ARG_GATEWAY:-$DETECTED_GATEWAY}"
 SELECTED_DNS="${ARG_DNS:-$DETECTED_DNS}"
-SELECTED_DOMAIN="${ARG_DOMAIN:-$TITAN_DOMAIN}"
+SELECTED_DOMAIN="${ARG_DOMAIN:-$BRAINSOS_DOMAIN}"
 
 if [ "${CONFIGURE_STATIC_IP}" = true ]; then
   if [ -z "${ARG_IFACE}" ]; then
@@ -324,7 +324,7 @@ if [ "${CONFIGURE_STATIC_IP}" = true ]; then
   echo "  Default Gateway:     ${SELECTED_GATEWAY}"
   echo "  DNS Nameservers:     ${SELECTED_DNS}"
   if [[ "${OS}" == "Linux" ]]; then
-    echo "  Config File Target:  /etc/netplan/99-titan-static.yaml"
+    echo "  Config File Target:  /etc/netplan/99-brainsos-static.yaml"
   elif [[ "${OS}" == "Darwin" ]]; then
     echo "  Config Command:      networksetup -setmanual"
   fi
@@ -384,8 +384,8 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   log_info "Backing up /etc/hosts to ${HOSTS_BACKUP}..."
   $SUDO cp /etc/hosts "${HOSTS_BACKUP}"
 
-  HOSTS_BLOCK_START="# --- BEGIN PROJECT TITAN DOMAINS ---"
-  HOSTS_BLOCK_END="# --- END PROJECT TITAN DOMAINS ---"
+  HOSTS_BLOCK_START="# --- BEGIN BRAINSOS DOMAINS ---"
+  HOSTS_BLOCK_END="# --- END BRAINSOS DOMAINS ---"
   HOSTS_LANGFUSE_IP="${ARG_LANGFUSE_IP:-$SELECTED_HOSTS_IP}"
   # Dynamically discover all fleet agent subdomains from config/agents.yaml
   DYNAMIC_AGENT_DOMAINS=""
@@ -403,18 +403,14 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   fi
   LANGFUSE_LINE="${HOSTS_LANGFUSE_IP} langfuse.${SELECTED_DOMAIN}"
 
-  # Strip any previous Titan block if present, then append clean block
+  # Strip any previous brainsOS block if present, then append clean block
   TEMP_HOSTS="$(mktemp)"
-  if grep -q "${HOSTS_BLOCK_START}" /etc/hosts; then
-    sed "/${HOSTS_BLOCK_START}/,/${HOSTS_BLOCK_END}/d" /etc/hosts > "${TEMP_HOSTS}"
-  else
-    cp /etc/hosts "${TEMP_HOSTS}"
-  fi
+  sed "/${HOSTS_BLOCK_START}/,/${HOSTS_BLOCK_END}/d" /etc/hosts > "${TEMP_HOSTS}"
 
   {
     echo ""
     echo "${HOSTS_BLOCK_START}"
-    echo "# Configured by Project Titan setup-network.sh on $(date)"
+    echo "# Configured by brainsOS setup-network.sh on $(date)"
     echo "${HOSTS_LINE}"
     echo "${LANGFUSE_LINE}"
     echo "${HOSTS_BLOCK_END}"
@@ -423,7 +419,7 @@ if [ "${CONFIGURE_HOSTS}" = true ]; then
   $SUDO cp "${TEMP_HOSTS}" /etc/hosts
   $SUDO chmod 644 /etc/hosts
   rm -f "${TEMP_HOSTS}"
-  log_success "Updated /etc/hosts with Project Titan domain entries."
+  log_success "Updated /etc/hosts with brainsOS domain entries."
 fi
 
 # 4B. Apply Static IP Configuration
@@ -464,12 +460,12 @@ if [ "${CONFIGURE_STATIC_IP}" = true ]; then
         fi
       done
 
-      TITAN_NETPLAN_FILE="${NETPLAN_DIR}/99-titan-static.yaml"
+      BRAINSOS_NETPLAN_FILE="${NETPLAN_DIR}/99-brainsos-static.yaml"
       TEMP_NETPLAN="$(mktemp)"
 
       cat <<EOF > "${TEMP_NETPLAN}"
 # ==============================================================================
-# Project Titan: Static Network Configuration
+# brainsOS: Static Network Configuration
 # Generated by scripts/setup-network.sh on $(date)
 # ==============================================================================
 network:
@@ -487,8 +483,8 @@ network:
         addresses: [${DNS_YAML_LIST}]
 EOF
 
-      $SUDO cp "${TEMP_NETPLAN}" "${TITAN_NETPLAN_FILE}"
-      $SUDO chmod 600 "${TITAN_NETPLAN_FILE}"
+      $SUDO cp "${TEMP_NETPLAN}" "${BRAINSOS_NETPLAN_FILE}"
+      $SUDO chmod 600 "${BRAINSOS_NETPLAN_FILE}"
       rm -f "${TEMP_NETPLAN}"
 
       log_info "Validating Netplan configuration..."
@@ -500,7 +496,7 @@ EOF
         log_error "Netplan configuration validation failed. Restoring previous configuration..."
         if [ -d "${NETPLAN_BACKUP_DIR}" ]; then
           $SUDO cp "${NETPLAN_BACKUP_DIR}"/*.yaml "${NETPLAN_DIR}/" 2>/dev/null || true
-          $SUDO rm -f "${TITAN_NETPLAN_FILE}"
+          $SUDO rm -f "${BRAINSOS_NETPLAN_FILE}"
           $SUDO netplan apply || true
         fi
         exit 1

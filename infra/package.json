@@ -1,5 +1,5 @@
 {
-  "name": "titan-infra",
+  "name": "brainsos-infra",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -7,11 +7,18 @@
     "deploy": "sst deploy",
     "diff": "sst diff",
     "dev": "sst dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1145.0",
+    "@aws-sdk/client-sqs": "^3.1145.0",
+    "@types/mailparser": "^3.9.0",
     "@types/node": "^22.13.9",
+    "mailparser": "^3.9.33",
     "sst": "3.3.27",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.3"
   }
 }

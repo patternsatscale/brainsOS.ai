@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Idempotent Host Baseline Setup Script
+# brainsOS: Idempotent Host Baseline Setup Script
 # Configures host dependencies, native inference (Ollama), LiteLLM control plane,
 # memory storage directories, and model seeding across macOS and Ubuntu/DGX OS.
 # ==============================================================================
@@ -43,7 +43,7 @@ if [ -z "${REPO_ROOT}" ]; then
   [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 fi
 
-log_info "Initializing Project Titan host baseline from ${REPO_ROOT}..."
+log_info "Initializing brainsOS host baseline from ${REPO_ROOT}..."
 
 # ------------------------------------------------------------------------------
 # 0. Host Hygiene & Security Prechecks
@@ -58,8 +58,8 @@ if command -v docker >/dev/null 2>&1; then
   if ! docker info >/dev/null 2>&1; then
     CURRENT_USER="$(id -un 2>/dev/null || whoami)"
     if command -v getent >/dev/null 2>&1 && getent group docker | grep -qw "${CURRENT_USER}"; then
-      if [ -z "${TITAN_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
-        export TITAN_DOCKER_REEXEC=1
+      if [ -z "${BRAINSOS_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
+        export BRAINSOS_DOCKER_REEXEC=1
         log_info "Refreshing active group permissions for 'docker' via sg..."
         exec sg docker -c "$0 $*"
       fi
@@ -75,7 +75,7 @@ fi
 EXTERNAL_LITELLM="$(command -v litellm 2>/dev/null || true)"
 if [ -n "${EXTERNAL_LITELLM}" ] && [[ "${EXTERNAL_LITELLM}" != "${REPO_ROOT}/.venv/*" ]]; then
   log_warn "Detected external LiteLLM binary at: ${EXTERNAL_LITELLM}"
-  log_warn "Project Titan encapsulates its control plane in ${REPO_ROOT}/.venv."
+  log_warn "brainsOS encapsulates its control plane in ${REPO_ROOT}/.venv."
   log_warn "Ensure external LiteLLM processes (e.g. from pipx) are not actively running."
 fi
 
@@ -316,8 +316,14 @@ if [ -f "${REPO_ROOT}/scripts/setup/setup-memories.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-memories.sh"
 fi
 
-DATA_DIR=$(grep -E '^(TITAN_AGENT_MEMORIES_DIR|TITAN_DATA_DIR)=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_memories")
-DATA_DIR="${DATA_DIR:-./data/agent_memories}"
+DATA_ROOT=$(grep -E '^BRAINSOS_DATA_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data")
+DATA_ROOT="${DATA_ROOT:-./data}"
+if [[ "$DATA_ROOT" != /* ]]; then
+  DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
+fi
+
+DATA_DIR=$(grep -E '^BRAINSOS_AGENT_MEMORIES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "${DATA_ROOT}/agent_memories")
+DATA_DIR="${DATA_DIR:-${DATA_ROOT}/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -325,14 +331,14 @@ else
   TARGET_MEMORIES_DIR="${DATA_DIR}"
 fi
 
-mkdir -p "${REPO_ROOT}/data/backups"
-mkdir -p "${REPO_ROOT}/data/control_plane"
-mkdir -p "${REPO_ROOT}/data/comms"
-mkdir -p "${REPO_ROOT}/data/telemetry"
+mkdir -p "${DATA_ROOT}/backups"
+mkdir -p "${DATA_ROOT}/control_plane"
+mkdir -p "${DATA_ROOT}/comms"
+mkdir -p "${DATA_ROOT}/telemetry"
 
 # LiteLLM Dedicated Control Plane Database Storage (isolated from memories)
-DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "./data/control_plane/litellm_db")
-DB_DATA_DIR="${DB_DATA_DIR:-./data/control_plane/litellm_db}"
+DB_DATA_DIR=$(grep -E '^LITELLM_DB_DATA_DIR=' .env 2>/dev/null | cut -d '=' -f2- || echo "${DATA_ROOT}/control_plane/litellm_db")
+DB_DATA_DIR="${DB_DATA_DIR:-${DATA_ROOT}/control_plane/litellm_db}"
 
 if [[ "$DB_DATA_DIR" != /* ]]; then
   TARGET_DB_DIR="${REPO_ROOT}/${DB_DATA_DIR#./}"
@@ -342,7 +348,7 @@ fi
 
 log_info "Target LiteLLM PostgreSQL directory: ${TARGET_DB_DIR}"
 
-if [[ "$TARGET_DB_DIR" == /data/titan/* ]]; then
+if [[ "$TARGET_DB_DIR" == /data/brainsos/* ]]; then
   log_info "Creating production database path with sudo: ${TARGET_DB_DIR}..."
   sudo mkdir -p "${TARGET_DB_DIR}"
   sudo chown -R 999:999 "${TARGET_DB_DIR}"
@@ -353,8 +359,8 @@ else
 fi
 
 # Hermes Agent Runtime Workspace Storage (tools, caches, packages, isolated from memories)
-WORKSPACE_DIR=$(grep -E '^(TITAN_AGENT_WORKSPACES_DIR|TITAN_WORKSPACE_DIR)=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "./data/agent_workspaces")
-WORKSPACE_DIR="${WORKSPACE_DIR:-./data/agent_workspaces}"
+WORKSPACE_DIR=$(grep -E '^BRAINSOS_AGENT_WORKSPACES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "${DATA_ROOT}/agent_workspaces")
+WORKSPACE_DIR="${WORKSPACE_DIR:-${DATA_ROOT}/agent_workspaces}"
 
 if [[ "$WORKSPACE_DIR" != /* ]]; then
   TARGET_WORKSPACE_DIR="${REPO_ROOT}/${WORKSPACE_DIR#./}"
@@ -364,7 +370,7 @@ fi
 
 log_info "Target Hermes Agent workspace directory: ${TARGET_WORKSPACE_DIR}"
 
-if [[ "$TARGET_WORKSPACE_DIR" == /data/titan/* ]]; then
+if [[ "$TARGET_WORKSPACE_DIR" == /data/brainsos/* ]]; then
   log_info "Creating production workspace path with sudo: ${TARGET_WORKSPACE_DIR}..."
   sudo mkdir -p "${TARGET_WORKSPACE_DIR}"
   sudo chown -R 1000:1000 "${TARGET_WORKSPACE_DIR}"
@@ -442,17 +448,17 @@ log_info "Validating Caddyfile syntax..."
 docker run --rm -v "${REPO_ROOT}/config/caddy/Caddyfile:/etc/caddy/Caddyfile" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1
 log_success "Caddyfile configuration validated."
 
-# 8C. Verify local domain resolution (.titan.local vs .localhost)
+# 8C. Verify local domain resolution (.brainsos.local vs .localhost)
 log_info "Checking local domain resolution..."
-if getent hosts "hermes.titan.local" >/dev/null 2>&1; then
-  log_success "Domain hermes.titan.local resolves successfully."
+if getent hosts "hermes.brainsos.local" >/dev/null 2>&1; then
+  log_success "Domain hermes.brainsos.local resolves successfully."
 else
-  log_info "Notice: 'hermes.titan.local' is not yet configured in /etc/hosts."
-  log_info "To use *.titan.local custom domains, run:"
+  log_info "Notice: 'hermes.brainsos.local' is not yet configured in /etc/hosts."
+  log_info "To use *.brainsos.local custom domains, run:"
   if [ "${IS_GX10}" = true ]; then
-    log_info "  echo '127.0.0.1 titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local dgx.titan.local' | sudo tee -a /etc/hosts"
+    log_info "  echo '127.0.0.1 brainsos.local hermes.brainsos.local api.hermes.brainsos.local proxy.brainsos.local memory.brainsos.local dgx.brainsos.local' | sudo tee -a /etc/hosts"
   else
-    log_info "  echo '127.0.0.1 titan.local hermes.titan.local api.hermes.titan.local proxy.titan.local memory.titan.local' | sudo tee -a /etc/hosts"
+    log_info "  echo '127.0.0.1 brainsos.local hermes.brainsos.local api.hermes.brainsos.local proxy.brainsos.local memory.brainsos.local' | sudo tee -a /etc/hosts"
   fi
   log_info "Zero-config fallback: *.localhost domains (e.g. http://hermes.localhost) work automatically without /etc/hosts."
 fi
@@ -477,17 +483,17 @@ for i in {1..30}; do
 done
 
 # Verify Ingress Landing Page
-if curl -s "http://127.0.0.1:80" | grep -q "Project Titan"; then
+if curl -s "http://127.0.0.1:80" | grep -q "brainsOS"; then
   log_success "Ingress landing page verified on port 80 (http://localhost)."
 else
   log_warn "Ingress landing page not responding as expected on port 80."
 fi
 
 # Verify Hermes Agent unprivileged API via Caddy reverse proxy
-if curl -s "http://hermes.localhost/health" | grep -q "hermes-titan"; then
+if curl -s "http://hermes.localhost/health" | grep -q "hermes-brainsos"; then
   log_success "Hermes unprivileged agent runtime verified via Caddy (http://hermes.localhost)."
-elif curl -s -H "Host: hermes.titan.local" "http://127.0.0.1/health" | grep -q "hermes-titan"; then
-  log_success "Hermes unprivileged agent runtime verified via Caddy (Host: hermes.titan.local)."
+elif curl -s -H "Host: hermes.brainsos.local" "http://127.0.0.1/health" | grep -q "hermes-brainsos"; then
+  log_success "Hermes unprivileged agent runtime verified via Caddy (Host: hermes.brainsos.local)."
 else
   log_warn "Hermes endpoint not yet responding via reverse proxy."
 fi
@@ -495,8 +501,8 @@ fi
 # Verify SilverBullet PKM UI via Caddy reverse proxy
 if curl -s -I "http://memory.localhost/" 2>&1 | grep -qE "HTTP/(1.1|2) 200"; then
   log_success "SilverBullet PKM verified via Caddy (http://memory.localhost)."
-elif curl -s -I -H "Host: memory.titan.local" "http://127.0.0.1/" 2>&1 | grep -qE "HTTP/(1.1|2) 200"; then
-  log_success "SilverBullet PKM verified via Caddy (Host: memory.titan.local)."
+elif curl -s -I -H "Host: memory.brainsos.local" "http://127.0.0.1/" 2>&1 | grep -qE "HTTP/(1.1|2) 200"; then
+  log_success "SilverBullet PKM verified via Caddy (Host: memory.brainsos.local)."
 else
   log_warn "SilverBullet endpoint not yet responding via reverse proxy."
 fi
@@ -504,8 +510,8 @@ fi
 # Verify LiteLLM Gateway & UI via Caddy reverse proxy
 if curl -s -o /dev/null -w "%{http_code}" "http://proxy.localhost/ui/" | grep -q "200"; then
   log_success "LiteLLM Gateway & UI verified via Caddy (http://proxy.localhost/ui)."
-elif curl -s -o /dev/null -w "%{http_code}" -H "Host: proxy.titan.local" "http://127.0.0.1/ui/" | grep -q "200"; then
-  log_success "LiteLLM Gateway & UI verified via Caddy (Host: proxy.titan.local/ui)."
+elif curl -s -o /dev/null -w "%{http_code}" -H "Host: proxy.brainsos.local" "http://127.0.0.1/ui/" | grep -q "200"; then
+  log_success "LiteLLM Gateway & UI verified via Caddy (Host: proxy.brainsos.local/ui)."
 else
   log_warn "LiteLLM endpoint not yet responding via reverse proxy."
 fi
@@ -514,23 +520,23 @@ fi
 if [ "${IS_GX10}" = true ] && curl -s "http://127.0.0.1:11000" >/dev/null 2>&1; then
   if curl -s -o /dev/null -w "%{http_code}" "http://dgx.localhost/" | grep -q "200"; then
     log_success "NVIDIA DGX Dashboard verified via Caddy (http://dgx.localhost)."
-  elif curl -s -o /dev/null -w "%{http_code}" -H "Host: dgx.titan.local" "http://127.0.0.1/" | grep -q "200"; then
-    log_success "NVIDIA DGX Dashboard verified via Caddy (Host: dgx.titan.local)."
+  elif curl -s -o /dev/null -w "%{http_code}" -H "Host: dgx.brainsos.local" "http://127.0.0.1/" | grep -q "200"; then
+    log_success "NVIDIA DGX Dashboard verified via Caddy (Host: dgx.brainsos.local)."
   else
     log_warn "DGX Dashboard endpoint not yet responding via reverse proxy."
   fi
 fi
 
-log_success "Project Titan host baseline setup and verification complete!"
+log_success "brainsOS host baseline setup and verification complete!"
 echo ""
 echo "Appliance Endpoints:"
 echo "  - Ingress Gateway:   http://localhost (or https://localhost)"
-echo "  - Hermes Console:    http://hermes.localhost (or http://hermes.titan.local)"
-echo "  - Hermes API:        http://api.hermes.localhost (or http://api.hermes.titan.local)"
-echo "  - Memory Plane PKM:  http://memory.localhost (or http://memory.titan.local)"
-echo "  - LiteLLM Admin UI:  http://proxy.localhost/ui (or http://proxy.titan.local/ui)"
+echo "  - Hermes Console:    http://hermes.localhost (or http://hermes.brainsos.local)"
+echo "  - Hermes API:        http://api.hermes.localhost (or http://api.hermes.brainsos.local)"
+echo "  - Memory Plane PKM:  http://memory.localhost (or http://memory.brainsos.local)"
+echo "  - LiteLLM Admin UI:  http://proxy.localhost/ui (or http://proxy.brainsos.local/ui)"
 if [ "${IS_GX10}" = true ]; then
-  echo "  - DGX Dashboard:     http://dgx.localhost (or http://dgx.titan.local)"
+  echo "  - DGX Dashboard:     http://dgx.localhost (or http://dgx.brainsos.local)"
 fi
 echo "  - LiteLLM Control:   ./scripts/control/start-control-plane.sh {start|stop|status}"
 echo ""

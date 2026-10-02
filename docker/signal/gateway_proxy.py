@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Project Titan: Signal Gateway Multiplexing Reverse Proxy.
+"""brainsOS: Signal Gateway Multiplexing Reverse Proxy.
 
 Multiplexes incoming HTTP connections on port 8080:
 - Routes /api/v1/* to 127.0.0.1:8082 (native signal-cli daemon in HTTP mode:

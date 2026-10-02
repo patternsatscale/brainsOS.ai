@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Cindy Pawford Agent Unit Automated Verification Suite
+# brainsOS: Cindy Pawford Agent Unit Automated Verification Suite
 # Ticket #87 (CW-0A): Base Persona, Tenancy & Monorepo Web Scaffold
 # ==============================================================================
 
@@ -46,13 +46,13 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
-AGENT_ID="cindy-pawford"
-CONTAINER="titan-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-MEM_DIR="${REPO_ROOT}/data/memories/${AGENT_ID}"
-WORK_DIR="${REPO_ROOT}/data/workspace/${AGENT_ID}"
+AGENT_ID="${AGENT_ID:-bawtford}"
+CONTAINER="brainsos-agent-${AGENT_ID}"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/${AGENT_ID}"
+WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}/${AGENT_ID}"
 
 log_info "================================================================="
 log_info "  Running Cindy Pawford (CW-0A) Agent Unit Verification Suite   "
@@ -124,14 +124,14 @@ fi
 # Check required vanilla web files on host
 for file in index.html styles.css app.js; do
   if [ -f "${SITE_DIR}/${file}" ]; then
-    log_success "Verified host site file: apps/cindypawford/site/${file}"
+    log_success "Verified host site file: data/agent_apps/cindypawford/site/${file}"
   else
-    log_error "Missing required site file: apps/cindypawford/site/${file}"
+    log_error "Missing required site file: data/agent_apps/cindypawford/site/${file}"
     exit 1
   fi
 done
 
-# Verify container /workspace mount points to data/workspace/cindy-pawford
+# Verify container /workspace mount points to WORK_DIR
 WORK_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')
 if [ "${WORK_MOUNT_CHECK}" = "${WORK_DIR}" ]; then
   log_success "Verified container '/workspace' bind-mount maps directly to '${WORK_DIR}'."
@@ -140,7 +140,7 @@ else
   exit 1
 fi
 
-# Verify container /app/html mount points to apps/cindypawford/site
+# Verify container /app/html mount points to data/agent_apps/cindypawford/site
 HTML_MOUNT_CHECK=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
 if [ "${HTML_MOUNT_CHECK}" = "${SITE_DIR}" ]; then
   log_success "Verified container '/app/html' bind-mount maps directly to '${SITE_DIR}'."
@@ -154,7 +154,7 @@ TEST_WRITE_FILE="/app/html/.test_cindy_perm_$(date +%s)"
 docker exec "${CONTAINER}" bash -c "echo 'cindy_write_ok' > ${TEST_WRITE_FILE}"
 
 if [ -f "${SITE_DIR}/$(basename "${TEST_WRITE_FILE}")" ]; then
-  log_success "Verified: Agent has verified write access to apps/cindypawford/site from /app/html."
+  log_success "Verified: Agent has verified write access to data/agent_apps/cindypawford/site from /app/html."
   docker exec "${CONTAINER}" rm -f "${TEST_WRITE_FILE}"
 else
   log_error "Write test failed: Host did not observe file created from container /app/html."
@@ -208,7 +208,7 @@ fi
 log_success "Sub-agent SOUL.md verified 100% clean of conversational roleplay or canine humor."
 
 # Verify Rule 7: Compartmentalization (No host daemon/DB leakage in SOUL.md or sub-agent SOUL.md)
-for forbidden in "127.0.0.1:11434" "titan-litellm-db" "postgresql://" "vllm" "SST"; do
+for forbidden in "127.0.0.1:11434" "brainsos-litellm-db" "postgresql://" "vllm" "SST"; do
   if grep -qi "${forbidden}" "${SOUL_PATH}" || grep -qi "${forbidden}" "${SUB_SOUL_PATH}"; then
     log_error "Rule 7 violation: Found forbidden backend leak '${forbidden}' in SOUL files!"
     exit 1
@@ -286,16 +286,16 @@ fi
 log_info "Step 7: Verifying Caddy ingress resolution and Telegram stub..."
 
 # HTTP probe via Caddy on port 80 with Host header
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: cindy-pawford.${TITAN_DOMAIN}" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: cindy-pawford.${BRAINSOS_DOMAIN}" "http://127.0.0.1:${CADDY_HTTP_PORT}/" || echo "failed")
 if [ "${HTTP_STATUS}" = "200" ] || [ "${HTTP_STATUS}" = "302" ] || [ "${HTTP_STATUS}" = "401" ]; then
-  log_success "Caddy ingress resolves 'cindy-pawford.${TITAN_DOMAIN}' -> HTTP ${HTTP_STATUS}."
+  log_success "Caddy ingress resolves 'cindy-pawford.${BRAINSOS_DOMAIN}' -> HTTP ${HTTP_STATUS}."
 else
   log_warn "Caddy ingress returned '${HTTP_STATUS}' (gateway will route upon reload)."
 fi
 
 # Verify Telegram bot per-agent configuration
-if grep -qE "@CindyPawford(_bot|Bot)" "${REPO_ROOT}/config/agents.yaml" && \
-   grep -qE "@CindyPawford(_bot|Bot)" "${WORK_DIR}/config.yaml" && \
+if grep -qE "@(CindyPawford|Bawtford)(_bot|Bot)" "${REPO_ROOT}/config/agents.yaml" && \
+   grep -qE "@(CindyPawford|Bawtford)(_bot|Bot)" "${WORK_DIR}/config.yaml" && \
    grep -q "TELEGRAM_BOT_TOKEN_CINDY" "${REPO_ROOT}/docker-compose.agents.yml"; then
   log_success "Verified per-agent Telegram config (CindyPawford bot profile, TELEGRAM_BOT_TOKEN_CINDY)."
 else
@@ -393,19 +393,19 @@ assert not valid_bad, 'Syntax check failed to reject invalid JavaScript!'
 "
 log_success "Quality Gate passed: Markdown fences and conversational chatter stripped, JS syntax validated."
 
-# 8e. Verify titan-subagents plugin files and configuration
-PLUGIN_DIR="${WORK_DIR}/plugins/titan-subagents"
-if [ -f "${PLUGIN_DIR}/plugin.yaml" ] && [ -f "${PLUGIN_DIR}/__init__.py" ]; then
-  log_success "Verified titan-subagents plugin scaffolded in workspace: ${PLUGIN_DIR}."
-else
-  log_error "Missing titan-subagents plugin in workspace!"
-  exit 1
+# 8e. Verify zero legacy plugins in workspace and brainsOS MCP server configuration
+if [ -d "${WORK_DIR}/plugins" ]; then
+  LEGACY_PLUGINS=$(find "${WORK_DIR}/plugins" -type f 2>/dev/null || true)
+  if [ -n "${LEGACY_PLUGINS}" ]; then
+    log_error "Detected forbidden legacy plugins in ${WORK_DIR}/plugins!"
+    exit 1
+  fi
 fi
 
-if grep -q "titan-subagents" "${WORK_DIR}/config.yaml"; then
-  log_success "Verified titan-subagents enabled in ${WORK_DIR}/config.yaml."
+if grep -q "mcp_servers" "${WORK_DIR}/config.yaml" && grep -q "brainsos_mcp" "${WORK_DIR}/config.yaml"; then
+  log_success "Verified MCP server configuration enabled in ${WORK_DIR}/config.yaml."
 else
-  log_error "titan-subagents plugin not enabled in ${WORK_DIR}/config.yaml!"
+  log_error "MCP server configuration missing in ${WORK_DIR}/config.yaml!"
   exit 1
 fi
 

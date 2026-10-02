@@ -1,6 +1,6 @@
-# Project Titan: Agent Operating Discipline & Ticket Workflow
+# brainsOS: Agent Operating Discipline & Ticket Workflow
 
-This document establishes the mandatory protocol for AI agents (and human developers) contributing to **Project Titan**. Adherence to these rules ensures architectural boundaries remain uncompromised and development remains disciplined and auditable.
+This document establishes the mandatory protocol for AI agents (and human developers) contributing to **brainsOS** ([brainsOS.ai](https://brainsos.ai)). Adherence to these rules ensures architectural boundaries remain uncompromised and development remains disciplined and auditable.
 
 ## 0. Target Architecture & Hardware Context
 
@@ -8,9 +8,9 @@ This document establishes the mandatory protocol for AI agents (and human develo
 - **Development Workstation**: **macOS (Apple Silicon)** providing native ARM64 container parity.
 - **Portability Rules**:
   - All Docker images must run natively on ARM64 without emulation.
-  - Storage paths are parameterized via `.env`: `./data/agent_memories` for local macOS development, `/data/titan/agent_memories` on the production GX10.
+  - Storage paths are parameterized via `.env`: `./data/agent_memories` for local macOS development, `/data/brainsos/agent_memories` on the production GX10.
   - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup/setup-host.sh`).
-- **Architectural Reference**: Agents must consult [README.md](file:///Users/pats/Development/project_titan/README.md) for full plane topology and system specifications.
+- **Architectural Reference**: Agents must consult [README.md](README.md) for full plane topology and system specifications.
 - **Out of Scope**: `docs/lab-work/` is the documentation and critique area and is **excluded from all coding work** — do not read it for requirements, write to it, or include it in a ticket's scope. See Rule 11.
 
 ---
@@ -55,23 +55,30 @@ Before submitting work or opening a PR, the agent **must** run the verification 
 
 ### Step 5: Architecture & Documentation Alignment (`README.md` & `AGENTS.md`)
 Before finalizing a ticket or opening a PR, the agent **must** review whether the changes introduce any architectural shifts, new services, port updates, or revised security boundaries:
-- **Topology & Runtimes**: If containers, host processes, ports, or environment parameters changed, update [README.md](file:///Users/pats/Development/project_titan/README.md).
-- **Rules & Guardrails**: If operational rules, agent procedures, or workflows changed, update [AGENTS.md](file:///Users/pats/Development/project_titan/AGENTS.md).
+- **Topology & Runtimes**: If containers, host processes, ports, or environment parameters changed, update [README.md](README.md).
+- **Rules & Guardrails**: If operational rules, agent procedures, or workflows changed, update [AGENTS.md](AGENTS.md).
 - Documentation must never drift from the live codebase; all doc updates must be included within the ticket's branch and PR.
 
 ### Step 6: Walkthrough Documentation & Mandatory Pre-Commit Review Gate
-Every ticket completion **must** include a dedicated walkthrough document placed in the `docs/` directory using the naming convention:
-```text
-docs/YYYY-MM-DD-ticket<issue_number>.md
-```
-*(Example: `docs/2026-09-06-ticket1.md`)*
+Every ticket completion **must** include a dedicated walkthrough document:
+- **Standalone Tickets**: Placed in the `docs/` root directory using the naming convention:
+  ```text
+  docs/YYYY-MM-DD-ticket<issue_number>.md
+  ```
+  *(Example: `docs/2026-09-06-ticket1.md`)*
+- **Epic Sub-Tickets**: When working on tickets that are part of an Epic, the walkthrough document must be placed directly inside the epic's dedicated subfolder under `docs/epics/`:
+  ```text
+  docs/epics/<epic-name>/YYYY-MM-DD-ticket<issue_number>.md
+  ```
+  *(Example: `docs/epics/brainsOS-runner/2026-09-29-ticket186.md`)*
+
 
 The walkthrough document must record:
 1. **Summary of Changes**: Exact files created, modified, or deleted.
 2. **Acceptance Criteria Verification**: Evidence that all checkboxes in the ticket are satisfied.
 3. **Automated & Manual Test Logs**: Exact terminal commands and outputs validating functionality.
 4. **Follow-Up / Backlog Items**: Any edge cases or out-of-scope ideas discovered during the task.
-5. **Local Web Preview URLs**: For tickets touching web applications, canvases, portals, or frontend UI components (e.g. `apps/cindypawford/`), the agent must ensure a local preview server is running and explicitly provide clickable localhost and LAN URLs with instructions on specific rendering and interaction points to test (including mobile viewport emulation).
+5. **Local Web Preview URLs**: For tickets touching web applications, canvases, portals, or frontend UI components (e.g. `data/agent_apps/cindypawford/`), the agent must ensure a local preview server is running and explicitly provide clickable localhost and LAN URLs with instructions on specific rendering and interaction points to test (including mobile viewport emulation).
 
 > [!IMPORTANT]
 > **Internal Pre-Commit Review Gate**:
@@ -83,7 +90,7 @@ The walkthrough document must record:
 ### Step 7: Post-Approval Commit, Push & Pull Request
 Only after the human reviewer explicitly approves the walkthrough in Step 6:
 To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instantly readable without line truncation:
-1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/`).
+1. Stage only relevant, non-secret files (including the newly generated documentation in `docs/` or `docs/epics/`).
 2. **Front-Load the Ticket Number & Add Co-Authorship**:
    Include the `Co-authored-by` trailer so GitHub automatically displays Antigravity as a co-author and contributor:
    ```bash
@@ -154,14 +161,14 @@ Agents must never violate the following zero-trust operational boundaries:
 - Never commit `.env` or sensitive API keys to Git. Keep all configuration templated in `.env.example`.
 
 ### Rule 6: Control Plane Database Isolation
-- The dedicated PostgreSQL persistence store (`titan-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
-- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`titan-litellm-net`), or storage volume mounts to the database.
+- The dedicated PostgreSQL persistence store (`brainsos-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
+- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`brainsos-litellm-net`), or storage volume mounts to the database.
 - The database port is bound strictly to `127.0.0.1:${LITELLM_DB_PORT:-5432}` on the host for LiteLLM's use only.
 - Strict isolation is enforced in `.github/workflows/pre-commit.yml` on every commit and PR.
 
 ### Rule 7: Information Compartmentalization in Agent Context
 - Persona documents (`SOUL.md`), agent prompts, and runtime configurations provided to the agent plane (`hermes`) must observe strict need-to-know principles.
-- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `titan-infra-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
+- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `brainsos-infra-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
 - The agent must be instructed exclusively on its assigned interfaces (e.g. its OpenAI-compatible completions endpoint `http://litellm:4000/v1`), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
 
 ### Rule 8: Script-Driven Discipline (Zero Ad-Hoc Container/Host Patching)
@@ -177,16 +184,15 @@ Agents must never violate the following zero-trust operational boundaries:
   All scripts dynamically discover `REPO_ROOT` so they function identically across environments.
 - **Strictly No Symbolic Links**: The repository strictly forbids symbolic links (`symlinks`). All scripts, configurations, templates, and documentation must reside in and reference their canonical filesystem locations directly. Compatibility symlinks across directories are strictly prohibited to ensure maximum portability across host operating systems (Linux and macOS) and container bind mounts.
 
-### Rule 9: Multi-Tenant Partitioning & Manifest Drift Prevention
-- **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/agents.yaml`. Direct manual edits to `docker-compose.agents.yml` or `config/caddy/agents.caddy` are strictly forbidden; all changes must flow through `./scripts/control/sync-agents.sh`.
-- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/agent_workspaces/<tenant_id>` or dedicated web app workspace like `apps/<app_name>/site`), its own pure OKF memory partition (`/data/agent_memories/<tenant_id>`), and its own isolated virtual key. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
-- **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as the L5 OKF memory library `packages/titan_memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
-- **Automated Drift Enforcement**: The CI pipeline (`.github/workflows/pre-commit.yml`) and verification suites (`./scripts/verify/verify-fleet.sh`) enforce zero drift via `./scripts/control/sync-agents.sh --check` on every commit and PR.
+### Rule 9: Multi-Tenant Partitioning & Shared Runner Registry Authority
+- **Declarative Manifest Authority**: All multi-agent fleet compositions must be defined declaratively in `config/default_settings/agents.yaml` (seeded to `data/settings/agents.yaml` on bootstrap). The manifest serves as the authoritative dynamic registry consumed by `packages/brainsOS-agent` and the shared stateless runner (`hermes-runner`). Adding, removing, or updating agent profiles requires zero container rebuilds or Docker daemon restarts.
+- **Zero Cross-Tenant Leakage**: Every tenant agent unit must be assigned its own isolated host workspace (`/data/agent_workspaces/<tenant_id>` or dedicated web app workspace like `data/agent_apps/<app_name>/site`), its own pure OKF memory partition (`/data/agent_memories/<tenant_id>`), and its own isolated virtual key. The shared stateless runner dynamically validates path boundaries and injects isolated persona and memory partitions on a per-request basis. Probing or accessing another tenant's filesystem partition constitutes an immediate security breach.
+- **Standalone Package Decoupling**: Core domain logic intended for cross-agent reuse or community contributions (such as `packages/brainsOS-agent/`, `packages/brainsOS-queue/`, `packages/brainsOS-mail/`, and `packages/brainsOS-memory/`) must reside in standalone Python packages with dedicated unit test suites and abstract SPIs, isolated from direct container runtime dependencies to avoid PR merge conflicts.
 
 ### Rule 10: In-Transit Egress Credential Injection
 - **Zero Ambient Container Secrets**: Agent containers must **never** hold raw GitHub tokens (`GH_TOKEN`, `GITHUB_TOKEN`), personal access tokens (PATs), or third-party egress API secrets in their environment variables, `.env` mounts, or on-disk configuration files.
-- **Dedicated Egress Proxying**: All outbound internet traffic from agent containers routes through the dedicated Tool Egress Gateway proxy (`titan-net-egress-proxy:8082` via `HTTPS_PROXY`), maintaining 100% standard destination URLs (`https://github.com`, `https://api.github.com`) without fragile URL rewrites or custom enterprise host overrides.
-- **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `titan-internal`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
+- **Dedicated Egress Proxying**: All outbound internet traffic from agent containers routes through the dedicated Tool Egress Gateway proxy (`brainsos-net-egress-proxy:8082` via `HTTPS_PROXY`), maintaining 100% standard destination URLs (`https://github.com`, `https://api.github.com`) without fragile URL rewrites or custom enterprise host overrides.
+- **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `brainsos-internal`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
 - **Flow Display Redaction**: All injected credentials are masked to `[INJECTED_CINDY_TOKEN]` within flow displays and inspection APIs, ensuring zero ambient secrets leak into the `mitmweb` console.
 
 ### Rule 11: Separation of Build and Record (`docs/lab-work/` Is Out of Scope)
@@ -199,12 +205,17 @@ Agents must never violate the following zero-trust operational boundaries:
 - **The Boundary Is Reciprocal**: Claude does not write application code, scripts, configuration or infrastructure in this repository, and does not write binding documents into the repository proper. Coding agents do not write the project record.
 
 ### Rule 12: Sub-Agent Persona Isolation & Code Quality Protection
-- **Decoupled Persona Hierarchy**: Primary conversational agents operate under `config/hermes/<agent_id>/SOUL.md`, while specialized execution sub-agents operate under dedicated prompts at `config/hermes/<agent_id>/<subagent_id>/SOUL.md`.
+- **Decoupled Persona Hierarchy**: Primary conversational agents operate under centralized personas (`config/default_souls/<agent_id>.md` or live override `data/souls/<agent_id>.md`), while specialized execution sub-agents operate under dedicated dot-namespaced prompts at `config/default_souls/<agent_id>.<subagent_id>.md` (or `data/souls/<agent_id>.<subagent_id>.md`), resolved via `brainsos_agent.souls.resolve_soul` across all runtime runners.
 - **Supervisory Orchestration Without Code Contamination**: Primary conversational agents act as Creative Directors / Orchestrators with full visibility into `/app/html`, Git, and project tools, formulating structured technical parameters (`feature_name`, `specification`, `target_files`, `design_tokens`) to trigger specialized sub-agents. Conversational agents must **never** generate raw production code contaminated with conversational banter, roleplay, canine humor, or markdown code fences.
 - **Automated Quality Gates & Sanitization**: All code generated by sub-agents must pass automated linting and sanitization (fences stripped, conversational text removed, `node -c` syntax validation) before writing to target filesystems. Sub-agent execution briefs and diffs must be logged to `/memories/logs/` in human-auditable Open Knowledge Format (OKF) Markdown (Rule 1).
 
 ### Rule 13: Execution Environment Precondition & Doc-Only Verification Exemption
 - **Mandatory `.env` Execution Precondition**: If there is **NO `.env` file** present in the repository root, **STOP**. The host machine is strictly an unconfigured repository clone, not an active execution host, and must **never** run test scripts, daemon processes, docker containers, or background services.
 - **Pure Documentation & Asset Exemption**: When a ticket or user request is strictly updating documentation (`docs/`, `*.md`, specifications) or static assets (`apps/*/assets/`), agents must **NEVER** run runtime verification scripts, fleet synchronization, or test harnesses. Script-first validation applies strictly to functional code changes, shell scripts, and infrastructure modifications.
+
+### Rule 14: Two-Repository Architecture & Private Fleet State Isolation
+- **Platform vs. Private Fleet Separation**: The `brainsOS` repository is strictly an open-source, stateless platform core containing container topologies, reusable Python packages, and operational harnesses. All proprietary agent personas (`souls/`), OKF Markdown knowledge/memories (`agent_memories/`), custom agent fleet definitions (`settings/`), agent-authored codebases (`agent_workspaces/`, `agent_apps/`), and persistent databases must be decoupled from the core repository.
+- **Dynamic Path Parameterization**: All platform containers, packages, and scripts must resolve data paths via `BRAINSOS_DATA_DIR` (defaulting to `./data` for local mode, or an external private repository path like `/path/to/my-fleet-repo` in decoupled mode). Sub-path overrides (`BRAINSOS_AGENT_MEMORIES_DIR`, `BRAINSOS_SOULS_DIR`, etc.) inherit dynamically from `BRAINSOS_DATA_DIR`.
+- **Zero Proprietary Fleet Commits to Core**: Proprietary agent personas, client memories, and confidential manifests must **never** be committed to `brainsOS.ai`. When decoupled, fleet state is committed and pushed exclusively to the private fleet repository using `./scripts/control/snapshot-memories.sh` or Git workflows within `BRAINSOS_DATA_DIR`.
 
 

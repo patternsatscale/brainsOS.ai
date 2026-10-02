@@ -2,7 +2,7 @@
 *A Blueprint for Secure, Sandboxed, and Auditable Local Agent Appliances*
 
 - **Document Type**: Reference Architecture & Engineering Tenets (v2.1 — renumbered, full control template, status markers verified against repo)
-- **Model Baseline**: Project Titan Appliance Architecture (ASUS Ascent GX10 / macOS Parity)
+- **Model Baseline**: brainsOS Appliance Architecture (ASUS Ascent GX10 / macOS Parity)
 - **Target Audience**: Enterprise AI Architects, Security Officers (CISO/SecOps), Autonomous System Engineers — **and AI coding assistants (Gemini, Antigravity) generating code against this spec**
 - **Location**: `docs/reference-architecture-tenets.md`
 - **Status basis**: Every 🟢/🟡/🔴 marker below was verified against the working tree at commit `da882a8`. Evidence citations are `file:line`. See Appendix A for the full evidence table.
@@ -80,7 +80,7 @@ Reverting this document to v1 orphans both references. Committing v2 resolves th
 | `TN-n` | Tenet (control category) | `TN-4` Memory Integrity, Provenance, and Version Control |
 | `TN-n.m` | Individual control within a tenet | `TN-4.3` |
 
-Each tenet follows a fixed template: **normative statement → threats addressed → required controls (MUST) → recommended controls (SHOULD) → verification method → what this does not protect against → `[Titan]` implementation status.**
+Each tenet follows a fixed template: **normative statement → threats addressed → required controls (MUST) → recommended controls (SHOULD) → verification method → what this does not protect against → `[brainsOS]` implementation status.**
 
 **Status legend used throughout:** 🟢 implemented and verified in this repo · 🟡 partially implemented · 🔴 not yet implemented
 
@@ -96,34 +96,34 @@ Renamed from "control plane" to **policy plane** for consistency with the enterp
 
 ```text
  ═════════════════════════════════════════════════════════════════════════════════════
-  1. INGRESS PLANE         Local / Tailscale DNS (*.titan.local)
-                           └─► Reverse Proxy (titan-caddy) [:80/:443]
+  1. INGRESS PLANE         Local / Tailscale DNS (*.brainsos.local)
+                           └─► Reverse Proxy (brainsos-caddy) [:80/:443]
                            Routes: hermes.* → agent console, proxy.* → LiteLLM,
                                    memory.* → SilverBullet   (Caddyfile:10,25,39)
                            Input channel: HTTP agent console, UNAUTHENTICATED  [GAP]
                            Signal operator-bound channel                   [PLANNED]
  ─────────────────────────────────────────────────────────────────────────────────────
-  2. AGENT EXECUTION       Hermes Agent Container (titan-hermes)
+  2. AGENT EXECUTION       Hermes Agent Container (brainsos-agent-primary)
      PLANE                 ├─ Unprivileged UID/GID 1000 — via image, Dockerfile:18-19,33
                            ├─ no-new-privileges: true    — compose:91-92
                            ├─ cap_drop: ALL — ABSENT from manifests; asserted in
                            │                  README.md:70 and v1 Tenet 1        [GAP]
-                           ├─ Network: titan-ingress AND titan-internal (compose:114-116)
-                           │    titan-internal permits agent WAN egress (compose:127)
+                           ├─ Network: brainsos-ingress AND brainsos-internal (compose:114-116)
+                           │    brainsos-internal permits agent WAN egress (compose:127)
                            ├─ Blocked: Docker Socket (/var/run/docker.sock) — verified absent
                            ├─ No pids_limit / cpus / mem_limit               [GAP]
                            └─ Workspace: Bind-Mount (/workspace) for tool state & caches
                                                                         (compose:104)
  ─────────────────────────────────────────────────────────────────────────────────────
-  3. POLICY PLANE          LiteLLM Gateway Engine (host:4000 / proxy.titan.local)
-     & GATEWAY             ├─ Model Virtualization & Aliasing (titan-core)  litellm:8
+  3. POLICY PLANE          LiteLLM Gateway Engine (host:4000 / proxy.brainsos.local)
+     & GATEWAY             ├─ Model Virtualization & Aliasing (brainsos-core)  litellm:8
                            ├─ Virtual API Key Minting & Revocation
                            │    (manual, best-effort kill-switch — see TN-3)
                            ├─ Hardware Concurrency Serialization
                            │    (max_parallel_requests: 1)          litellm:13,22,30
                            ├─ Request timeout 300s                  litellm:14,37
-                           └─ Isolated Persistence: Dedicated PostgreSQL (titan-litellm-db)
-                                on titan-litellm-net only, loopback-bound  compose:40,47-48
+                           └─ Isolated Persistence: Dedicated PostgreSQL (brainsos-litellm-db)
+                                on brainsos-litellm-net only, loopback-bound  compose:40,47-48
  ─────────────────────────────────────────────────────────────────────────────────────
   4. INFERENCE PLANE       Native Compute (Ollama / vLLM on host:11434)
                            ├─ Hardware-Accelerated (Apple Metal / NVIDIA GB10 CUDA)
@@ -138,7 +138,7 @@ Renamed from "control plane" to **policy plane** for consistency with the enterp
                            │    :189 (traversal guard), :412-433 (validate_purity)
                            ├─ No provenance / trust-tier fields on notes       [GAP]
                            ├─ Not under version control — .gitignore:10        [GAP]
-                           └─ Interactive PKM UI (SilverBullet) at memory.titan.local
+                           └─ Interactive PKM UI (SilverBullet) at memory.brainsos.local
                                 image pinned to :latest — compose:60           [GAP]
  ─────────────────────────────────────────────────────────────────────────────────────
   6. PERSISTENCE &         Unified Root Host Mount (/data or ./data)
@@ -156,7 +156,7 @@ Renamed from "control plane" to **policy plane** for consistency with the enterp
 | ID | Asset | Why it matters |
 |---|---|---|
 | `A-03` | Agent memory store (`/memories`) | Human-legible, but currently unversioned and unprovenanced |
-| `A-06` | Policy plane and its configuration (LiteLLM + `titan-litellm-db`) | Where enforcement concentrates — a single point that disables several controls at once if compromised |
+| `A-06` | Policy plane and its configuration (LiteLLM + `brainsos-litellm-db`) | Where enforcement concentrates — a single point that disables several controls at once if compromised |
 | `A-07` | Agent execution container (Hermes) | Runs untrusted-content-adjacent reasoning; least-privileged by design |
 | `A-08` | Native inference engine (Ollama/vLLM) | Loopback-only; currently zero external exposure |
 | `A-09` | Host OS / container runtime | Ultimate trust anchor; a breakout here defeats every plane above it |
@@ -170,7 +170,7 @@ Renamed from "control plane" to **policy plane** for consistency with the enterp
 
 ## Part 3 — Threat Catalog Additions
 
-The enterprise reference document's threat catalog runs through `T-35`. This pass adds threats surfaced by Titan's actual implementation that weren't previously catalogued:
+The enterprise reference document's threat catalog runs through `T-35`. This pass adds threats surfaced by brainsOS's actual implementation that weren't previously catalogued:
 
 | ID | Threat | Scenario | Tenet |
 |---|---|---|---|
@@ -228,7 +228,7 @@ Enumerate the agent's actual reachable input surface by auditing every request h
 
 No known complete defence against indirect prompt injection exists. Treat successful injection as inevitable and rely on `TN-2` and `TN-3` to bound the consequence.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🔴 **Unaddressed, and the premise of the v2 draft was wrong.**
 
@@ -290,7 +290,7 @@ From an unauthenticated client on the ingress network, `POST` to `/api/terminal`
 
 An attacker working within a legitimately authorized tool set can still achieve an unanticipated outcome through composition. Authorization says nothing about whether an authorized action was *correct*.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🔴 **Unimplemented — and materially worse than "prompt-level scoping only."**
 
@@ -301,7 +301,7 @@ The prompt-level mechanism the draft described is real but permissive rather tha
 - **`POST /api/terminal`** (`server.py:1095`) executes `subprocess.run(["/bin/bash", "-c", command], cwd=WORKSPACE_DIR, timeout=30)` (`:1103-1108`) on arbitrary caller-supplied input **with no authentication check**.
 - **`POST /api/skills`** (`server.py:1078`) writes caller-supplied code into `/workspace/skills` and `chmod 0o755` (`:1087`) — also unauthenticated. `/workspace` is a host bind-mount (`compose:104`), so this writes executable content to host-visible storage that persists across container rebuilds.
 - Both carry `Access-Control-Allow-Origin: *` (`server.py:829`).
-- The port is loopback-bound (`compose:94`), **but** Caddy reverse-proxies it to `hermes.titan.local` across `titan-ingress` (`Caddyfile:10-20`).
+- The port is loopback-bound (`compose:94`), **but** Caddy reverse-proxies it to `hermes.brainsos.local` across `brainsos-ingress` (`Caddyfile:10-20`).
 
 Net effect: `TN-2.6` is inverted — arbitrary code execution is not merely default-available to the model, it is available to any unauthenticated caller, and to any web page the operator visits. Every model-level and prompt-level control in this document is bypassable by calling the endpoint directly. **`TN-2.12` is the highest-priority remediation in this document**, ahead of the inventory work, because it is small and it currently nullifies TN-1, TN-2, and parts of TN-5.
 
@@ -348,7 +348,7 @@ Trip each budget deliberately and confirm automatic halt; **measure and publish 
 
 A halt stops future activity — it does not reverse actions already completed. Recovery is `TN-9`.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🟡 **Partial. Split verdict, and the draft was wrong in both directions.**
 
@@ -401,7 +401,7 @@ Attempt to write a binary or `.db` file into `/memories` via `POST /api/memories
 
 A poisoned note written in the operator's own voice can pass casual human review — legibility lowers the detection bar, it doesn't guarantee detection. Filesystem-level tampering is `TN-5`'s and `TN-9`'s problem, not `TN-4`'s.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🟡 **Strongest tenet in the architecture on its first half; the half in its own title is missing.** The draft's assessment was accurate — retained with evidence added and the overall marker corrected from 🟢 to 🟡, since `TN-4.3` and `TN-4.4` are both unmet MUSTs.
 
@@ -450,13 +450,13 @@ A poisoned note written in the operator's own voice can pass casual human review
 
 From inside the agent container, attempt to reach the host docker socket, the policy-plane database, and loopback-bound inference — all three MUST fail. Run `capsh --print` (or read `/proc/self/status` `CapEff`) inside the container and confirm the effective capability set is empty. Extract the agent's full system prompt via injection and confirm no host infrastructure names, ports, or credentials appear.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🟡 **Downgraded from the draft's 🟢. `TN-5.2` is unmet, and the claim has survived both document versions unchallenged.**
 
 **Correction — `cap_drop` is 🔴, not 🟢.** `cap_drop` appears in **no manifest in this repo** — not in `docker-compose.yml`, not in the `Dockerfile`. The Hermes service's entire hardening block is `security_opt: ["no-new-privileges:true"]` (`compose:91-92`). The container therefore retains Docker's default capability set — including `CAP_CHOWN`, `CAP_DAC_OVERRIDE`, `CAP_SETUID`, `CAP_SETGID`, `CAP_NET_RAW`, and others.
 
-Where the string *does* appear is prose, and that is the problem: it is asserted as fact in **`README.md:70`** (`cap_drop: [ALL]`, "only retaining minimal network hooks"), in the v2 Part 1 diagram, and in v1's Tenet 1 and threat matrix ("**Tenet 1**: `cap_drop: [ALL]`… non-root UID 1000"). Most seriously, v1's advisory checklist asks *clients* to verify "Are all Linux capabilities dropped (`cap_drop: [ALL]`)?" while Titan itself does not do so.
+Where the string *does* appear is prose, and that is the problem: it is asserted as fact in **`README.md:70`** (`cap_drop: [ALL]`, "only retaining minimal network hooks"), in the v2 Part 1 diagram, and in v1's Tenet 1 and threat matrix ("**Tenet 1**: `cap_drop: [ALL]`… non-root UID 1000"). Most seriously, v1's advisory checklist asks *clients* to verify "Are all Linux capabilities dropped (`cap_drop: [ALL]`)?" while brainsOS itself does not do so.
 
 This is the single most load-bearing false claim in the project's documentation, and it is stated in a committed, user-facing file. The remediation is two lines in `docker-compose.yml` plus a `README.md:70` correction, and should land alongside `TN-2.12`.
 
@@ -466,9 +466,9 @@ This is the single most load-bearing false claim in the project's documentation,
 
 🟢 `TN-5.4` — `/var/run/docker.sock` verified absent from every volume block. Backed by policy (`AGENTS.md` Rule 4, `:139`).
 
-🟡 `TN-5.5` — **partial, and the draft over-credited it.** DB isolation is genuinely strong and CI-enforced: `titan-litellm-db` is on `titan-litellm-net` alone (`compose:47-48`), loopback-bound (`:40`), with four guardrails in `pre-commit.yml:78-110` failing any PR that bridges it or leaks DB env vars into Hermes. That part is 🟢. But Hermes sits on **two** networks (`compose:114-116`) — `titan-internal`, documented as permitting agent WAN egress (`compose:127`), and `titan-ingress`, which is what makes the unauthenticated console reachable via Caddy. Partitioning protects the database; it does not currently constrain the agent's outbound reach or shield its own control surface (`T-42`).
+🟡 `TN-5.5` — **partial, and the draft over-credited it.** DB isolation is genuinely strong and CI-enforced: `brainsos-litellm-db` is on `brainsos-litellm-net` alone (`compose:47-48`), loopback-bound (`:40`), with four guardrails in `pre-commit.yml:78-110` failing any PR that bridges it or leaks DB env vars into Hermes. That part is 🟢. But Hermes sits on **two** networks (`compose:114-116`) — `brainsos-internal`, documented as permitting agent WAN egress (`compose:127`), and `brainsos-ingress`, which is what makes the unauthenticated console reachable via Caddy. Partitioning protects the database; it does not currently constrain the agent's outbound reach or shield its own control surface (`T-42`).
 
-🟢 `TN-5.6` — **verified, and the draft was right.** `SOUL.md` discloses only `/workspace`, `/memories`, and `http://litellm:4000/v1` (`:21`). No `Ollama`, no `titan-litellm-db`, no host socket paths, no credentials. `AGENTS.md` Rule 7 (`:152-155`) explicitly permits naming the agent's assigned completions endpoint while forbidding host backend names, so `SOUL.md:21` is compliant by design rather than by oversight.
+🟢 `TN-5.6` — **verified, and the draft was right.** `SOUL.md` discloses only `/workspace`, `/memories`, and `http://litellm:4000/v1` (`:21`). No `Ollama`, no `brainsos-litellm-db`, no host socket paths, no credentials. `AGENTS.md` Rule 7 (`:152-155`) explicitly permits naming the agent's assigned completions endpoint while forbidding host backend names, so `SOUL.md:21` is compliant by design rather than by oversight.
 
 🟡 `TN-5.7` — `apt-mark hold` at `setup-host.sh:51-55`, Linux/DGX only and safely bypassed on macOS (`AGENTS.md:12`). Not comprehensive. See also `TN-8.4`, where container base images are unpinned.
 
@@ -508,7 +508,7 @@ Attempt a direct network call from the agent execution environment to an externa
 
 A capable model can be manipulated into abstracting or encoding sensitive content into plausible prose that evades classification.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🟡 **Corrected from the draft's 🟢. The draft conflated "no cloud inference tier" with "no egress path"; these are different claims and only the first is true.**
 
@@ -517,7 +517,7 @@ A capable model can be manipulated into abstracting or encoding sensitive conten
 🔴 **False as stated in the draft:** the agent does have general outbound WAN egress today, and it is not mediated by any inspectable egress point.
 - `config/hermes/config.json:58` — `"network_egress": true`
 - `config/hermes/config.json:56` — `"browser_enabled": true`
-- `docker-compose.yml:127` — `titan-internal` is documented as existing to permit "agent WAN egress (web browsing, Signal)"
+- `docker-compose.yml:127` — `brainsos-internal` is documented as existing to permit "agent WAN egress (web browsing, Signal)"
 - `Dockerfile:9-15` — `curl` and `git` installed in the image
 - Combined with the unauthenticated `/api/terminal` (`TN-2`), any caller can run arbitrary outbound network commands from inside the agent container
 
@@ -557,7 +557,7 @@ Trigger a tool call, a memory write, and a policy denial; confirm each appears i
 
 Logging is detective, not preventive — a fast, quiet compromise can complete before anyone reads the log.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🔴 **Entirely unimplemented — confirmed as the largest single gap. The draft's assessment was accurate; evidence added.**
 
@@ -603,13 +603,13 @@ Against each MUST:
 
 #### Verification
 
-Submit a PR containing a tracked secret and confirm CI blocks it. Submit a PR bridging `titan-internal` to an external network and confirm CI blocks it. Attempt an unreviewed autonomous commit and confirm the pre-commit gate stops it. Run `docker compose config | grep image:` and confirm every image is digest-pinned.
+Submit a PR containing a tracked secret and confirm CI blocks it. Submit a PR bridging `brainsos-internal` to an external network and confirm CI blocks it. Attempt an unreviewed autonomous commit and confirm the pre-commit gate stops it. Run `docker compose config | grep image:` and confirm every image is digest-pinned.
 
 #### What this does not protect against
 
 Supply chain controls reduce the odds of an unreviewed change reaching production — they don't catch a maliciously-crafted change that passes review because the reviewer missed it. Pinning without active review just becomes permanent staleness.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🟡 **Code governance is genuinely strong; artifact pinning is weaker than the draft recorded.**
 
@@ -672,11 +672,11 @@ Run the full backup, then destroy and rebuild the appliance from manifests alone
 
 Deterministic recovery restores the system to its last backed-up state — it doesn't tell you whether that state was already compromised or poisoned (that's `TN-4` and `TN-7`'s job). It also assumes the scripts themselves haven't drifted from what production needs, which is exactly what `TN-9.7` exists to catch.
 
-#### `[Titan]` status
+#### `[brainsOS]` status
 
 🟢 **Second-strongest tenet, alongside `TN-4`'s implemented half. The draft's assessment holds, with one correction on scheduling.**
 
-🟢 `TN-9.1` — single data root partitioned by function: `data/memories`, `data/workspace`, `data/litellm_db`, `data/backups`, resolved consistently in `backup.sh:51-56` and via `TITAN_DATA_DIR` / `TITAN_WORKSPACE_DIR` / `LITELLM_DB_DATA_DIR` (`compose:70,100,104,46`).
+🟢 `TN-9.1` — single data root partitioned by function: `data/memories`, `data/workspace`, `data/litellm_db`, `data/backups`, resolved consistently in `backup.sh:51-56` and via `BRAINSOS_AGENT_MEMORIES_DIR` / `BRAINSOS_AGENT_WORKSPACES_DIR` / `LITELLM_DB_DATA_DIR` (`compose:70,100,104,46`).
 
 🟡 `TN-9.2` — **corrected: the mechanism is strong but there is no schedule.** The capability is real and better than the draft credited: `backup.sh:160-164` archives all three planes with a manifest (`:146-157`), `:180-193` enforces `MAX_BACKUPS=14` retention, `:209-213` verifies archive integrity with `tar -tzf` before restoring, and `:221-227` requires confirmation unless `--force`. `snapshot-memories.sh` provides a memory-only path with matching retention (`:83-90`). **But no scheduler exists** — grepping `scripts/`, `.github/`, and `docker-compose.yml` for `cron`, `systemd`, `launchd`, or `timer` returns nothing. Backups are entirely manual, so "on a defined schedule" is unmet and `TN-7.2`'s off-appliance export has no scheduling precedent to build on. The draft's own `TN-9.2` wording sets "verifiable" as the bar and it is met; "scheduled" is not.
 
@@ -727,7 +727,7 @@ The draft proposed `TN-2` → `TN-3` → `TN-7`. Two items now precede that, bec
 
 ## Part 6 — Enterprise/Engineering Advisory Checklist
 
-Unchanged from the draft, with one addition. Note that Titan itself currently answers **no** to 1.1–1.3, 2.1–2.3, 3.1–3.3, 4.2, 4.3, 5.2 (capabilities), 7.1, 7.2, 8.2, and 9.2 — worth knowing before handing this to a client.
+Unchanged from the draft, with one addition. Note that brainsOS itself currently answers **no** to 1.1–1.3, 2.1–2.3, 3.1–3.3, 4.2, 4.3, 5.2 (capabilities), 7.1, 7.2, 8.2, and 9.2 — worth knowing before handing this to a client.
 
 1. **TN-1 / Input boundary**
    - [ ] Is every input channel enumerated in an inventory?
@@ -833,4 +833,4 @@ Every non-🔴 marker above traces to a line here. Verified against the working 
 
 ---
 
-*This document is the active architectural benchmark for Project Titan and the spec Gemini/Antigravity should generate code against. Status markers reflect what's actually implemented, not what's planned — update them in the same PR that closes a gap, not separately. **A marker may only be set to 🟢 with a citable enforcing `file:line`;* otherwise mark it 🔴 and add it to Appendix B.*
+*This document is the active architectural benchmark for brainsOS and the spec Gemini/Antigravity should generate code against. Status markers reflect what's actually implemented, not what's planned — update them in the same PR that closes a gap, not separately. **A marker may only be set to 🟢 with a citable enforcing `file:line`;* otherwise mark it 🔴 and add it to Appendix B.*

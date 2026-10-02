@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Operator IDE Container Entrypoint Wrapper
+# brainsOS: Operator IDE Container Entrypoint Wrapper
 # Synchronizes pre-installed extensions, sets default configs, and launches code-server
 # ==============================================================================
 set -eu
@@ -11,6 +11,47 @@ if [ -d "/opt/code-server/extensions" ]; then
   cp -rn /opt/code-server/extensions/* /home/coder/.local/share/code-server/extensions/ 2>/dev/null || true
 fi
 
+# Ensure brainsos.system-terminal extension is registered in extensions.json
+python3 - << 'EOF' || true
+import json, os
+ext_json_path = "/home/coder/.local/share/code-server/extensions/extensions.json"
+ext_dir = "/home/coder/.local/share/code-server/extensions/brainsos.system-terminal-1.0.0"
+if os.path.isdir(ext_dir):
+    try:
+        data = []
+        if os.path.exists(ext_json_path):
+            with open(ext_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        if not any(e.get("identifier", {}).get("id") == "brainsos.system-terminal" for e in data):
+            data.append({
+                "identifier": {"id": "brainsos.system-terminal"},
+                "version": "1.0.0",
+                "location": {
+                    "$mid": 1,
+                    "fsPath": ext_dir,
+                    "path": ext_dir,
+                    "scheme": "file"
+                },
+                "relativeLocation": "brainsos.system-terminal-1.0.0",
+                "metadata": {
+                    "isApplicationScoped": False,
+                    "isMachineScoped": False,
+                    "isBuiltin": False,
+                    "installedTimestamp": 1790000000000,
+                    "pinned": False,
+                    "source": "custom",
+                    "publisherDisplayName": "brainsOS",
+                    "targetPlatform": "universal",
+                    "updated": False,
+                    "private": True
+                }
+            })
+            with open(ext_json_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+    except Exception as err:
+        print(f"Warning: could not register extension in extensions.json: {err}")
+EOF
+
 # 2. Scaffolding default code-server configuration
 # When running behind Caddy HTTP Basic Auth gate, auth defaults to 'none' to avoid redundant double-login.
 CODE_SERVER_AUTH="${CODE_SERVER_AUTH:-none}"
@@ -18,7 +59,7 @@ mkdir -p /home/coder/.config/code-server
 cat << EOF > /home/coder/.config/code-server/config.yaml
 bind-addr: 0.0.0.0:8443
 auth: ${CODE_SERVER_AUTH}
-password: ${PASSWORD:-titan_operator_secret}
+password: ${PASSWORD:-brainsos_operator_secret}
 cert: false
 disable-telemetry: true
 disable-update-check: true
@@ -31,6 +72,44 @@ SETTINGS_FILE="/home/coder/.local/share/code-server/User/settings.json"
 if [ ! -f "${SETTINGS_FILE}" ]; then
   cat << 'EOF' > "${SETTINGS_FILE}"
 {
+  "workbench.colorTheme": "Dark Modern",
+  "window.autoDetectColorScheme": false,
+  "terminal.integrated.cwd": "/data",
+  "terminal.integrated.defaultLocation": "editor",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "chat.commandCenter.enabled": true,
+  "chat.defaultModel": "brainsos-core",
+  "chat.byokUtilityModelDefault": "mainAgent",
+  "chat.agentFilesLocations": {
+    ".github/agents": true,
+    ".claude/agents": true,
+    ".agents/souls": true,
+    "souls": true
+  },
+  "chat.useAgentSkills": true,
+  "chat.agentSkillsLocations": {
+    ".agents/skills": true,
+    ".github/skills": true,
+    ".claude/skills": true
+  },
+  "github.copilot.chat.customOAIModels": {
+    "brainsos-core": {
+      "name": "brainsOS Core (Default)",
+      "url": "http://litellm:4000/v1",
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 4096,
+      "toolCalling": true,
+      "vision": false
+    },
+    "qwen2.5:latest": {
+      "name": "Qwen 2.5",
+      "url": "http://litellm:4000/v1",
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 4096,
+      "toolCalling": true,
+      "vision": false
+    }
+  },
   "security.workspace.trust.enabled": false,
   "security.workspace.trust.startupPrompt": "never",
   "security.workspace.trust.emptyWindow": true,
@@ -38,7 +117,6 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
   "telemetry.telemetryLevel": "off",
   "workbench.startupEditor": "none",
   "files.autoSave": "afterDelay",
-  "terminal.integrated.defaultProfile.linux": "bash",
   "files.exclude": {
     "**/.git": false,
     "**/.svn": true,
@@ -83,7 +161,7 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
 }
 EOF
 else
-  # Ensure existing settings have workspace trust disabled, SSL bypass, and file watcher exclusions
+  # Ensure existing settings have dark modern theme, terminal front & center, AI settings, and exclusions
   python3 - << 'EOF' || true
 import json, os
 p = "/home/coder/.local/share/code-server/User/settings.json"
@@ -92,6 +170,44 @@ try:
         d = json.load(f)
 except Exception:
     d = {}
+d["workbench.colorTheme"] = "Dark Modern"
+d["window.autoDetectColorScheme"] = False
+d["terminal.integrated.cwd"] = "/data"
+d["terminal.integrated.defaultLocation"] = "editor"
+d["terminal.integrated.defaultProfile.linux"] = "bash"
+d["chat.commandCenter.enabled"] = True
+d["chat.defaultModel"] = "brainsos-core"
+d["chat.byokUtilityModelDefault"] = "mainAgent"
+d["chat.agentFilesLocations"] = {
+    ".github/agents": True,
+    ".claude/agents": True,
+    ".agents/souls": True,
+    "souls": True
+}
+d["chat.useAgentSkills"] = True
+d["chat.agentSkillsLocations"] = {
+    ".agents/skills": True,
+    ".github/skills": True,
+    ".claude/skills": True
+}
+d["github.copilot.chat.customOAIModels"] = {
+    "brainsos-core": {
+        "name": "brainsOS Core (Default)",
+        "url": "http://litellm:4000/v1",
+        "maxInputTokens": 32768,
+        "maxOutputTokens": 4096,
+        "toolCalling": True,
+        "vision": False
+    },
+    "qwen2.5:latest": {
+        "name": "Qwen 2.5",
+        "url": "http://litellm:4000/v1",
+        "maxInputTokens": 32768,
+        "maxOutputTokens": 4096,
+        "toolCalling": True,
+        "vision": False
+    }
+}
 d["security.workspace.trust.enabled"] = False
 d["security.workspace.trust.startupPrompt"] = "never"
 d["security.workspace.trust.emptyWindow"] = True
@@ -133,52 +249,26 @@ with open(p, "w", encoding="utf-8") as f:
 EOF
 fi
 
-# 4. Scaffolding Continue AI extension configuration (dynamically synced from fleet manifest)
-mkdir -p /home/coder/.continue
-OP_KEY="${OPENAI_API_KEY:-${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}}"
-API_KEY="${API_SERVER_KEY:-}"
-
-SRC_CONTINUE_YAML="/workspace/project-titan/config/editor/continue_config.yaml"
-SRC_CONTINUE_JSON="/workspace/project-titan/config/editor/continue_config.json"
-
-if [ -f "${SRC_CONTINUE_YAML}" ]; then
-  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; \
-       s|\${HERMES_API_TERRASTELLA_KEY}|${HERMES_API_TERRASTELLA_KEY:-}|g; \
-       s|\${HERMES_API_MARVIN_KEY}|${HERMES_API_MARVIN_KEY:-}|g; \
-       s|\${HERMES_API_BAWTFORD_KEY}|${HERMES_API_BAWTFORD_KEY:-}|g; \
-       s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_YAML}" > /home/coder/.continue/config.yaml
-else
-  cat << EOF > /home/coder/.continue/config.yaml
-name: Titan Operator IDE
-version: 1.0.0
-schema: v1
-models:
-  - name: "Titan Core (LiteLLM)"
-    provider: openai
-    model: titan-core
-    apiBase: http://litellm:4000/v1
-    apiKey: "${OP_KEY}"
-    roles:
-      - chat
-      - edit
-      - apply
-EOF
+# 3b. Scaffolding VS Code built-in Language Models (Custom Endpoint to LiteLLM)
+SRC_LM_JSON="/etc/brainsos/editor/chatLanguageModels.json"
+TARGET_LM_JSON="/home/coder/.local/share/code-server/User/chatLanguageModels.json"
+OP_KEY="${OPENAI_API_KEY:-${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}}"
+if [ -f "${SRC_LM_JSON}" ]; then
+  sed "s|\${OPENAI_API_KEY}|${OP_KEY}|g" "${SRC_LM_JSON}" > "${TARGET_LM_JSON}"
 fi
 
-if [ -f "${SRC_CONTINUE_JSON}" ]; then
-  sed "s|\${OPERATOR_LITELLM_KEY}|${OP_KEY}|g; \
-       s|\${HERMES_API_TERRASTELLA_KEY}|${HERMES_API_TERRASTELLA_KEY:-}|g; \
-       s|\${HERMES_API_MARVIN_KEY}|${HERMES_API_MARVIN_KEY:-}|g; \
-       s|\${HERMES_API_BAWTFORD_KEY}|${HERMES_API_BAWTFORD_KEY:-}|g; \
-       s|\${API_SERVER_KEY}|${API_KEY}|g" "${SRC_CONTINUE_JSON}" > /home/coder/.continue/config.json
+# 3c. Ensure /etc/brainsos/system.mk exists for the make wrapper
+if [ ! -f /etc/brainsos/system.mk ] && [ -f /etc/brainsos/editor/system.mk ]; then
+  mkdir -p /etc/brainsos
+  cp /etc/brainsos/editor/system.mk /etc/brainsos/system.mk 2>/dev/null || true
 fi
 
-# 5. Scaffolding Aider CLI configuration
+# 4. Scaffolding Aider CLI configuration
 if [ ! -f /home/coder/.aider.conf.yml ]; then
   cat << EOF > /home/coder/.aider.conf.yml
 openai-api-base: http://litellm:4000/v1
-openai-api-key: ${OPENAI_API_KEY:-sk-titan-operator-virtual-key}
-model: openai/titan-core
+openai-api-key: ${OPENAI_API_KEY:-sk-brainsos-operator-virtual-key}
+model: openai/brainsos-core
 EOF
 fi
 
@@ -194,5 +284,42 @@ export CURL_CA_BUNDLE="${CADDY_ROOT_CA}"
 EOF
 fi
 
-# Launch upstream entrypoint with multi-root workspace
-exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust /workspace/titan.code-workspace "$@"
+# Add brainsOS System Terminal greeting banner to user interactive shell
+grep -q "brainsOS System Terminal" /home/coder/.bashrc 2>/dev/null || cat << 'EOF' >> /home/coder/.bashrc
+
+if [ -t 1 ] && [ -z "${BRAINSOS_BANNER_SHOWN:-}" ]; then
+  export BRAINSOS_BANNER_SHOWN=1
+  echo -e "\033[1;36m========================================================================\033[0m"
+  echo -e "\033[1m  brainsOS System Terminal\033[0m  \033[2m(Workspace: /data)\033[0m"
+  echo -e "  Type \033[1;32mmake urls\033[0m     to view all service endpoints & credentials."
+  echo -e "  Type \033[1;32mmake status\033[0m   to inspect platform service health."
+  echo -e "  Type \033[1;32mmake models\033[0m   to list registered AI models."
+  echo -e "  Type \033[1;32mmake chat\033[0m     to start an interactive agent session."
+  echo -e "\033[1;36m========================================================================\033[0m\n"
+fi
+EOF
+
+# 7. Complete initialization and launch code-server
+
+# 7. Configure default folder view in coder.json to open /data as single workspace
+CODER_JSON="/home/coder/.local/share/code-server/coder.json"
+cat << 'EOF' > "${CODER_JSON}"
+{
+  "query": {
+    "folder": "/data"
+  }
+}
+EOF
+
+# Clear stale cached workspace configurations to ensure clean single-folder view
+rm -rf /home/coder/.local/share/code-server/User/caches/CachedConfigurations/workspaces 2>/dev/null || true
+rm -rf /home/coder/.local/share/code-server/User/workspaceStorage 2>/dev/null || true
+
+# Launch upstream entrypoint opening /data as the single workspace root
+TARGET_DIR="${1:-/data}"
+if [ $# -gt 0 ] && [ -n "${1:-}" ] && [[ "${1}" != -* ]]; then
+  TARGET_DIR="$1"
+  shift
+fi
+
+exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust "${TARGET_DIR}" "$@"

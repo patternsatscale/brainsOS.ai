@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Hermes Agent Runtime Provisioning & Build Script
+# brainsOS: Hermes Agent Runtime Provisioning & Build Script
 # Automates building the unprivileged Hermes sandbox container image and
 # validating environment permissions for memory purity and tool sandboxing.
 # ==============================================================================
@@ -49,7 +49,7 @@ else
   fi
 fi
 
-log_info "Initializing Project Titan Hermes Agent Runtime from ${REPO_ROOT}..."
+log_info "Initializing brainsOS Hermes Agent Runtime from ${REPO_ROOT}..."
 
 # ------------------------------------------------------------------------------
 # 1. Environment & Prerequisite Checks
@@ -62,8 +62,8 @@ fi
 if ! docker info >/dev/null 2>&1; then
   CURRENT_USER="$(id -un 2>/dev/null || whoami)"
   if command -v getent >/dev/null 2>&1 && getent group docker | grep -qw "${CURRENT_USER}"; then
-    if [ -z "${TITAN_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
-      export TITAN_DOCKER_REEXEC=1
+    if [ -z "${BRAINSOS_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
+      export BRAINSOS_DOCKER_REEXEC=1
       exec sg docker -c "$0 $*"
     fi
   fi
@@ -73,21 +73,17 @@ fi
 log_success "Docker daemon verified."
 
 # ------------------------------------------------------------------------------
-# 2. Synchronize Fleet Manifest & Scaffold Host Storage
+# 2. Scaffold Host Storage
 # ------------------------------------------------------------------------------
-if [ -x "${REPO_ROOT}/scripts/control/sync-agents.sh" ]; then
-  "${REPO_ROOT}/scripts/control/sync-agents.sh"
-else
-  MEMORIES_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-${REPO_ROOT}/data/agent_memories}}"
-  mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
-  WORKSPACE_DIR="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/agent_workspaces}}"
-  COMMS_DIR="${TITAN_COMMS_DIR:-${REPO_ROOT}/data/comms}"
-  mkdir -p "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
-  chmod 775 "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
-fi
+MEMORIES_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}"
+mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
+WORKSPACE_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}"
+COMMS_DIR="${BRAINSOS_COMMS_DIR:-${REPO_ROOT}/data/comms}"
+mkdir -p "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
+chmod 775 "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
 
 # Clean up any legacy hermes_okf.py skill copies to maintain zero technical debt
-WORKSPACE_DIR="${TITAN_AGENT_WORKSPACES_DIR:-${TITAN_WORKSPACE_DIR:-${REPO_ROOT}/data/agent_workspaces}}"
+WORKSPACE_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}"
 if [ -f "${WORKSPACE_DIR}/skills/hermes_okf.py" ]; then
   rm -f "${WORKSPACE_DIR}/skills/hermes_okf.py"
   log_info "Removed legacy skill copy at ${WORKSPACE_DIR}/skills/hermes_okf.py."
@@ -99,7 +95,7 @@ fi
 log_info "Ensuring companion services are present (signal-cli)..."
 docker compose pull signal-cli
 
-log_info "Building unprivileged Hermes Agent image (titan-hermes:latest)..."
+log_info "Building unprivileged Hermes Agent image (brainsos-hermes:latest)..."
 docker compose build agent-primary
 log_success "Hermes Agent container image built successfully."
 
@@ -107,7 +103,7 @@ log_success "Hermes Agent container image built successfully."
 # 4. Validate Build Integrity & Unprivileged Profile
 # ------------------------------------------------------------------------------
 log_info "Verifying Hermes image configuration and security boundaries..."
-IMAGE_NAME=$(docker compose config --format json 2>/dev/null | grep -o '"image":"[^"]*hermes[^"]*"' | head -n 1 | cut -d'"' -f4 || echo "titan-hermes:latest")
+IMAGE_NAME=$(docker compose config --format json 2>/dev/null | grep -o '"image":"[^"]*hermes[^"]*"' | head -n 1 | cut -d'"' -f4 || echo "brainsos-hermes:latest")
 
 if docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
   log_success "Verified image '${IMAGE_NAME}' exists."

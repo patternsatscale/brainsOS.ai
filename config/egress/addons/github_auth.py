@@ -1,9 +1,7 @@
 # ==============================================================================
-# Project Titan: Multi-Tenant GitHub Egress In-Transit Credential Injection Addon
-# Ticket #147: In-Transit Token Injection via Egress Proxy (Supersedes #114)
-#
+# brainsOS: Multi-Tenant GitHub Egress In-Transit Credential Injection Addon
 # Intercepts outbound requests to github.com and api.github.com from agent sandboxes.
-# Authorizes requests strictly by client container IP on titan-internal.
+# Authorizes requests strictly by client container IP on brainsos-internal.
 # Injects fine-grained credentials in-transit:
 #   - github.com (Git Smart HTTP): Authorization: Basic <GITHUB_BASIC_AUTH_CINDY>
 #   - api.github.com (REST/GraphQL): Authorization: Bearer <GITHUB_TOKEN_CINDY>
@@ -17,7 +15,7 @@ import socket
 import time
 from mitmproxy import http
 
-logger = logging.getLogger("titan-egress-github-auth")
+logger = logging.getLogger("brainsos-egress-github-auth")
 
 
 class GitHubAuthAddon:
@@ -40,10 +38,8 @@ class GitHubAuthAddon:
 
         ips = set()
         hostnames = [
-            "titan-agent-cindy-pawford",
-            "agent-cindy-pawford",
-            "cindy-pawford",
-            "titan-agent-bawtford",
+            "brainsos-agent-cindy-pawford",
+            "brainsos-agent-bawtford",
             "agent-bawtford",
             "bawtford",
         ]

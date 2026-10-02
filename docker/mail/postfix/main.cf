@@ -1,10 +1,10 @@
-# Project Titan: Lightweight Postfix SMTP Engine
+# brainsOS: Lightweight Postfix SMTP Engine
 # Footprint: ~15MB RAM, local delivery to Dovecot LMTP
 
 compatibility_level = 3.9
 
-myhostname = mail.titan.local
-mydomain = titan.local
+myhostname = mail.brainsos.local
+mydomain = brainsos.local
 myorigin = $mydomain
 mydestination = localhost
 
@@ -14,17 +14,21 @@ inet_protocols = ipv4
 # Trust Docker bridge networks
 mynetworks = 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 
-# Recipient restrictions
+# Recipient restrictions:
+# Enforces destination authorization to prevent external open relay,
+# while permitting local container networks (mynetworks) and SASL users
+# to inject mail for local agent domains without credentials.
 smtpd_recipient_restrictions =
-    permit_mynetworks,
+    reject_non_fqdn_recipient,
     permit_sasl_authenticated,
-    reject_unauth_destination
+    reject_unauth_destination,
+    permit_mynetworks
 
 # Virtual Mailbox domains (delivered via Dovecot LMTP)
-virtual_mailbox_domains = titan.local
+virtual_mailbox_domains = brainsos.local, local.brainsos.ai
 virtual_transport = lmtp:inet:127.0.0.1:24
-virtual_mailbox_maps = lmdb:/etc/mail-titan/vmailbox
-virtual_alias_maps = lmdb:/etc/mail-titan/virtual
+virtual_mailbox_maps = lmdb:/etc/mail-brainsos/vmailbox
+virtual_alias_maps = lmdb:/etc/mail-brainsos/virtual
 
 # SASL authentication via Dovecot
 smtpd_sasl_type = dovecot
@@ -33,7 +37,7 @@ smtpd_sasl_auth_enable = yes
 smtpd_sasl_security_options = noanonymous
 
 # Logging and Limits
-smtpd_banner = $myhostname ESMTP Titan Mail Server
+smtpd_banner = $myhostname ESMTP brainsOS Mail Server
 message_size_limit = 20971520
 mailbox_size_limit = 0
 maillog_file = /dev/stdout

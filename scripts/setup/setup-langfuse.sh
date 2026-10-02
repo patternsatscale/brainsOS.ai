@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Observability Plane Manager (Langfuse v4.38.0)
+# brainsOS: Observability Plane Manager (Langfuse v4.38.0)
 # Automates provisioning, key generation, startup, and lifecycle management
 # for Langfuse distributed stack (Web, Worker, ClickHouse, Redis, MinIO, Postgres).
 # ==============================================================================
@@ -155,9 +155,9 @@ with open(file_path, 'w') as f:
     [ -n "${_ROOT_PASS}" ] && LANGFUSE_INIT_USER_PASSWORD="${_ROOT_PASS}"
   fi
 
-  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}"
-  LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-Titan Admin}"
-  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-titan_admin_secret}"
+  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}"
+  LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
+  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-brainsos_admin_secret}"
 
   # Propagate to container-specific env file (docker/langfuse/.env)
   update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${LANGFUSE_ENV_FILE}"
@@ -165,7 +165,7 @@ with open(file_path, 'w') as f:
   update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_MIGRATION_V4_WRITE_MODE" "${LANGFUSE_MIGRATION_V4_WRITE_MODE:-dual}" "${LANGFUSE_ENV_FILE}"
 
-  export LANGFUSE_HOST="http://langfuse.titan.local:${LANGFUSE_PORT}"
+  export LANGFUSE_HOST="http://langfuse.brainsos.local:${LANGFUSE_PORT}"
   export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
   export LANGFUSE_SECRET_KEY="${SEC_SECRET_KEY}"
   export LANGFUSE_OTEL_AUTH="${SEC_OTEL_AUTH}"
@@ -179,18 +179,28 @@ with open(file_path, 'w') as f:
 # ------------------------------------------------------------------------------
 sync_user_password() {
   if [ -n "${LANGFUSE_INIT_USER_PASSWORD:-}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL:-}" ] && \
-     docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-web$" && \
-     docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
+     docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$" && \
+     docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
     log_info "Synchronizing Langfuse admin password in database from root .env..."
     local user_hash
-    user_hash=$(docker exec -i titan-langfuse-web node -e "
+    user_hash=$(docker exec -i brainsos-langfuse-web node -e "
       const p = process.argv[1];
       const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
       console.log(bcrypt.hashSync(p, 12));
     " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
     if [ -n "${user_hash}" ]; then
-      docker exec -i titan-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
-        -c "UPDATE users SET password = '${user_hash}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';" >/dev/null 2>&1 || true
+      docker exec -i brainsos-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+        -c "
+          DO \$\$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM users WHERE email = '${LANGFUSE_INIT_USER_EMAIL}') THEN
+              UPDATE users SET password = '${user_hash}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';
+            ELSE
+              UPDATE users SET email = '${LANGFUSE_INIT_USER_EMAIL}', name = '${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}', password = '${user_hash}', updated_at = NOW()
+              WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
+            END IF;
+          END \$\$;
+        " >/dev/null 2>&1 || true
       log_success "Langfuse admin user password synchronized in PostgreSQL."
     fi
   fi
@@ -202,9 +212,9 @@ sync_user_password() {
 # Action: LLM Gateway & Fleet Agent Preconfigured Connections
 # ------------------------------------------------------------------------------
 sync_llm_connection() {
-  if docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-web$" && \
-     docker ps --format '{{.Names}}' | grep -q "^titan-langfuse-db$"; then
-    log_info "Synchronizing preconfigured LLM & Agent connections in Langfuse project 'titan'..."
+  if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$" && \
+     docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
+    log_info "Synchronizing preconfigured LLM & Agent connections in Langfuse project 'brainsos'..."
     local litellm_key="${LITELLM_MASTER_KEY:-sk-supergr00vyd00d!!!}"
     if [ -f "${REPO_ROOT}/.env" ]; then
       local _k
@@ -218,7 +228,7 @@ sync_llm_connection() {
       _ak=$(grep '^API_SERVER_KEY=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
       [ -n "${_ak}" ] && agent_key="${_ak}"
     fi
-    [ -z "${agent_key}" ] && agent_key="sk-titan-agent-key"
+    [ -z "${agent_key}" ] && agent_key="sk-brainsos-agent-key"
 
     local manifest="${REPO_ROOT}/config/agents.yaml"
     if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
@@ -229,11 +239,11 @@ sync_llm_connection() {
 import yaml, json
 with open('${manifest}') as f:
     d = yaml.safe_load(f)
-res = [{'id': a['id'], 'name': a.get('name', a['id']), 'subdomain': a.get('comms', {}).get('subdomain', f\"{a['id']}.titan.local\")} for a in d.get('agents', []) if a.get('enabled', True)]
+res = [{'id': a['id'], 'name': a.get('name', a['id']), 'subdomain': a.get('comms', {}).get('subdomain', f\"{a['id']}.brainsos.local\")} for a in d.get('agents', []) if a.get('enabled', True)]
 print(json.dumps(res))
 " 2>/dev/null || echo "[]")
 
-    docker exec -i titan-langfuse-web node -e "
+    docker exec -i brainsos-langfuse-web node -e "
       const crypto = require('crypto');
       const { PrismaClient } = require('/app/node_modules/.pnpm/@prisma+client@6.19.3_@typescript+typescript6@6.0.2_prisma@6.19.3_@typescript+typescript6@6.0.2_magicast@0.5.2_/node_modules/@prisma/client');
       const prisma = new PrismaClient();
@@ -263,19 +273,19 @@ print(json.dumps(res))
         const litellmRecord = await prisma.llmApiKeys.upsert({
           where: {
             projectId_provider: {
-              projectId: 'titan',
+              projectId: 'brainsos',
               provider: 'LiteLLM'
             }
           },
           create: {
-            id: 'cl_titan_litellm_connection',
-            projectId: 'titan',
+            id: 'cl_brainsos_litellm_connection',
+            projectId: 'brainsos',
             provider: 'LiteLLM',
             adapter: 'openai',
             displaySecretKey: displayLiteLLMKey,
             secretKey: encLiteLLMKey,
-            baseURL: 'http://proxy.titan.local/v1',
-            customModels: ['titan-core', 'qwen3.8:latest', 'llama3.2:3b', 'qwen2.5:latest', 'gemma2:2b'],
+            baseURL: 'http://proxy.brainsos.local/v1',
+            customModels: ['brainsos-core', 'qwen3.8:latest', 'llama3.2:3b', 'qwen2.5:latest', 'gemma2:2b'],
             withDefaultModels: false,
             extraHeaderKeys: []
           },
@@ -283,28 +293,28 @@ print(json.dumps(res))
             adapter: 'openai',
             displaySecretKey: displayLiteLLMKey,
             secretKey: encLiteLLMKey,
-            baseURL: 'http://proxy.titan.local/v1',
-            customModels: ['titan-core', 'qwen3.8:latest', 'llama3.2:3b', 'qwen2.5:latest', 'gemma2:2b'],
+            baseURL: 'http://proxy.brainsos.local/v1',
+            customModels: ['brainsos-core', 'qwen3.8:latest', 'llama3.2:3b', 'qwen2.5:latest', 'gemma2:2b'],
             withDefaultModels: false
           }
         });
 
-        // Set default playground model to LiteLLM / titan-core
+        // Set default playground model to LiteLLM / brainsos-core
         await prisma.defaultLlmModel.upsert({
-          where: { projectId: 'titan' },
+          where: { projectId: 'brainsos' },
           create: {
-            id: 'cl_titan_default_model',
-            projectId: 'titan',
+            id: 'cl_brainsos_default_model',
+            projectId: 'brainsos',
             llmApiKeyId: litellmRecord.id,
             provider: 'LiteLLM',
             adapter: 'openai',
-            model: 'titan-core'
+            model: 'brainsos-core'
           },
           update: {
             llmApiKeyId: litellmRecord.id,
             provider: 'LiteLLM',
             adapter: 'openai',
-            model: 'titan-core'
+            model: 'brainsos-core'
           }
         });
 
@@ -314,13 +324,13 @@ print(json.dumps(res))
           await prisma.llmApiKeys.upsert({
             where: {
               projectId_provider: {
-                projectId: 'titan',
+                projectId: 'brainsos',
                 provider: a.id
               }
             },
             create: {
-              id: \`cl_titan_\${cleanId}_connection\`,
-              projectId: 'titan',
+              id: \`cl_brainsos_\${cleanId}_connection\`,
+              projectId: 'brainsos',
               provider: a.id,
               adapter: 'openai',
               displaySecretKey: displayAgentKey,
@@ -346,7 +356,7 @@ print(json.dumps(res))
     " "${litellm_key}" "${agent_key}" "${agents_json}" >/dev/null 2>&1 || true
     local agent_names
     agent_names=$(echo "${agents_json}" | python3 -c "import json, sys; print(', '.join([a['id'] for a in json.load(sys.stdin)]))" 2>/dev/null || echo "fleet agents")
-    log_success "LLM & Agent connections synchronized in Langfuse (LiteLLM: proxy.titan.local, agents: ${agent_names})."
+    log_success "LLM & Agent connections synchronized in Langfuse (LiteLLM: proxy.brainsos.local, agents: ${agent_names})."
   fi
 }
 
@@ -378,10 +388,10 @@ start_langfuse() {
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
     echo -e "${GREEN}${BOLD}Langfuse v4.38.0 Observability Platform Ready${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-    echo -e "  - Web Dashboard:     ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} (or http://langfuse.titan.local)"
+    echo -e "  - Web Dashboard:     ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} (or http://langfuse.brainsos.local)"
     echo -e "  - OTel Ingestion:    ${BOLD}http://localhost:${LANGFUSE_PORT}/api/public/otel${NC}"
     echo -e "  - Public Key:        ${BOLD}${LANGFUSE_PUBLIC_KEY:-}${NC}"
-    echo -e "  - Admin Email:       ${BOLD}${LANGFUSE_INIT_USER_EMAIL:-admin@titan.local}${NC}"
+    echo -e "  - Admin Email:       ${BOLD}${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}${NC}"
     echo -e "  - Admin Password:    ${BOLD}[Configured in .env]${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
   else
@@ -426,11 +436,11 @@ logs_langfuse() {
 # ------------------------------------------------------------------------------
 generate_keys_helper() {
   echo -e "${BLUE}${BOLD}==============================================================================${NC}"
-  echo -e "${BLUE}${BOLD}Project Titan: Langfuse API Key & Telemetry Header Helper${NC}"
+  echo -e "${BLUE}${BOLD}brainsOS: Langfuse API Key & Telemetry Header Helper${NC}"
   echo -e "${BLUE}${BOLD}==============================================================================${NC}"
   if [ -n "${LANGFUSE_PUBLIC_KEY:-}" ] && [ -n "${LANGFUSE_SECRET_KEY:-}" ]; then
     echo "Currently active credentials:"
-    echo "  LANGFUSE_HOST=http://langfuse.titan.local:${LANGFUSE_PORT}"
+    echo "  LANGFUSE_HOST=http://langfuse.brainsos.local:${LANGFUSE_PORT}"
     echo "  LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}"
     echo "  LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}"
     echo "  LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH:-Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')}"

@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use brainsOS or reference our thermodynamic AI research, please cite it as below."
+authors:
+  - name: "Patterns at Scale"
+    website: "https://patternsatscale.com"
+title: "brainsOS: Open-Source Edge Agent Operating System & Governance Runtime"
+version: 0.1.0-alpha
+date-released: 2026-09-27
+url: "https://brainsos.ai"
+repository-code: "https://github.com/patternsatscale/brainsOS.ai"
+license: Apache-2.0
+keywords:
+  - "autonomous agents"
+  - "agentic cybersecurity governance"
+  - "acsg"
+  - "cohumain"
+  - "edge intelligence"
+  - "thermodynamic computing"
+  - "energy-aware computing"
+  - "kill switch"

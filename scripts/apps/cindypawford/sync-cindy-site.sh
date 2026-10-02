@@ -20,8 +20,8 @@ if [ -z "${REPO_ROOT}" ]; then
   [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 fi
 
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-INFRA_DIR="${REPO_ROOT}/apps/cindypawford/infra"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+INFRA_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/pipeline"
 SHELL_SRC="${INFRA_DIR}/src/shell.js"
 
 echo "=== [Cindy Pawford Canvas Synchronization] ==="

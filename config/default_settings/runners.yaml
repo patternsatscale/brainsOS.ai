@@ -1,0 +1,43 @@
+# ==============================================================================
+# brainsOS: Cognitive Compute & Runner Fleet Manifest
+# Single declarative authority for cognitive compute nodes and sandboxes.
+# ==============================================================================
+
+version: "1.0"
+
+runners:
+  # ----------------------------------------------------------------------------
+  # Warm HTTP Services (Resident Containers)
+  # ----------------------------------------------------------------------------
+  - id: "hermes-warm"
+    name: "Nous Hermes Warm Runner"
+    type: "warm_http"
+    endpoint: "http://runner-hermes:8642"
+    timeout_sec: 120
+    concurrency_limit: 4
+
+  - id: "openai-warm"
+    name: "OpenAI SDK Warm Runner"
+    type: "warm_http"
+    endpoint: "http://runner-openai:8002"
+    timeout_sec: 120
+    concurrency_limit: 4
+
+  - id: "claude-warm"
+    name: "Anthropic Claude SDK Warm Runner"
+    type: "warm_http"
+    endpoint: "http://runner-claude:8001"
+    timeout_sec: 180
+    concurrency_limit: 4
+
+  # ----------------------------------------------------------------------------
+  # Ephemeral Docker Sandboxes (On-Demand Execution)
+  # ----------------------------------------------------------------------------
+  - id: "openhands-sandbox"
+    name: "OpenHands Ephemeral Docker Sandbox"
+    type: "ephemeral_docker"
+    image: "brainsos-openhands-sandbox:latest"
+    timeout_sec: 300
+    concurrency_limit: 2
+    memory_limit: "2g"
+    cpu_limit: "2.0"

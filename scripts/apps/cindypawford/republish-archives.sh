@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Out-of-Band Cindy Pawford Digital Museum Republishing Tool
+# brainsOS: Out-of-Band Cindy Pawford Digital Museum Republishing Tool
 # Ticket #88 (CW-0B): Rebuild & Restore Archives Directly from Git Tags
 # ==============================================================================
 
@@ -35,8 +35,8 @@ fi
 
 cd "${REPO_ROOT}"
 
-SITE_DIR="${REPO_ROOT}/apps/cindypawford/site"
-ARCHIVE_DIR="${REPO_ROOT}/apps/cindypawford/archive"
+SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+ARCHIVE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/archive"
 ERAS_FILE="${ARCHIVE_DIR}/eras.json"
 
 DRY_RUN=0
@@ -192,7 +192,7 @@ for idx, slug in enumerate(subdirs, start=1):
         "theme_name": recap.get("theme_name") or prev.get("theme_name") or f"Era {idx} ({slug})",
         "date_range": recap.get("date_range") or prev.get("date_range") or "Historic Period",
         "quote": recap.get("closing_quote") or recap.get("founding_quote") or prev.get("quote") or "The runway never sleeps.",
-        "coding_model": recap.get("coding_model") or prev.get("coding_model") or "titan-core",
+        "coding_model": recap.get("coding_model") or prev.get("coding_model") or "brainsos-core",
         "archived_at": prev.get("archived_at") or datetime.datetime.now(datetime.timezone.utc).isoformat()
     }
     reconciled.append(entry)

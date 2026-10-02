@@ -1,5 +1,5 @@
 # ==============================================================================
-# Project Titan: Caddy Reverse Proxy with Route 53 ACME DNS-01 Plugin
+# brainsOS: Caddy Reverse Proxy with Route 53 ACME DNS-01 Plugin
 # Multi-stage build enabling native wildcard TLS without open inbound ports.
 # Preserves native ARM64 parity for ASUS Ascent GX10 and Apple Silicon.
 # ==============================================================================

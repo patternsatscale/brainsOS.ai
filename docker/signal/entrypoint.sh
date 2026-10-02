@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Project Titan: Signal Gateway Unified Entrypoint
+# brainsOS: Signal Gateway Unified Entrypoint
 # Multiplexes native signal-cli HTTP/JSON-RPC (8082) & REST API (8084) onto 8080.
 
 SIGNAL_CLI_CONFIG_DIR="${SIGNAL_CLI_CONFIG_DIR:-/home/.local/share/signal-cli}"

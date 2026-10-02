@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Operator IDE Automated Verification & Security Audit
+# brainsOS: Operator IDE Automated Verification & Security Audit
 # Validates container health, security boundaries, multi-tenant isolation,
 # Caddy ingress authentication, Aider & Goose tooling, and memory purity.
 # ==============================================================================
@@ -55,10 +55,10 @@ fi
 CODE_SERVER_PORT="${CODE_SERVER_PORT:-8443}"
 CADDY_PORT="${CADDY_HTTP_PORT:-80}"
 OPERATOR_USER="${OPERATOR_USER:-operator}"
-CODE_SERVER_PASSWORD="${CODE_SERVER_PASSWORD:-titan_operator_secret}"
-OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-titan-operator-virtual-key}"
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
-DATA_DIR="${TITAN_AGENT_MEMORIES_DIR:-${TITAN_DATA_DIR:-./data/agent_memories}}"
+CODE_SERVER_PASSWORD="${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
+OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
+DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -69,7 +69,7 @@ if [ ! -d "${MEMORIES_DIR}" ] && [ -d "${REPO_ROOT}/data/memories" ]; then
   MEMORIES_DIR="${REPO_ROOT}/data/memories"
 fi
 
-log_info "Starting Project Titan Operator IDE automated verification..."
+log_info "Starting brainsOS Operator IDE automated verification..."
 
 # ------------------------------------------------------------------------------
 # 1. Verify Docker Compose Configuration
@@ -81,7 +81,7 @@ log_success "Docker Compose configuration is valid."
 # ------------------------------------------------------------------------------
 # 2. Verify Container Runtime Health & Direct Port Accessibility
 # ------------------------------------------------------------------------------
-CONTAINER_NAME="$(docker ps --format '{{.Names}}' | grep -E '^titan-(app-)?code-server$' | head -n 1 || echo 'titan-app-code-server')"
+CONTAINER_NAME="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?code-server$' | head -n 1 || echo 'brainsos-app-code-server')"
 log_info "Step 2: Checking ${CONTAINER_NAME} container status..."
 CONTAINER_STATUS=$(docker inspect --format '{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "missing")
 if [ "${CONTAINER_STATUS}" != "running" ]; then
@@ -119,17 +119,17 @@ fi
 
 # Rule 9: Multi-Tenant Isolation - Agent containers cannot reach Operator IDE
 log_info "Verifying multi-tenant isolation: asserting agents cannot connect to Operator IDE..."
-PRIMARY_AGENT=$(docker ps --format '{{.Names}}' | grep '^titan-agent-' | head -n 1 || echo "")
+PRIMARY_AGENT=$(docker ps --format '{{.Names}}' | grep '^brainsos-agent-' | head -n 1 || echo "")
 if [ -n "${PRIMARY_AGENT}" ]; then
   # Probe code-server from inside agent container
-  PROBE_RESULT=$(docker exec -T "${PRIMARY_AGENT}" nc -z -w 2 titan-code-server 8443 2>/dev/null && echo "connected" || echo "blocked")
+  PROBE_RESULT=$(docker exec -T "${PRIMARY_AGENT}" nc -z -w 2 brainsos-code-server 8443 2>/dev/null && echo "connected" || echo "blocked")
   if [ "${PROBE_RESULT}" == "blocked" ]; then
     log_success "Multi-tenant boundary verified: Agent '${PRIMARY_AGENT}' is strictly blocked from Operator IDE."
   else
-    fail_check "Security violation: Agent '${PRIMARY_AGENT}' was able to route to titan-code-server:8443!"
+    fail_check "Security violation: Agent '${PRIMARY_AGENT}' was able to route to brainsos-code-server:8443!"
   fi
 else
-  log_warn "No running titan-agent-* container found to run agent-side network probe."
+  log_warn "No running brainsos-agent-* container found to run agent-side network probe."
 fi
 
 # ------------------------------------------------------------------------------
@@ -138,7 +138,7 @@ fi
 log_info "Step 4: Testing Caddy ingress routing and HTTP Basic Auth security gate..."
 
 # Unauthenticated request must return 401 Unauthorized
-UNAUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: editor.${TITAN_DOMAIN}" "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
+UNAUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: editor.${BRAINSOS_DOMAIN}" "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
 if [ "${UNAUTH_STATUS}" == "401" ]; then
   log_success "Caddy ingress gate enforced: Unauthenticated request returned HTTP 401 Unauthorized."
 else
@@ -148,36 +148,87 @@ fi
 # Authenticated request must succeed (HTTP 200 or HTTP 302 login redirect)
 AUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -u "${OPERATOR_USER}:${CODE_SERVER_PASSWORD}" \
-  -H "Host: editor.${TITAN_DOMAIN}" \
+  -H "Host: editor.${BRAINSOS_DOMAIN}" \
   "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
 
 if echo "${AUTH_STATUS}" | grep -qE '^(200|302)'; then
-  log_success "Caddy ingress authenticated routing verified (HTTP ${AUTH_STATUS}) for editor.${TITAN_DOMAIN}."
+  log_success "Caddy ingress authenticated routing verified (HTTP ${AUTH_STATUS}) for editor.${BRAINSOS_DOMAIN}."
 else
-  fail_check "Authenticated request to editor.${TITAN_DOMAIN} returned unexpected HTTP ${AUTH_STATUS}."
+  fail_check "Authenticated request to editor.${BRAINSOS_DOMAIN} returned unexpected HTTP ${AUTH_STATUS}."
 fi
 
-# Test code.titan.local alias
+# Test code.brainsos.local alias
 CODE_ALIAS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
   -u "${OPERATOR_USER}:${CODE_SERVER_PASSWORD}" \
-  -H "Host: code.${TITAN_DOMAIN}" \
+  -H "Host: code.${BRAINSOS_DOMAIN}" \
   "http://127.0.0.1:${CADDY_PORT}/" || echo "000")
 if echo "${CODE_ALIAS_STATUS}" | grep -qE '^(200|302)'; then
-  log_success "Caddy ingress alias code.${TITAN_DOMAIN} verified (HTTP ${CODE_ALIAS_STATUS})."
+  log_success "Caddy ingress alias code.${BRAINSOS_DOMAIN} verified (HTTP ${CODE_ALIAS_STATUS})."
+fi
+
+# Test TLS reachability over HTTPS with exported root CA
+log_info "Testing Caddy TLS ingress with exported root CA certificate..."
+TARGET_CERT="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-./data}/control_plane}/caddy_root.crt"
+if [[ "$TARGET_CERT" != /* ]]; then
+  TARGET_CERT="${REPO_ROOT}/${TARGET_CERT#./}"
+fi
+
+if [ -s "${TARGET_CERT}" ]; then
+  TLS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    --cacert "${TARGET_CERT}" \
+    -u "${OPERATOR_USER}:${CODE_SERVER_PASSWORD}" \
+    "https://editor.${BRAINSOS_DOMAIN}/" || echo "000")
+  if echo "${TLS_STATUS}" | grep -qE '^(200|302)'; then
+    log_success "Caddy ingress TLS reachability verified (HTTP ${TLS_STATUS}) via exported root CA."
+  else
+    fail_check "Caddy ingress TLS request with CA cert to editor.${BRAINSOS_DOMAIN} returned unexpected HTTP ${TLS_STATUS}."
+  fi
+else
+  fail_check "Caddy root CA certificate not found or empty at: ${TARGET_CERT}"
 fi
 
 # ------------------------------------------------------------------------------
-# 5. Verify Multi-Root Workspace & Memory Plane Purity (Rule 1)
+# 5. Verify Workspace Layout & Memory Plane Purity (Rule 1)
 # ------------------------------------------------------------------------------
-log_info "Step 5: Verifying Multi-Root Workspace layout and filesystem mounts..."
+log_info "Step 5: Verifying Workspace layout and filesystem mounts..."
 
-docker compose exec -T code-server test -f /workspace/titan.code-workspace || fail_check "Multi-root workspace file (/workspace/titan.code-workspace) not found inside container."
-docker compose exec -T code-server test -d /workspace/project-titan || fail_check "Repository root mount (/workspace/project-titan) missing inside container."
+docker compose exec -T code-server test -f /workspace/brainsos.code-workspace -o -f /etc/brainsos/editor/brainsos.code-workspace || fail_check "Workspace file not found inside container."
+
+# Rule 14 Check: Engine platform repository must NOT be mounted into code-server
+if docker compose exec -T code-server test -d /workspace/brainsos 2>/dev/null; then
+  fail_check "Rule 14 Violation: Engine platform repository (/workspace/brainsos) is mounted into code-server!"
+else
+  log_success "Engine platform repository (/workspace/brainsos) is strictly absent from container."
+fi
+
+# Validate Fleet Data Repository mount (/data) as single workspace root
+docker compose exec -T code-server test -d /data || fail_check "Fleet data repository (/data) mount missing inside container."
+log_success "Fleet data repository (/data) mount verified inside container."
+
+# Verify coder.json specifies single folder /data
+if docker compose exec -T code-server grep -q '"folder": *"/data"' /home/coder/.local/share/code-server/coder.json 2>/dev/null; then
+  log_success "Single folder workspace root (/data) verified in coder.json."
+else
+  fail_check "Single folder workspace root (/data) not configured in coder.json!"
+fi
+
+# Verify workspace template defines only /data
+if docker compose exec -T code-server python3 -c '
+import json, sys, os
+p = "/etc/brainsos/editor/brainsos.code-workspace" if os.path.exists("/etc/brainsos/editor/brainsos.code-workspace") else "/workspace/brainsos.code-workspace"
+data = json.load(open(p))
+paths = [f.get("path") for f in data.get("folders", [])]
+if paths != ["/data"]:
+    print("Expected only [\"/data\"], got", paths)
+    sys.exit(1)
+' 2>/dev/null; then
+  log_success "Workspace definition strictly verified with single /data folder root."
+else
+  fail_check "Workspace definition contains multiple roots (expected only /data)!"
+fi
+
 docker compose exec -T code-server test -d /memories || fail_check "Memory plane mount (/memories) missing inside container."
-docker compose exec -T code-server test -d /data/workspace || fail_check "Agent workspaces mount (/data/workspace) missing inside container."
-docker compose exec -T code-server test -d /data/comms || fail_check "Communications gateways mount (/data/comms) missing inside container."
-docker compose exec -T code-server test -d /apps/cindypawford/site || fail_check "App canvas mount (/apps/cindypawford/site) missing inside container."
-log_success "All 5 Multi-Root Workspace mount points verified inside container."
+log_success "Workspace filesystem mounts verified inside container."
 
 # Rule 1 Purity Check: Ensure no .vscode or SQLite files in memories
 log_info "Auditing Memory Plane purity (ensuring zero .vscode directories in memories)..."
@@ -189,7 +240,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 6. Verify AI Assistant Tooling (Aider, Goose, titan-chat) & LiteLLM Reachability
+# 6. Verify AI Assistant Tooling (Aider, Goose, brainsos-chat) & LiteLLM Reachability
 # ------------------------------------------------------------------------------
 log_info "Step 6: Verifying AI tooling and LiteLLM reachability..."
 
@@ -201,24 +252,25 @@ else
   fail_check "Aider CLI tooling (aider) not found inside container."
 fi
 
-# Continue VS Code extension check
-CONTINUE_EXT=$(docker compose exec -T code-server code-server --list-extensions 2>/dev/null | grep 'continue.continue' || echo "")
-if [ -n "${CONTINUE_EXT}" ]; then
-  log_success "Continue AI extension verified: ${CONTINUE_EXT}."
+# LiteLLM Connector for Copilot extension check
+LITELLM_COPILOT_EXT=$(docker compose exec -T code-server code-server --list-extensions 2>/dev/null | grep -i 'gethnet.litellm-connector-copilot' || echo "")
+if [ -n "${LITELLM_COPILOT_EXT}" ]; then
+  log_success "LiteLLM Connector for Copilot extension verified: ${LITELLM_COPILOT_EXT}."
 else
-  fail_check "Continue AI extension (continue.continue) not found inside container."
+  fail_check "LiteLLM Connector for Copilot extension (gethnet.litellm-connector-copilot) not found inside container."
 fi
 
-# Continue configuration and API endpoints check
-if docker compose exec -T code-server test -f /home/coder/.continue/config.yaml; then
-  log_success "Continue configuration verified at /home/coder/.continue/config.yaml."
-  docker compose exec -T code-server grep -qE "api\.(terrastella|cindypawford|bawtford)" /home/coder/.continue/config.yaml || \
-    fail_check "Continue config missing Agent API endpoint."
-  docker compose exec -T code-server grep -q "litellm:4000" /home/coder/.continue/config.yaml || \
-    fail_check "Continue config missing LiteLLM endpoint."
-  log_success "Continue API endpoints (LiteLLM & Agent APIs) verified in config.yaml."
+# Copilot Language Models Configuration (chatLanguageModels.json)
+log_info "Verifying Copilot LiteLLM Connector configuration in chatLanguageModels.json..."
+if docker compose exec -T code-server test -f /home/coder/.local/share/code-server/User/chatLanguageModels.json; then
+  log_success "chatLanguageModels.json verified at /home/coder/.local/share/code-server/User/chatLanguageModels.json."
+  docker compose exec -T code-server grep -q "litellm-connector" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing litellm-connector vendor."
+  docker compose exec -T code-server grep -q "litellm:4000" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing LiteLLM baseUrl (http://litellm:4000)."
+  log_success "LiteLLM Connector endpoint verified in chatLanguageModels.json."
 else
-  fail_check "Continue configuration (/home/coder/.continue/config.yaml) missing inside container."
+  fail_check "chatLanguageModels.json missing inside container."
 fi
 
 # Workspace trust and SSL bypass verification
@@ -229,23 +281,31 @@ else
   fail_check "Workspace trust is not disabled in editor settings.json!"
 fi
 
+# Dark Theme verification
+log_info "Verifying Default Dark Modern color theme in settings.json..."
+if docker compose exec -T code-server grep -qE '"workbench.colorTheme": *"(Default )?Dark Modern"' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Default dark theme ('Default Dark Modern') verified in code-server User settings."
+else
+  fail_check "Dark theme not configured in /home/coder/.local/share/code-server/User/settings.json!"
+fi
+
 # In-container Agent API DNS reachability check
 log_info "Verifying Operator IDE network reachability to Ingress Gateway Agent APIs..."
 AGENT_PROBE=$(docker compose exec -T code-server curl -s -m 5 -o /dev/null -w "%{http_code}" \
   -H "Authorization: Bearer ${HERMES_API_TERRASTELLA_KEY:-${API_SERVER_KEY:-}}" \
-  "http://api.terrastella.titan.local/v1/models" 2>/dev/null || echo "000")
+  "http://api.terrastella.brainsos.local/v1/models" 2>/dev/null || echo "000")
 if echo "${AGENT_PROBE}" | grep -qE '^(200|401|405)'; then
-  log_success "Operator IDE successfully routed to api.terrastella.titan.local (HTTP ${AGENT_PROBE})."
+  log_success "Operator IDE successfully routed to api.terrastella.brainsos.local (HTTP ${AGENT_PROBE})."
 else
-  log_warn "Operator IDE probe to api.terrastella.titan.local returned HTTP ${AGENT_PROBE}."
+  log_warn "Operator IDE probe to api.terrastella.brainsos.local returned HTTP ${AGENT_PROBE}."
 fi
 
-# titan-chat CLI check
-TITAN_CHAT_PATH=$(docker compose exec -T code-server which titan-chat 2>/dev/null || echo "")
-if [ -n "${TITAN_CHAT_PATH}" ]; then
-  log_success "Fleet communication helper installed at ${TITAN_CHAT_PATH}."
+# brainsos-chat CLI check
+BRAINSOS_CHAT_PATH=$(docker compose exec -T code-server which brainsos-chat 2>/dev/null || echo "")
+if [ -n "${BRAINSOS_CHAT_PATH}" ]; then
+  log_success "Fleet communication helper installed at ${BRAINSOS_CHAT_PATH}."
 else
-  fail_check "titan-chat helper script not found inside container."
+  fail_check "brainsos-chat helper script not found inside container."
 fi
 
 # LiteLLM reachability from container
@@ -260,8 +320,63 @@ else
   log_warn "LiteLLM control plane at http://litellm:4000 returned HTTP ${LITELLM_STATUS} (may be standby)."
 fi
 
+# Terminal in editor area verification
+log_info "Verifying terminal front-and-center in editor area..."
+if docker compose exec -T code-server grep -q '"terminal.integrated.defaultLocation": *"editor"' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Terminal default location verified: 'editor' (front and center)."
+else
+  fail_check "Terminal default location is not set to 'editor' in settings.json!"
+fi
+
+# Startup terminal extension verification
+log_info "Verifying brainsos.system-terminal extension..."
+EXTS=$(docker compose exec -T code-server code-server --list-extensions 2>/dev/null || docker compose exec -T code-server code-server --list-extensions 2>/dev/null || echo "")
+if echo "${EXTS}" | grep -q 'brainsos.system-terminal'; then
+  log_success "Startup terminal extension (brainsos.system-terminal) verified."
+else
+  fail_check "Startup terminal extension (brainsos.system-terminal) not listed in code-server! Found: ${EXTS}"
+fi
+
+# VS Code AI settings & Language Models Custom Endpoint verification
+log_info "Verifying VS Code built-in AI settings and LiteLLM Custom Endpoint..."
+if docker compose exec -T code-server test -f /home/coder/.local/share/code-server/User/chatLanguageModels.json; then
+  log_success "chatLanguageModels.json verified at /home/coder/.local/share/code-server/User/chatLanguageModels.json."
+  docker compose exec -T code-server grep -q '"vendor": *"customendpoint"' /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing customendpoint vendor."
+  docker compose exec -T code-server grep -q "http://litellm:4000/v1" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing LiteLLM gateway endpoint."
+  log_success "VS Code built-in language models custom endpoint pointing to LiteLLM verified."
+else
+  fail_check "chatLanguageModels.json missing inside container."
+fi
+
+# In-container System Terminal Make commands verification
+log_info "Verifying 'make urls' command execution from /data inside container..."
+MAKE_URLS_OUT=$(docker compose exec -T -w /data code-server make urls 2>&1 || echo "ERROR")
+if echo "${MAKE_URLS_OUT}" | grep -q "Platform Service Directory"; then
+  log_success "'make urls' successfully executed from /data directory."
+else
+  fail_check "'make urls' execution failed inside container! Output: ${MAKE_URLS_OUT}"
+fi
+
+log_info "Verifying 'make status' command execution from /data inside container..."
+MAKE_STATUS_OUT=$(docker compose exec -T -w /data code-server make status 2>&1 || echo "ERROR")
+if echo "${MAKE_STATUS_OUT}" | grep -q "LiteLLM Gateway"; then
+  log_success "'make status' successfully executed from /data directory."
+else
+  fail_check "'make status' execution failed inside container! Output: ${MAKE_STATUS_OUT}"
+fi
+
+log_info "Verifying 'make models' command execution from /data inside container..."
+MAKE_MODELS_OUT=$(docker compose exec -T -w /data code-server make models 2>&1 || echo "ERROR")
+if echo "${MAKE_MODELS_OUT}" | grep -q "brainsos-core"; then
+  log_success "'make models' successfully executed from /data directory."
+else
+  fail_check "'make models' execution failed inside container! Output: ${MAKE_MODELS_OUT}"
+fi
+
 echo ""
 log_success "======================================================================"
-log_success "Project Titan: Operator IDE Verification PASSED (All Checks Satisfied)"
+log_success "brainsOS: Operator IDE Verification PASSED (All Checks Satisfied)"
 log_success "======================================================================"
 echo ""

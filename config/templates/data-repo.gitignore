@@ -1,0 +1,49 @@
+# ==============================================================================
+# brainsOS Private Fleet Repository - Git Ignore Rules
+# ==============================================================================
+
+# --- Ephemeral Database & Locking State ---
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
+**/*.sqlite3
+
+# --- Control Plane & IPC ---
+control_plane/*.pid
+control_plane/*.sock
+control_plane/*.lock
+control_plane/caddy_root.crt
+control_plane/litellm_db/**
+control_plane/vscode_config/**
+control_plane/vscode_data/**
+litellm_db/**
+
+# --- Mail Spool & Transients ---
+comms/spool/*
+!comms/spool/.gitkeep
+comms/maildir/*
+!comms/maildir/.gitkeep
+comms/email/**
+comms/sogo/**
+comms/signal/**
+
+# --- Telemetry & Analytics Store ---
+telemetry/*.log
+telemetry/clickhouse/**
+telemetry/redis/**
+telemetry/minio/**
+telemetry/postgres/**
+
+# --- Backups ---
+backups/*.tar.gz
+backups/*.tgz
+backups/*.zip
+!backups/.gitkeep
+!backups/*.sh
+!backups/README.md
+
+# --- OS / Editor Artifacts ---
+.DS_Store
+Thumbs.db
+*.tmp

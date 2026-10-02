@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: Multi-Agent Fleet Automated Verification Suite
+# brainsOS: Multi-Agent Fleet Automated Verification Suite
 # Validates manifest drift, compose topology, Caddy ingress routing,
 # cross-tenant storage isolation, and LiteLLM hardware serialization.
 # ==============================================================================
@@ -47,7 +47,7 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-TITAN_DOMAIN="${TITAN_DOMAIN:-titan.local}"
+BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-80}"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 EXPLICIT_MANIFEST=0
@@ -64,7 +64,7 @@ else
 fi
 
 log_info "================================================================="
-log_info "  Running Project Titan Multi-Agent Fleet Verification Suite     "
+log_info "  Running brainsOS Multi-Agent Fleet Verification Suite     "
 log_info "================================================================="
 
 # ------------------------------------------------------------------------------
@@ -102,8 +102,8 @@ else
 fi
 
 # Detect enabled agents & primary agent from compose
-ENABLED_AGENTS=$(docker compose config --services | grep '^agent-' | sed 's/^agent-//' || echo "primary football-dan cindy-pawford")
-PRIMARY_AGENT_ID="primary"
+ENABLED_AGENTS=$(docker compose config --services | grep '^agent-' | sed 's/^agent-//' || echo "terrastella marvin bawtford")
+PRIMARY_AGENT_ID="terrastella"
 if echo "${ENABLED_AGENTS}" | grep -qw "terrastella"; then
   PRIMARY_AGENT_ID="terrastella"
 elif echo "${ENABLED_AGENTS}" | grep -qw "primary"; then
@@ -111,7 +111,7 @@ elif echo "${ENABLED_AGENTS}" | grep -qw "primary"; then
 else
   PRIMARY_AGENT_ID=$(echo "${ENABLED_AGENTS}" | awk '{print $1}')
 fi
-PRIMARY_CONTAINER="titan-agent-${PRIMARY_AGENT_ID}"
+PRIMARY_CONTAINER="brainsos-agent-${PRIMARY_AGENT_ID}"
 
 # ------------------------------------------------------------------------------
 # 2. Container Health & Unprivileged UID Verification
@@ -128,10 +128,10 @@ fi
 # Clean up any conflicting superseded primary agent container
 for old_primary in primary terrastella; do
   if [ "${old_primary}" != "${PRIMARY_AGENT_ID}" ]; then
-    if docker ps -a --format '{{.Names}}' | grep -qw "titan-agent-${old_primary}"; then
-      log_info "Stopping superseded container 'titan-agent-${old_primary}' to release ports for '${PRIMARY_CONTAINER}'..."
-      docker stop "titan-agent-${old_primary}" >/dev/null 2>&1 || true
-      docker rm -f "titan-agent-${old_primary}" >/dev/null 2>&1 || true
+    if docker ps -a --format '{{.Names}}' | grep -qw "brainsos-agent-${old_primary}"; then
+      log_info "Stopping superseded container 'brainsos-agent-${old_primary}' to release ports for '${PRIMARY_CONTAINER}'..."
+      docker stop "brainsos-agent-${old_primary}" >/dev/null 2>&1 || true
+      docker rm -f "brainsos-agent-${old_primary}" >/dev/null 2>&1 || true
     fi
   fi
 done
@@ -145,7 +145,7 @@ if ! docker compose ps --services --filter "status=running" | grep -q "^agent-${
 fi
 
 for agent_id in ${ENABLED_AGENTS}; do
-  CONTAINER="titan-agent-${agent_id}"
+  CONTAINER="brainsos-agent-${agent_id}"
   if ! docker ps --format '{{.Names}}' | grep -qw "${CONTAINER}"; then
     log_warn "Container '${CONTAINER}' is not currently running. Starting service agent-${agent_id}..."
     docker compose up -d "agent-${agent_id}"
@@ -176,7 +176,7 @@ done
 log_info "Step 3: Checking Caddy ingress routing for agent subdomains..."
 
 for agent_id in ${ENABLED_AGENTS}; do
-  SUBDOMAIN="${agent_id}.${TITAN_DOMAIN}"
+  SUBDOMAIN="${agent_id}.${BRAINSOS_DOMAIN}"
   
   # HTTP probe via Caddy on port 80 with Host header (with retry for container bootstrap)
   HTTP_STATUS="failed"
@@ -218,7 +218,7 @@ log_info "Step 4: Verifying cross-tenant storage isolation (Rule 1 & Rule 4)..."
 
 SECONDARY_AGENT_ID=$(echo "${ENABLED_AGENTS}" | tr ' ' '\n' | grep -v "^${PRIMARY_AGENT_ID}$" | head -n 1 || echo "")
 if [ -n "${SECONDARY_AGENT_ID}" ]; then
-  SECONDARY_CONTAINER="titan-agent-${SECONDARY_AGENT_ID}"
+  SECONDARY_CONTAINER="brainsos-agent-${SECONDARY_AGENT_ID}"
 
   # Test 1: Write marker note into primary agent memory
   TEST_MARKER="marker_primary_$(date +%s)"
@@ -253,8 +253,8 @@ if [ -n "${SECONDARY_AGENT_ID}" ]; then
   if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
     log_info "LiteLLM gateway is online; issuing concurrent completion probes across agents..."
 
-    PRIMARY_KEY="${TERRASTELLA_LITELLM_KEY:-sk-titan-${PRIMARY_AGENT_ID}-key}"
-    SEC_KEY="${MARVIN_LITELLM_KEY:-sk-titan-${SECONDARY_AGENT_ID}-key}"
+    PRIMARY_KEY="${TERRASTELLA_LITELLM_KEY:-sk-brainsos-${PRIMARY_AGENT_ID}-key}"
+    SEC_KEY="${MARVIN_LITELLM_KEY:-sk-brainsos-${SECONDARY_AGENT_ID}-key}"
 
     # Issue concurrent health / models requests with different keys
     REQ1=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${PRIMARY_KEY}" "http://127.0.0.1:${LITELLM_PORT}/models" || echo "failed")

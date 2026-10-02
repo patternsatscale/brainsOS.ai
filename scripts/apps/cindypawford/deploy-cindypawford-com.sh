@@ -20,8 +20,8 @@ if [ -z "${REPO_ROOT}" ]; then
 fi
 ROOT_DIR="${REPO_ROOT}"
 
-INFRA_DIR="${ROOT_DIR}/apps/cindypawford/infra"
-SITE_DIR="${ROOT_DIR}/apps/cindypawford/site"
+INFRA_DIR="${ROOT_DIR}/data/agent_apps/cindypawford/pipeline"
+SITE_DIR="${ROOT_DIR}/data/agent_apps/cindypawford/site"
 PLATFORM_SHELL_SRC="${INFRA_DIR}/src/shell.js"
 STAGE="production"
 DRY_RUN=false

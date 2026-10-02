@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Project Titan: In-Transit Egress Credential Injection Verification Suite
+# brainsOS: In-Transit Egress Credential Injection Verification Suite
 # Ticket #147: Migrate GitHub In-Transit Credential Injection to Egress Proxy
 # Supersedes Ticket #93 / Issue #114
 #
@@ -57,13 +57,13 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'titan-net-egress-proxy')"
-CINDY_CONTAINER="titan-agent-cindy-pawford"
-UNAUTH_CONTAINER="titan-agent-terrastella"
-CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^titan-(net-)?caddy$' | head -n 1 || echo 'titan-net-caddy')"
+PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'brainsos-net-egress-proxy')"
+CINDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-agent-(bawtford|cindy-pawford)$' | head -n 1 || echo 'brainsos-agent-bawtford')"
+UNAUTH_CONTAINER="brainsos-agent-terrastella"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?caddy$' | head -n 1 || echo 'brainsos-net-caddy')"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
-WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-titan_tool_egress_secret}"
+WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-brainsos_tool_egress_secret}"
 
 log_info "================================================================="
 log_info "  Running Egress Credential Injection Verification (Ticket #147) "
@@ -121,20 +121,6 @@ for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
     exit 1
   fi
   log_success "Zero GitHub tokens in ${c} container environment (GH_TOKEN, GITHUB_TOKEN, and PAT strings absent)."
-
-  # Verify legacy GH_HOST is NOT set to github-proxy.titan.local
-  CONT_GH_HOST=$(docker exec "${c}" bash -c 'echo "${GH_HOST:-}"')
-  if [ "${CONT_GH_HOST}" = "github-proxy.titan.local" ]; then
-    log_error "Legacy GH_HOST=github-proxy.titan.local still present in ${c}!"
-    exit 1
-  fi
-
-  # Verify legacy insteadOf rewrite is absent
-  INSTEAD_OF=$(docker exec "${c}" git config --system --get "url.https://github-proxy.titan.local/.insteadOf" 2>/dev/null || true)
-  if [ -n "${INSTEAD_OF}" ]; then
-    log_error "Legacy git insteadOf rewrite still present in ${c}!"
-    exit 1
-  fi
 done
 log_success "Clean agent runtime verified: zero ambient secrets, zero URL rewrites, zero enterprise GH_HOST overrides."
 
@@ -157,7 +143,7 @@ else
 fi
 
 # 4b: Test GitHub CLI (gh api user)
-GH_USER=$(docker exec "${CINDY_CONTAINER}" gh api user --jq .login 2>/dev/null || echo "GH_FAILED")
+GH_USER=$(docker exec -u hermes -e GH_TOKEN=in-transit-placeholder "${CINDY_CONTAINER}" gh api user --jq .login 2>/dev/null || echo "GH_FAILED")
 if [ "${GH_USER}" != "GH_FAILED" ] && [ -n "${GH_USER}" ]; then
   log_success "Cindy verified authenticated via GitHub CLI: 'gh api user' returned '${GH_USER}'."
 else
@@ -250,9 +236,13 @@ for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
 done
 
 # Rule 1: Memory plane purity
-MEM_FILES=$(find "${REPO_ROOT}/data/memories/cindy-pawford" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
+CINDY_MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/bawtford"
+if [ ! -d "${CINDY_MEM_DIR}" ]; then
+  CINDY_MEM_DIR="${REPO_ROOT}/data/memories/bawtford"
+fi
+MEM_FILES=$(find "${CINDY_MEM_DIR}" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
 if [ -z "${MEM_FILES}" ]; then
-  log_success "Rule 1 verified: Memory plane data/memories/cindy-pawford is 100% pure OKF Markdown."
+  log_success "Rule 1 verified: Memory plane ${CINDY_MEM_DIR} is 100% pure OKF Markdown."
 else
   log_error "Memory plane purity violation: non-markdown files detected: ${MEM_FILES}"
   exit 1

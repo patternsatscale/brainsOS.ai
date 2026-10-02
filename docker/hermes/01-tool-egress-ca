@@ -2,7 +2,7 @@
 set -e
 
 # ==============================================================================
-# Project Titan: Tool Egress Proxy CA Trust Boot Hook
+# brainsOS: Tool Egress Proxy CA Trust Boot Hook
 # Automatically trusts mitmproxy's root certificate authority on boot
 # so curl, Python (requests, httpx, urllib), Node, etc. trust intercepted
 # outbound HTTPS traffic without disabling TLS verification.
