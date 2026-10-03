@@ -90,7 +90,8 @@ We reduced open issues from **99 to 46**, closing 53 stale, out-of-scope, or sup
   - **#23**: Consolidated into Idea #22.
 - **Relocations to `project_mJ`**:
   - **#105**: Relocated appliance deploy runner & webhook listener to `patternsatscale/project-mJ#17`.
-- **Idea Registry Issues in `Backlog / Future Research` (10 Active Ideas)**:
+- **Idea Registry Issues in `Backlog / Future Research` (11 Active Ideas)**:
+  - **#251**: `[Idea] AWS Cloud Deployment Topology & SST Infrastructure (Container Parity vs. Managed Services)`
   - **#250**: `[Idea] Windows Subsystem for Linux (WSL 2) Host Development Support`
   - **#249**: `[Idea] Deep Observability: Langfuse Telemetry for mitmproxy HTTPS Traffic & Guarded Console Commands`
   - **#248**: `[Idea] Central Data Services for Agents: Multi-Tenant SQL & Vector Stores with Ephemeral Token Injection`
@@ -124,6 +125,6 @@ find scripts -type f -name "*.sh" -exec bash -n {} +
 MVP v0.1 — Core Appliance & Unified Experience: 13 open issues
 v0.2 — Security & Sandboxing Hardening: 14 open issues
 v0.3 — Governance & ACSG Conformance: 8 open issues
-Backlog / Future Research: 10 open issues
-Total Open Issues in brainsOS.ai: 45
+Backlog / Future Research: 11 open issues
+Total Open Issues in brainsOS.ai: 46
 ```
