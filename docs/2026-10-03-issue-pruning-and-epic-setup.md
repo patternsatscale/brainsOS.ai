@@ -108,6 +108,18 @@ We reduced open issues from **99 to 46**, closing 53 stale, out-of-scope, or sup
   - Re-aligned issue **[#109](https://github.com/patternsatscale/brainsOS.ai/issues/109)** (`[Phase 4: Security] Remediate Live Process UID Checks & Cross-Tenant Storage Probes`) with the `bug` label and moved it to `Bugs / Defects`.
   - Codified the intake, reproduction, and mandatory regression gate in [`PLANNING.md`](file:///Users/pats/Development/brainsOS.ai/PLANNING.md) and [`PLAN.md`](file:///Users/pats/Development/brainsOS.ai/PLAN.md).
 
+### 7. Two-Tier Label Taxonomy & Default Tag Purge
+- **Unused Default GitHub Label Purge**:
+  - Purged 7 cluttering default labels across both `brainsOS.ai` and `project-mJ`: `accessibility`, `duplicate`, `good first issue`, `help wanted`, `invalid`, `question`, `wontfix`.
+- **Subsystem & Feature Labels Created**:
+  - Created 6 dedicated subsystem labels in `brainsOS.ai`: `portal` (`#1D76DB`), `system-view` (`#5319E7`), `comms` (`#0E8A16`), `agent-plane` (`#F9D0C4`), `memory` (`#D93F0B`), `control-plane` (`#C2E0C6`).
+- **Two-Tier Tagging Rollout**:
+  - Applied the two-tier tagging discipline across all 46 open issues in `brainsOS.ai`:
+    1. **Tier 1 (Work Type)**: Exactly one of `epic`, `feature`, `task`, `bug`, `idea`, or `docs`.
+    2. **Tier 2 (Subsystem/Domain)**: Multi-dimensional filters (`portal`, `system-view`, `agent-plane`, `control-plane`, `comms`, `memory`, `security`, `governance`, `infra`, `UI/UX`).
+- **Documentation Alignment**:
+  - Updated [`PLANNING.md`](file:///Users/pats/Development/brainsOS.ai/PLANNING.md), [`PLAN.md`](file:///Users/pats/Development/brainsOS.ai/PLAN.md), and [`AGENTS.md`](file:///Users/pats/Development/brainsOS.ai/AGENTS.md) in `brainsOS.ai` and `project_mJ` to eliminate obsolete `type:*` references and codify the Two-Tier Tagging discipline.
+
 ---
 
 ## Verification Results
@@ -124,7 +136,7 @@ find scripts -type f -name "*.sh" -exec bash -n {} +
 # (0 errors)
 ```
 
-### 3. Active GitHub Milestones
+### 3. Active GitHub Milestones & Label Count
 ```
 MVP v0.1 — Core Appliance & Unified Experience: 13 open issues
 v0.2 — Security & Sandboxing Hardening: 13 open issues
@@ -132,4 +144,7 @@ v0.3 — Governance & ACSG Conformance: 8 open issues
 Bugs / Defects: 1 open issue
 Backlog / Future Research: 11 open issues
 Total Open Issues in brainsOS.ai: 46
+Active Labels in brainsOS.ai: 16 (6 work types, 10 subsystems/domains)
+Active Labels in project-mJ: 12
 ```
+

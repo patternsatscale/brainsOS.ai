@@ -14,7 +14,7 @@
 ```
 - **💡 Ideas (`idea`)**: Lightweight concept captures registered in `Backlog / Future Research`. Low-friction, no heavy scoping required.
 - **📦 Epics (`epic`)**: Multi-day / multi-component parent containers tracking 3–5 atomic child deliverables via native GFM task lists (`- [ ] #123`).
-- **🔨 Sub-issues (`type:*`)**: Atomic, single-deliverable tasks executed strictly under [`AGENTS.md`](AGENTS.md) (branch `task/<id>-*`, test scripts, pre-commit review).
+- **🔨 Sub-issues (`feature`, `task`, `security`, `infra`)**: Atomic, single-deliverable tasks executed strictly under [`AGENTS.md`](AGENTS.md) (branch `task/<id>-*`, test scripts, pre-commit review).
 
 ### 2. Defect Track: Bugs / Defects
 ```text

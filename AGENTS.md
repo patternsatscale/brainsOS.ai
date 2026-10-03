@@ -127,11 +127,11 @@ To maintain high velocity and avoid hallucinated drift, agents must observe stri
 1. **Atomic Scoping**: An issue should define **one single verifiable deliverable** (typically 1–2 days of engineering). If a task requires more than 3-4 separate system modifications, break it down into an Epic and child sub-tickets per [PLANNING.md](PLANNING.md).
 2. **Zero Scope Creep**: If an agent discovers a tangential bug, an unhandled edge case, or a potential enhancement during execution:
    - **DO NOT** expand the current branch or ticket to fix it.
-   - **File a new GitHub Issue** labeled as `type:bug` or `type:task`, assign it to the appropriate active milestone, and if applicable add it to the parent Epic's tasklist per [PLANNING.md](PLANNING.md).
+   - **File a new GitHub Issue** labeled as `bug` or `task`, assign it to the appropriate active milestone, and if applicable add it to the parent Epic's tasklist per [PLANNING.md](PLANNING.md).
    - Complete the original ticket strictly against its published Acceptance Criteria.
 3. **Automated QA & Regression Backlog Promotion**: When delivering core architectural components, security boundaries, or infrastructure tickets, agents frequently validate critical guarantees through manual verification, ad-hoc shell commands, or isolation inspections:
    - **DO NOT** inflate the current deliverable's scope by building an entire automated regression harness or test suite unless the ticket explicitly calls for it.
-   - **DO** file a new GitHub Issue for the Backlog labeled as `type:task`, `type:security`, or `type:infra` (e.g., `[Phase X] Automated CI/CD Regression Test Suite & Security Boundary QA`).
+   - **DO** file a new GitHub Issue for the Backlog labeled with primary type (`task`) and domain tags (`security`, `infra`) (e.g., `[Phase X] Automated CI/CD Regression Test Suite & Security Boundary QA`).
    - **Required QA Ticket Content**:
      - **Context & Originating Tickets**: Reference previous tickets where boundaries and behaviors were established.
      - **Consolidated Test Cases**: Explicit checkboxes detailing functional and security assertions (e.g., container DNS isolation, hardware concurrency limits, unauthorized key rejection, dynamic model/key persistence across restarts, memory purity, file permission masks).

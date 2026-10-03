@@ -22,8 +22,8 @@ To eliminate ambiguity across agile planning and GitHub issue tracking, we defin
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Level 1** | **💡 Idea** | **The Spark.** An exploratory hypothesis or feature suggestion. Low-friction capture, unvetted, no strict specs. | GitHub Issue | `idea` in `Backlog / Future Research` | [`PLANNING.md`](PLANNING.md) §1 |
 | **Level 2** | **📦 Epic** | **The Container.** A multi-day initiative too large for one PR (1–3 weeks, touches multiple planes). **Never coded directly**. | Parent GitHub Issue with GFM checklist (`- [ ] #101`) | `epic` in Target Active Milestone | [`PLANNING.md`](PLANNING.md) §4 |
-| **Level 3** | **🎯 Feature** | **The Capability.** A cohesive unit of functional capability delivered to an operator or agent. | GitHub Issue | `type:feat` in Active Milestone | [`AGENTS.md`](AGENTS.md) |
-| **Level 4** | **🔨 Ticket / Task** | **The Work Order.** The atomic unit of engineering that **one agent/developer builds in one branch and one PR** (1–2 days max). | Numbered GitHub Issue (`#246`) | `type:feat`, `type:infra`, `type:security`, `type:task` | [`AGENTS.md`](AGENTS.md) |
+| **Level 3** | **🎯 Feature** | **The Capability.** A cohesive unit of functional capability delivered to an operator or agent. | GitHub Issue | `feature` in Active Milestone | [`AGENTS.md`](AGENTS.md) |
+| **Level 4** | **🔨 Ticket / Task** | **The Work Order.** The atomic unit of engineering that **one agent/developer builds in one branch and one PR** (1–2 days max). | Numbered GitHub Issue (`#246`) | `feature`, `infra`, `security`, `task` | [`AGENTS.md`](AGENTS.md) |
 | **Defect** | **🐛 Bug** | **The Flaw.** Broken invariant, crash, or test failure in existing code. Bypasses the Idea/Epic pipeline. | GitHub Issue | `bug` in `Bugs / Defects` | [`PLANNING.md`](PLANNING.md) §2 |
 
 ### Do Features Always Align to Epics?
@@ -32,8 +32,29 @@ To eliminate ambiguity across agile planning and GitHub issue tracking, we defin
 - **A Feature is a Functional Capability**. It is *what* the software does for the user or agent.
 
 **The Sizing Rule**:
-1. **Multi-Component Features (> 2 days of engineering)**: Become an **Epic** (`epic`), decomposed into 3–5 child tickets (some `type:feat`, some `type:infra`, some `type:security`, some `type:task`).
-2. **Standalone Features (≤ 2 days of engineering)**: Stand alone as a direct **Ticket** (`type:feat`) assigned to an active milestone. **Never create a 1-to-1 "single child" Epic**—forcing an Epic container for a 1-day feature is unnecessary overhead.
+1. **Multi-Component Features (> 2 days of engineering)**: Become an **Epic** (`epic`), decomposed into 3–5 child tickets (some `feature`, some `infra`, some `security`, some `task`).
+2. **Standalone Features (≤ 2 days of engineering)**: Stand alone as a direct **Ticket** (`feature`) assigned to an active milestone. **Never create a 1-to-1 "single child" Epic**—forcing an Epic container for a 1-day feature is unnecessary overhead.
+
+### The Two-Tier Label Taxonomy
+Every issue across BrainsOS is categorized under a clean, two-tier tagging discipline:
+1. **Tier 1: Primary Work Type** (Exactly one per issue):
+   - `epic`: Multi-day container issue coordinating child sub-tasks. Never worked on directly in code.
+   - `feature`: Delivers a new functional capability or operator-facing interface.
+   - `task`: Internal engineering work, test harnesses, refactoring, or CI pipelines.
+   - `bug`: Remediates a broken invariant, runtime regression, or defect.
+   - `idea`: Exploratory hypothesis or research proposal in `Backlog / Future Research`.
+   - `docs`: Pure architecture guides, specifications, or static documentation.
+2. **Tier 2: Subsystem & Domain Tags** (Applied as applicable to enable multi-dimensional filtering):
+   - `portal`: Unified Portal, Dashy dashboard, Authentik SSO & Caddy ingress.
+   - `system-view`: System View telemetry daemon, shell, safety command bar & fleet UI.
+   - `agent-plane`: Stateless agent runners, Hermes WebUI & container execution sandbox.
+   - `control-plane`: LiteLLM gateway, Ollama inference & model registry.
+   - `comms`: Inter-agent messaging, Dead-Letter Queues (DLQ) & messaging gateways.
+   - `memory`: Open Knowledge Format (OKF) Markdown memories, purity & snapshots.
+   - `security`: Security-related vulnerabilities, circuit breakers, sandboxing and access controls.
+   - `governance`: AI Agentic Governance and Safety Controls (AGSC conformance, attestations).
+   - `infra`: Infrastructure, Docker container definitions & network topology.
+   - `UI/UX`: User Interface and User Experience improvements.
 
 ### Standardized Issue Title Formatting
 Every issue title must strictly adhere to the bracketed prefix standard for instant scannability:
@@ -72,7 +93,7 @@ During a planning session (`/plan`):
 1. **Filter & Select**: Review open issues labeled `idea` in `Backlog / Future Research`.
 2. **Sizing & Scoping**:
    - **Multi-component / Complex**: Promote to an **Epic** per §4, decomposing into 3–5 atomic child sub-issues.
-   - **Single Atomic Task**: If the idea is actually a small, discrete 1-day fix or tweak, convert it directly to an atomic task issue (`type:feat` or `type:task`) and assign to an active milestone.
+   - **Single Atomic Task**: If the idea is actually a small, discrete 1-day fix or tweak, convert it directly to an atomic task issue (`feature` or `task`) and assign to an active milestone.
 3. **Traceability & Retirement**:
    - In the new Epic's description, explicitly reference the origin: `Promoted from Idea #<id>`.
    - Close the originating Idea issue as `completed` with an explanatory comment:
