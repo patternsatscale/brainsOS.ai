@@ -40,9 +40,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/terrastella"
+      path: "agent_memories/terrastella"
     workspace:
-      path: "./data/agent_workspaces/terrastella"
+      path: "agent_workspaces/terrastella"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -93,9 +93,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/marvin"
+      path: "agent_memories/marvin"
     workspace:
-      path: "./data/agent_workspaces/marvin"
+      path: "agent_workspaces/marvin"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -192,10 +192,10 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/bawtford"
+      path: "agent_memories/bawtford"
     workspace:
-      path: "./data/agent_workspaces/bawtford"
-      site_path: "./data/agent_apps/cindypawford/site"
+      path: "agent_workspaces/bawtford"
+      site_path: "agent_apps/cindypawford/site"
       canvas_mount: "/app/html"
       repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
       protected_paths:
@@ -241,9 +241,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/ping"
+      path: "agent_memories/ping"
     workspace:
-      path: "./data/agent_workspaces/ping"
+      path: "agent_workspaces/ping"
 
   # ----------------------------------------------------------------------------
   # Agent Unit: Claude Demo Agent - Tells jokes about Claude
@@ -268,9 +268,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/claude"
+      path: "agent_memories/claude"
     workspace:
-      path: "./data/agent_workspaces/claude"
+      path: "agent_workspaces/claude"
 
   # ----------------------------------------------------------------------------
   # Agent Unit: GPT Demo Agent - Tells jokes about Sam Altman
@@ -295,8 +295,8 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "./data/agent_memories/gpt"
+      path: "agent_memories/gpt"
     workspace:
-      path: "./data/agent_workspaces/gpt"
+      path: "agent_workspaces/gpt"
 
 

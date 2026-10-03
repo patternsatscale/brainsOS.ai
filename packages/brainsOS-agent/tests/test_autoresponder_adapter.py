@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from brainsos_agent.adapters import AutoResponderAdapter, HermesMailAdapter, get_runtime_adapter
+from brainsos_agent.adapters import AutoResponderAdapter, RunnerMailAdapter, get_runtime_adapter
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile
 from brainsos_mail.models import ParsedInboundEmail
@@ -96,8 +96,8 @@ class TestAutoResponderAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(get_runtime_adapter("echo"), AutoResponderAdapter)
         self.assertIsInstance(get_runtime_adapter("ping"), AutoResponderAdapter)
         self.assertIsInstance(get_runtime_adapter("dummy"), AutoResponderAdapter)
-        self.assertIsInstance(get_runtime_adapter("hermes"), HermesMailAdapter)
-        self.assertIsInstance(get_runtime_adapter(None), HermesMailAdapter)
+        self.assertIsInstance(get_runtime_adapter("hermes"), RunnerMailAdapter)
+        self.assertIsInstance(get_runtime_adapter(None), RunnerMailAdapter)
 
         with self.assertRaises(ValueError):
             get_runtime_adapter("unsupported_fake_runtime")

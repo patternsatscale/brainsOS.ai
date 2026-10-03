@@ -98,3 +98,4 @@ Thumbs.db
 # Local Automation & Skills (Host-Local Only)
 local-cron/
 scripts/local-cron/
+issues_dump.json
