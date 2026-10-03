@@ -77,6 +77,29 @@ We reduced open issues from **99 to 46**, closing 53 stale, out-of-scope, or sup
   - Added regression test `test_decoupled_manifest_path_resolution_issue_243` in `packages/brainsOS-agent/tests/test_config.py`.
   - Closed issue #243 and checked off in Epic #247.
 
+### 5. Backlog Grooming & Idea Registry Establishment (`Ideas ➔ Epics ➔ Sub-issues`)
+- **The Core Maturation Flow**:
+  Formally codified the 3-tier hierarchy in [`PLANNING.md`](file:///Users/pats/Development/brainsOS.ai/PLANNING.md) and [`PLAN.md`](file:///Users/pats/Development/brainsOS.ai/PLAN.md):
+  `💡 Ideas (Backlog)` ➔ `📦 Epics (Active Milestones)` ➔ `🔨 Sub-issues (Execution via AGENTS.md)`
+- **`idea` Label**: Created `#FBCA04` (warm gold) on both `patternsatscale/brainsOS.ai` and `patternsatscale/project-mJ`.
+- **Redundancy Closures (5 Issues Closed)**:
+  - **#167**: Closed (implemented by Epic #206 Autoresponder).
+  - **#15**: Closed (handled by `brainsOS-queue` and worker daemons).
+  - **#86**: Consolidated into Idea #85.
+  - **#83**: Consolidated into Idea #82.
+  - **#23**: Consolidated into Idea #22.
+- **Relocations to `project_mJ`**:
+  - **#105**: Relocated appliance deploy runner & webhook listener to `patternsatscale/project-mJ#17`.
+- **Idea Registry Issues in `Backlog / Future Research` (7 Active Ideas)**:
+  - **#163**: `[Idea] AI Communications Gateway: Ingest Telegram / Signal Messages & Bridge to Agent Email`
+  - **#85**: `[Idea] Dual Inference Engines: Compare vLLM vs. Ollama with Langfuse Telemetry Benchmarks`
+  - **#82**: `[Idea] Multi-Runner Architecture: Support & Compare OpenHands, OpenClaw, and Hermes Runners`
+  - **#27**: `[Idea] Vector Database Memory Acceleration: Semantic Retrieval Layer in Front of OKF Markdown Memories`
+  - **#22**: `[Idea] Frontier Model Consultants: Gated Consultation Protocol for Complex Architectural Inquiries`
+  - **#14**: `[Idea] Fleetwide Skills Registry: Shared & Discoverable Skill Catalog for All Agents`
+  - **#13**: `[Idea] Audio Plane: Host Whisper STT & Kokoro TTS via LiteLLM`
+- **Milestone Hygiene**: Closed empty milestones #16 and #17.
+
 ---
 
 ## Verification Results
@@ -98,5 +121,6 @@ find scripts -type f -name "*.sh" -exec bash -n {} +
 MVP v0.1 — Core Appliance & Unified Experience: 13 open issues
 v0.2 — Security & Sandboxing Hardening: 14 open issues
 v0.3 — Governance & ACSG Conformance: 8 open issues
-Backlog / Future Research: 13 open issues
+Backlog / Future Research: 7 open issues
+Total Open Issues in brainsOS.ai: 42
 ```
