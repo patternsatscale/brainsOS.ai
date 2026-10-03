@@ -90,7 +90,9 @@ We reduced open issues from **99 to 46**, closing 53 stale, out-of-scope, or sup
   - **#23**: Consolidated into Idea #22.
 - **Relocations to `project_mJ`**:
   - **#105**: Relocated appliance deploy runner & webhook listener to `patternsatscale/project-mJ#17`.
-- **Idea Registry Issues in `Backlog / Future Research` (7 Active Ideas)**:
+- **Idea Registry Issues in `Backlog / Future Research` (9 Active Ideas)**:
+  - **#249**: `[Idea] Deep Observability: Langfuse Telemetry for mitmproxy HTTPS Traffic & Guarded Console Commands`
+  - **#248**: `[Idea] Central Data Services for Agents: Multi-Tenant SQL & Vector Stores with Ephemeral Token Injection`
   - **#163**: `[Idea] AI Communications Gateway: Ingest Telegram / Signal Messages & Bridge to Agent Email`
   - **#85**: `[Idea] Dual Inference Engines: Compare vLLM vs. Ollama with Langfuse Telemetry Benchmarks`
   - **#82**: `[Idea] Multi-Runner Architecture: Support & Compare OpenHands, OpenClaw, and Hermes Runners`
@@ -121,6 +123,6 @@ find scripts -type f -name "*.sh" -exec bash -n {} +
 MVP v0.1 — Core Appliance & Unified Experience: 13 open issues
 v0.2 — Security & Sandboxing Hardening: 14 open issues
 v0.3 — Governance & ACSG Conformance: 8 open issues
-Backlog / Future Research: 7 open issues
-Total Open Issues in brainsOS.ai: 42
+Backlog / Future Research: 9 open issues
+Total Open Issues in brainsOS.ai: 44
 ```
