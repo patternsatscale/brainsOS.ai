@@ -102,7 +102,11 @@ We reduced open issues from **99 to 46**, closing 53 stale, out-of-scope, or sup
   - **#22**: `[Idea] Frontier Model Consultants: Gated Consultation Protocol for Complex Architectural Inquiries`
   - **#14**: `[Idea] Fleetwide Skills Registry: Shared & Discoverable Skill Catalog for All Agents`
   - **#13**: `[Idea] Audio Plane: Host Whisper STT & Kokoro TTS via LiteLLM`
-- **Milestone Hygiene**: Closed empty milestones #16 and #17.
+### 6. Bug & Defect Protocol Establishment (`🐛 Bugs / Defects`)
+- **Dedicated Milestone**: Reopened and configured milestone **`Bugs / Defects`** across both `patternsatscale/brainsOS.ai` and `patternsatscale/project-mJ`.
+- **Bug Tagging & Triage**:
+  - Re-aligned issue **[#109](https://github.com/patternsatscale/brainsOS.ai/issues/109)** (`[Phase 4: Security] Remediate Live Process UID Checks & Cross-Tenant Storage Probes`) with the `bug` label and moved it to `Bugs / Defects`.
+  - Codified the intake, reproduction, and mandatory regression gate in [`PLANNING.md`](file:///Users/pats/Development/brainsOS.ai/PLANNING.md) and [`PLAN.md`](file:///Users/pats/Development/brainsOS.ai/PLAN.md).
 
 ---
 
@@ -123,8 +127,9 @@ find scripts -type f -name "*.sh" -exec bash -n {} +
 ### 3. Active GitHub Milestones
 ```
 MVP v0.1 — Core Appliance & Unified Experience: 13 open issues
-v0.2 — Security & Sandboxing Hardening: 14 open issues
+v0.2 — Security & Sandboxing Hardening: 13 open issues
 v0.3 — Governance & ACSG Conformance: 8 open issues
+Bugs / Defects: 1 open issue
 Backlog / Future Research: 11 open issues
 Total Open Issues in brainsOS.ai: 46
 ```

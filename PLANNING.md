@@ -67,7 +67,7 @@ Anyone (developer, user, or agent) can register an idea without writing detailed
 During a planning session (`/plan`):
 1. **Filter & Select**: Review open issues labeled `idea` in `Backlog / Future Research`.
 2. **Sizing & Scoping**:
-   - **Multi-component / Complex**: Promote to an **Epic** per §3, decomposing into 3–5 atomic child sub-issues.
+   - **Multi-component / Complex**: Promote to an **Epic** per §4, decomposing into 3–5 atomic child sub-issues.
    - **Single Atomic Task**: If the idea is actually a small, discrete 1-day fix or tweak, convert it directly to an atomic task issue (`type:feat` or `type:task`) and assign to an active milestone.
 3. **Traceability & Retirement**:
    - In the new Epic's description, explicitly reference the origin: `Promoted from Idea #<id>`.
@@ -80,7 +80,39 @@ During a planning session (`/plan`):
 
 ---
 
-## 2. The Planning Session Lifecycle (`/plan`)
+## 2. The Bug & Defect Protocol (`🐛 Bugs / Defects`)
+
+To maintain high code quality and isolate functional regressions from forward-looking roadmap feature work, all unexpected defects, runtime crashes, and assertion failures must be cataloged in a dedicated milestone:
+
+### 1. Bug Intake & Triage
+Whenever a bug or regression is discovered (during local development, CI runs, production appliance operations, or while executing another ticket per [`AGENTS.md`](AGENTS.md)):
+- **Label**: Add the `bug` label (`#d73a4a`).
+- **Milestone**: Assign to **`Bugs / Defects`**.
+- **Structured Bug Report Format**:
+  ```markdown
+  ## 🐛 Defect Overview
+  Concise summary of the broken behavior vs. expected behavior.
+
+  ## 🔁 Steps to Reproduce
+  1. Exact command or interaction sequence...
+  2. Observed output or failure log.
+
+  ## 🔍 Suspected Root Cause & Files
+  Candidate scripts, configs, or package files involved (e.g. `scripts/verify/verify-fleet.sh`, `packages/brainsOS-agent/`).
+
+  ## ✅ Acceptance Criteria & Regression Assertion
+  - [ ] Fix the defect in target code/scripts.
+  - [ ] Add an automated regression assertion in `pytest` or `scripts/verify/*.sh` asserting the fix.
+  ```
+
+### 2. Bug Resolution & Promotion Lifecycle
+- **Critical / Blocker Bugs (P0)**: If a bug blocks core appliance startup, crashes the LiteLLM control plane, breaches security sandboxes (Rule 4), or corrupts memory plane purity (Rule 1), fast-track it immediately into the active milestone (e.g. `MVP v0.1`) or hotfix via `task/<id>-fix-<desc>` following [`AGENTS.md`](AGENTS.md).
+- **Non-Blocking Defects**: Remain organized under `Bugs / Defects` until prioritized into an active sprint or hardening milestone (e.g. `v0.2 — Security & Sandboxing Hardening`).
+- **Mandatory Regression Gate**: A bug ticket may **never** be closed without a passing regression test or verification script proving the issue cannot recur.
+
+---
+
+## 3. The Planning Session Lifecycle (`/plan`)
 
 Every major architecture shift, multi-ticket initiative, or backlog cleanup begins with a formal planning session triggered by the user (typically via `/plan`). 
 
@@ -119,7 +151,7 @@ Before creating issues or drafting architecture, route every concept to its cano
   - Experimental lab documentation, slide decks, and persona critiques (`docs/lab-work/`).
 
 ### Stage 3: The 3-Step GitHub-Native Epic Standard
-All multi-ticket initiatives must strictly adhere to the 3-step Epic standard detailed in §3.
+All multi-ticket initiatives must strictly adhere to the 3-step Epic standard detailed in §4.
 
 ### Stage 4: Milestone & Roadmap Alignment
 Assign every new issue and epic to an active milestone. Never leave issues floating in a "No Milestone" state.
@@ -134,7 +166,7 @@ Draft a detailed plan artifact (`<plan_name>.md`) with:
 
 ---
 
-## 3. The 3-Step GitHub-Native Epic Standard
+## 4. The 3-Step GitHub-Native Epic Standard
 
 To maintain clean project tracking without requiring third-party plugins (ZenHub, Jira), we leverage GitHub's native task lists and project features:
 
@@ -173,7 +205,7 @@ On the repository or organization GitHub Projects board:
 
 ---
 
-## 4. Atomic Scoping & Epic Sizing Heuristics
+## 5. Atomic Scoping & Epic Sizing Heuristics
 
 To prevent bloated, unmaintainable "mega-epics", agents and developers must observe strict sizing boundaries:
 
@@ -191,12 +223,17 @@ To prevent bloated, unmaintainable "mega-epics", agents and developers must obse
 
 ---
 
-## 5. Backlog Hygiene & Issue Pruning Protocol
+## 6. Backlog Hygiene & Issue Pruning Protocol
 
 Unmanaged issue trackers accumulate technical debt and hallucinated requirements. We enforce proactive backlog hygiene:
 
 ### 1. Milestone Auditing
-- Maintain a small set of focused, active milestones (e.g. `MVP v0.1`, `v0.2 Security`, `v0.3 Governance`, `Backlog / Future Research`).
+- Maintain a small set of focused, active milestones:
+  - `MVP v0.1 — Core Appliance & Unified Experience`
+  - `v0.2 — Security & Sandboxing Hardening`
+  - `v0.3 — Governance & ACSG Conformance`
+  - `Bugs / Defects` (Active bug and regression tracking)
+  - `Backlog / Future Research` (Idea Registry)
 - **Zero Unassigned Issues**: Every open issue must be assigned to an active milestone.
 - When all issues in a milestone are completed, close the milestone immediately.
 
@@ -212,12 +249,12 @@ During planning sessions, aggressively prune the backlog:
 ### 3. Tangential Discovery Discipline
 If an agent discovers an unexpected bug or enhancement while working on a ticket:
 - **Never expand the current ticket's scope**.
-- File a new GitHub Issue assigned to the appropriate milestone.
+- File a new GitHub Issue labeled `bug` assigned to `Bugs / Defects` (or appropriate milestone).
 - If it relates to an active Epic, add it to the parent Epic's GFM task checklist.
 
 ---
 
-## 6. Initiating a Planning Conversation (Quick Reference)
+## 7. Initiating a Planning Conversation (Quick Reference)
 
 When starting a strategic discussion or roadmap refinement, prompt the agent with:
 
@@ -226,7 +263,7 @@ When starting a strategic discussion or roadmap refinement, prompt the agent wit
 ```
 
 The agent will automatically:
-1. Audit existing issues, ideas in backlog, and code parity.
+1. Audit existing issues, bugs in `Bugs / Defects`, ideas in backlog, and code parity.
 2. Route components to `brainsOS.ai` or `project_mJ`.
 3. Groom Ideas into candidate Epics following the 3-step standard.
 4. Provide a structured plan artifact for human approval before creating issues.
