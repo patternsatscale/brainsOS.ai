@@ -6,16 +6,81 @@ While [`AGENTS.md`](AGENTS.md) governs the **execution lifecycle** of individual
 
 ---
 
-## 0. The Division of Discipline
+## 0. The Division of Discipline & The Product Hierarchy
 
+### The Division of Discipline
 | Concern | Authoritative Document | Focus Area |
 | :--- | :--- | :--- |
 | **Execution Discipline** | [`AGENTS.md`](AGENTS.md) | Branching policy, script-first validation, walkthrough documents, pre-commit review gates, code quality, and operational safety guardrails. |
 | **Strategic Planning Discipline** | [`PLANNING.md`](PLANNING.md) | Architectural roadmap, backlog pruning, two-repository routing, 3-step GitHub-native Epics, and milestone management. |
 
+### The Core Flow: Ideas ➔ Epics ➔ Sub-issues
+
+Every unit of work across BrainsOS flows through three distinct maturation tiers:
+
+```mermaid
+flowchart LR
+    A["💡 1. Idea\n(Registry: 'idea'\n'Backlog / Future Research')"] -->|Grooming & Sizing\nvia /plan| B["📦 2. Epic\n(Container: 'epic'\nTarget Active Milestone)"]
+    B -->|Decomposition\n3-5 Tasks| C["🔨 3. Sub-Issues\n(Atomic: 'type:*'\nTarget Active Milestone)"]
+    C -->|AGENTS.md Workflow\nBranch -> Test -> PR| D["✅ Shipped"]
+```
+
+1. **💡 Idea (Backlog Registry)**:
+   - **Label**: `idea` (`#FBCA04`)
+   - **Milestone**: `Backlog / Future Research`
+   - **Definition**: Lightweight, single-issue capture. Holds an exploratory hypothesis, feature suggestion, or research concept without requiring heavy engineering specifications or acceptance checklists.
+2. **📦 Epic (Parent Issue Container)**:
+   - **Label**: `epic` (`#3E1C87`)
+   - **Milestone**: Active Roadmap (e.g. `MVP v0.1`, `v0.2`, `v0.3`)
+   - **Definition**: Multi-day or multi-component parent initiative tracking 3–5 atomic child deliverables via native GFM task checklist (`- [ ] #123`). Promoted from an Idea during `/plan` grooming sessions.
+3. **🔨 Sub-Issues / Tasks (Atomic Deliverables)**:
+   - **Labels**: Domain-specific (`type:feat`, `type:infra`, `type:security`, `type:task`, etc.)
+   - **Milestone**: Inherited from Parent Epic
+   - **Definition**: 1–2 days of engineering, single verifiable deliverable, executed strictly under [`AGENTS.md`](AGENTS.md) (branch `task/<id>-*`, script testing, walkthrough, pre-commit gate).
+
 ---
 
-## 1. The Planning Session Lifecycle (`/plan`)
+## 1. The Idea Registry Protocol (`💡 Ideas`)
+
+To prevent innovative concepts from being lost while avoiding premature over-engineering, we maintain a lightweight **Idea Registry** in GitHub Issues:
+
+### 1. Capturing an Idea (Low-Friction)
+Anyone (developer, user, or agent) can register an idea without writing detailed acceptance criteria:
+- **Label**: Add the `idea` label.
+- **Milestone**: Assign to `Backlog / Future Research`.
+- **Lightweight Structure**:
+  ```markdown
+  ## 💡 Concept & Inspiration
+  Brief explanation of the problem, spark, or opportunity.
+
+  ## 🧭 Rough Shape & Hypothesis
+  High-level direction or proposed approach (bullet points, not full specs).
+
+  ## 🔍 Potential Touchpoints
+  Planes, packages, or containers likely affected (e.g. LiteLLM, Caddy, Hermes, memories).
+
+  ## 🚀 Triggers for Promotion
+  What conditions, user needs, or dependencies would justify promoting this to an active Epic?
+  ```
+
+### 2. The Promotion Flow (`Ideas` ➔ `Epics`)
+During a planning session (`/plan`):
+1. **Filter & Select**: Review open issues labeled `idea` in `Backlog / Future Research`.
+2. **Sizing & Scoping**:
+   - **Multi-component / Complex**: Promote to an **Epic** per §3, decomposing into 3–5 atomic child sub-issues.
+   - **Single Atomic Task**: If the idea is actually a small, discrete 1-day fix or tweak, convert it directly to an atomic task issue (`type:feat` or `type:task`) and assign to an active milestone.
+3. **Traceability & Retirement**:
+   - In the new Epic's description, explicitly reference the origin: `Promoted from Idea #<id>`.
+   - Close the originating Idea issue as `completed` with an explanatory comment:
+     ```markdown
+     > 💡 **Idea Promoted**: Promoted to Epic #<epic_number> (<epic_title>). 
+     > Tracking execution under active milestone '<milestone_name>'.
+     ```
+   - This keeps `Backlog / Future Research` clean while preserving an immutable historical audit trail.
+
+---
+
+## 2. The Planning Session Lifecycle (`/plan`)
 
 Every major architecture shift, multi-ticket initiative, or backlog cleanup begins with a formal planning session triggered by the user (typically via `/plan`). 
 
@@ -24,7 +89,7 @@ AI agents executing a planning session must follow this 5-stage lifecycle:
 ```mermaid
 flowchart TD
     A["Stage 1: Context Audit\n(Dump issues, inspect branches & filesystem)"] --> B["Stage 2: Repository Routing\n(brainsOS.ai vs project_mJ)"]
-    B --> C["Stage 3: Epic Decomposition\n(3-Step GitHub-Native Standard)"]
+    B --> C["Stage 3: Idea Grooming & Epic Decomposition\n(Ideas -> Epics via 3-Step Standard)"]
     C --> D["Stage 4: Roadmap & Milestone Alignment\n(Assign active milestones)"]
     D --> E["Stage 5: Implementation Plan Artifact\n(Detailed Markdown plan with user review gate)"]
     E --> F{"User Approval?"}
@@ -54,7 +119,7 @@ Before creating issues or drafting architecture, route every concept to its cano
   - Experimental lab documentation, slide decks, and persona critiques (`docs/lab-work/`).
 
 ### Stage 3: The 3-Step GitHub-Native Epic Standard
-All multi-ticket initiatives must strictly adhere to the 3-step Epic standard detailed in §2.
+All multi-ticket initiatives must strictly adhere to the 3-step Epic standard detailed in §3.
 
 ### Stage 4: Milestone & Roadmap Alignment
 Assign every new issue and epic to an active milestone. Never leave issues floating in a "No Milestone" state.
@@ -69,7 +134,7 @@ Draft a detailed plan artifact (`<plan_name>.md`) with:
 
 ---
 
-## 2. The 3-Step GitHub-Native Epic Standard
+## 3. The 3-Step GitHub-Native Epic Standard
 
 To maintain clean project tracking without requiring third-party plugins (ZenHub, Jira), we leverage GitHub's native task lists and project features:
 
@@ -108,7 +173,7 @@ On the repository or organization GitHub Projects board:
 
 ---
 
-## 3. Atomic Scoping & Epic Sizing Heuristics
+## 4. Atomic Scoping & Epic Sizing Heuristics
 
 To prevent bloated, unmaintainable "mega-epics", agents and developers must observe strict sizing boundaries:
 
@@ -126,7 +191,7 @@ To prevent bloated, unmaintainable "mega-epics", agents and developers must obse
 
 ---
 
-## 4. Backlog Hygiene & Issue Pruning Protocol
+## 5. Backlog Hygiene & Issue Pruning Protocol
 
 Unmanaged issue trackers accumulate technical debt and hallucinated requirements. We enforce proactive backlog hygiene:
 
@@ -152,7 +217,7 @@ If an agent discovers an unexpected bug or enhancement while working on a ticket
 
 ---
 
-## 5. Initiating a Planning Conversation (Quick Reference)
+## 6. Initiating a Planning Conversation (Quick Reference)
 
 When starting a strategic discussion or roadmap refinement, prompt the agent with:
 
@@ -161,7 +226,7 @@ When starting a strategic discussion or roadmap refinement, prompt the agent wit
 ```
 
 The agent will automatically:
-1. Audit existing issues and code parity.
+1. Audit existing issues, ideas in backlog, and code parity.
 2. Route components to `brainsOS.ai` or `project_mJ`.
-3. Propose decomposed Epics following the 3-step standard.
+3. Groom Ideas into candidate Epics following the 3-step standard.
 4. Provide a structured plan artifact for human approval before creating issues.
