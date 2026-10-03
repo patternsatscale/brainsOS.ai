@@ -14,29 +14,33 @@ While [`AGENTS.md`](AGENTS.md) governs the **execution lifecycle** of individual
 | **Execution Discipline** | [`AGENTS.md`](AGENTS.md) | Branching policy, script-first validation, walkthrough documents, pre-commit review gates, code quality, and operational safety guardrails. |
 | **Strategic Planning Discipline** | [`PLANNING.md`](PLANNING.md) | Architectural roadmap, backlog pruning, two-repository routing, 3-step GitHub-native Epics, and milestone management. |
 
-### The Core Flow: Ideas ➔ Epics ➔ Sub-issues
+### The Core Taxonomy: Ideas, Epics, Features, and Tickets
 
-Every unit of work across BrainsOS flows through three distinct maturation tiers:
+To eliminate ambiguity across agile planning and GitHub issue tracking, we define distinct roles for each concept:
 
-```mermaid
-flowchart LR
-    A["💡 1. Idea\n(Registry: 'idea'\n'Backlog / Future Research')"] -->|Grooming & Sizing\nvia /plan| B["📦 2. Epic\n(Container: 'epic'\nTarget Active Milestone)"]
-    B -->|Decomposition\n3-5 Tasks| C["🔨 3. Sub-Issues\n(Atomic: 'type:*'\nTarget Active Milestone)"]
-    C -->|AGENTS.md Workflow\nBranch -> Test -> PR| D["✅ Shipped"]
-```
+| Level | Concept | What It Represents | GitHub Primitive | Label & Milestone | Governed By |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Level 1** | **💡 Idea** | **The Spark.** An exploratory hypothesis or feature suggestion. Low-friction capture, unvetted, no strict specs. | GitHub Issue | `idea` in `Backlog / Future Research` | [`PLANNING.md`](PLANNING.md) §1 |
+| **Level 2** | **📦 Epic** | **The Container.** A multi-day initiative too large for one PR (1–3 weeks, touches multiple planes). **Never coded directly**. | Parent GitHub Issue with GFM checklist (`- [ ] #101`) | `epic` in Target Active Milestone | [`PLANNING.md`](PLANNING.md) §4 |
+| **Level 3** | **🎯 Feature** | **The Capability.** A cohesive unit of functional capability delivered to an operator or agent. | GitHub Issue | `type:feat` in Active Milestone | [`AGENTS.md`](AGENTS.md) |
+| **Level 4** | **🔨 Ticket / Task** | **The Work Order.** The atomic unit of engineering that **one agent/developer builds in one branch and one PR** (1–2 days max). | Numbered GitHub Issue (`#246`) | `type:feat`, `type:infra`, `type:security`, `type:task` | [`AGENTS.md`](AGENTS.md) |
+| **Defect** | **🐛 Bug** | **The Flaw.** Broken invariant, crash, or test failure in existing code. Bypasses the Idea/Epic pipeline. | GitHub Issue | `bug` in `Bugs / Defects` | [`PLANNING.md`](PLANNING.md) §2 |
 
-1. **💡 Idea (Backlog Registry)**:
-   - **Label**: `idea` (`#FBCA04`)
-   - **Milestone**: `Backlog / Future Research`
-   - **Definition**: Lightweight, single-issue capture. Holds an exploratory hypothesis, feature suggestion, or research concept without requiring heavy engineering specifications or acceptance checklists.
-2. **📦 Epic (Parent Issue Container)**:
-   - **Label**: `epic` (`#3E1C87`)
-   - **Milestone**: Active Roadmap (e.g. `MVP v0.1`, `v0.2`, `v0.3`)
-   - **Definition**: Multi-day or multi-component parent initiative tracking 3–5 atomic child deliverables via native GFM task checklist (`- [ ] #123`). Promoted from an Idea during `/plan` grooming sessions.
-3. **🔨 Sub-Issues / Tasks (Atomic Deliverables)**:
-   - **Labels**: Domain-specific (`type:feat`, `type:infra`, `type:security`, `type:task`, etc.)
-   - **Milestone**: Inherited from Parent Epic
-   - **Definition**: 1–2 days of engineering, single verifiable deliverable, executed strictly under [`AGENTS.md`](AGENTS.md) (branch `task/<id>-*`, script testing, walkthrough, pre-commit gate).
+### Do Features Always Align to Epics?
+**No. Epics and Features are different concepts:**
+- **An Epic is a Container**. It exists *only* when an initiative is too large for a single pull request and requires multi-step coordination across planes (e.g. portal UI + OAuth proxy + container networks).
+- **A Feature is a Functional Capability**. It is *what* the software does for the user or agent.
+
+**The Sizing Rule**:
+1. **Multi-Component Features (> 2 days of engineering)**: Become an **Epic** (`epic`), decomposed into 3–5 child tickets (some `type:feat`, some `type:infra`, some `type:security`, some `type:task`).
+2. **Standalone Features (≤ 2 days of engineering)**: Stand alone as a direct **Ticket** (`type:feat`) assigned to an active milestone. **Never create a 1-to-1 "single child" Epic**—forcing an Epic container for a 1-day feature is unnecessary overhead.
+
+### Standardized Issue Title Formatting
+Every issue title must strictly adhere to the bracketed prefix standard for instant scannability:
+- **Epics**: `[Epic] <Concise Title>` *(e.g. `[Epic] BrainsOS System View & Fleet Operations Dashboard`)*
+- **Ideas**: `[Idea] <Exploratory Title>` *(e.g. `[Idea] AWS Cloud Deployment Topology & SST Infrastructure`)*
+- **Bugs**: `[Bug / <Domain>] <Defect Remediation Title>` *(e.g. `[Bug / Security] Remediate Live Process UID Checks in Verification Scripts`)*
+- **Tickets (Features & Tasks)**: `[<Domain> / <Sub-domain>] <Action-Oriented Title>` *(e.g. `[System View / API] System Telemetry & Fleet Control API Daemon`)*
 
 ---
 
