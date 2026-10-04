@@ -9,13 +9,14 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test
+.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
 	@echo "  make setup          - Bootstrap environment (.env, data dirs, venv, packages)"
+	@echo "  make skills         - Synchronize default and data plane skills to .agents/skills and bundled package"
 	@echo "  make env            - Generate .env with secure passwords, configure URLs, and rebuild"
 	@echo "  make reload_env     - Reload .env, synchronize passwords across DBs/containers, and show URLs"
 	@echo "  make urls           - Display all service URLs & credentials, and synchronize /etc/hosts"
@@ -103,3 +104,18 @@ backup:
 
 restore:
 	@scripts/control/backup.sh --restore $(if $(ARCHIVE),$(ARCHIVE),latest)
+
+skills: skills-sync
+
+skills-sync:
+	@if [ -x "$(VENV_DIR)/bin/brainsos-skills" ]; then \
+		$(VENV_DIR)/bin/brainsos-skills sync --repo . --target .agents/skills; \
+	elif command -v brainsos-skills >/dev/null 2>&1; then \
+		brainsos-skills sync --repo . --target .agents/skills; \
+	elif [ -d "config/default_skills" ]; then \
+		mkdir -p .agents/skills; \
+		cp -R config/default_skills/* .agents/skills/ 2>/dev/null || true; \
+	fi
+	@mkdir -p packages/brainsOS-skills/brainsos_skills/bundled
+	@cp -R config/default_skills/* packages/brainsOS-skills/brainsos_skills/bundled/ 2>/dev/null || true
+	@echo "⚡ Skills synchronized to .agents/skills and brainsOS-skills bundled package!"

@@ -113,13 +113,22 @@ def load_hierarchical_skills(
     return registry
 
 
-def sync_skills_to_workspace(registry: SkillRegistry, target_dir: Path) -> List[Path]:
+def sync_skills_to_workspace(registry: SkillRegistry, target_dir: Path, clean_orphans: bool = True) -> List[Path]:
     """
     Export all skills in the registry to standard Antigravity workspace folders:
     <target_dir>/<skill_name>/SKILL.md
     """
+    import shutil
+
     written_files: List[Path] = []
     target_dir.mkdir(parents=True, exist_ok=True)
+
+    active_names = {skill.name for skill in registry.list_all()}
+
+    if clean_orphans:
+        for child in target_dir.iterdir():
+            if child.is_dir() and child.name not in active_names and (child / "SKILL.md").exists():
+                shutil.rmtree(child)
 
     for skill in registry.list_all():
         skill_dir = target_dir / skill.name

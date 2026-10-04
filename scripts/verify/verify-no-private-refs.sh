@@ -108,7 +108,6 @@ CORE_TARGETS=(
   "${REPO_ROOT}/packages"
   "${REPO_ROOT}/config"
   "${REPO_ROOT}/scripts"
-  "${REPO_ROOT}/PLAN.md"
   "${REPO_ROOT}/PLANNING.md"
   "${REPO_ROOT}/README.md"
 )

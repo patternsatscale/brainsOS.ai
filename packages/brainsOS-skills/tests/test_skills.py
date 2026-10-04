@@ -70,7 +70,7 @@ def test_bundled_skills_are_valid():
     assert BUNDLED_SKILLS_DIR.exists()
     registry = load_bundled_skills()
 
-    expected_skills = {"plan", "plan.epics", "plan.ux", "plan.copy", "agents-discipline"}
+    expected_skills = {"plan", "plan.epics", "plan.ux", "plan.copy"}
     for name in expected_skills:
         skill = registry.get(name)
         assert skill is not None, f"Expected bundled skill '{name}' was not loaded!"
@@ -109,8 +109,14 @@ def test_sync_skills_to_workspace(tmp_path: Path):
     registry = load_bundled_skills()
     target_dir = tmp_path / "skills"
 
+    # Seed an orphan directory
+    orphan_dir = target_dir / "obsolete-skill"
+    orphan_dir.mkdir(parents=True)
+    (orphan_dir / "SKILL.md").write_text("orphan")
+
     written = sync_skills_to_workspace(registry, target_dir)
-    assert len(written) >= 5
+    assert len(written) >= 4
+    assert not orphan_dir.exists(), "sync_skills_to_workspace should have purged orphaned skill directory!"
 
     for path in written:
         assert path.exists()
