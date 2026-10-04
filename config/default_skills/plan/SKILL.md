@@ -47,7 +47,7 @@ When invoked with a prompt (e.g. `/plan <prompt>` or conversational planning req
 - **Trigger Keywords**: `epic`, `roadmap`, `milestone`, `decompose`, `break down`, `tickets`, `issues`, `tasks`, `backlog`, `sprint`, `repository`, `sub-issues`, `database`, `backend`, `infra`, `architecture`.
 - **Action**: Immediately announce the route to the user and execute the 4-phase protocol from [`plan.epics`](../plan.epics/SKILL.md):
   1. Audit active milestones, open issues, and PRs via `gh issue list`.
-  2. Route components between `brainsOS.ai` (platform) and `project_mJ` (fleet).
+  2. Route components between `brainsOS.ai` (platform) and the private fleet repository (`$BRAINSOS_DATA_DIR`).
   3. Decompose into 3–5 atomic child issues (`infra`, `security`, `feature`).
   4. Present structured implementation plan artifact for human approval.
 

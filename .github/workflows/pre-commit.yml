@@ -64,6 +64,11 @@ jobs:
           find scripts -type f -name "*.sh" -exec bash -n {} +
           echo "✓ All script files passed syntax check"
 
+      - name: Verify Zero Private Fleet Leakage (Rule 11 & Rule 14)
+        run: |
+          echo "Auditing repository against private fleet references..."
+          ./scripts/verify/verify-no-private-refs.sh
+
       - name: Verify Fleet Manifest Zero-Drift
         run: |
           echo "Validating declarative fleet manifest..."

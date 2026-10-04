@@ -35,7 +35,7 @@ This skill codifies the **Developer Advocacy & Public Positioning** protocol for
 - **Rules**:
   - **No Fluff or Corporate Buzzwords**: Never use empty phrases like "revolutionary paradigm shift" or "next-gen synergy". Instead, explain *the exact engineering mechanism* and *why it matters*.
   - **Hardware & Architecture Pride**: Highlight the physical appliance reality (ASUS Ascent GX10, NVIDIA GB10, ARM64 unified LPDDR5x memory bus @ 273 GB/s, macOS Apple Silicon dev parity).
-  - **Zero Leakage of Private Fleet Records**: Per Rule 11, experimental lab work stays in `project_mJ`. Public `README.md` celebrates the open-source platform core.
+  - **Zero Leakage of Private Fleet Records**: Per Rule 11, experimental lab work stays in the private fleet repository (`$BRAINSOS_DATA_DIR`). Public `README.md` celebrates the open-source platform core.
 
 ---
 

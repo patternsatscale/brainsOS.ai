@@ -1,6 +1,6 @@
 # brainsOS: Strategic Planning & Epic Management Protocol (`PLANNING.md`)
 
-This document defines the mandatory planning protocol for AI agents and human developers across **brainsOS.ai** ([brainsOS.ai](https://brainsos.ai)) and the private fleet repository (**project_mJ**). 
+This document defines the mandatory planning protocol for AI agents and human developers across **brainsOS.ai** ([brainsOS.ai](https://brainsos.ai)) and external private fleet repositories (`$BRAINSOS_DATA_DIR`). 
 
 While [`AGENTS.md`](AGENTS.md) governs the **execution lifecycle** of individual tickets (branching, testing, walkthroughs, pre-commit review gates), this document governs the **strategic lifecycle**—how we ideate, decompose epics, route between repositories, manage milestones, and maintain backlog hygiene.
 
@@ -145,7 +145,7 @@ AI agents executing a planning session must follow this 5-stage lifecycle:
 
 ```mermaid
 flowchart TD
-    A["Stage 1: Context Audit\n(Dump issues, inspect branches & filesystem)"] --> B["Stage 2: Repository Routing\n(brainsOS.ai vs project_mJ)"]
+    A["Stage 1: Context Audit\n(Dump issues, inspect branches & filesystem)"] --> B["Stage 2: Repository Routing\n(brainsOS.ai vs Private Fleet)"]
     B --> C["Stage 3: Idea Grooming & Epic Decomposition\n(Ideas -> Epics via 3-Step Standard)"]
     C --> D["Stage 4: Roadmap & Milestone Alignment\n(Assign active milestones)"]
     D --> E["Stage 5: Implementation Plan Artifact\n(Detailed Markdown plan with user review gate)"]
@@ -168,7 +168,7 @@ Before creating issues or drafting architecture, route every concept to its cano
   - Control plane LiteLLM gateway (`config/litellm/`).
   - Core stateless agent runners and queue engines (`packages/brainsOS-*`).
   - COHUMAIN ACSG / AGSC governance frameworks and public attestations (`audit.md`).
-- **`patternsatscale/project-mJ`** (Private Fleet IP & Thermodynamic Lab):
+- **Private Fleet Repository (`$BRAINSOS_DATA_DIR`)** (Fleet IP & Thermodynamic Lab):
   - Proprietary agent personas and identity files (`souls/`).
   - Agent-authored web applications and codebases (`agent_apps/`, `agent_workspaces/`).
   - Open Knowledge Format (OKF) memory partitions (`agent_memories/`).
@@ -329,7 +329,7 @@ To ensure rapid alignment and zero context confusion, strategic planning is coor
   *(Also accepts `/plan.epics`)*
 - **Automated 4-Phase Workflow**:
   1. Audits existing issues, backlog ideas, and architectural guardrails via `gh issue list`.
-  2. Routes components between `brainsOS.ai` (platform core) and `project_mJ` (private fleet) per Rule 11 & 14.
+  2. Routes components between `brainsOS.ai` (platform core) and the private fleet repository (`$BRAINSOS_DATA_DIR`) per Rule 11 & 14.
   3. Decomposes into 3–5 atomic child issues (`feature`, `infra`, `security`, `task`) observing the 2-day sizing heuristic.
   4. Generates an implementation plan artifact for human approval before creating remote issues.
 

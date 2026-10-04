@@ -44,7 +44,7 @@ This skill enforces the core operating discipline, 14 inviolable architectural g
 - **Rule 8 (Script-Driven Discipline)**: Zero ad-hoc container or host patching. Everything codified in `scripts/*.sh`.
 - **Rule 9 (Multi-Tenant Partitioning)**: Declarative authority in `agents.yaml`. Standalone domain packages in `/packages/`.
 - **Rule 10 (Egress Token Injection)**: Zero ambient credentials in containers. All egress routed through proxy with in-transit injection.
-- **Rule 11 (Separation of Build & Record)**: Lab work resides strictly in `project_mJ`. Core coding agents do not author private fleet records.
+- **Rule 11 (Separation of Build & Record)**: Lab work resides strictly in the private fleet repository (`$BRAINSOS_DATA_DIR`). Core coding agents do not author private fleet records.
 - **Rule 12 (Sub-Agent Persona Isolation)**: Decoupled persona hierarchy. Conversational agents act as orchestrators, never producing raw code contaminated with chatter.
 - **Rule 13 (Execution Environment Gate)**: Missing `.env` halts all execution scripts.
 - **Rule 14 (Two-Repository Architecture)**: Open-source stateless platform core separated from private fleet state.

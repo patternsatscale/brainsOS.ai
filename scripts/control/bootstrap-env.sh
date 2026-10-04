@@ -202,4 +202,20 @@ elif [ -d "${DATA_ROOT}/skills" ]; then
   cp -R "${DATA_ROOT}/skills/"* "${REPO_ROOT}/.agents/skills/" 2>/dev/null || true
 fi
 
+# 5. Configure Git Pre-Commit Hook (Rule 11 & Rule 14 Leakage Gate)
+if [ -d "${REPO_ROOT}/.git" ]; then
+  log_info "Configuring git pre-commit hook to prevent private fleet leakage..."
+  mkdir -p "${REPO_ROOT}/.git/hooks"
+  cat << 'HOOK' > "${REPO_ROOT}/.git/hooks/pre-commit"
+#!/usr/bin/env bash
+# brainsOS Git Pre-Commit Hook: Prevents Private Fleet Leakage
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if [ -f "${REPO_ROOT}/scripts/verify/verify-no-private-refs.sh" ]; then
+  "${REPO_ROOT}/scripts/verify/verify-no-private-refs.sh" --staged-only
+fi
+HOOK
+  chmod +x "${REPO_ROOT}/.git/hooks/pre-commit"
+  log_success "Git pre-commit hook installed!"
+fi
+
 log_success "brainsOS environment bootstrap complete!"

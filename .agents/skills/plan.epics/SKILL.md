@@ -43,7 +43,7 @@ It is triggered directly via `/plan:epics` or `/plan.epics` (or `/plan:epic`), o
 ### Phase 2: Two-Repository Routing (Rule 11 & Rule 14)
 Enforce strict separation between open-source core platform and proprietary fleet state:
 - **`brainsOS.ai` (Platform Core)**: Open-source stateless containers, Python domain packages, Caddy ingress, Dashy dashboard, and verification harnesses.
-- **`project_mJ` (Private Fleet)**: Proprietary agent personas (`souls/`), OKF Markdown memories, custom fleet manifests, and lab narratives.
+- **Private Fleet Repository (`$BRAINSOS_DATA_DIR`)**: Proprietary agent personas (`souls/`), OKF Markdown memories, custom fleet manifests, and lab narratives.
 - *Strict Rule*: Zero proprietary fleet state commits to open-source core.
 
 ### Phase 3: Sizing & 3-Step Epic Decomposition

@@ -130,7 +130,7 @@ def test_soul_resolution_from_brainsos_data_dir(monkeypatch, tmp_path):
 
 def test_decoupled_manifest_path_resolution_issue_243(monkeypatch, tmp_path):
     """Regression test for #243: verify manifest in decoupled repo settings/ does not create nested data/."""
-    ext_data = tmp_path / "project_mJ_test"
+    ext_data = tmp_path / "decoupled_fleet_test"
     settings_dir = ext_data / "settings"
     settings_dir.mkdir(parents=True)
 
