@@ -1,6 +1,6 @@
 # brainsOS: Strategic Planning & Epic Management Protocol (`PLANNING.md`)
 
-This document defines the mandatory planning protocol for AI agents and human developers across **brainsOS.ai** ([brainsOS.ai](https://brainsos.ai)) and the private fleet repository (**project_mJ**). 
+This document defines the mandatory planning protocol for AI agents and human developers across **brainsOS.ai** ([brainsOS.ai](https://brainsos.ai)) and external private fleet repositories (`$BRAINSOS_DATA_DIR`). 
 
 While [`AGENTS.md`](AGENTS.md) governs the **execution lifecycle** of individual tickets (branching, testing, walkthroughs, pre-commit review gates), this document governs the **strategic lifecycle**—how we ideate, decompose epics, route between repositories, manage milestones, and maintain backlog hygiene.
 
@@ -145,7 +145,7 @@ AI agents executing a planning session must follow this 5-stage lifecycle:
 
 ```mermaid
 flowchart TD
-    A["Stage 1: Context Audit\n(Dump issues, inspect branches & filesystem)"] --> B["Stage 2: Repository Routing\n(brainsOS.ai vs project_mJ)"]
+    A["Stage 1: Context Audit\n(Dump issues, inspect branches & filesystem)"] --> B["Stage 2: Repository Routing\n(brainsOS.ai vs Private Fleet)"]
     B --> C["Stage 3: Idea Grooming & Epic Decomposition\n(Ideas -> Epics via 3-Step Standard)"]
     C --> D["Stage 4: Roadmap & Milestone Alignment\n(Assign active milestones)"]
     D --> E["Stage 5: Implementation Plan Artifact\n(Detailed Markdown plan with user review gate)"]
@@ -168,7 +168,7 @@ Before creating issues or drafting architecture, route every concept to its cano
   - Control plane LiteLLM gateway (`config/litellm/`).
   - Core stateless agent runners and queue engines (`packages/brainsOS-*`).
   - COHUMAIN ACSG / AGSC governance frameworks and public attestations (`audit.md`).
-- **`patternsatscale/project-mJ`** (Private Fleet IP & Thermodynamic Lab):
+- **Private Fleet Repository (`$BRAINSOS_DATA_DIR`)** (Fleet IP & Thermodynamic Lab):
   - Proprietary agent personas and identity files (`souls/`).
   - Agent-authored web applications and codebases (`agent_apps/`, `agent_workspaces/`).
   - Open Knowledge Format (OKF) memory partitions (`agent_memories/`).
@@ -279,16 +279,92 @@ If an agent discovers an unexpected bug or enhancement while working on a ticket
 
 ---
 
-## 7. Initiating a Planning Conversation (Quick Reference)
+---
 
-When starting a strategic discussion or roadmap refinement, prompt the agent with:
+## 7. The Master Planning Intent Router & Specialized Archetypes
 
-```text
-/plan Let's review our active milestones and plan the next Epic for [feature/initiative] according to PLANNING.md.
+To ensure rapid alignment and zero context confusion, strategic planning is coordinated by a front-door **Intent Router (`/plan`)** that dynamically classifies queries and dispatches to three specialized **Planning Archetypes**, each backed by dedicated workspace skills in `.agents/skills/`:
+
+```
+                                 ┌───────────────────────────────────────┐
+                                 │       /plan (Intelligent Router)      │
+                                 │  Classifies Intent & Dispatches Plan  │
+                                 └──────────────────┬────────────────────┘
+                                                    │
+                 ┌──────────────────────────────────┼──────────────────────────────────┐
+                 ▼                                  ▼                                  ▼
+ ┌───────────────────────────────┐  ┌───────────────────────────────┐  ┌───────────────────────────────┐
+ │          plan.epics           │  │            plan.ux            │  │           plan.copy           │
+ │   Strategic Epics & Roadmap   │  │   UI/UX Prototypes & Mocks    │  │ Public Copy, Goals & README   │
+ │ Decomposition, Tasks, Repos   │  │  Tokens, Iframes, Live Server │  │   "The Technical PR Guy"      │
+ └───────────────────────────────┘  └───────────────────────────────┘  └───────────────────────────────┘
 ```
 
-The agent will automatically:
-1. Audit existing issues, bugs in `Bugs / Defects`, ideas in backlog, and code parity.
-2. Route components to `brainsOS.ai` or `project_mJ`.
-3. Groom Ideas into candidate Epics following the 3-step standard.
-4. Provide a structured plan artifact for human approval before creating issues.
+---
+
+### Master Router: `/plan` — Intelligent Intent Routing
+*The front-door multiplexer for all planning, roadmap, design, and developer advocacy inquiries.*
+*Backed by skill: [`.agents/skills/plan/SKILL.md`](.agents/skills/plan/SKILL.md)*
+
+- **Conversational Usage**:
+  ```text
+  /plan [natural language prompt or question]
+  ```
+- **Routing Engine**:
+  - **Epics & Systems Intent**: Keywords like `epic`, `roadmap`, `milestone`, `decompose`, `tasks`, `database`, `infra`, `split repos` ➔ Automatically dispatches to **`plan.epics`**.
+  - **Visual & UI/UX Intent**: Keywords like `ux`, `ui`, `mockup`, `prototype`, `layout`, `dock`, `dockey`, `tokens`, `iframe` ➔ Automatically dispatches to **`plan.ux`**.
+  - **Copy & Advocacy Intent**: Keywords like `copy`, `pr`, `readme`, `positioning`, `goals`, `release notes`, `announcement`, `pr guy` ➔ Automatically dispatches to **`plan.copy`**.
+  - **Ambiguous / Blank Invocation**: Renders the interactive Router Menu to prompt the operator for their target planning lane.
+
+---
+
+### Archetype 1: `plan.epics` — Strategic Epics & Roadmap Decomposition
+*For roadmap planning, milestone scoping, two-repository routing, and breaking down multi-plane Epics into atomic GitHub issues.*
+*Backed by skill: [`.agents/skills/plan.epics/SKILL.md`](.agents/skills/plan.epics/SKILL.md)*
+
+- **Prompt**:
+  ```text
+  /plan:epics Let's review our active milestones and plan the next Epic for [feature/initiative] according to PLANNING.md.
+  ```
+  *(Also accepts `/plan.epics`)*
+- **Automated 4-Phase Workflow**:
+  1. Audits existing issues, backlog ideas, and architectural guardrails via `gh issue list`.
+  2. Routes components between `brainsOS.ai` (platform core) and the private fleet repository (`$BRAINSOS_DATA_DIR`) per Rule 11 & 14.
+  3. Decomposes into 3–5 atomic child issues (`feature`, `infra`, `security`, `task`) observing the 2-day sizing heuristic.
+  4. Generates an implementation plan artifact for human approval before creating remote issues.
+
+---
+
+### Archetype 2: `plan.ux` — UI/UX Prototyping & Mockup Alignment
+*For visual architecture, interactive prototypes, design tokens, and windowing paradigms before writing production code.*
+*Backed by skill: [`.agents/skills/plan.ux/SKILL.md`](.agents/skills/plan.ux/SKILL.md)*
+
+- **Prompt**:
+  ```text
+  /plan:ux Let's design the visual mockup and interactive prototype for [feature/portal].
+  ```
+  *(Also accepts `/plan.ux`, `/plan:design`, `/plan.design`)*
+- **Automated 5-Step Workflow**:
+  1. **Interview**: Queries layout (split vs center), navigation (dockey vs tabs), and subsystem taxonomy.
+  2. **Tokens**: Codifies palettes, typography, and substrates in `docs/epics/<epic>/DESIGN.md`.
+  3. **Visual Mocks (`generate_image`)**: Renders photorealistic 16:9 concepts (no mirror artifacts, 3D perspective grids).
+  4. **Interactive Prototype**: Builds live HTML/Tailwind prototype in `docs/epics/<epic>/stitch/` with iframe windowing and persistent dock.
+  5. **Live Preview**: Serves on port `3033`, validates `HTTP 200`, and provides clickable localhost links for visual review.
+
+---
+
+### Archetype 3: `plan.copy` — Public Relations, Copy & Goals ("The PR Guy")
+*For developer advocacy, README positioning, architectural storytelling, public milestone goals, and release notes.*
+*Backed by skill: [`.agents/skills/plan.copy/SKILL.md`](.agents/skills/plan.copy/SKILL.md)*
+
+- **Prompt**:
+  ```text
+  /plan:copy Let's polish our public positioning, update the README, and formulate goals for [milestone/release].
+  ```
+  *(Also accepts `/plan.copy`, `/plan:pr`, `/plan.pr`)*
+- **Automated 5-Step Workflow**:
+  1. **Engineering Extraction**: Translates deep technical feats (e.g. GB10 hardware serialization, zero-trust forward-auth) into clear, magnetic value propositions.
+  2. **Zero-Fluff Tone**: Authoritative, developer-first, zero corporate buzzwords.
+  3. **README.md Auditing**: Updates hero taglines, plane topology diagrams, badges, and quickstart commands.
+  4. **Release Kit**: Drafts structured release notes, changelogs, and community announcements.
+  5. **Review Gate**: Presents proposed copy in a structured plan artifact for human approval.

@@ -24,17 +24,39 @@
 
 ---
 
-## Quick Reference: Initiating a Planning Session (`/plan`)
+## The Master Planning Intent Router (`/plan`)
 
-When capturing ideas, planning epics, or grooming backlogs, invoke:
+All planning workflows begin at `/plan`, which operates as an intelligent intent router:
 
 ```text
-/plan Let's review our active milestones and plan the next Epic for [feature/initiative] according to PLANNING.md.
+                                 ┌───────────────────────────────────────┐
+                                 │       /plan (Intelligent Router)      │
+                                 │  Classifies Intent & Dispatches Plan  │
+                                 └──────────────────┬────────────────────┘
+                                                    │
+                 ┌──────────────────────────────────┼──────────────────────────────────┐
+                 ▼                                  ▼                                  ▼
+ ┌───────────────────────────────┐  ┌───────────────────────────────┐  ┌───────────────────────────────┐
+ │          plan.epics           │  │            plan.ux            │  │           plan.copy           │
+ │   Strategic Epics & Roadmap   │  │   UI/UX Prototypes & Mocks    │  │ Public Copy, Goals & README   │
+ │ Decomposition, Tasks, Repos   │  │  Tokens, Iframes, Live Server │  │   "The Technical PR Guy"      │
+ └───────────────────────────────┘  └───────────────────────────────┘  └───────────────────────────────┘
 ```
 
-The agent will automatically:
-1. **Audit Context**: Dump and analyze current issues, bugs in `Bugs / Defects`, ideas in backlog, active branches, and code state.
-2. **Route Repositories**: Decide between `brainsOS.ai` (platform core) and `project_mJ` (private fleet).
-3. **Groom Ideas to Epics**: Promote ideas into candidate Epics and decompose into 3–5 atomic child tasks following the 3-step standard.
-4. **Align Milestones**: Assign active milestones (`MVP v0.1`, `v0.2 Security`, `v0.3 Governance`, `Bugs / Defects`, `Backlog / Future Research`).
-5. **Present Plan Artifact**: Request human approval before modifying code or creating issues.
+You can either pass a natural language request to `/plan` (which evaluates intent and routes automatically) or directly invoke a specialized planner:
+
+1. **📦 `plan.epics` (`/plan:epics` | `/plan.epics`) — Strategic Epics & Roadmap Decomposition**
+   - *Direct Invocation*: `/plan:epics Let's plan the next Epic for [feature/initiative] according to PLANNING.md.`
+   - *Auto-Routing Trigger*: Feature roadmaps, milestone grooming, multi-task decomposition, two-repository split (Rule 11 & 14), backend systems, database schemas.
+   - *Workflow*: Context audit ➔ Two-repo routing ➔ 3-step epic decomposition (3–5 child issues) ➔ Plan artifact approval.
+
+2. **🎨 `plan.ux` (`/plan:ux` | `/plan.ux`) — UI/UX Prototyping & Mockup Alignment**
+   - *Direct Invocation*: `/plan:ux Let's design the visual mockup and prototype for [feature/portal].`
+   - *Auto-Routing Trigger*: UI/UX, layouts, split logins, floating dock ("Dockey"), iframe subsystems, CSS/tokens, interactive HTML prototypes.
+   - *Workflow*: Design interview ➔ Token codification (`DESIGN.md`) ➔ Photorealistic mockups ➔ Interactive prototype (`stitch/`) ➔ Live preview (`:3033`).
+
+3. **📢 `plan.copy` (`/plan:copy` | `/plan.copy`) — Public Relations, Copy & Goals ("The PR Guy")**
+   - *Direct Invocation*: `/plan:copy Let's update the README and formulate goals for [milestone].`
+   - *Auto-Routing Trigger*: Public positioning, README hero/topology, release notes, changelogs, developer advocacy, milestone goals.
+   - *Workflow*: Technical extraction ➔ Milestone narrative ➔ README auditing ➔ Release notes kit ➔ Human review gate.
+
