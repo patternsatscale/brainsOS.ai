@@ -1,4 +1,41 @@
 {
+  "workbench.colorTheme": "Default Dark Modern",
+  "window.autoDetectColorScheme": false,
+  "terminal.integrated.cwd": "/data",
+  "terminal.integrated.defaultLocation": "editor",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "chat.commandCenter.enabled": true,
+  "chat.defaultModel": "brainsos-core",
+  "chat.agentFilesLocations": {
+    ".github/agents": true,
+    ".claude/agents": true,
+    ".agents/souls": true,
+    "souls": true
+  },
+  "chat.useAgentSkills": true,
+  "chat.agentSkillsLocations": {
+    ".agents/skills": true,
+    ".github/skills": true,
+    ".claude/skills": true
+  },
+  "github.copilot.chat.customOAIModels": {
+    "brainsos-core": {
+      "name": "brainsOS Core (Default)",
+      "url": "http://litellm:4000/v1",
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 4096,
+      "toolCalling": true,
+      "vision": false
+    },
+    "qwen2.5:latest": {
+      "name": "Qwen 2.5",
+      "url": "http://litellm:4000/v1",
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 4096,
+      "toolCalling": true,
+      "vision": false
+    }
+  },
   "security.workspace.trust.enabled": false,
   "security.workspace.trust.startupPrompt": "never",
   "security.workspace.trust.emptyWindow": true,
@@ -6,7 +43,6 @@
   "telemetry.telemetryLevel": "off",
   "workbench.startupEditor": "none",
   "files.autoSave": "afterDelay",
-  "terminal.integrated.defaultProfile.linux": "bash",
   "files.exclude": {
     "**/.git": false,
     "**/.svn": true,
