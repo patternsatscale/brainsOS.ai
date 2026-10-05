@@ -1,0 +1,180 @@
+/* ==============================================================================
+   brainsOS: Bespoke Cybernetic Authentik Theme (theme.css -> custom.css)
+   Injected via /web/dist/custom.css in Authentik Web UI
+   Matches approved visual mockup (stitch/login.html)
+   ============================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  --ak-accent: #00f2fe !important;
+  --ak-flow-background: none !important;
+  --ak-dark-background: #07090E !important;
+  --ak-dark-background-darker: #05070A !important;
+  --ak-dark-background-light: #0B0E14 !important;
+  --ak-dark-background-light-ish: #111622 !important;
+  --ak-dark-background-lighter: #141924 !important;
+
+  /* PatternFly Overrides */
+  --pf-global--primary-color--100: #00f2fe !important;
+  --pf-global--primary-color--200: #00d2de !important;
+  --pf-global--primary-color--dark-100: #00b2be !important;
+  --pf-global--BackgroundColor--100: #07090E !important;
+  --pf-global--BackgroundColor--200: #0B0E14 !important;
+  --pf-global--BackgroundColor--dark-100: #07090E !important;
+  --pf-global--BackgroundColor--dark-200: #0B0E14 !important;
+  --pf-global--BackgroundColor--dark-300: #111622 !important;
+  --pf-global--Color--100: #f8fafc !important;
+  --pf-global--Color--200: #94a3b8 !important;
+  --pf-global--FontFamily--sans-serif: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  --pf-global--FontFamily--monospace: 'JetBrains Mono', monospace !important;
+}
+
+/* 1. Global Viewport & Cybernetic Obsidian Matrix Background */
+html, body, ak-flow-executor {
+  background-color: #07090E !important;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(0, 242, 254, 0.09) 0%, rgba(0, 242, 254, 0.015) 45%, transparent 70%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px) !important;
+  background-size: 100% 100%, 40px 40px, 40px 40px !important;
+  color: #e1e2eb !important;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  min-height: 100vh !important;
+}
+
+/* 2. Completely Eliminate Default Authentik Aerial Highway Background */
+.pf-c-background-image,
+.pf-c-background-image * {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+.pf-c-login,
+.ak-login-container {
+  background: transparent !important;
+}
+
+/* 3. Frosted Obsidian SSO Card */
+.pf-c-card,
+.pf-c-login__main {
+  background: rgba(11, 14, 20, 0.92) !important;
+  backdrop-filter: blur(28px) !important;
+  -webkit-backdrop-filter: blur(28px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 2px solid #00f2fe !important;
+  border-radius: 18px !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 45px rgba(0, 242, 254, 0.12) !important;
+  position: relative !important;
+  max-width: 440px !important;
+  width: 100% !important;
+}
+
+/* 4. Brand Header & Title Styling */
+.pf-c-login__main-header {
+  padding-bottom: 0.5rem !important;
+}
+
+.pf-c-brand {
+  max-height: 75px !important;
+  width: auto !important;
+  margin: 0 auto 0.75rem auto !important;
+  display: block !important;
+}
+
+.pf-c-title {
+  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  color: #ffffff !important;
+  text-align: center !important;
+}
+
+.pf-c-login__main-header-desc {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.75rem !important;
+  color: #94a3b8 !important;
+  letter-spacing: 0.05em !important;
+  text-align: center !important;
+  margin-top: 0.25rem !important;
+}
+
+/* 5. Cybernetic Form Controls (Username & Password) */
+.pf-c-form__group-label {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #94a3b8 !important;
+  margin-bottom: 0.35rem !important;
+}
+
+.pf-c-form-control,
+input[type="text"],
+input[type="password"],
+input[type="email"] {
+  background-color: rgba(20, 25, 36, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.85rem !important;
+  padding: 11px 14px !important;
+  transition: all 0.2s ease !important;
+}
+
+.pf-c-form-control:focus,
+input:focus {
+  border-color: #00f2fe !important;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.45) !important;
+  background-color: rgba(22, 28, 42, 0.95) !important;
+  outline: none !important;
+}
+
+/* 6. Primary Action Button: Glowing Cyan */
+.pf-c-button.pf-m-primary,
+button[type="submit"] {
+  background-color: #00f2fe !important;
+  color: #000000 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-weight: 700 !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  border-radius: 12px !important;
+  border: none !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 0 25px rgba(0, 242, 254, 0.45) !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  margin-top: 0.5rem !important;
+}
+
+.pf-c-button.pf-m-primary:hover,
+button[type="submit"]:hover {
+  background-color: #38f8ff !important;
+  box-shadow: 0 0 35px rgba(0, 242, 254, 0.75) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* 7. Footer: Replace with Appliance Hardware Badge */
+.pf-c-login__footer-link,
+.pf-c-login__footer p {
+  visibility: hidden !important;
+  position: relative !important;
+}
+
+.pf-c-login__footer p::after {
+  content: "ASUS Ascent GX10 • NVIDIA GB10 • brainsOS v1.0.0-arm64";
+  visibility: visible !important;
+  position: absolute !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  color: #64748b !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.7rem !important;
+  letter-spacing: 0.06em !important;
+  white-space: nowrap !important;
+}

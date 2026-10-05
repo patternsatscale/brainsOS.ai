@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>Sign in to BrainsOS — Enterprise SSO</title>
+  <link rel="icon" type="image/png" href="image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "obsidian": "#0B0E14",
+            "primary-cyan": "#00f2fe",
+            "slate-matrix": "#94a3b8"
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk", "sans-serif"],
+            "body": ["Geist", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #0B0E14;
+      color: #e1e2eb;
+      font-family: 'Geist', sans-serif;
+    }
+    .grid-bg {
+      background-color: #07090E;
+      background-image: url('matrix_cube_bg.svg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+    }
+    .accent-cyan-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1.5px;
+      background: linear-gradient(90deg, transparent, #00f2fe, transparent);
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between grid-bg antialiased selection:bg-primary-cyan selection:text-black p-6">
+
+  <!-- Minimal Enterprise Header -->
+  <header class="w-full max-w-6xl mx-auto flex items-center justify-between py-2">
+    <div class="flex items-center gap-2.5">
+      <img src="image.png" alt="BrainsOS Logo" class="w-7 h-7 rounded-lg object-contain">
+      <span class="font-headline font-semibold text-sm text-slate-200">BrainsOS Appliance</span>
+    </div>
+    <div class="flex items-center gap-2 text-xs font-mono text-slate-400">
+      <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span>SYSTEM ONLINE • TLS 1.3</span>
+    </div>
+  </header>
+
+  <!-- Side-by-Side Equal-Sized OS Auth View -->
+  <main class="w-full max-w-5xl mx-auto my-auto py-8 px-4 flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-16">
+    
+    <!-- Left Column: Big Prominent Logo Stage (Equally Sized) -->
+    <div class="flex-1 w-full max-w-[420px] flex flex-col items-center justify-center text-center">
+      <div class="relative group flex items-center justify-center w-64 h-64 md:w-72 md:h-72 lg:w-80 lg:h-80 mb-4">
+        <div class="absolute inset-0 rounded-full bg-gradient-to-tr from-primary-cyan/25 via-cyan-500/10 to-transparent blur-3xl opacity-75 group-hover:opacity-100 transition-opacity duration-700"></div>
+        <img src="image.png" alt="BrainsOS.AI" class="relative w-full h-full object-contain filter drop-shadow-[0_15px_35px_rgba(0,242,254,0.35)] transition-transform duration-500 group-hover:scale-105">
+      </div>
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-800 text-[11px] font-mono text-slate-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Kernel v1.0.0 &bull; Build 247.10-arm64</span>
+      </div>
+      <p class="font-mono text-[11px] text-slate-500 mt-2">
+        ASUS Ascent GX10 Appliance &bull; NVIDIA GB10
+      </p>
+    </div>
+
+    <!-- Right Column: OS Authentication Card (Equally Sized) -->
+    <div class="flex-1 w-full max-w-[420px] flex flex-col">
+      <div class="mb-4 text-left">
+        <h1 class="font-headline font-bold text-2xl text-slate-100 tracking-tight">Sign into BrainsOS.AI</h1>
+        <p class="font-body text-sm text-slate-400 mt-1">Enter your operator username and password</p>
+      </div>
+
+      <div class="w-full rounded-2xl bg-[#111622]/95 border border-slate-800 shadow-2xl p-7 relative overflow-hidden backdrop-blur-sm">
+        <div class="accent-cyan-line"></div>
+
+        <!-- Login Form -->
+        <form onsubmit="event.preventDefault(); handleFormSubmit();" class="space-y-4">
+          <div>
+            <label for="identifier" class="block text-xs font-medium text-slate-300 mb-1.5 font-body">Operator Username</label>
+            <div class="relative flex items-center">
+              <span class="material-symbols-outlined absolute left-3.5 text-slate-500 text-lg pointer-events-none">person</span>
+              <input id="identifier" type="text" value="operator" required autocomplete="username"
+                     class="w-full bg-[#0B0E14] border border-slate-700/80 rounded-lg pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-primary-cyan focus:ring-1 focus:ring-primary-cyan/30 transition-all font-body">
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label for="password" class="block text-xs font-medium text-slate-300 font-body">Password</label>
+              <a href="#" onclick="alert('Host terminal break-glass recovery available on loopback (127.0.0.1:8443).'); return false;" class="text-xs text-primary-cyan hover:underline font-body">Forgot password?</a>
+            </div>
+            <div class="relative flex items-center">
+              <span class="material-symbols-outlined absolute left-3.5 text-slate-500 text-lg pointer-events-none">lock</span>
+              <input id="password" type="password" value="brainsos_master_secret" required autocomplete="current-password"
+                     class="w-full bg-[#0B0E14] border border-slate-700/80 rounded-lg pl-10 pr-10 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-primary-cyan focus:ring-1 focus:ring-primary-cyan/30 transition-all font-body">
+              <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 text-slate-400 hover:text-slate-200 p-1">
+                <span id="eye-icon" class="material-symbols-outlined text-lg">visibility</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between pt-0.5">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked class="w-4 h-4 rounded border-slate-700 bg-[#0B0E14] text-primary-cyan focus:ring-0 focus:ring-offset-0 cursor-pointer">
+              <span class="text-xs text-slate-400 font-body">Keep signed in</span>
+            </label>
+            <span class="text-[11px] font-mono text-slate-500">ASUS GX10 Node</span>
+          </div>
+
+          <button id="submit-btn" type="submit" class="w-full py-2.5 px-4 bg-primary-cyan hover:bg-cyan-300 text-obsidian font-headline font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(0,242,254,0.25)] hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] flex items-center justify-center gap-2">
+            <span>Sign In</span>
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Footer Quick Links -->
+      <div class="mt-4 flex justify-between items-center text-xs text-slate-500 font-body px-1">
+        <a href="portal_prototype.html#dock" class="text-primary-cyan hover:underline font-mono">Launch Docky &rarr;</a>
+        <div class="flex gap-3">
+          <a href="portal_prototype.html#help" class="hover:text-slate-400">Help & Docs</a>
+          <span>&bull;</span>
+          <a href="#" class="hover:text-slate-400">Status</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Bar -->
+  <footer class="w-full max-w-6xl mx-auto py-2 text-center text-xs text-slate-600 font-mono">
+    Authentik Enterprise Forward-Auth Gateway &bull; Caddy Ingress v2
+  </footer>
+
+  <script>
+    function togglePasswordVisibility() {
+      const input = document.getElementById('password');
+      const icon = document.getElementById('eye-icon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.innerText = 'visibility_off';
+      } else {
+        input.type = 'password';
+        icon.innerText = 'visibility';
+      }
+    }
+
+    function handleFormSubmit() {
+      const btn = document.getElementById('submit-btn');
+      btn.innerHTML = `<span class="material-symbols-outlined animate-spin text-[18px]">progress_activity</span><span>Authenticating...</span>`;
+      btn.disabled = true;
+
+      setTimeout(() => {
+        window.location.href = 'portal_prototype.html#dashy';
+      }, 600);
+    }
+  </script>
+</body>
+</html>

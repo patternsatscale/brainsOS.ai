@@ -122,11 +122,12 @@ else:
     email_account_domain = mail_env_val if not mail_env_val.startswith("mail.") else domain
 mail_domain = mail_web_host
 
+admin_pass = env.get("BRAINSOS_ADMIN_PASSWORD", "")
 caddy_http = env.get("CADDY_HTTP_PORT", "80")
 caddy_https = env.get("CADDY_HTTPS_PORT", "443")
 code_port = env.get("CODE_SERVER_PORT", "8443")
 code_user = env.get("OPERATOR_USER", "operator")
-code_pass = env.get("CODE_SERVER_PASSWORD", "brainsos_operator_secret")
+code_pass = env.get("CODE_SERVER_PASSWORD") or admin_pass or "brainsos_operator_secret"
 
 litellm_port = env.get("LITELLM_PORT", "4000")
 litellm_key = env.get("LITELLM_MASTER_KEY", "sk-brainsos-master-key")
@@ -138,8 +139,8 @@ sogo_port = env.get("SOGO_PORT", "20000")
 mail_smtp_port = env.get("MAIL_SMTP_PORT", "10025")
 mail_imap_port = env.get("MAIL_IMAP_PORT", "10143")
 
-admin_mail_pass = env.get("ADMIN_MAIL_PASSWORD", "admin_mail_pass")
-op_mail_pass = env.get("OPERATOR_MAIL_PASSWORD", "operator_mail_pass")
+admin_mail_pass = env.get("ADMIN_MAIL_PASSWORD") or admin_pass or "admin_mail_pass"
+op_mail_pass = env.get("OPERATOR_MAIL_PASSWORD") or admin_pass or "operator_mail_pass"
 terra_mail_pass = env.get("TERRASTELLA_MAIL_PASSWORD", "terrastella_mail_pass")
 marvin_mail_pass = env.get("MARVIN_MAIL_PASSWORD", "marvin_mail_pass")
 bawt_mail_pass = env.get("BAWTFORD_MAIL_PASSWORD", "bawtford_mail_pass")
@@ -150,11 +151,11 @@ openai_runner_port = env.get("OPENAI_RUNNER_PORT", "8002")
 agent_queue_port = env.get("AGENT_QUEUE_PORT", "8000")
 
 langfuse_port = env.get("LANGFUSE_PORT", "3001")
-langfuse_user = env.get("LANGFUSE_INIT_USER_EMAIL", f"admin@{domain}")
-langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD", "brainsos_admin_secret")
+langfuse_user = env.get("LANGFUSE_INIT_USER_EMAIL") or env.get("BRAINSOS_ADMIN_EMAIL") or f"admin@{domain}"
+langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD") or admin_pass or "brainsos_admin_secret"
 
 egress_port = env.get("TOOL_EGRESS_WEB_PORT", "8081")
-egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD", "brainsos_tool_egress_secret")
+egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "brainsos_tool_egress_secret"
 
 def mask(val):
     if not val:
@@ -192,14 +193,17 @@ print(sub_line)
 def print_row(name, pub_url, local_url, auth_info=""):
     print(f"{BOLD}{name:<28}{NC} {CYAN}{pub_url:<34}{NC} {DIM}{local_url:<24}{NC} {YELLOW}{auth_info}{NC}")
 
-# Section 1: Ingress & UX (L7 Web Interfaces)
-print_row("Landing Page Portal", f"https://{domain}", f"http://localhost:{caddy_http}", "(public)")
-print_row("Operator IDE (VS Code)", f"https://editor.{domain}", f"http://localhost:{code_port}", f"user: {code_user} | pass: {mask(code_pass)}")
-print_row("Webmail & SOGo Groupware", f"https://{mail_domain}", f"http://localhost:{sogo_port}", f"user: admin@{email_account_domain} | pass: {mask(admin_mail_pass)}")
-print_row("LiteLLM Proxy Admin UI", f"https://proxy.{domain}/ui", f"http://localhost:{litellm_port}/ui", f"key: {mask(litellm_key)}")
-print_row("Langfuse Observability", f"https://langfuse.{domain}", f"http://localhost:{langfuse_port}", f"user: {langfuse_user} | pass: {mask(langfuse_pass)}")
-print_row("Tool Egress Proxy (mitm)", f"https://efw.{domain}", f"http://localhost:{egress_port}", f"pass: {mask(egress_pass)}")
-print_row("NVIDIA DGX Telemetry", f"https://dgx.{domain}", "http://localhost:11001", "(system metrics)")
+# Section 1: Ingress & UX (L7 Web Interfaces - Unified Single-Origin Path Topology)
+print_row("BrainsOS Thin-Spine Portal", f"https://{domain}/ (or local.brainsos.ai/)", f"http://localhost:{caddy_http}", "(public portal)")
+authentik_port = os.getenv("AUTHENTIK_PORT", "9002")
+print_row("Authentik SSO Ingress", f"https://{domain}/auth/", f"http://localhost:{authentik_port}", "user: operator (Authentik IdP)")
+print_row("Operator IDE (VS Code)", f"https://{domain}/editor/", f"http://localhost:{code_port}", "SSO Authentik (AUTH: none)")
+print_row("Webmail & SOGo Groupware", f"https://{domain}/mail/", f"http://localhost:{sogo_port}", f"SSO Authentik (Trusted Proxy)")
+print_row("LiteLLM Proxy Admin UI", f"https://{domain}/proxy/ui", f"http://localhost:{litellm_port}/ui", f"SSO Authentik (Injected Key)")
+print_row("Langfuse Observability", f"https://langfuse.{domain}/", f"http://localhost:{langfuse_port}", "SSO Authentik (forward-auth)")
+print_row("Tool Egress Proxy (mitm)", f"https://{domain}/efw/", f"http://localhost:{egress_port}", "SSO Authentik (forward-auth)")
+print_row("Hermes Runner WebUI", f"https://{domain}/runner/", "http://localhost:8787", "SSO Authentik (forward-auth)")
+print_row("NVIDIA DGX Telemetry", f"https://{domain}/dgx/", "http://localhost:11001", "(system metrics)")
 
 print(sub_line)
 # Section 2: Cognitive Compute & Agent Runners (L2 Internal IPC & Worker)

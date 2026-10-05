@@ -126,17 +126,17 @@ if [ -n "$HERMES_CONFIG_CANDIDATE" ]; then
   fi
 fi
 
-# Docker Compose Hermes extra_hosts
-if grep -q "langfuse.brainsos.local" docker-compose.yml docker-compose.agents.yml 2>/dev/null; then
-  pass_check "Docker Compose: 'langfuse.brainsos.local' entry mapped in extra_hosts."
+# Docker Compose extra_hosts
+if grep -q "host.docker.internal:host-gateway" docker-compose.yml 2>/dev/null; then
+  pass_check "Docker Compose: host gateway mapped in extra_hosts."
 else
-  fail_check "Docker Compose: missing 'langfuse.brainsos.local' in extra_hosts."
+  fail_check "Docker Compose: missing host gateway in extra_hosts."
 fi
 
 # Caddyfile reverse proxy
 if [ -f "config/caddy/Caddyfile" ]; then
-  if grep -q "langfuse.brainsos.local" config/caddy/Caddyfile || grep -q "langfuse.{\$BRAINSOS_DOMAIN:brainsos.local}" config/caddy/Caddyfile; then
-    pass_check "Caddy Ingress: reverse proxy route configured for langfuse.brainsos.local."
+  if grep -q "langfuse" config/caddy/Caddyfile; then
+    pass_check "Caddy Ingress: reverse proxy route configured for Langfuse."
   else
     fail_check "Caddy Ingress: missing langfuse route in config/caddy/Caddyfile."
   fi

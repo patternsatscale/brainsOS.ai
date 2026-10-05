@@ -340,16 +340,15 @@ Once running, the following local services are accessible in your browser:
 
 | Service | Ingress URL | Port | Default Credentials | Role |
 |---|---|---|---|---|
-| **Appliance Portal** | [http://brainsos.local](http://brainsos.local) | `80` / `443` | *None* | Appliance dashboard & status hub |
-| **Operator IDE** | [http://editor.brainsos.local](http://editor.brainsos.local) | `8443` | `operator` / `${OPERATOR_PASSWORD}` | Containerized VS Code (code-server), Continue AI assistant & PKM |
-| **Primary Agent UI** | [http://terrastella.brainsos.local](http://terrastella.brainsos.local) | `9119` | `admin` / `${TERRASTELLA_MAIL_PASSWORD}` | Primary operations agent dashboard |
-| **Primary Agent API** | [http://api.terrastella.brainsos.local/v1](http://api.terrastella.brainsos.local/v1) | `8642` | Bearer `${HERMES_API_TERRASTELLA_KEY}` | OpenAI-compatible chat completions interface |
-| **Sports Analytics UI** | [http://marvin.brainsos.local](http://marvin.brainsos.local) | `9120` | `admin` / `${MARVIN_MAIL_PASSWORD}` | Sports companion dashboard |
-| **Bawtford Designer UI** | [http://bawtford.brainsos.local](http://bawtford.brainsos.local) | `9121` | `admin` / `${BAWTFORD_MAIL_PASSWORD}` | Autonomous fashion designer atelier |
-| **SOGo Groupware** | [http://mail.brainsos.local](http://mail.brainsos.local) | `20000` / `80` | `operator@brainsos.local` / `${OPERATOR_MAIL_PASSWORD}` | Webmail, agent shared mailboxes & CalDAV |
+| **Thin-Spine Portal** | [https://local.brainsos.ai/](https://local.brainsos.ai/) | `80` / `443` | *Public Portal* | Bespoke Thin-Spine React shell (<4% width, 96%+ full-bleed iframe) |
+| **Authentik SSO Ingress** | [https://local.brainsos.ai/auth/](https://local.brainsos.ai/auth/) | `9000` | `operator` (SSO IdP) | Centralized Zero-Trust SSO & Forward-Auth identity gateway |
+| **Operator IDE (VS Code)** | [https://local.brainsos.ai/editor/](https://local.brainsos.ai/editor/) | `8443` | Authentik SSO (`CODE_SERVER_AUTH=none`) | Containerized VS Code (code-server), Continue AI & PKM |
+| **SOGo Webmail & Groupware** | [https://local.brainsos.ai/mail/](https://local.brainsos.ai/mail/) | `20000` | Authentik SSO (Trusted Proxy) | Webmail, agent mailboxes & CalDAV calendars |
+| **LiteLLM Control Plane** | [https://local.brainsos.ai/proxy/ui](https://local.brainsos.ai/proxy/ui) | `4000` | Authentik SSO (Injected Key) | Hardware-serialized model routing, budgets & virtual keys |
+| **Tool Egress Proxy Console** | [https://local.brainsos.ai/efw/](https://local.brainsos.ai/efw/) | `8081` | Authentik SSO | Mitmweb real-time egress flow inspection & secret masking |
+| **Langfuse Observability** | [https://langfuse.local.brainsos.ai/](https://langfuse.local.brainsos.ai/) | `3001` | Authentik SSO | Distributed tracing & prompt token breakdown |
+| **Hermes Runner WebUI** | [https://local.brainsos.ai/runner/](https://local.brainsos.ai/runner/) | `8787` | Authentik SSO | Multi-tenant stateless agent runner terminal & burn target |
 | **Agent Queue & Ingress** | `http://127.0.0.1:8000` | `8000` | *Internal* | Non-blocking email webhook ingestion & queue worker daemon |
-| **LiteLLM Gateway** | [http://proxy.brainsos.local](http://proxy.brainsos.local) | `4000` | Bearer `${LITELLM_MASTER_KEY}` | Hardware-serialized model routing & budget proxy |
-| **Langfuse Tracing** | [http://langfuse.brainsos.local:3001](http://langfuse.brainsos.local:3001) | `3001` | *Local account* | Distributed tracing & token telemetry |
 
 ---
 

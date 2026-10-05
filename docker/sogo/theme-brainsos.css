@@ -1,0 +1,297 @@
+/* ==============================================================================
+ * brainsOS: Bespoke Obsidian Dark Theme for SOGo Webmail & Groupware
+ * Palette: Deep Space (#07090E, #0B0E14), Slate Glass (#111622, #141A26),
+ * Accents: Cyber Cyan (#00F2FE), Electric Pink (#EC4899), Clean White (#FFFFFF).
+ * ============================================================================== */
+
+/* 1. Global Reset & Base Typography */
+html, body, .main, [layout-fill], md-content, .view {
+  background-color: #07090E !important;
+  color: #E2E8F0 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 2. Top Header & Primary Toolbars */
+md-toolbar,
+md-toolbar.md-default-theme,
+md-toolbar.md-hue-1,
+md-toolbar.md-hue-2,
+md-toolbar.md-hue-3,
+.sg-toolbar,
+.sg-main-toolbar {
+  background-color: #0B0E14 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #FFFFFF !important;
+  box-shadow: none !important;
+}
+
+md-toolbar md-icon,
+.sg-toolbar md-icon,
+.sg-main-toolbar md-icon {
+  color: #CBD5E1 !important;
+}
+
+/* Calendar Date Display in Top Bar */
+.sg-date,
+.sg-calendar-header,
+md-toolbar .md-toolbar-tools {
+  color: #FFFFFF !important;
+  font-weight: 500 !important;
+}
+
+/* User Profile Badge (Top Left of SOGo) */
+.sg-user-badge,
+.sg-account-header,
+.md-default-theme.md-accent.md-bg {
+  background-color: #111622 !important;
+  color: #FFFFFF !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* 3. Left Sidenav & Folder Tree (Mailboxes) */
+md-sidenav,
+md-sidenav.md-default-theme,
+md-sidenav md-content,
+.sg-folder-tree,
+.sg-sidenav {
+  background-color: #111622 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #94A3B8 !important;
+}
+
+/* Folder List Items */
+md-sidenav md-list-item,
+.sg-folder-tree md-list-item,
+md-sidenav .md-list-item-inner {
+  color: #94A3B8 !important;
+  border-radius: 6px !important;
+  margin: 2px 8px !important;
+  transition: all 0.15s ease !important;
+}
+
+md-sidenav md-list-item:hover,
+.sg-folder-tree md-list-item:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #FFFFFF !important;
+}
+
+/* Selected Active Folder */
+md-sidenav md-list-item.selected,
+md-sidenav md-list-item.md-selected,
+.sg-folder-tree md-list-item.selected,
+md-sidenav md-list-item[aria-selected="true"] {
+  background: linear-gradient(90deg, rgba(236, 72, 153, 0.2) 0%, rgba(236, 72, 153, 0.05) 100%) !important;
+  color: #FFFFFF !important;
+  border-left: 3px solid #EC4899 !important;
+  font-weight: 600 !important;
+}
+
+md-sidenav md-list-item.selected md-icon,
+.sg-folder-tree md-list-item.selected md-icon {
+  color: #EC4899 !important;
+}
+
+/* Unread Badge / Pill */
+.sg-badge,
+.sg-unread-count,
+span.badge {
+  background-color: #EC4899 !important;
+  color: #FFFFFF !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  padding: 2px 7px !important;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.3) !important;
+}
+
+/* 4. Message List Pane (Middle Column) */
+.sg-list-view,
+.sg-message-list,
+.sg-tile-list,
+md-list.sg-tile-list,
+div[ui-view="list"] {
+  background-color: #141A26 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Message List Items */
+.sg-tile-list md-list-item,
+.sg-message-list md-list-item,
+md-list-item.sg-tile-list-item {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  background-color: #141A26 !important;
+  color: #CBD5E1 !important;
+  transition: background-color 0.15s ease !important;
+}
+
+.sg-tile-list md-list-item:hover,
+.sg-message-list md-list-item:hover {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Active Selected Message in List */
+.sg-tile-list md-list-item.selected,
+.sg-tile-list md-list-item.md-selected,
+.sg-message-list md-list-item.selected {
+  background-color: rgba(0, 242, 254, 0.12) !important;
+  border-left: 3px solid #00F2FE !important;
+}
+
+/* Message List Typography */
+.sg-tile-list .sg-subject,
+.sg-message-list .sg-subject {
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+
+.sg-tile-list .sg-from,
+.sg-message-list .sg-from {
+  color: #E2E8F0 !important;
+  font-weight: 500 !important;
+}
+
+.sg-tile-list .sg-snippet,
+.sg-message-list .sg-snippet {
+  color: #94A3B8 !important;
+  font-size: 12px !important;
+}
+
+.sg-tile-list .sg-date,
+.sg-message-list .sg-date {
+  color: #00F2FE !important;
+  font-size: 11px !important;
+  font-family: monospace !important;
+}
+
+/* 5. Reading Pane / Message Viewer (Right Column) */
+.sg-detail-view,
+.sg-message-viewer,
+div[ui-view="detail"],
+.sg-mail-content {
+  background-color: #0B0E14 !important;
+  color: #E2E8F0 !important;
+}
+
+/* Message Card Header */
+.sg-message-viewer md-card,
+.sg-detail-view md-card,
+md-card.md-default-theme {
+  background-color: #111622 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Message Body Area */
+.sg-message-body,
+.sg-mail-body,
+.sg-content-body {
+  background-color: #0E131F !important;
+  color: #CBD5E1 !important;
+  border-radius: 8px !important;
+  padding: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+}
+
+/* Empty Mailbox State */
+.sg-empty-state,
+.sg-no-selection {
+  color: #64748B !important;
+  font-family: monospace !important;
+  font-size: 14px !important;
+}
+
+/* 6. Action Buttons & Floating Action Button (Compose) */
+button.md-fab,
+.md-button.md-fab,
+.md-button.md-fab.md-accent {
+  background-color: #EC4899 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 16px rgba(236, 72, 153, 0.4) !important;
+}
+
+button.md-fab:hover,
+.md-button.md-fab:hover {
+  background-color: #DB2777 !important;
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.6) !important;
+}
+
+.md-button.md-primary {
+  background-color: #00F2FE !important;
+  color: #07090E !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+}
+
+.md-button.md-icon-button md-icon {
+  color: #CBD5E1 !important;
+}
+
+.md-button.md-icon-button:hover md-icon {
+  color: #00F2FE !important;
+}
+
+/* 7. Dialogs, Popups & Context Menus */
+md-dialog,
+md-menu-content,
+md-select-menu,
+.md-select-menu-container {
+  background-color: #141A26 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7) !important;
+  border-radius: 8px !important;
+}
+
+md-menu-item .md-button,
+md-option {
+  color: #CBD5E1 !important;
+}
+
+md-menu-item .md-button:hover,
+md-option:hover,
+md-option.md-focused {
+  background-color: rgba(0, 242, 254, 0.1) !important;
+  color: #FFFFFF !important;
+}
+
+/* Form Inputs */
+md-input-container label,
+md-input-container .md-placeholder {
+  color: #94A3B8 !important;
+}
+
+input.md-input,
+textarea.md-input {
+  color: #FFFFFF !important;
+  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+input.md-input:focus,
+textarea.md-input:focus {
+  border-bottom-color: #00F2FE !important;
+}
+
+/* Dividers */
+md-divider {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}

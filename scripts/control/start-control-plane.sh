@@ -392,6 +392,40 @@ start_services() {
     fi
 
     log_info "Starting LiteLLM proxy gateway on port ${LITELLM_PORT}..."
+    CADDY_CA_FILE="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}/caddy_root.crt"
+    if [ ! -f "${CADDY_CA_FILE}" ] && [ -f "${REPO_ROOT}/config/caddy/root.crt" ]; then
+      CADDY_CA_FILE="${REPO_ROOT}/config/caddy/root.crt"
+    fi
+
+    # Enforce LiteLLM UI Dark Theme patch across all static UI bundles
+    _litellm_ui_out="$(find "${REPO_ROOT}/.venv" -type d -path "*/litellm/proxy/_experimental/out" 2>/dev/null | head -n 1)"
+    if [ -n "${_litellm_ui_out}" ] && [ -d "${_litellm_ui_out}" ]; then
+      "${REPO_ROOT}/.venv/bin/python" -c '
+import os
+out_dir = "'"${_litellm_ui_out}"'"
+for root, _, files in os.walk(out_dir):
+    for file in files:
+        if file.endswith((".html", ".txt", ".js")):
+            filepath = os.path.join(root, file)
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            modified = False
+            if "(\"class\",\"theme\",\"light\"" in content:
+                content = content.replace("(\"class\",\"theme\",\"light\"", "(\"class\",\"theme\",\"dark\"")
+                modified = True
+            if "\"defaultTheme\":\"light\"" in content:
+                content = content.replace("\"defaultTheme\":\"light\"", "\"defaultTheme\":\"dark\"")
+                modified = True
+            if file.endswith(".html") and "<html lang=\"en\">" in content:
+                content = content.replace("<html lang=\"en\">", "<html lang=\"en\" class=\"dark\"><head><script>try{localStorage.setItem(\"theme\",\"dark\");document.documentElement.classList.add(\"dark\");}catch(e){}</script>")
+                content = content.replace("<head><script>try{localStorage.setItem(\"theme\",\"dark\");document.documentElement.classList.add(\"dark\");}catch(e){}</script><head>", "<head><script>try{localStorage.setItem(\"theme\",\"dark\");document.documentElement.classList.add(\"dark\");}catch(e){}</script>")
+                modified = True
+            if modified:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(content)
+' 2>/dev/null || true
+    fi
+
     DATABASE_URL="${DATABASE_URL}" \
     LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
     LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
@@ -401,6 +435,20 @@ start_services() {
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
+    SSL_CERT_FILE="${CADDY_CA_FILE}" \
+    REQUESTS_CA_BUNDLE="${CADDY_CA_FILE}" \
+    GENERIC_CLIENT_ID="${GENERIC_CLIENT_ID:-litellm-proxy}" \
+    GENERIC_CLIENT_SECRET="${GENERIC_CLIENT_SECRET:-brainsos_litellm_secret}" \
+    GENERIC_AUTHORIZATION_ENDPOINT="${GENERIC_AUTHORIZATION_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/authorize/}" \
+    GENERIC_TOKEN_ENDPOINT="${GENERIC_TOKEN_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/token/}" \
+    GENERIC_USERINFO_ENDPOINT="${GENERIC_USERINFO_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/userinfo/}" \
+    PROXY_BASE_URL="${PROXY_BASE_URL:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}}" \
+    AUTO_REDIRECT_UI_LOGIN_TO_SSO="${AUTO_REDIRECT_UI_LOGIN_TO_SSO:-true}" \
+    PROXY_ADMIN_ID="${PROXY_ADMIN_ID:-${BRAINSOS_ADMIN_USERNAME:-admin}}" \
+    UI_USERNAME="${BRAINSOS_ADMIN_USERNAME:-admin}" \
+    UI_PASSWORD="${BRAINSOS_ADMIN_PASSWORD}" \
+    LITELLM_PROXY_ADMIN_NAME="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}}" \
+    PROXY_ADMIN_EMAILS="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}},operator@brainsos.ai,operator@${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}" \
     nohup ${SETSID_CMD} .venv/bin/python .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \

@@ -9,1057 +9,191 @@
 import tls_policy.caddy
 
 # ==============================================================================
-# Control Plane Gateway (LiteLLM)
+# Authentik Identity Provider & Forward Auth Gateway Snippets
 # ==============================================================================
-(proxy_backend) {
+(authentik_forward_auth) {
+	forward_auth authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
+		trusted_proxies private_ranges
+	}
+}
+
+(authentik_backend) {
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy host.docker.internal:4000 {
+	reverse_proxy authentik-server:9000 {
 		flush_interval -1
 	}
 }
 
-http://proxy.{$BRAINSOS_DOMAIN:brainsos.local}, https://proxy.{$BRAINSOS_DOMAIN:brainsos.local} {
-	import brainsos_tls
-	import proxy_backend
-}
-
-http://proxy.localhost, https://proxy.localhost {
-	tls internal
-	import proxy_backend
-}
-
 # ==============================================================================
-# Operator IDE: Containerized VS Code (Code-Server) Gateway
+# BrainsOS Thin-Spine React Portal SPA Content
 # ==============================================================================
-(editor_backend) {
+(portal_content) {
 	encode gzip zstd
-	log {
-		output stdout
-		format console
-	}
-
-	basic_auth {
-		{$OPERATOR_USER:operator} {$OPERATOR_PASSWORD_HASH:$2a$14$KvMBACqSAtMM55IniTSXFuF7n9/ubBrFQrER.jMfpxVyetgEPZIeK}
-	}
-
-	reverse_proxy code-server:8443 {
-		flush_interval -1
-	}
-}
-
-http://editor.{$BRAINSOS_DOMAIN:brainsos.local}, https://editor.{$BRAINSOS_DOMAIN:brainsos.local}, http://code.{$BRAINSOS_DOMAIN:brainsos.local}, https://code.{$BRAINSOS_DOMAIN:brainsos.local} {
-	import brainsos_tls
-	import editor_backend
-}
-
-http://editor.localhost, https://editor.localhost, http://code.localhost, https://code.localhost {
-	tls internal
-	import editor_backend
+	root * /srv/portal
+	try_files {path} /index.html
+	file_server
 }
 
 # ==============================================================================
-# Communications Plane: SOGo Groupware & Webmail Client Gateway
+# Core Ingress Routing Engine
+# Handles:
+#   1. Programmatic API mapping (Host: proxy.* or path /proxy/v1/*)
+#   2. Mail & Groupware Sync (Host: mail.* or path /mail*)
+#   3. Authentik SSO Gateway & Outposts
+#   4. Authenticated Subsystems (/editor, /efw, /langfuse, /runner, /dgx, /proxy/ui)
+#   5. Default Thin-Spine Portal Shell (/)
 # ==============================================================================
-(sogo_backend) {
-	encode gzip zstd
-	log {
-		output stdout
-		format console
-	}
-	@root path /
-	redir @root /SOGo 302
-	reverse_proxy sogo:20000 {
-		flush_interval -1
-	}
-}
-
-
-http://mail.{$BRAINSOS_DOMAIN:brainsos.local}, https://mail.{$BRAINSOS_DOMAIN:brainsos.local}, http://{$BRAINSOS_MAIL_HOST:mail.brainsos.local}, https://{$BRAINSOS_MAIL_HOST:mail.brainsos.local} {
-	import brainsos_tls
-	import sogo_backend
-}
-
-http://mail.localhost, https://mail.localhost {
-	tls internal
-	import sogo_backend
-}
-
-# ==============================================================================
-# Hardware Telemetry Gateway (NVIDIA DGX Dashboard)
-# ==============================================================================
-(dgx_backend) {
-	encode gzip zstd
-	log {
-		output stdout
-		format console
-	}
-	reverse_proxy host.docker.internal:11001 {
-		flush_interval -1
-	}
-}
-
-http://dgx.{$BRAINSOS_DOMAIN:brainsos.local}, https://dgx.{$BRAINSOS_DOMAIN:brainsos.local} {
-	import brainsos_tls
-	import dgx_backend
-}
-
-http://dgx.localhost, https://dgx.localhost {
-	tls internal
-	import dgx_backend
-}
-
-# ==============================================================================
-# Observability Plane: Langfuse Gateway (Port 3001)
-# ==============================================================================
-(langfuse_backend) {
-	encode gzip zstd
-	log {
-		output stdout
-		format console
-	}
-	reverse_proxy {$LANGFUSE_UPSTREAM:host.docker.internal:3001} {
-		flush_interval -1
-	}
-}
-
-http://langfuse.{$BRAINSOS_DOMAIN:brainsos.local}, https://langfuse.{$BRAINSOS_DOMAIN:brainsos.local} {
-	import brainsos_tls
-	import langfuse_backend
-}
-
-http://langfuse.localhost, https://langfuse.localhost {
-	tls internal
-	import langfuse_backend
-}
-
-# ==============================================================================
-# Security Hardening: Tool Egress Gateway & Inspection Proxy
-# Relays operator web traffic to mitmweb console for real-time flow and log audit
-# ==============================================================================
-(efw_backend) {
+(unified_ingress) {
 	encode gzip zstd
 	log {
 		output stdout
 		format console
 	}
 
-	reverse_proxy tool-egress-proxy:8081 {
-		flush_interval -1
+	# --------------------------------------------------------------------------
+	# PLANE 2: Programmatic LiteLLM API Gateway (Direct Token Auth, No SSO)
+	# Matches any host starting with proxy. (e.g. proxy.local.brainsos.ai,
+	# proxy.osx.local.brainsos.ai) OR direct API paths (/v1/*, /proxy/v1/*).
+	# Preserves caller's Authorization header (Rule 9 tenant virtual keys).
+	# --------------------------------------------------------------------------
+	@proxy_host header_regexp Host (?i)^proxy\.
+	handle @proxy_host {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
 	}
-}
 
-http://efw.{$BRAINSOS_DOMAIN:brainsos.local}, https://efw.{$BRAINSOS_DOMAIN:brainsos.local}, http://firewall.{$BRAINSOS_DOMAIN:brainsos.local}, https://firewall.{$BRAINSOS_DOMAIN:brainsos.local} {
-	import brainsos_tls
-	import efw_backend
-}
+	@proxy_api_path path /proxy/v1/* /v1/*
+	handle @proxy_api_path {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			flush_interval -1
+		}
+	}
 
-http://efw.localhost, https://efw.localhost, http://firewall.localhost, https://firewall.localhost {
-	tls internal
-	import efw_backend
-}
-
-# ==============================================================================
-# Ingress Default / Portal Landing Page (HTTP & HTTPS)
-# ==============================================================================
-(landing_page_content) {
-	header Content-Type "text/html; charset=utf-8"
-	respond <<EOF
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ASUS Ascent GX10 - brainsOS Control Center</title>
-  <style>
-    :root {
-      --gx10-blue: #0082c9;
-      --gx10-blue-hover: #006fae;
-      --gx10-blue-light: #e0f2fe;
-      --gx10-blue-glow: rgba(0, 130, 201, 0.25);
-      --brainsos-cyan: #0284c7;
-      --surface-white: #ffffff;
-      --surface-card: rgba(255, 255, 255, 0.94);
-      --surface-card-hover: #ffffff;
-      --border-subtle: rgba(0, 130, 201, 0.14);
-      --border-card: rgba(203, 213, 225, 0.85);
-      --border-card-hover: #0082c9;
-      --text-primary: #0f172a;
-      --text-secondary: #334155;
-      --text-muted: #64748b;
-      --nvidia-green: #15803d;
-      --nvidia-green-accent: #76b900;
-      --purple: #7e22ce;
-      --amber: #b45309;
-      --aluminum: #cbd5e1;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: linear-gradient(180deg, #0082c9 0%, #0082c9 260px, #e8f4fc 460px, #f4f9fd 660px, #f8fafc 100%);
-      color: var(--text-primary);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 36px 20px 56px;
-      overflow-x: hidden;
-    }
-    .container {
-      max-width: 1140px;
-      width: 100%;
-    }
-    .hero {
-      text-align: center;
-      margin-bottom: 36px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .hero-device-stage {
-      position: relative;
-      width: 100%;
-      max-width: 580px;
-      margin: 0 auto 16px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .hero-halo {
-      position: absolute;
-      width: 480px;
-      height: 240px;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.45) 0%, rgba(56, 189, 248, 0.22) 45%, transparent 70%);
-      filter: blur(36px);
-      pointer-events: none;
-      z-index: 0;
-    }
-    .hero-device-img {
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      max-width: 540px;
-      height: auto;
-      border-radius: 14px;
-      box-shadow: 0 20px 45px -12px rgba(0, 60, 115, 0.28), 0 2px 10px rgba(0, 0, 0, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.4);
-      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
-    }
-    .hero-device-img:hover {
-      transform: scale(1.015) translateY(-2px);
-      box-shadow: 0 28px 55px -12px rgba(0, 60, 115, 0.35), 0 0 30px rgba(255, 255, 255, 0.5);
-    }
-    .hero-reflection-line {
-      position: relative;
-      width: 78%;
-      height: 2px;
-      background: linear-gradient(90deg, transparent 0%, rgba(0, 130, 201, 0.3) 25%, rgba(255, 255, 255, 0.8) 50%, rgba(0, 130, 201, 0.3) 75%, transparent 100%);
-      margin-top: 10px;
-      margin-bottom: 22px;
-    }
-    .badge-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.88);
-      border: 1px solid rgba(0, 130, 201, 0.22);
-      color: #006fae;
-      padding: 7px 18px;
-      border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-      box-shadow: 0 4px 14px rgba(0, 90, 160, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-      backdrop-filter: blur(8px);
-    }
-    .pulse-dot {
-      width: 8px;
-      height: 8px;
-      background: #16a34a;
-      border-radius: 50%;
-      box-shadow: 0 0 8px rgba(22, 163, 74, 0.6);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
-      100% { opacity: 1; transform: scale(1); }
-    }
-    h1 {
-      font-size: 38px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: #071938;
-      background: linear-gradient(135deg, #071938 20%, #004d80 70%, #0082c9 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 8px;
-    }
-    .subtitle {
-      color: #334155;
-      font-size: 15px;
-      font-weight: 500;
-      max-width: 720px;
-      line-height: 1.5;
-      margin-bottom: 22px;
-    }
-    .spec-bar {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    .spec-chip {
-      background: rgba(255, 255, 255, 0.85);
-      border: 1px solid rgba(0, 130, 201, 0.18);
-      border-radius: 8px;
-      padding: 6px 14px;
-      font-size: 12px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      color: #475569;
-      box-shadow: 0 2px 8px rgba(0, 70, 130, 0.05);
-      backdrop-filter: blur(6px);
-    }
-    .spec-chip span {
-      color: #0077b6;
-      font-weight: 600;
-    }
-    .spec-chip strong {
-      color: #0f172a;
-      font-weight: 700;
-    }
-
-    /* Hardware Stack Layout */
-    .stack-sections {
-      display: flex;
-      flex-direction: column;
-      gap: 28px;
-      margin-bottom: 36px;
-    }
-    .layer-block {
-      background: rgba(255, 255, 255, 0.82);
-      border: 1px solid rgba(203, 213, 225, 0.85);
-      border-radius: 20px;
-      padding: 24px;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow: 0 4px 20px -2px rgba(0, 60, 120, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .layer-block:hover {
-      border-color: rgba(0, 130, 201, 0.4);
-      box-shadow: 0 6px 24px -2px rgba(0, 60, 120, 0.08);
-    }
-    .layer-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 18px;
-      flex-wrap: wrap;
-    }
-    .layer-badge {
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      padding: 5px 12px;
-      border-radius: 9999px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .badge-l67 { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-    .badge-l5 { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
-    .badge-l4 { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-    .badge-l23 { background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
-    .badge-l1 { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-    .badge-cross { background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8; }
-    
-    .layer-title-group {
-      display: flex;
-      flex-direction: column;
-    }
-    .layer-name {
-      font-size: 16px;
-      font-weight: 700;
-      color: #0f172a;
-      letter-spacing: -0.01em;
-    }
-    .layer-subtitle {
-      font-size: 12.5px;
-      color: #64748b;
-    }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 20px;
-    }
-    .grid-1 {
-      display: grid;
-      grid-template-columns: 1fr;
-    }
-    @media (max-width: 980px) {
-      .grid-3 { grid-template-columns: 1fr; }
-      .grid-2 { grid-template-columns: 1fr; }
-    }
-
-    /* Card Elements */
-    .card {
-      background: rgba(255, 255, 255, 0.94);
-      border: 1px solid rgba(203, 213, 225, 0.85);
-      border-radius: 16px;
-      padding: 22px;
-      text-decoration: none;
-      color: inherit;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      transition: all 0.26s cubic-bezier(0.16, 1, 0.3, 1);
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 2px 10px rgba(0, 60, 120, 0.04);
-    }
-    .card::before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, transparent, rgba(0, 130, 201, 0.2), transparent);
-      transition: background 0.3s ease;
-    }
-    .card:hover {
-      background: #ffffff;
-      border-color: #0082c9;
-      transform: translateY(-3px);
-      box-shadow: 0 16px 30px -8px rgba(0, 110, 190, 0.18), 0 0 0 1px #0082c9;
-    }
-    .card:hover::before {
-      background: linear-gradient(90deg, transparent, #0082c9, transparent);
-    }
-    .card-static {
-      background: rgba(255, 255, 255, 0.94);
-      border: 1px solid rgba(203, 213, 225, 0.85);
-      border-radius: 16px;
-      padding: 22px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      position: relative;
-      box-shadow: 0 2px 10px rgba(0, 60, 120, 0.04);
-    }
-
-    /* Agent Card Color Accents */
-    .card-terrastella { border-top: 3px solid #0082c9; }
-    .card-cindy { border-top: 3px solid #db2777; }
-    .card-dan { border-top: 3px solid #d97706; }
-    .card-memory { border-top: 3px solid #7c3aed; }
-    .card-control { border-top: 3px solid #b45309; }
-    .card-nvidia { border-top: 3px solid #16a34a; }
-    .card-langfuse { border-top: 3px solid #db2777; }
-    .card-security { border-top: 3px solid #0284c7; }
-
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
-    }
-    .plane-tag {
-      font-size: 10.5px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      padding: 4px 10px;
-      border-radius: 6px;
-    }
-    .tag-terrastella { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
-    .tag-cindy { background: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8; }
-    .tag-dan { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-    .tag-memory { background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff; }
-    .tag-control { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-    .tag-nvidia { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-    .tag-inference { background: #ccfbf1; color: #0f766e; border: 1px solid #99f6e4; }
-    .tag-virt { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
-    .tag-observability { background: #fdf2f8; color: #db2777; border: 1px solid #fbcfe8; }
-    .tag-security { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
-
-    .port-indicator {
-      font-size: 11px;
-      color: #64748b;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-weight: 600;
-    }
-    .card-title {
-      font-size: 19px;
-      font-weight: 700;
-      color: #0f172a;
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .card-role {
-      font-size: 12px;
-      font-weight: 600;
-      color: #0077b6;
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .card-desc {
-      font-size: 13px;
-      color: #475569;
-      line-height: 1.5;
-      margin-bottom: 14px;
-    }
-
-    .meta-pills {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 18px;
-    }
-    .meta-pill {
-      font-size: 11px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      padding: 3px 7px;
-      border-radius: 5px;
-      color: #64748b;
-      font-weight: 500;
-    }
-    .meta-pill strong {
-      color: #1e293b;
-    }
-
-    .card-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 12.5px;
-      color: #0082c9;
-      font-weight: 600;
-      border-top: 1px solid #f1f5f9;
-      padding-top: 14px;
-    }
-    .launch-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      color: #0082c9;
-      transition: gap 0.2s ease, color 0.2s ease;
-      font-weight: 700;
-    }
-    .card:hover .launch-btn {
-      gap: 8px;
-      color: #006fae;
-    }
-    .external-badge {
-      font-size: 10px;
-      color: #64748b;
-      background: #f8fafc;
-      padding: 3px 8px;
-      border-radius: 5px;
-      border: 1px solid #e2e8f0;
-      font-weight: 600;
-    }
-
-    .hosts-box {
-      background: rgba(255, 255, 255, 0.92);
-      border: 1px solid rgba(203, 213, 225, 0.85);
-      border-radius: 16px;
-      padding: 24px;
-      font-size: 13.5px;
-      box-shadow: 0 4px 20px -2px rgba(0, 60, 120, 0.05);
-      backdrop-filter: blur(12px);
-    }
-    .hosts-header {
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: #0f172a;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 15px;
-    }
-    .code-snippet {
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      padding: 14px 18px;
-      border-radius: 8px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 12px;
-      color: #006fae;
-      font-weight: 600;
-      overflow-x: auto;
-      white-space: nowrap;
-      user-select: all;
-    }
-    footer {
-      margin-top: 40px;
-      text-align: center;
-      color: #64748b;
-      font-size: 12px;
-      font-weight: 500;
-      line-height: 1.6;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header class="hero">
-      <div class="hero-device-stage">
-        <div class="hero-halo"></div>
-        <img src="data:image/webp;base64,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" alt="ASUS Ascent GX10 AI Appliance" class="hero-device-img" />
-      </div>
-      <div class="hero-reflection-line"></div>
-
-      <div class="badge-pill">
-        <div class="pulse-dot"></div>
-        ASUS Ascent GX10 Appliance &bull; Online
-      </div>
-      <h1>brainsOS Control Center</h1>
-      <p class="subtitle">Hardware-Accelerated Autonomous Multi-Agent Suite &amp; L1&ndash;L7 Systems Architecture Portal</p>
-
-      <div class="spec-bar">
-        <div class="spec-chip"><span>SoC:</span> <strong>NVIDIA GB10</strong></div>
-        <div class="spec-chip"><span>Memory:</span> <strong>273 GB/s Unified LPDDR5x</strong></div>
-        <div class="spec-chip"><span>OS:</span> <strong>DGX OS / Ubuntu 24.04</strong></div>
-        <div class="spec-chip"><span>Arch:</span> <strong>Native ARM64</strong></div>
-        <div class="spec-chip"><span>Fleet:</span> <strong>3 Autonomous Agents</strong></div>
-      </div>
-    </header>
-
-    <div class="stack-sections">
-      <!-- LEVEL 6 + 7: MULTI-AGENT FLEET & COMMUNICATIONS PLANE -->
-      <section class="layer-block">
-        <div class="layer-header">
-          <span class="layer-badge badge-l67">Levels 6 &amp; 7</span>
-          <div class="layer-title-group">
-            <span class="layer-name">Autonomous Multi-Agent Fleet &amp; Communications Plane</span>
-            <span class="layer-subtitle">Manifest-driven dynamic agent personas, universal groupware webmail, and asynchronous execution</span>
-          </div>
-        </div>
-
-        <!-- Communications Hub: SOGo Webmail -->
-        <div class="grid-1" style="margin-bottom: 18px;">
-          <a href="http://mail.localhost" target="_blank" rel="noopener noreferrer" class="card" style="border-top: 3px solid #0284c7;" data-subdomain="mail">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag" style="background: #e0f2fe; color: #0284c7;">Universal Communications Hub</span>
-                <span class="port-indicator">:20000 / :10025 / :10143</span>
-              </div>
-              <div class="card-title">
-                <span>brainsOS Webmail &amp; Groupware &bull; Universal Agent Message Bus</span>
-              </div>
-              <p class="card-desc">SOGo groupware client and universal mail substrate mediating asynchronous operator-agent dialogue and cross-agent coordination via Postfix SMTP and Dovecot IMAP. Ingests RFC-compliant email threads into the agent queue worker.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Webmail: <strong>SOGo Port 20000</strong></span>
-                <span class="meta-pill">Relay: <strong>Postfix SMTP (10025)</strong></span>
-                <span class="meta-pill">Mailboxes: <strong>admin, operator, terrastella, marvin, bawtford, ping</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span class="launch-btn" style="color: #0284c7;"><span class="primary-link" style="color: #0284c7;">mail.localhost</span> &rarr;</span>
-              <span class="external-badge">Webmail Client &#x2197;</span>
-            </div>
-          </a>
-        </div>
-
-        <div class="grid-3">
-          <!-- Terrastella -->
-          <div class="card-static card-terrastella">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-terrastella">Primary Agent</span>
-                <span class="port-indicator">Stateless Runner :8642</span>
-              </div>
-              <div class="card-title">
-                <span>Terrastella</span>
-              </div>
-              <div class="card-role">Primary Operations &amp; Fleet Orchestrator</div>
-              <p class="card-desc">Coordinates multi-agent fleet operations, verifies Open Knowledge Format memory purity, and executes sandboxed research and tooling via the shared stateless runner.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
-                <span class="meta-pill">Mailbox: <strong>terrastella@{$BRAINSOS_MAIL_DOMAIN:brainsos.local}</strong></span>
-                <span class="meta-pill">Memory: <strong>OKF Pure Markdown</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span style="font-size: 12px; color: var(--text-muted);">Dynamic Persona &bull; Injected Turn Context</span>
-              <span class="external-badge">Stateless Runner</span>
-            </div>
-          </div>
-
-          <!-- Bawtford -->
-          <div class="card-static card-cindy">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-cindy">Creative Director</span>
-                <span class="port-indicator">Stateless Runner :8642</span>
-              </div>
-              <div class="card-title">
-                <span>Bawtford</span>
-              </div>
-              <div class="card-role">Creative Director &amp; Supermodel CEO</div>
-              <p class="card-desc">Autonomous digital fashion director, public canvas publisher, and website builder sub-agent orchestrator. Persona and workspace injected into the shared stateless runner per turn.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
-                <span class="meta-pill">Mailbox: <strong>bawtford@{$BRAINSOS_MAIL_DOMAIN:brainsos.local}</strong></span>
-                <span class="meta-pill">Workspace: <strong>cindypawford/site</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span style="font-size: 12px; color: var(--text-muted);">Dynamic Persona &bull; Injected Turn Context</span>
-              <span class="external-badge" style="color: #db2777;">Stateless Runner</span>
-            </div>
-          </div>
-
-          <!-- Marvin -->
-          <div class="card-static card-dan">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-dan">Sports Analytics</span>
-                <span class="port-indicator">Stateless Runner :8642</span>
-              </div>
-              <div class="card-title">
-                <span>Marvin</span>
-              </div>
-              <div class="card-role">Sports Analytics &amp; Prediction</div>
-              <p class="card-desc">Quantitative sports analytics unit generating predictive match models, mathematical simulations, and automated telemetry reports via the shared stateless runner.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Model: <strong>brainsos-core</strong></span>
-                <span class="meta-pill">Mailbox: <strong>marvin@{$BRAINSOS_MAIL_DOMAIN:brainsos.local}</strong></span>
-                <span class="meta-pill">Memory: <strong>OKF Pure Markdown</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span style="font-size: 12px; color: var(--text-muted);">Dynamic Persona &bull; Injected Turn Context</span>
-              <span class="external-badge" style="color: #d97706;">Stateless Runner</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- LEVEL 5: MEMORY PLANE & TOOL SANDBOX -->
-      <section class="layer-block">
-        <div class="layer-header">
-          <span class="layer-badge badge-l5">Level 5</span>
-          <div class="layer-title-group">
-            <span class="layer-name">Memory Plane &amp; Tool Sandbox</span>
-            <span class="layer-subtitle">Human-in-the-loop Open Knowledge Format (OKF) markdown knowledge base and tenant partitions</span>
-          </div>
-        </div>
-
-        <div class="grid-1">
-          <a href="http://editor.localhost" target="_blank" rel="noopener noreferrer" class="card card-memory" data-subdomain="editor">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-memory">Operator Console &amp; Memory</span>
-                <span class="port-indicator">:8443</span>
-              </div>
-              <div class="card-title">
-                <span>brainsOS Operator IDE &bull; Containerized VS Code &amp; AI Pair Console</span>
-              </div>
-              <p class="card-desc">Authoritative L7 Operator Management IDE (OpenVSCode / Code-Server) with Multi-Root Workspace layout (Repo root, /memories, /data/workspace, Cindy canvas), Aider pair-programming, and Goose agent integration routed strictly through LiteLLM.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Console: <strong>VS Code Server</strong></span>
-                <span class="meta-pill">Workspace: <strong>Multi-Root</strong></span>
-                <span class="meta-pill">Pairing: <strong>Aider &amp; Goose</strong></span>
-                <span class="meta-pill">Isolation: <strong>Rule 9 Protected</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span class="launch-btn" style="color: #7c3aed;"><span class="primary-link" style="color: #7c3aed;">editor.localhost</span> &rarr;</span>
-              <span class="external-badge">Operator IDE &#x2197;</span>
-            </div>
-          </a>
-        </div>
-      </section>
-
-      <!-- LEVEL 4: ROUTING & SECURITY CONTROL PLANE -->
-      <section class="layer-block">
-        <div class="layer-header">
-          <span class="layer-badge badge-l4">Level 4</span>
-          <div class="layer-title-group">
-            <span class="layer-name">Routing &amp; Security Control Plane</span>
-            <span class="layer-subtitle">Hardware request scheduling, per-tenant virtual key authorization, and isolated PostgreSQL database</span>
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <a href="http://proxy.localhost/ui" target="_blank" rel="noopener noreferrer" class="card card-control" data-subdomain="proxy" data-path="/ui">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-control">Control Plane</span>
-                <span class="port-indicator">:4000</span>
-              </div>
-              <div class="card-title">
-                <span>LiteLLM AI Gateway &bull; Request Serialization &amp; Virtual Keys</span>
-              </div>
-              <p class="card-desc">Hardware serialization proxy enforcing unified LPDDR5x memory bus protection (max_parallel_requests: 1), per-tenant virtual key authentication, monthly spend limits, dynamic model routing, and isolated PostgreSQL database persistence.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Serialization: <strong>max_parallel_requests: 1</strong></span>
-                <span class="meta-pill">Bus Protection: <strong>LPDDR5x Guard</strong></span>
-                <span class="meta-pill">Security: <strong>brainsos-litellm-net Isolation</strong></span>
-                <span class="meta-pill">Store: <strong>PostgreSQL 16</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span class="launch-btn" style="color: #b45309;"><span class="primary-link" style="color: #b45309;">proxy.localhost/ui</span> &rarr;</span>
-              <span class="external-badge">Admin UI &#x2197;</span>
-            </div>
-          </a>
-
-          <!-- Tool Egress Firewall & Inspection Proxy -->
-          <a href="http://efw.localhost" target="_blank" rel="noopener noreferrer" class="card card-security" data-subdomain="efw">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-security">Egress Firewall</span>
-                <span class="port-indicator">:8081 / :8082</span>
-              </div>
-              <div class="card-title">
-                <span>Tool Egress Inspection Proxy &bull; mitmweb Firewall</span>
-              </div>
-              <p class="card-desc">Dedicated outbound security gateway and inspection firewall intercepting, logging, and auditing agent tool traffic in real time while enforcing strict internal plane bypass (NO_PROXY).</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Proxy: <strong>mitmproxy / mitmweb</strong></span>
-                <span class="meta-pill">Console: <strong>efw.brainsos.local</strong></span>
-                <span class="meta-pill">Inspection: <strong>Real-Time Flows &amp; Logs</strong></span>
-                <span class="meta-pill">Bypass: <strong>NO_PROXY Isolated</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span class="launch-btn" style="color: #0284c7;"><span class="primary-link" style="color: #0284c7;">efw.localhost</span> &rarr;</span>
-              <span class="external-badge">Inspection Console &#x2197;</span>
-            </div>
-          </a>
-        </div>
-      </section>
-
-      <!-- LEVEL 3 & 2: INFERENCE & VIRTUALIZATION INFRASTRUCTURE -->
-      <section class="layer-block">
-        <div class="layer-header">
-          <span class="layer-badge badge-l23">Levels 2 &amp; 3</span>
-          <div class="layer-title-group">
-            <span class="layer-name">Local Inference Plane &amp; Virtualization Infrastructure</span>
-            <span class="layer-subtitle">Native hardware tensor acceleration engines and kernel-isolated Docker bridge network boundaries</span>
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <!-- Level 3: Local Inference -->
-          <div class="card-static" style="border-top: 3px solid #0f766e;">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-inference">Inference Plane &bull; L3</span>
-                <span class="port-indicator">127.0.0.1:11434</span>
-              </div>
-              <div class="card-title">
-                <span>Host Inference Acceleration</span>
-              </div>
-              <p class="card-desc">Native hardware-accelerated model reasoning on NVIDIA GB10 / Apple Silicon. Bound strictly to host loopback with zero direct agent network visibility (Rule 2).</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Engine: <strong>Ollama / vLLM</strong></span>
-                <span class="meta-pill">Acceleration: <strong>GB10 Tensor Cores</strong></span>
-                <span class="meta-pill">Security: <strong>Strict Loopback Bound</strong></span>
-              </div>
-            </div>
-            <div class="card-footer" style="color: #0f766e;">
-              <span>Mediated Strictly via Layer 4 Gateway</span>
-              <span class="external-badge">Host Only</span>
-            </div>
-          </div>
-
-          <!-- Level 2: Virtualization -->
-          <div class="card-static" style="border-top: 3px solid #475569;">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-virt">Virtualization Plane &bull; L2</span>
-                <span class="port-indicator">Bridge Networks</span>
-              </div>
-              <div class="card-title">
-                <span>Isolated Network Boundaries</span>
-              </div>
-              <p class="card-desc">Multi-tier bridge networks isolating ingress reverse proxy traffic, internal agent egress, and control plane persistence. Containers run with unprivileged UID 1000 and dropped root capabilities.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Networks: <strong>brainsos-ingress, brainsos-internal, brainsos-litellm-net</strong></span>
-                <span class="meta-pill">Profile: <strong>UID 1000 Sandboxed</strong></span>
-                <span class="meta-pill">Caps: <strong>cap_drop: [ALL]</strong></span>
-              </div>
-            </div>
-            <div class="card-footer" style="color: #475569;">
-              <span>Zero Host Docker Socket Mounts</span>
-              <span class="external-badge">Sandboxed</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- LEVEL 1: HARDWARE & SYSTEM PLANE -->
-      <section class="layer-block">
-        <div class="layer-header">
-          <span class="layer-badge badge-l1">Level 1</span>
-          <div class="layer-title-group">
-            <span class="layer-name">Hardware &amp; System Plane</span>
-            <span class="layer-subtitle">Bare-metal appliance specifications, unified memory bus utilization, and DGX OS kernel telemetry</span>
-          </div>
-        </div>
-
-        <div class="grid-1">
-          <a href="http://dgx.localhost" target="_blank" rel="noopener noreferrer" class="card card-nvidia" data-subdomain="dgx">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-nvidia">Hardware Telemetry</span>
-                <span class="port-indicator">:11001</span>
-              </div>
-              <div class="card-title">
-                <span>NVIDIA DGX Dashboard &bull; System Telemetry</span>
-              </div>
-              <p class="card-desc">Real-time appliance thermals, NVIDIA GB10 unified memory bandwidth utilization (~273 GB/s peak), DGX OS / Ubuntu 24.04 kernel metrics, fan RPMs, power draw, and appliance health monitoring.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Appliance: <strong>ASUS Ascent GX10</strong></span>
-                <span class="meta-pill">SoC: <strong>NVIDIA GB10 ARM64</strong></span>
-                <span class="meta-pill">Bus: <strong>273 GB/s Unified LPDDR5x</strong></span>
-                <span class="meta-pill">OS: <strong>DGX OS / Ubuntu 24.04</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span class="launch-btn" style="color: var(--nvidia-green);"><span class="primary-link" style="color: var(--nvidia-green);">dgx.localhost</span> &rarr;</span>
-              <span class="external-badge">Telemetry &#x2197;</span>
-            </div>
-          </a>
-        </div>
-      </section>
-
-      <!-- CROSS-CUTTING: OBSERVABILITY & SECURITY EGRESS -->
-      <section class="layer-block">
-        <div class="layer-header">
-          <span class="layer-badge badge-cross">Cross-Cutting</span>
-          <div class="layer-title-group">
-            <span class="layer-name">Observability Platform &amp; Security Egress Gateway</span>
-            <span class="layer-subtitle">Decoupled distributed trace aggregation and in-transit credential injection</span>
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <!-- Langfuse -->
-          <a href="http://langfuse.localhost" target="_blank" rel="noopener noreferrer" class="card card-langfuse" data-subdomain="langfuse">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-observability">Observability Plane</span>
-                <span class="port-indicator">:3001</span>
-              </div>
-              <div class="card-title">
-                <span>Langfuse Platform</span>
-              </div>
-              <p class="card-desc">OpenTelemetry distributed trace aggregation, multi-step agent reasoning step traces, tool execution latency, and token spend telemetry.</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Tracing: <strong>OpenTelemetry (OTel)</strong></span>
-                <span class="meta-pill">Metrics: <strong>Latency &amp; Token Spend</strong></span>
-                <span class="meta-pill">Persistence: <strong>brainsos-langfuse-db</strong></span>
-              </div>
-            </div>
-            <div class="card-footer">
-              <span class="launch-btn" style="color: #db2777;"><span class="primary-link" style="color: #db2777;">langfuse.localhost</span> &rarr;</span>
-              <span class="external-badge">Tracing UI &#x2197;</span>
-            </div>
-          </a>
-
-          <!-- In-Transit GitHub Egress Gateway Proxy -->
-          <div class="card-static card-security">
-            <div>
-              <div class="card-header">
-                <span class="plane-tag tag-security">Egress Gateway Addon</span>
-                <span class="port-indicator">:8082 Proxy</span>
-              </div>
-              <div class="card-title">
-                <span>In-Transit GitHub Credential Proxy</span>
-              </div>
-              <p class="card-desc">Tool Egress Gateway mitmproxy addon intercepting outbound agent Git Smart HTTP and GitHub API requests, injecting fine-grained credentials in transit based on tenant container IP with zero ambient secrets (Rule 10).</p>
-              <div class="meta-pills">
-                <span class="meta-pill">Protocol: <strong>Git Smart HTTP &amp; GraphQL</strong></span>
-                <span class="meta-pill">Security: <strong>Zero Container Secrets</strong></span>
-                <span class="meta-pill">Proxy: <strong>In-Transit Addon Injection</strong></span>
-              </div>
-            </div>
-            <div class="card-footer" style="color: #0369a1;">
-              <span>Enforced by Egress Gateway &amp; Container Isolation</span>
-              <span class="external-badge">Egress Addon</span>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <div class="hosts-box">
-      <div class="hosts-header">
-        <span>Custom Domain Resolution (*.brainsos.local)</span>
-      </div>
-      <p style="color: var(--text-muted); margin-bottom: 12px; line-height: 1.4;">
-        All services are accessible via <code>*.localhost</code> out of the box. To access via clean <code>*.brainsos.local</code> URLs from this appliance or another machine on your LAN, append this entry to <code>/etc/hosts</code>:
-      </p>
-      <div class="code-snippet">echo "127.0.0.1 brainsos.local proxy.brainsos.local editor.brainsos.local code.brainsos.local mail.brainsos.local dgx.brainsos.local langfuse.brainsos.local efw.brainsos.local firewall.brainsos.local" | sudo tee -a /etc/hosts</div>
-    </div>
-
-    <footer>
-      ASUS Ascent GX10 Appliance &bull; NVIDIA GB10 &bull; DGX OS / Ubuntu 24.04 &bull; Caddy Ingress v2
-    </footer>
-  </div>
-
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      var hostname = window.location.hostname;
-      var protocol = window.location.protocol;
-      if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-        var isBrainsOSLocal = hostname.indexOf("brainsos.local") !== -1;
-        var domain = isBrainsOSLocal ? hostname : "{$BRAINSOS_DOMAIN:brainsos.local}";
-        var cards = document.querySelectorAll("a.card[data-subdomain]");
-        for (var i = 0; i < cards.length; i++) {
-          var card = cards[i];
-          var sub = card.getAttribute("data-subdomain");
-          var path = card.getAttribute("data-path") || "";
-          card.href = protocol + "//" + sub + "." + domain + path;
-          var primary = card.querySelector(".primary-link");
-          if (primary) {
-            primary.textContent = sub + "." + domain + path;
-          }
-        }
-      }
-    });
-  </script>
-</body>
-</html>
-EOF 200
-}
-
-http://{$BRAINSOS_DOMAIN:brainsos.local}, https://{$BRAINSOS_DOMAIN:brainsos.local}, http://*.{$BRAINSOS_DOMAIN:brainsos.local}, https://*.{$BRAINSOS_DOMAIN:brainsos.local} {
-	import brainsos_tls
-	handle /SOGo* {
+	# --------------------------------------------------------------------------
+	# PLANE 3: Mail Ingress & Groupware Sync (MX, CalDAV, CardDAV, ActiveSync)
+	# Matches any host starting with mail. (e.g. mail.local.brainsos.ai)
+	# --------------------------------------------------------------------------
+	@mail_host header_regexp Host (?i)^mail\.
+	handle @mail_host {
+		import authentik_forward_auth
+		redir /.well-known/caldav /SOGo/dav/ 301
+		redir /.well-known/carddav /SOGo/dav/ 301
+		@mail_host_root path /
+		redir @mail_host_root /SOGo 302
 		reverse_proxy sogo:20000 {
+			header_up x-webobjects-remote-user {header.X-Authentik-Username}
+			header_up Remote-User {header.X-Authentik-Username}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up x-webobjects-server-name {host}
+			header_up x-webobjects-server-port {server_port}
+			header_up x-webobjects-server-url https://{host}
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Observability Platform (Host: langfuse.*)
+	# Matches any host starting with langfuse. (e.g. langfuse.local.brainsos.ai,
+	# langfuse.osx.local.brainsos.ai). Direct reverse proxy with framing enabled
+	# for portal embedding and unblocked trace ingestion.
+	# --------------------------------------------------------------------------
+	@langfuse_host header_regexp Host (?i)^langfuse\.
+	handle @langfuse_host {
+		reverse_proxy {$LANGFUSE_UPSTREAM:host.docker.internal:3001} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# PLANE 1: Single-Origin Web Portal & Authentik SSO Ingress
+	# --------------------------------------------------------------------------
+
+	# A. Authentik SSO Endpoints & Outposts (Public & Internal Flow Routes)
+	handle /outpost.goauthentik.io/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /auth/* {
+		uri strip_prefix /auth
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+		}
+	}
+	handle /flows/* {
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+		}
+	}
+	handle /if/* {
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+		}
+	}
+	handle /media/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /-/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /static/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /api/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /application/* {
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+		}
+	}
+	handle /ws/* {
+		reverse_proxy authentik-server:9000
+	}
+
+	# B. Subsystem 1: Operator Studio (VS Code IDE)
+	@editor_no_slash path /editor
+	redir @editor_no_slash /editor/ 308
+	handle /editor/* {
+		import authentik_forward_auth
+		uri strip_prefix /editor
+		reverse_proxy code-server:8443 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# C. Subsystem 2: Communications Plane (SOGo Webmail & Groupware)
+	@mail_path path /mail /mail/
+	redir @mail_path /SOGo 302
+	handle /SOGo* {
+		import authentik_forward_auth
+		reverse_proxy sogo:20000 {
+			header_up x-webobjects-remote-user {header.X-Authentik-Username}
+			header_up Remote-User {header.X-Authentik-Username}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up x-webobjects-server-name {host}
+			header_up x-webobjects-server-port {server_port}
+			header_up x-webobjects-server-url https://{host}
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
@@ -1068,24 +202,184 @@ http://{$BRAINSOS_DOMAIN:brainsos.local}, https://{$BRAINSOS_DOMAIN:brainsos.loc
 			flush_interval -1
 		}
 	}
+
+	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
+	@proxy_ui_no_slash path /proxy /proxy/ /proxy/ui
+	redir @proxy_ui_no_slash /proxy/ui/ 308
+	handle /ui* {
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /proxy/ui/* {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /sso/* {
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /proxy/sso/* {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /litellm-asset-prefix/* {
+		reverse_proxy host.docker.internal:4000 {
+			flush_interval -1
+		}
+	}
+	handle /.well-known/litellm-ui-config {
+		reverse_proxy host.docker.internal:4000 {
+			flush_interval -1
+		}
+	}
+	handle /litellm/.well-known/litellm-ui-config {
+		reverse_proxy host.docker.internal:4000 {
+			flush_interval -1
+		}
+	}
+	handle /proxy/.well-known/litellm-ui-config {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			flush_interval -1
+		}
+	}
+	handle /proxy/litellm/.well-known/litellm-ui-config {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			flush_interval -1
+		}
+	}
+	@litellm_api path /key/* /model/* /models* /model_group/* /user/* /team/* /customer/* /spend/* /global/* /health/* /routes* /config/* /service_account/* /public/* /settings/* /get_favicon
+	handle @litellm_api {
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	@proxy_litellm_api path /proxy/key/* /proxy/model/* /proxy/models* /proxy/model_group/* /proxy/user/* /proxy/team/* /proxy/customer/* /proxy/spend/* /proxy/global/* /proxy/health/* /proxy/routes* /proxy/config/* /proxy/service_account/* /proxy/public/* /proxy/settings/*
+	handle @proxy_litellm_api {
+		uri strip_prefix /proxy
+		reverse_proxy host.docker.internal:4000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# E. Subsystem 4: Tool Egress Gateway & Inspection Console (mitmweb)
+	@efw_no_slash path /efw
+	redir @efw_no_slash /efw/ 308
+	handle /efw/* {
+		import authentik_forward_auth
+		uri strip_prefix /efw
+		reverse_proxy tool-egress-proxy:8081 {
+			header_up Authorization "Bearer {$TOOL_EGRESS_WEB_PASSWORD:brainsos_tool_egress_secret}"
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# F. Subsystem 5: Observability Plane (Langfuse)
+	# Redirect /langfuse* to dedicated subdomain langfuse.{host}
+	# Langfuse (Next.js) requires root asset paths (/_next/*) and an uncolliding API namespace.
+	@langfuse_path path /langfuse /langfuse/*
+	handle @langfuse_path {
+		redir https://langfuse.{host}/ 302
+	}
+
+	# G. Subsystem 6: Agent Plane (Hermes Runner WebUI)
+	handle /runner* {
+		import authentik_forward_auth
+		reverse_proxy runner-hermes:8787 {
+			header_up Remote-User {header.Remote-User}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
+	# H. Subsystem 7: Hardware Telemetry (NVIDIA DGX Dashboard)
+	handle /dgx* {
+		import authentik_forward_auth
+		reverse_proxy host.docker.internal:11001 {
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
+	# I. Default Handler: BrainsOS Thin-Spine React Portal SPA
 	handle {
-		import landing_page_content
+		import authentik_forward_auth
+		import portal_content
 	}
 }
 
-http://localhost, https://localhost, :80, :443 {
+# ==============================================================================
+# Site Listeners
+# ==============================================================================
+
+# Public / Appliance Domain Site Block (*.local.brainsos.ai, custom domains)
+http://{$BRAINSOS_DOMAIN:brainsos.local}, https://{$BRAINSOS_DOMAIN:brainsos.local}, http://*.{$BRAINSOS_DOMAIN:brainsos.local}, https://*.{$BRAINSOS_DOMAIN:brainsos.local}, http://local.brainsos.ai, https://local.brainsos.ai, http://*.local.brainsos.ai, https://*.local.brainsos.ai {
+	import brainsos_tls
+	import unified_ingress
+}
+
+# Localhost Fallback Site Block (:80, :443, localhost, *.localhost)
+http://localhost, https://localhost, http://*.localhost, https://*.localhost, :80, :443 {
 	tls internal
-	handle /SOGo* {
-		reverse_proxy sogo:20000 {
-			flush_interval -1
-		}
+	import unified_ingress
+}
+
+# ==============================================================================
+# Backward Compatibility: Dedicated Subdomain Site Blocks
+# ==============================================================================
+(hermes_runner_backend) {
+	import authentik_forward_auth
+	encode gzip zstd
+	log {
+		output stdout
+		format console
 	}
-	handle /WebServerResources* {
-		reverse_proxy sogo:20000 {
-			flush_interval -1
-		}
-	}
-	handle {
-		import landing_page_content
+	reverse_proxy runner-hermes:8787 {
+		header_up Remote-User {header.Remote-User}
+		header_up X-Authentik-Username {header.X-Authentik-Username}
+		flush_interval -1
 	}
 }
+
+http://auth.{$BRAINSOS_DOMAIN:brainsos.local}, https://auth.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
+	import authentik_backend
+}
+
+http://auth.localhost, https://auth.localhost {
+	tls internal
+	import authentik_backend
+}
+
+http://hermes.runner.{$BRAINSOS_DOMAIN:brainsos.local}, https://hermes.runner.{$BRAINSOS_DOMAIN:brainsos.local} {
+	import brainsos_tls
+	import hermes_runner_backend
+}
+
+http://hermes.runner.localhost, https://hermes.runner.localhost {
+	tls internal
+	import hermes_runner_backend
+}
+
