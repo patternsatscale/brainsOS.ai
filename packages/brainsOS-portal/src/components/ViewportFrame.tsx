@@ -7,19 +7,22 @@ import {
   Shield,
   Network,
   Activity,
-  HelpCircle,
-  Radio
+  Users,
+  HelpCircle
 } from 'lucide-react';
 import { Subsystem, SUBSYSTEMS } from '../data/subsystems';
+import { HelpView } from './HelpView';
 
 interface ViewportFrameProps {
   subsystem: Subsystem;
   useLiveUrl?: boolean;
+  customUrls?: Record<string, string>;
 }
 
 export const ViewportFrame: React.FC<ViewportFrameProps> = ({
   subsystem,
-  useLiveUrl = false
+  useLiveUrl = false,
+  customUrls = {}
 }) => {
   const iframeRefs = useRef<Record<string, HTMLIFrameElement | null>>({});
   const [visitedKeys, setVisitedKeys] = useState<string[]>(() => [subsystem.id]);
@@ -43,6 +46,8 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
         return <Network {...props} />;
       case 'trace':
         return <Activity {...props} />;
+      case 'users':
+        return <Users {...props} />;
       case 'help':
         return <HelpCircle {...props} />;
       default:
@@ -50,27 +55,73 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
     }
   };
 
-  const computeLiveUrl = (item: Subsystem) => {
+  const computeLiveUrl = (item: Subsystem, overrideUrl?: string) => {
+    if (overrideUrl) return overrideUrl;
     if (typeof window === 'undefined') return item.route;
     const host = window.location.hostname;
     const proto = window.location.protocol;
     const port = window.location.port ? `:${window.location.port}` : '';
 
-    if (item.id === 'trace' || item.route === '/langfuse/') {
+    if (item.id === 'trace' || item.route.includes('/langfuse')) {
       if (!host.startsWith('langfuse.')) {
-        return `${proto}//langfuse.${host}${port}/`;
+        return `${proto}//langfuse.${host}${port}/project/brainsos/sessions`;
       }
+      return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
-    if (item.id === 'security' || item.id === 'control' || item.route === '/proxy/') {
-      return `${proto}//${host}${port}/ui/`;
+    if (item.id === 'security' || item.route.includes('/proxy')) {
+      return `${proto}//${host}${port}/proxy/ui/usage`;
     }
     return item.route;
   };
 
-  const liveUrl = React.useMemo(() => computeLiveUrl(subsystem), [subsystem]);
+  const currentCustomUrl = customUrls[subsystem.id];
+  const liveUrl = React.useMemo(
+    () => computeLiveUrl(subsystem, currentCustomUrl),
+    [subsystem, currentCustomUrl]
+  );
+
+  // Sync iframe src whenever active URL changes
+  React.useEffect(() => {
+    const frame = iframeRefs.current[subsystem.id];
+    if (frame && useLiveUrl && liveUrl) {
+      if (frame.src !== liveUrl && !frame.src.endsWith(liveUrl)) {
+        frame.src = liveUrl;
+      }
+    }
+  }, [subsystem.id, liveUrl, useLiveUrl]);
+
+  // Branded full URL for the viewport header
+  const displayUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return currentCustomUrl || subsystem.route;
+    const host = window.location.host;
+    if (subsystem.id === 'help') {
+      return `${host} • Knowledge Base`;
+    }
+    if (currentCustomUrl) {
+      if (currentCustomUrl.includes('default-user-settings-flow')) {
+        return `${host}/if/flow/default-user-settings-flow/`;
+      }
+      return `${host}${currentCustomUrl.startsWith('/') ? '' : '/'}${currentCustomUrl}`;
+    }
+    if (subsystem.id === 'trace') {
+      const baseHost = host.startsWith('langfuse.') ? host : `langfuse.${host}`;
+      return `${baseHost}/project/brainsos/sessions`;
+    }
+    if (subsystem.id === 'security') {
+      return `${host}/proxy/ui/usage`;
+    }
+    if (subsystem.route.startsWith('/')) {
+      return `${host}${subsystem.route}`;
+    }
+    return subsystem.route.replace(/^https?:\/\//, '');
+  }, [subsystem, currentCustomUrl]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
+    if (subsystem.id === 'help') {
+      setTimeout(() => setIsRefreshing(false), 300);
+      return;
+    }
     const activeFrame = iframeRefs.current[subsystem.id];
     if (activeFrame) {
       if (useLiveUrl) {
@@ -83,7 +134,11 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
   };
 
   const handleOpenExternal = () => {
-    window.open(useLiveUrl ? liveUrl : subsystem.route, '_blank');
+    if (subsystem.id === 'help') {
+      window.open('https://github.com/patternsatscale/brainsOS.ai#readme', '_blank');
+      return;
+    }
+    window.open(useLiveUrl ? liveUrl : (currentCustomUrl || subsystem.route), '_blank');
   };
 
   return (
@@ -93,17 +148,14 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
         <div className="flex items-center gap-2.5">
           {renderIcon(subsystem.id, subsystem.color)}
           <span className="font-headline font-bold text-white tracking-tight">
-            {subsystem.title}
+            {currentCustomUrl && currentCustomUrl.includes('/settings')
+              ? 'Profile Settings'
+              : subsystem.title}
           </span>
           <span className="text-slate-600">•</span>
           <span className="text-slate-400 text-[11px] truncate max-w-xs sm:max-w-md">
-            {useLiveUrl ? liveUrl : subsystem.route}
+            {displayUrl}
           </span>
-          <span className="text-slate-600 hidden sm:inline">•</span>
-          <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-            <Radio className="w-2.5 h-2.5 animate-pulse" />
-            <span>NOMINAL</span>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -130,13 +182,30 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
         </div>
       </header>
 
-      {/* The Active 100% Full-Bleed iFrame Area (96%+ screen real estate) */}
+      {/* The Active 100% Full-Bleed Viewport Area (96%+ screen real estate) */}
       <div className="flex-1 w-full h-full relative overflow-hidden bg-[#090C12]">
         {visitedKeys.map((key) => {
+          const isActive = key === subsystem.id;
+
+          // Help / Documentation Viewport: Render native React Knowledge Base (zero iframe recursion)
+          if (key === 'help') {
+            return (
+              <div
+                key="help"
+                className={`absolute inset-0 w-full h-full transition-opacity duration-150 ${
+                  isActive
+                    ? 'visible opacity-100 pointer-events-auto z-10'
+                    : 'invisible opacity-0 pointer-events-none -z-10'
+                }`}
+              >
+                <HelpView />
+              </div>
+            );
+          }
+
           const item = SUBSYSTEMS[key];
           if (!item) return null;
-          const isActive = key === subsystem.id;
-          const targetUrl = computeLiveUrl(item);
+          const targetUrl = computeLiveUrl(item, customUrls[key]);
 
           return (
             <iframe

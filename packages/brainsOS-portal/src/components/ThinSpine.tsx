@@ -11,6 +11,7 @@ import {
   Maximize2
 } from 'lucide-react';
 import { SUBSYSTEMS, Subsystem } from '../data/subsystems';
+import { AuthenticatedUser, getInitials } from '../types/user';
 
 interface ThinSpineProps {
   activeKey: string;
@@ -19,6 +20,7 @@ interface ThinSpineProps {
   onToggleFullscreen: () => void;
   onOpenProfile: () => void;
   isProfileOpen?: boolean;
+  user?: AuthenticatedUser;
 }
 
 export const ThinSpine: React.FC<ThinSpineProps> = ({
@@ -27,7 +29,8 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
   onToggleDrawer,
   onToggleFullscreen,
   onOpenProfile,
-  isProfileOpen = false
+  isProfileOpen = false,
+  user
 }) => {
   const renderIcon = (sub: Subsystem) => {
     switch (sub.id) {
@@ -121,25 +124,25 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
           <Maximize2 className="w-4 h-4" />
         </button>
 
-        {/* Operator Profile & SSO Session Trigger */}
+        {/* User Account & SSO Session Trigger */}
         <button
           onClick={onOpenProfile}
-          id="btn-operator-profile"
+          id="btn-user-profile"
           className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-200 group border ${
             isProfileOpen
               ? 'bg-[#00f2fe]/20 border-[#00f2fe] shadow-[0_0_15px_rgba(0,242,254,0.35)]'
               : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] hover:border-[#00f2fe]/40'
           }`}
-          title="Operator Profile & SSO Session (@operator)"
-          aria-label="Operator Profile and SSO Session"
+          title={`${user?.name || user?.username || 'Account'} (@${user?.username || 'admin'})`}
+          aria-label="User Account and SSO Session"
         >
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00f2fe]/20 to-emerald-500/20 flex items-center justify-center text-[#00f2fe] font-mono text-[11px] font-bold tracking-tight">
-            OP
+            {getInitials(user?.name, user?.username)}
           </div>
-          {/* Flashing Green Status Indicator on the avatar */}
+          {/* Active Session Status Indicator on the avatar */}
           <span
             className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0B0E14] shadow-[0_0_6px_#10b981] animate-pulse"
-            title="Appliance Nominal • ASUS Ascent GX10 (ARM64)"
+            title={`Appliance Active • @${user?.username || 'admin'}`}
           />
         </button>
       </div>

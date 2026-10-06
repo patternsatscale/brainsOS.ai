@@ -2,26 +2,67 @@ import React, { useState, useEffect } from 'react';
 import {
   X,
   LogOut,
-  Shield,
-  CheckCircle2,
-  Lock,
+  Settings,
   AlertTriangle,
   RefreshCw
 } from 'lucide-react';
+import { AuthenticatedUser, DEFAULT_USER, getInitials } from '../types/user';
 
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  user?: AuthenticatedUser;
   onLogout?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   onClose,
-  onLogout
+  user: initialUser,
+  onLogout,
+  onOpenSettings
 }) => {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [internalUser, setInternalUser] = useState<AuthenticatedUser>(initialUser || DEFAULT_USER);
+
+  // Sync internal user if prop updates
+  useEffect(() => {
+    if (initialUser) {
+      setInternalUser(initialUser);
+    }
+  }, [initialUser]);
+
+  // If user prop was not provided, fetch user directly
+  useEffect(() => {
+    if (!isOpen || initialUser) return;
+
+    fetch('/api/v3/core/users/me/', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.username) {
+          setInternalUser({
+            username: data.username,
+            name: data.name || (data.username.toLowerCase() === 'admin' ? 'Appliance Administrator' : data.username),
+            email: data.email || `${data.username}@brainsos.ai`,
+            isSuperuser: Boolean(data.is_superuser),
+            lastLogin: data.last_login
+              ? new Date(data.last_login).toLocaleString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Active SSO Session',
+            avatarUrl: data.avatar || undefined,
+          });
+        }
+      })
+      .catch(() => {
+        // Keep default user on preview / error
+      });
+  }, [isOpen, initialUser]);
 
   // Close on Escape key
   useEffect(() => {
@@ -38,7 +79,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, confirmLogout, onClose]);
 
-  // Reset confirmation when closed
+  // Reset confirmation state when popout closes
   useEffect(() => {
     if (!isOpen) {
       setConfirmLogout(false);
@@ -48,6 +89,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   if (!isOpen) return null;
 
+  const activeUser = initialUser || internalUser;
+
   const handleExecuteLogout = () => {
     setLoggingOut(true);
     if (onLogout) {
@@ -55,9 +98,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       return;
     }
 
-    // Default logout flow:
-    // In live deployment: redirect to Authentik sign-out flow
-    // In local preview: redirect to login.html
     const isLive = typeof window !== 'undefined' && (
       window.location.hostname.includes('brainsos') ||
       window.location.search.includes('live=true')
@@ -65,191 +105,160 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
     setTimeout(() => {
       if (isLive) {
-        window.location.href = '/outpost.goauthentik.io/sign_out';
+        window.location.href = '/flows/-/default/invalidation/?next=/flows/-/default/authentication/';
       } else {
-        // Local preview redirect to Authentik mockup login page
         window.location.href = window.location.port === '3034' 
           ? 'http://localhost:3033/login.html'
           : '/login.html';
       }
-    }, 700);
+    }, 500);
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-150"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="profile-modal-title"
-    >
-      {/* Click outside backdrop */}
+    <>
+      {/* 1. Transparent Backdrop: dismisses popout when clicking anywhere outside */}
       <div
-        className="fixed inset-0 -z-10"
+        className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] transition-opacity duration-150"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Modal Card */}
+      {/* 2. Anchored Popout Card (Google-style bottom-left spine popout) */}
       <div
-        className="relative w-full max-w-md bg-[#0B0E14] border border-white/10 rounded-2xl shadow-2xl overflow-hidden text-slate-200 border-t-2 border-t-[#00f2fe]"
+        className="fixed left-3 sm:left-20 bottom-16 sm:bottom-3.5 z-50 w-[calc(100vw-1.5rem)] sm:w-[350px] max-w-[360px] bg-[#121620] border border-white/10 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.85)] p-4 text-slate-200 animate-in fade-in zoom-in-95 duration-150 select-none"
+        role="dialog"
+        aria-modal="true"
+        aria-label="User Account Popout"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header Bar */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-[#00f2fe]" />
-            <span
-              id="profile-modal-title"
-              className="font-headline font-bold text-sm tracking-tight text-white"
-            >
-              Operator Identity & SSO
-            </span>
+        {/* Top Header Row with Close 'X' */}
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_#10b981]" />
+            <span className="font-semibold text-slate-300">brainsOS Account</span>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
             title="Close (Esc)"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-5 space-y-4">
-          {/* Identity Header Card */}
-          <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
-            <div className="relative shrink-0">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#00f2fe]/20 to-emerald-500/20 border border-[#00f2fe]/40 flex items-center justify-center text-[#00f2fe] font-mono text-base font-bold shadow-[0_0_15px_rgba(0,242,254,0.15)]">
-                OP
-              </div>
-              <span
-                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-[#0B0E14] shadow-[0_0_8px_#10b981] animate-pulse"
-                title="Active Session"
-              />
+        {/* Hero User Identity Box (Google Style) */}
+        <div className="p-3.5 rounded-2xl bg-[#1a2130] border border-white/5 flex items-center gap-3.5 shadow-inner">
+          <div className="relative shrink-0">
+            <div className="w-13 h-13 rounded-full bg-gradient-to-br from-[#00f2fe]/20 to-emerald-500/20 border-2 border-[#00f2fe]/40 flex items-center justify-center text-[#00f2fe] font-mono text-base font-bold shadow-[0_0_15px_rgba(0,242,254,0.15)]">
+              {getInitials(activeUser.name, activeUser.username)}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-headline font-bold text-sm text-white truncate">
-                  brainsOS Operator
-                </span>
-                <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#00f2fe]/10 text-[#00f2fe] border border-[#00f2fe]/20 font-semibold shrink-0">
-                  ROOT
-                </span>
-              </div>
-              <div className="font-mono text-xs text-slate-400 mt-0.5">
-                @operator
-              </div>
-              <div className="font-mono text-[10px] text-slate-500 mt-0.5">
-                operator@brainsos.ai
-              </div>
-            </div>
+            <span
+              className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-[#1a2130] shadow-[0_0_8px_#10b981] animate-pulse"
+              title="Active Authentik SSO Session"
+            />
           </div>
-
-          {/* Authentik SSO Credential Status */}
-          <div className="rounded-xl bg-[#121620] border border-white/5 p-3.5 space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-slate-300 font-medium">
-                <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Authentik SSO Ingress Status</span>
-              </div>
-              <span className="font-mono text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-semibold">
-                FORWARD_AUTH OK
+          <div className="min-w-0 flex-1">
+            <div className="font-headline font-bold text-sm text-white truncate">
+              {activeUser.name || activeUser.username}
+            </div>
+            <div className="font-mono text-xs text-slate-400 truncate mt-0.5">
+              {activeUser.email}
+            </div>
+            <div className="flex items-center gap-1.5 mt-1.5 font-mono">
+              <span className="text-[11px] text-[#00f2fe] font-medium">
+                @{activeUser.username}
+              </span>
+              <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#00f2fe]/10 text-[#00f2fe] border border-[#00f2fe]/20 font-semibold">
+                {activeUser.isSuperuser ? 'ADMIN' : 'OPERATOR'}
               </span>
             </div>
-
-            <div className="font-mono text-[10.5px] space-y-1.5 pt-1 text-slate-400 border-t border-white/5">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Injected Header:</span>
-                <code className="text-[#00f2fe] bg-black/30 px-1.5 py-0.5 rounded">Remote-User: operator</code>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Identity Provider:</span>
-                <span className="text-slate-300">Authentik Core (v2024.8)</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Appliance Target:</span>
-                <span className="text-slate-300">ASUS Ascent GX10 (ARM64)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Subsystem Credential Propagation */}
-          <div className="space-y-1.5">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-0.5">
-              Subsystem Delegation
-            </div>
-            <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
-              <div className="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-slate-300 truncate">Cloud IDE (code-server)</span>
-              </div>
-              <div className="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-slate-300 truncate">SOGo Mail / Comms</span>
-              </div>
-              <div className="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-slate-300 truncate">Hermes Runner UI</span>
-              </div>
-              <div className="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="text-slate-300 truncate">LiteLLM Gateway</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Logout / Session Termination Section */}
-          <div className="pt-2 border-t border-white/10">
-            {!confirmLogout ? (
-              <button
-                onClick={() => setConfirmLogout(true)}
-                id="btn-logout-init"
-                className="w-full py-2.5 px-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 text-red-400 hover:text-red-300 font-medium text-xs flex items-center justify-center gap-2 transition-all group shadow-lg"
-              >
-                <LogOut className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                <span>Log Out of Appliance (@operator)</span>
-              </button>
-            ) : (
-              <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-500/40 space-y-3 animate-in fade-in">
-                <div className="flex items-start gap-2.5">
-                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <div className="text-xs text-slate-300 leading-snug">
-                    <span className="font-semibold text-red-300 block">End Active SSO Session?</span>
-                    This will invalidate your Authentik session tokens and forward-auth headers across all appliance subsystems.
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleExecuteLogout}
-                    disabled={loggingOut}
-                    id="btn-confirm-logout"
-                    className="flex-1 py-2 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg disabled:opacity-50"
-                  >
-                    {loggingOut ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Signing out...</span>
-                      </>
-                    ) : (
-                      <>
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>Confirm Log Out</span>
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setConfirmLogout(false)}
-                    disabled={loggingOut}
-                    className="py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Action Rows Container */}
+        <div className="mt-3 rounded-2xl bg-[#1a2130] overflow-hidden border border-white/5">
+          {/* Sign out */}
+          {!confirmLogout ? (
+            <button
+              onClick={() => setConfirmLogout(true)}
+              id="btn-logout-init"
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-red-500/10 text-slate-300 hover:text-red-300 transition-colors text-left group"
+            >
+              <div className="w-7 h-7 rounded-full bg-white/5 group-hover:bg-red-500/20 flex items-center justify-center text-slate-300 group-hover:text-red-400 shrink-0 transition-colors">
+                <LogOut className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-white group-hover:text-red-300 transition-colors">
+                  Sign out
+                </div>
+                <div className="text-[10px] font-mono text-slate-500 group-hover:text-red-400/80">
+                  End session for @{activeUser.username}
+                </div>
+              </div>
+            </button>
+          ) : (
+            <div className="p-3 bg-red-950/30 space-y-2.5 animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-slate-300 leading-snug">
+                  <span className="font-semibold text-red-300 block">Sign out of Authentik SSO?</span>
+                  This will invalidate active tokens for @{activeUser.username}.
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExecuteLogout}
+                  disabled={loggingOut}
+                  id="btn-confirm-logout"
+                  className="flex-1 py-1.5 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg disabled:opacity-50"
+                >
+                  {loggingOut ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Signing out...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Confirm Sign Out</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setConfirmLogout(false)}
+                  disabled={loggingOut}
+                  className="py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Profile Settings Pill Button: Loads settings directly into portal iframe */}
+        <button
+          onClick={() => {
+            onClose();
+            onOpenSettings?.();
+          }}
+          id="btn-profile-settings"
+          className="mt-3 w-full py-2.5 px-4 rounded-full bg-[#1a2130] hover:bg-[#232b3d] border border-white/10 hover:border-[#00f2fe]/40 text-white font-medium text-xs flex items-center justify-center gap-2 transition-all shadow-md group cursor-pointer"
+          title="Open Profile Settings in Viewport"
+        >
+          <Settings className="w-3.5 h-3.5 text-[#00f2fe] group-hover:rotate-45 transition-transform" />
+          <span>Profile Settings</span>
+        </button>
+
+        {/* Footer Note */}
+        <div className="mt-3 pt-2 text-center text-[10.5px] font-mono text-slate-500 flex items-center justify-center gap-2 border-t border-white/5">
+          <span>brainsOS Appliance</span>
+          <span>•</span>
+          <span className="text-slate-400">
+            {typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai'}
+          </span>
+        </div>
       </div>
-    </div>
+    </>
   );
 };

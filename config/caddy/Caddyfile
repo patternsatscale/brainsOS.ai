@@ -181,6 +181,14 @@ import tls_policy.caddy
 	}
 
 	# C. Subsystem 2: Communications Plane (SOGo Webmail & Groupware)
+	@sogo_static path /SOGo.woa/WebServerResources/* /SOGo/WebServerResources/* /WebServerResources/*
+	handle @sogo_static {
+		reverse_proxy sogo:20000 {
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
 	@mail_path path /mail /mail/
 	redir @mail_path /SOGo 302
 	handle /SOGo* {
@@ -197,24 +205,19 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	handle /WebServerResources* {
-		reverse_proxy sogo:20000 {
-			flush_interval -1
-		}
-	}
 
 	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
-	@proxy_ui_no_slash path /proxy /proxy/ /proxy/ui
-	redir @proxy_ui_no_slash /proxy/ui/ 308
-	handle /ui* {
+	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui /ui/
+	redir @proxy_ui_defaults /proxy/ui/usage 308
+	handle /proxy/ui/* {
+		uri strip_prefix /proxy
 		reverse_proxy host.docker.internal:4000 {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
-	handle /proxy/ui/* {
-		uri strip_prefix /proxy
+	handle /ui/* {
 		reverse_proxy host.docker.internal:4000 {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -296,11 +299,16 @@ import tls_policy.caddy
 	}
 
 	# F. Subsystem 5: Observability Plane (Langfuse)
-	# Redirect /langfuse* to dedicated subdomain langfuse.{host}
-	# Langfuse (Next.js) requires root asset paths (/_next/*) and an uncolliding API namespace.
-	@langfuse_path path /langfuse /langfuse/*
-	handle @langfuse_path {
-		redir https://langfuse.{host}/ 302
+	# Redirect /langfuse* to dedicated subdomain langfuse.{host} with subpath preserved
+	# Default target is /project/brainsos/sessions
+	@langfuse_root path /langfuse /langfuse/
+	handle @langfuse_root {
+		redir https://langfuse.{host}/project/brainsos/sessions 302
+	}
+	@langfuse_subpath path /langfuse/*
+	handle @langfuse_subpath {
+		uri strip_prefix /langfuse
+		redir https://langfuse.{host}{uri} 302
 	}
 
 	# G. Subsystem 6: Agent Plane (Hermes Runner WebUI)
@@ -323,7 +331,14 @@ import tls_policy.caddy
 		}
 	}
 
-	# I. Default Handler: BrainsOS Thin-Spine React Portal SPA
+	# I. Subsystem 8: Documentation & Architectural Matrix
+	@docs_path path /docs /docs/*
+	handle @docs_path {
+		import authentik_forward_auth
+		import portal_content
+	}
+
+	# J. Default Handler: BrainsOS Thin-Spine React Portal SPA
 	handle {
 		import authentik_forward_auth
 		import portal_content

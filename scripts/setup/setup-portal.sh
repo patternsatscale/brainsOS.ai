@@ -81,7 +81,9 @@ if [ ! -d "node_modules" ]; then
   npm install --silent
 fi
 
-log_info "Compiling production static bundle via Vite..."
+log_info "Compiling production static bundle via Vite (Host: ${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}, Version: ${BRAINSOS_VERSION:-v0.1.0-arm64})..."
+VITE_APPLIANCE_HOST="${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
+VITE_BRAINSOS_VERSION="${BRAINSOS_VERSION:-v0.1.0-arm64}" \
 npm run build
 
 if [ ! -f "dist/index.html" ]; then

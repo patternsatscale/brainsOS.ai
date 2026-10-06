@@ -11,6 +11,9 @@ if [ -d "/opt/code-server/extensions" ]; then
   cp -rn /opt/code-server/extensions/* /home/coder/.local/share/code-server/extensions/ 2>/dev/null || true
 fi
 
+# Purge deprecated Continue extension artifacts if present to ensure clean environment
+rm -rf /home/coder/.local/share/code-server/extensions/*continue* /home/coder/.continue /opt/code-server/extensions/*continue* 2>/dev/null || true
+
 # Ensure brainsos.system-terminal extension is registered in extensions.json
 python3 - << 'EOF' || true
 import json, os
@@ -116,6 +119,10 @@ if [ ! -f "${SETTINGS_FILE}" ]; then
   "http.proxyStrictSSL": false,
   "telemetry.telemetryLevel": "off",
   "workbench.startupEditor": "none",
+  "workbench.editor.restoreViewState": true,
+  "explorer.autoReveal": true,
+  "workbench.tree.renderIndentGuides": "always",
+  "workbench.tree.indent": 14,
   "files.autoSave": "afterDelay",
   "files.exclude": {
     "**/.git": false,
@@ -212,6 +219,10 @@ d["security.workspace.trust.enabled"] = False
 d["security.workspace.trust.startupPrompt"] = "never"
 d["security.workspace.trust.emptyWindow"] = True
 d["http.proxyStrictSSL"] = False
+d["workbench.editor.restoreViewState"] = True
+d["explorer.autoReveal"] = True
+d["workbench.tree.renderIndentGuides"] = "always"
+d["workbench.tree.indent"] = 14
 d["files.watcherExclude"] = {
     "**/.git/objects/**": True,
     "**/.git/subtree-cache/**": True,
@@ -311,9 +322,8 @@ cat << 'EOF' > "${CODER_JSON}"
 }
 EOF
 
-# Clear stale cached workspace configurations to ensure clean single-folder view
+# Clear stale cached workspace configurations while preserving workspaceStorage for explorer view state
 rm -rf /home/coder/.local/share/code-server/User/caches/CachedConfigurations/workspaces 2>/dev/null || true
-rm -rf /home/coder/.local/share/code-server/User/workspaceStorage 2>/dev/null || true
 
 # Launch upstream entrypoint opening /data as the single workspace root
 TARGET_DIR="${1:-/data}"

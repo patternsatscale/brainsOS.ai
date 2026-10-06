@@ -6,6 +6,12 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
+html {
+  font-size: 13px !important; /* Scale entire PatternFly rem system down from 16px to 13px */
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+
 :root {
   --ak-accent: #00f2fe !important;
   --ak-flow-background: none !important;
@@ -15,7 +21,7 @@
   --ak-dark-background-light-ish: #111622 !important;
   --ak-dark-background-lighter: #141924 !important;
 
-  /* PatternFly Overrides */
+  /* PatternFly Global Color Overrides */
   --pf-global--primary-color--100: #00f2fe !important;
   --pf-global--primary-color--200: #00d2de !important;
   --pf-global--primary-color--dark-100: #00b2be !important;
@@ -28,6 +34,46 @@
   --pf-global--Color--200: #94a3b8 !important;
   --pf-global--FontFamily--sans-serif: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   --pf-global--FontFamily--monospace: 'JetBrains Mono', monospace !important;
+
+  /* PatternFly Global Typography Sizing (Sleek Compact Enterprise Scale) */
+  --pf-global--FontSize--xs: 0.72rem !important;
+  --pf-global--FontSize--sm: 0.8rem !important;
+  --pf-global--FontSize--md: 0.88rem !important;
+  --pf-global--FontSize--lg: 0.98rem !important;
+  --pf-global--FontSize--xl: 1.1rem !important;
+  --pf-global--FontSize--2xl: 1.25rem !important;
+  --pf-global--FontSize--3xl: 1.45rem !important;
+  --pf-global--FontSize--4xl: 1.7rem !important;
+
+  /* Nav typography & compact sizing */
+  --pf-c-nav__link--FontSize: 0.82rem !important;
+  --pf-c-nav__link--PaddingTop: 0.35rem !important;
+  --pf-c-nav__link--PaddingBottom: 0.35rem !important;
+  --pf-c-nav__link--PaddingLeft: 0.85rem !important;
+  --pf-c-nav__link--PaddingRight: 0.85rem !important;
+  --pf-c-nav__toggle--FontSize: 0.8rem !important;
+  --pf-c-nav__section-title--FontSize: 0.7rem !important;
+
+  /* Title component sizing */
+  --pf-c-title--m-4xl--FontSize: 1.7rem !important;
+  --pf-c-title--m-3xl--FontSize: 1.45rem !important;
+  --pf-c-title--m-2xl--FontSize: 1.25rem !important;
+  --pf-c-title--m-xl--FontSize: 1.1rem !important;
+  --pf-c-title--m-lg--FontSize: 0.98rem !important;
+  --pf-c-title--m-md--FontSize: 0.88rem !important;
+  --pf-c-card__title--FontSize: 0.95rem !important;
+
+  /* Button Contrast & Palette Tokens (Inherited across Shadow DOM) */
+  --pf-c-button--m-primary--Color: #07090E !important;
+  --pf-c-button--m-primary--hover--Color: #000000 !important;
+  --pf-c-button--m-primary--focus--Color: #000000 !important;
+  --pf-c-button--m-primary--active--Color: #000000 !important;
+  --pf-c-button--m-primary--BackgroundColor: #00f2fe !important;
+  --pf-c-button--m-primary--hover--BackgroundColor: #38f8ff !important;
+  --pf-c-button--m-primary--focus--BackgroundColor: #38f8ff !important;
+  --pf-c-button--m-primary--active--BackgroundColor: #38f8ff !important;
+  --pf-c-button--m-secondary--Color: #00f2fe !important;
+  --pf-c-button--m-secondary--BorderColor: rgba(0, 242, 254, 0.4) !important;
 }
 
 /* 1. Global Viewport & Cybernetic Obsidian Matrix Background */
@@ -51,13 +97,38 @@ html, body, ak-flow-executor {
   visibility: hidden !important;
 }
 
+/* Center Login Flow Container Horizontally & Vertically */
 .pf-c-login,
-.ak-login-container {
+.ak-login-container,
+ak-flow-executor {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  min-height: 100vh !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 1.5rem !important;
+  box-sizing: border-box !important;
   background: transparent !important;
 }
 
-/* 3. Frosted Obsidian SSO Card */
-.pf-c-card,
+.pf-c-login__container {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin: auto !important;
+  width: 100% !important;
+  max-width: 440px !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto !important;
+}
+
+/* 3. Frosted Obsidian SSO Card (Scoped to Login & Flow Execution) */
+.ak-flow-executor .pf-c-card,
+.pf-c-login .pf-c-card,
+.pf-c-login.stacked .pf-c-login__main,
 .pf-c-login__main {
   background: rgba(11, 14, 20, 0.92) !important;
   backdrop-filter: blur(28px) !important;
@@ -69,9 +140,10 @@ html, body, ak-flow-executor {
   position: relative !important;
   max-width: 440px !important;
   width: 100% !important;
+  margin: 0 auto !important;
 }
 
-/* 4. Brand Header & Title Styling */
+/* 4. Brand Header & Title Styling (Scoped) */
 .pf-c-login__main-header {
   padding-bottom: 0.5rem !important;
 }
@@ -83,13 +155,17 @@ html, body, ak-flow-executor {
   display: block !important;
 }
 
+.ak-flow-executor .pf-c-title,
+.pf-c-login .pf-c-title,
 .pf-c-title {
   font-family: 'Space Grotesk', -apple-system, sans-serif !important;
-  font-size: 1.35rem !important;
+  font-size: 1.45rem !important;
   font-weight: 700 !important;
-  letter-spacing: 0.04em !important;
+  letter-spacing: 0.03em !important;
   color: #ffffff !important;
   text-align: center !important;
+  display: block !important;
+  margin: 0.4rem auto !important;
 }
 
 .pf-c-login__main-header-desc {
@@ -101,8 +177,9 @@ html, body, ak-flow-executor {
   margin-top: 0.25rem !important;
 }
 
-/* 5. Cybernetic Form Controls (Username & Password) */
-.pf-c-form__group-label {
+/* 5. Cybernetic Form Controls (Username & Password - Scoped) */
+.ak-flow-executor .pf-c-form__group-label,
+.pf-c-login .pf-c-form__group-label {
   font-family: 'JetBrains Mono', monospace !important;
   font-size: 0.72rem !important;
   letter-spacing: 0.06em !important;
@@ -111,10 +188,14 @@ html, body, ak-flow-executor {
   margin-bottom: 0.35rem !important;
 }
 
-.pf-c-form-control,
-input[type="text"],
-input[type="password"],
-input[type="email"] {
+.ak-flow-executor .pf-c-form-control,
+.pf-c-login .pf-c-form-control,
+.ak-flow-executor input[type="text"],
+.ak-flow-executor input[type="password"],
+.ak-flow-executor input[type="email"],
+.pf-c-login input[type="text"],
+.pf-c-login input[type="password"],
+.pf-c-login input[type="email"] {
   background-color: rgba(20, 25, 36, 0.9) !important;
   border: 1px solid rgba(255, 255, 255, 0.14) !important;
   color: #ffffff !important;
@@ -125,19 +206,27 @@ input[type="email"] {
   transition: all 0.2s ease !important;
 }
 
-.pf-c-form-control:focus,
-input:focus {
+.ak-flow-executor .pf-c-form-control:focus,
+.pf-c-login .pf-c-form-control:focus,
+.ak-flow-executor input:focus,
+.pf-c-login input:focus {
   border-color: #00f2fe !important;
   box-shadow: 0 0 14px rgba(0, 242, 254, 0.45) !important;
   background-color: rgba(22, 28, 42, 0.95) !important;
   outline: none !important;
 }
 
-/* 6. Primary Action Button: Glowing Cyan */
+/* 6. Primary Action Button: Glowing Cyan with High-Contrast Dark Text */
+.ak-flow-executor .pf-c-button.pf-m-primary,
+.pf-c-login .pf-c-button.pf-m-primary,
 .pf-c-button.pf-m-primary,
-button[type="submit"] {
+button.pf-m-primary,
+.ak-flow-executor button[type="submit"],
+.pf-c-login button[type="submit"],
+button[type="submit"],
+input[type="submit"].pf-m-primary {
   background-color: #00f2fe !important;
-  color: #000000 !important;
+  color: #07090E !important;
   font-family: 'JetBrains Mono', monospace !important;
   font-weight: 700 !important;
   font-size: 0.85rem !important;
@@ -152,14 +241,69 @@ button[type="submit"] {
   margin-top: 0.5rem !important;
 }
 
+.ak-flow-executor .pf-c-button.pf-m-primary:hover,
+.pf-c-login .pf-c-button.pf-m-primary:hover,
 .pf-c-button.pf-m-primary:hover,
+button.pf-m-primary:hover,
 button[type="submit"]:hover {
   background-color: #38f8ff !important;
+  color: #000000 !important;
   box-shadow: 0 0 35px rgba(0, 242, 254, 0.75) !important;
   transform: translateY(-1px) !important;
 }
 
-/* 7. Footer: Replace with Appliance Hardware Badge */
+/* Secondary Button in Flows & Dialogs */
+.ak-flow-executor .pf-c-button.pf-m-secondary,
+.pf-c-login .pf-c-button.pf-m-secondary,
+.pf-c-button.pf-m-secondary {
+  border: 1px solid rgba(0, 242, 254, 0.4) !important;
+  color: #00f2fe !important;
+  background-color: transparent !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.82rem !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  transition: all 0.2s ease !important;
+}
+
+.ak-flow-executor .pf-c-button.pf-m-secondary:hover,
+.pf-c-login .pf-c-button.pf-m-secondary:hover,
+.pf-c-button.pf-m-secondary:hover {
+  background-color: rgba(0, 242, 254, 0.12) !important;
+  border-color: #00f2fe !important;
+  color: #ffffff !important;
+}
+
+/* 7. End Session / Proxy Logout Cleanup (Eliminate Confusing Loop) */
+#ak-back-home {
+  display: none !important;
+}
+
+#logout {
+  background-color: #00f2fe !important;
+  color: #07090E !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-weight: 700 !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  border-radius: 12px !important;
+  border: none !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 0 25px rgba(0, 242, 254, 0.45) !important;
+  display: block !important;
+  text-align: center !important;
+  margin-top: 1rem !important;
+  transition: all 0.2s ease !important;
+}
+
+#logout:hover {
+  background-color: #38f8ff !important;
+  color: #000000 !important;
+  box-shadow: 0 0 35px rgba(0, 242, 254, 0.75) !important;
+}
+
+/* 8. Footer: Replace with Appliance Hardware Badge */
 .pf-c-login__footer-link,
 .pf-c-login__footer p {
   visibility: hidden !important;
@@ -177,4 +321,210 @@ button[type="submit"]:hover {
   font-size: 0.7rem !important;
   letter-spacing: 0.06em !important;
   white-space: nowrap !important;
+}
+
+/* ==============================================================================
+   8. Authentik Admin Interface Typography, Layout & Navigation Hardening
+   ============================================================================== */
+
+/* Admin Page Header & Welcome Banner */
+.pf-c-page__header,
+ak-page-header,
+.pf-c-page__main-section--light,
+.pf-c-page__main-section {
+  background-color: #07090E !important;
+  color: #f8fafc !important;
+}
+
+.pf-c-page__main-section {
+  padding: 1.25rem 1.5rem !important;
+}
+
+/* Headings scale down to sleek proportions */
+.pf-c-title,
+.pf-c-page__header-title,
+ak-page-header h1,
+.pf-c-content h1,
+h1.pf-c-title,
+h2.pf-c-title {
+  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  color: #ffffff !important;
+  line-height: 1.25 !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.pf-c-page__main-section p,
+.pf-c-page__header p,
+ak-page-header p {
+  font-size: 0.82rem !important;
+  color: #94a3b8 !important;
+}
+
+/* Sidebar Container & Background */
+.pf-c-page__sidebar,
+ak-sidebar {
+  background-color: #0B0E14 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  width: 240px !important;
+}
+
+/* Refined "User interface" item in sidebar (clean cyber pill instead of giant cyan block) */
+ak-sidebar-item[highlight] .pf-c-nav__link,
+ak-sidebar-item[highlight] a,
+.pf-c-nav__item[highlight] a {
+  background: rgba(0, 242, 254, 0.1) !important;
+  color: #00f2fe !important;
+  border: 1px solid rgba(0, 242, 254, 0.35) !important;
+  border-radius: 8px !important;
+  margin: 8px 12px 12px 12px !important;
+  padding: 6px 12px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s ease !important;
+  text-shadow: none !important;
+}
+
+ak-sidebar-item[highlight] .pf-c-nav__link:hover,
+ak-sidebar-item[highlight] a:hover {
+  background: rgba(0, 242, 254, 0.2) !important;
+  color: #ffffff !important;
+  border-color: rgba(0, 242, 254, 0.6) !important;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.25) !important;
+}
+
+/* Nav Menu Links & Sections */
+.pf-c-nav__link,
+.pf-c-nav__item button,
+.pf-c-nav__item a {
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  padding-left: 0.85rem !important;
+  padding-right: 0.85rem !important;
+  color: #cbd5e1 !important;
+  line-height: 1.4 !important;
+}
+
+.pf-c-nav__link:hover,
+.pf-c-nav__item button:hover {
+  color: #00f2fe !important;
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+.pf-c-nav__item.pf-m-current > .pf-c-nav__link,
+.pf-c-nav__item.pf-m-current,
+.pf-c-nav__link.pf-m-current {
+  color: #00f2fe !important;
+  font-weight: 600 !important;
+  background-color: rgba(0, 242, 254, 0.06) !important;
+  border-left: 3px solid #00f2fe !important;
+}
+
+.pf-c-nav__section-title {
+  font-size: 0.7rem !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  color: #64748b !important;
+}
+
+/* Cards & Widgets in Admin (Overview, Status, Quick Actions) */
+.pf-c-card {
+  background-color: #0E131F !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+.pf-c-card__title {
+  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  letter-spacing: 0.01em !important;
+}
+
+.pf-c-card__body,
+.pf-c-card__body ul,
+.pf-c-card__body li,
+.pf-c-card__body p {
+  font-size: 0.8rem !important;
+  color: #cbd5e1 !important;
+  line-height: 1.5 !important;
+}
+
+.pf-c-card__body ul {
+  padding-left: 1.25rem !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.pf-c-card__body li {
+  margin-bottom: 0.4rem !important;
+}
+
+.pf-c-card__body a {
+  color: #00f2fe !important;
+  text-decoration: none !important;
+}
+
+.pf-c-card__body a:hover {
+  text-decoration: underline !important;
+  color: #38f8ff !important;
+}
+
+/* Tables (Event Logs, User Lists, System Tasks, Applications) */
+.pf-c-table,
+table.pf-c-table {
+  font-size: 0.78rem !important;
+  background: transparent !important;
+}
+
+.pf-c-table th {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: #94a3b8 !important;
+  padding: 8px 12px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+.pf-c-table td {
+  font-size: 0.78rem !important;
+  padding: 8px 12px !important;
+  color: #e2e8f0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.pf-c-table tr:hover {
+  background-color: rgba(255, 255, 255, 0.025) !important;
+}
+
+/* Search Bars, Filters & Form Controls in Admin */
+.pf-c-search-input,
+.pf-c-toolbar__item input,
+.pf-c-toolbar__item select {
+  font-size: 0.78rem !important;
+  background-color: rgba(20, 25, 36, 0.9) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  color: #ffffff !important;
+  padding: 6px 10px !important;
+}
+
+/* Pagination */
+.pf-c-pagination,
+.pf-c-pagination__total-items {
+  font-size: 0.75rem !important;
+  color: #94a3b8 !important;
 }

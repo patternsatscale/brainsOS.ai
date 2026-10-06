@@ -10,12 +10,54 @@ export interface Subsystem {
 }
 
 export const SUBSYSTEMS: Record<string, Subsystem> = {
+  comms: {
+    id: "comms",
+    title: "Comms",
+    desc: "Agent Webmail Interface",
+    route: "/mail/",
+    hotkey: "⌘1",
+    color: "#ec4899",
+    icon: "Mail",
+    previewHtml: `
+      <div style="display:flex; height:100vh; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#e2e8f0; overflow:hidden;">
+        <div style="width:200px; background:#111622; border-right:1px solid rgba(255,255,255,0.08); padding:16px 12px; display:flex; flex-direction:column; gap:6px;">
+          <div style="font-weight:700; font-size:13px; color:#ec4899; padding:4px 8px; margin-bottom:8px;">SOGo Webmail</div>
+          <div style="padding:8px 12px; background:rgba(236,72,153,0.15); border-radius:8px; font-size:12px; color:#fff; font-weight:600; display:flex; justify-content:space-between;">
+            <span>📥 Inbox</span><span style="background:#ec4899; color:#fff; border-radius:10px; padding:0 6px; font-size:10px;">3</span>
+          </div>
+          <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📤 Sent</div>
+          <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📝 Drafts</div>
+          <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">🏷️ Ingress Tasks</div>
+        </div>
+        <div style="width:310px; background:#141a29; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column;">
+          <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:12px; font-weight:600; color:#fff;">Agent Inbox • cindy@brainsos.local</div>
+          <div style="padding:12px 14px; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
+            <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Hermes Orchestrator</span><span style="font-size:10px; color:#94a3b8;">10:14 AM</span></div>
+            <div style="font-size:11px; color:#ec4899; margin-top:2px;">[TICKET #246] Portal Architecture</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Full-bleed iframe boundary verified on GX10...</div>
+          </div>
+          <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
+            <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Tool Egress Gateway</span><span style="font-size:10px; color:#94a3b8;">09:45 AM</span></div>
+            <div style="font-size:11px; color:#fff; margin-top:2px;">Egress Token Injected [OK]</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Mitmproxy sanitized GitHub bearer...</div>
+          </div>
+        </div>
+        <div style="flex:1; padding:24px 32px; background:#0e131f; overflow-y:auto;">
+          <div style="font-size:18px; font-weight:700; color:#fff;">[TICKET #246] Portal Architecture Verification</div>
+          <div style="font-size:12px; color:#94a3b8; margin-top:6px;">From: <b>Hermes Orchestrator</b> &lt;hermes@brainsos.local&gt; • 10:14 AM</div>
+          <div style="margin-top:20px; font-size:13px; line-height:22px; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
+            Cindy,<br><br>The thin spine and expandable HUD drawer are live. The full-bleed iframe has 100% canvas real estate and zero layout shift.<br><br>Appliance Host: <b>ASUS Ascent GX10</b><br>Architecture: <b>ARM64</b>
+          </div>
+        </div>
+      </div>
+    `
+  },
   console: {
     id: "console",
     title: "Console",
     desc: "Web IDE & Terminal",
     route: "/editor/",
-    hotkey: "⌘1",
+    hotkey: "⌘2",
     color: "#00f2fe",
     icon: "Terminal",
     previewHtml: `
@@ -103,53 +145,11 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
       </div>
     `
   },
-  comms: {
-    id: "comms",
-    title: "Comms",
-    desc: "Agent Webmail Interface",
-    route: "/mail/",
-    hotkey: "⌘2",
-    color: "#ec4899",
-    icon: "Mail",
-    previewHtml: `
-      <div style="display:flex; height:100vh; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#e2e8f0; overflow:hidden;">
-        <div style="width:200px; background:#111622; border-right:1px solid rgba(255,255,255,0.08); padding:16px 12px; display:flex; flex-direction:column; gap:6px;">
-          <div style="font-weight:700; font-size:13px; color:#ec4899; padding:4px 8px; margin-bottom:8px;">SOGo Webmail</div>
-          <div style="padding:8px 12px; background:rgba(236,72,153,0.15); border-radius:8px; font-size:12px; color:#fff; font-weight:600; display:flex; justify-content:space-between;">
-            <span>📥 Inbox</span><span style="background:#ec4899; color:#fff; border-radius:10px; padding:0 6px; font-size:10px;">3</span>
-          </div>
-          <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📤 Sent</div>
-          <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📝 Drafts</div>
-          <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">🏷️ Ingress Tasks</div>
-        </div>
-        <div style="width:310px; background:#141a29; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column;">
-          <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:12px; font-weight:600; color:#fff;">Agent Inbox • cindy@brainsos.local</div>
-          <div style="padding:12px 14px; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
-            <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Hermes Orchestrator</span><span style="font-size:10px; color:#94a3b8;">10:14 AM</span></div>
-            <div style="font-size:11px; color:#ec4899; margin-top:2px;">[TICKET #246] Portal Architecture</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Full-bleed iframe boundary verified on GX10...</div>
-          </div>
-          <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
-            <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Tool Egress Gateway</span><span style="font-size:10px; color:#94a3b8;">09:45 AM</span></div>
-            <div style="font-size:11px; color:#fff; margin-top:2px;">Egress Token Injected [OK]</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Mitmproxy sanitized GitHub bearer...</div>
-          </div>
-        </div>
-        <div style="flex:1; padding:24px 32px; background:#0e131f; overflow-y:auto;">
-          <div style="font-size:18px; font-weight:700; color:#fff;">[TICKET #246] Portal Architecture Verification</div>
-          <div style="font-size:12px; color:#94a3b8; margin-top:6px;">From: <b>Hermes Orchestrator</b> &lt;hermes@brainsos.local&gt; • 10:14 AM</div>
-          <div style="margin-top:20px; font-size:13px; line-height:22px; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
-            Cindy,<br><br>The thin spine and expandable HUD drawer are live. The full-bleed iframe has 100% canvas real estate and zero layout shift.<br><br>Appliance Host: <b>ASUS Ascent GX10</b><br>Architecture: <b>ARM64</b>
-          </div>
-        </div>
-      </div>
-    `
-  },
   security: {
     id: "security",
     title: "Security",
     desc: "LiteLLM Gateway & Virtual Keys",
-    route: "/proxy/",
+    route: "/proxy/ui/usage",
     hotkey: "⌘3",
     color: "#f59e0b",
     icon: "Shield",
@@ -197,7 +197,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
                 <td style="padding:10px 8px; color:#00f2fe;">qwen2.5:32b</td>
                 <td style="padding:10px 8px;">Ollama (GB10 Natively)</td>
                 <td style="padding:10px 8px;">1 request max</td>
-                <td style="padding:10px 8px; color:#10b981;">Nominal</td>
+                <td style="padding:10px 8px; color:#10b981;">Active</td>
               </tr>
               <tr style="color:#fff;">
                 <td style="padding:10px 8px; color:#ec4899;">llama-3.3:70b-instruct</td>
@@ -241,7 +241,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
     id: "trace",
     title: "Trace",
     desc: "Session Tracing & Observability",
-    route: "/langfuse/",
+    route: "/langfuse/project/brainsos/sessions",
     hotkey: "⌘5",
     color: "#3b82f6",
     icon: "Activity",
@@ -275,8 +275,8 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
   users: {
     id: "users",
     title: "Identity",
-    desc: "Authentik IdP & Provisioning",
-    route: "/auth/if/admin/",
+    desc: "Authentik IdP & Event Logs",
+    route: "/auth/if/admin/#/events/log",
     hotkey: "⌘6",
     color: "#a855f7",
     icon: "Users",
@@ -369,7 +369,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
     id: "help",
     title: "Help",
     desc: "FAQs & Architecture Matrix",
-    route: "https://docs.brainsos.local",
+    route: "/docs/",
     hotkey: "⌘H",
     color: "#eab308",
     icon: "HelpCircle",

@@ -1,12 +1,14 @@
 import React from 'react';
 import { X, ExternalLink, LogOut } from 'lucide-react';
 import { SUBSYSTEMS } from '../data/subsystems';
+import { AuthenticatedUser, getInitials } from '../types/user';
 
 interface SubsystemsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectSubsystem: (key: string) => void;
   onOpenProfile?: () => void;
+  user?: AuthenticatedUser;
 }
 
 export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
@@ -14,6 +16,7 @@ export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
   onClose,
   onSelectSubsystem,
   onOpenProfile,
+  user,
 }) => {
   const handleOpenExternal = (e: React.MouseEvent, route: string) => {
     e.stopPropagation();
@@ -113,19 +116,19 @@ export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
                 onClose();
                 onOpenProfile();
               }}
-              id="drawer-btn-operator"
+              id="drawer-btn-user"
               className="w-full p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 flex items-center justify-between text-left transition-all group"
-              title="Operator Identity & SSO Session"
+              title="User Account & SSO Session"
             >
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-md bg-[#00f2fe]/20 text-[#00f2fe] font-mono text-[10px] font-bold flex items-center justify-center">
-                  OP
+                  {getInitials(user?.name, user?.username)}
                 </div>
                 <div>
                   <div className="font-headline font-semibold text-xs text-white group-hover:text-[#00f2fe] transition-colors">
-                    brainsOS Operator
+                    {user?.name || user?.username || 'Appliance Administrator'}
                   </div>
-                  <div className="font-mono text-[9px] text-slate-400">@operator • Authentik SSO</div>
+                  <div className="font-mono text-[9px] text-slate-400">@{user?.username || 'admin'} • Authentik SSO</div>
                 </div>
               </div>
               <LogOut className="w-3.5 h-3.5 text-slate-500 group-hover:text-red-400 transition-colors" />
@@ -135,11 +138,15 @@ export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
           <div className="font-mono text-[10.5px] text-slate-400 space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Appliance Host:</span>
-              <span className="text-[#00f2fe] font-medium">ASUS Ascent GX10</span>
+              <span className="text-[#00f2fe] font-medium">
+                {import.meta.env.VITE_APPLIANCE_HOST || (typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">BrainsOS Version:</span>
-              <span className="text-white/90">v1.0.0-arm64</span>
+              <span className="text-white/90">
+                {import.meta.env.VITE_BRAINSOS_VERSION || 'v0.1.0-arm64'}
+              </span>
             </div>
           </div>
         </div>

@@ -189,7 +189,7 @@ done
 
 # LiteLLM Native OIDC UI Ingress (Direct HTTP 200 with OIDC SSO integration)
 LITELLM_UI_STATUS=$(curl -s -k -o /dev/null -w "%{http_code}" --resolve "${RESOLVE_ARG}" "https://${TARGET_HOST}/proxy/ui/" 2>/dev/null || echo "000")
-if [ "${LITELLM_UI_STATUS}" == "200" ] || [ "${LITELLM_UI_STATUS}" == "302" ] || [ "${LITELLM_UI_STATUS}" == "307" ]; then
+if [ "${LITELLM_UI_STATUS}" == "200" ] || [ "${LITELLM_UI_STATUS}" == "302" ] || [ "${LITELLM_UI_STATUS}" == "307" ] || [ "${LITELLM_UI_STATUS}" == "308" ]; then
   log_success "LiteLLM native OIDC UI ingress verified (/proxy/ui/ HTTP ${LITELLM_UI_STATUS})."
 else
   fail_check "LiteLLM native OIDC UI ingress failed: HTTP ${LITELLM_UI_STATUS}."

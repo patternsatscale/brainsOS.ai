@@ -41,10 +41,40 @@ md-toolbar.md-hue-3,
   box-shadow: none !important;
 }
 
-md-toolbar md-icon,
+/* Global High-Contrast Silver Icons (Resolves black icons on dark background) */
+md-icon,
+md-icon.md-default-theme,
+md-icon svg,
+md-icon path,
+.md-icon,
+.sg-folder-tree md-icon,
+.sg-folder-tree md-icon svg,
 .sg-toolbar md-icon,
-.sg-main-toolbar md-icon {
+.sg-main-toolbar md-icon,
+.sg-list-view md-icon,
+.sg-detail-view md-icon,
+.sg-sidenav md-icon,
+.sg-mailbox-list-item md-icon,
+.sg-item-name md-icon,
+p.sg-item-name md-icon,
+md-list-item.sg-mailbox-list-item .sg-item-name md-icon,
+md-list.md-dense md-list-item md-icon,
+md-list.md-default-theme md-list-item md-icon,
+.sg-account-section md-icon,
+.md-button md-icon {
   color: #CBD5E1 !important;
+  fill: #CBD5E1 !important;
+  opacity: 1 !important;
+}
+
+/* Tree Expander Arrows (e.g. next to "Other Users") */
+md-sidenav md-checkbox.sg-folder .md-container:after,
+md-checkbox.sg-folder .md-container:after,
+.sg-folder .md-container:after,
+.sg-folder .md-icon:after {
+  color: #CBD5E1 !important;
+  fill: #CBD5E1 !important;
+  opacity: 1 !important;
 }
 
 /* Calendar Date Display in Top Bar */
@@ -72,44 +102,70 @@ md-sidenav md-content,
 .sg-sidenav {
   background-color: #111622 !important;
   border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #94A3B8 !important;
+  color: #CBD5E1 !important;
 }
 
 /* Folder List Items */
 md-sidenav md-list-item,
 .sg-folder-tree md-list-item,
-md-sidenav .md-list-item-inner {
-  color: #94A3B8 !important;
+md-sidenav .md-list-item-inner,
+md-sidenav md-list-item.sg-mailbox-list-item,
+.sg-mailbox-list-item,
+.sg-item-name {
+  color: #CBD5E1 !important;
   border-radius: 6px !important;
   margin: 2px 8px !important;
   transition: all 0.15s ease !important;
 }
 
 md-sidenav md-list-item:hover,
-.sg-folder-tree md-list-item:hover {
-  background-color: rgba(255, 255, 255, 0.05) !important;
+.sg-folder-tree md-list-item:hover,
+md-sidenav md-list-item.sg-mailbox-list-item:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
   color: #FFFFFF !important;
 }
 
-/* Selected Active Folder */
+/* Selected Active Folder in Mailbox Tree (Inbox, etc.) */
 md-sidenav md-list-item.selected,
 md-sidenav md-list-item.md-selected,
 .sg-folder-tree md-list-item.selected,
-md-sidenav md-list-item[aria-selected="true"] {
-  background: linear-gradient(90deg, rgba(236, 72, 153, 0.2) 0%, rgba(236, 72, 153, 0.05) 100%) !important;
+md-sidenav md-list-item[aria-selected="true"],
+md-sidenav md-list-item.sg-selected,
+md-sidenav md-list-item.md-bg,
+md-list-item.sg-mailbox-list-item.sg-selected,
+md-list-item.sg-mailbox-list-item.md-bg,
+.sg-mailbox-list-item.sg-selected,
+.sg-mailbox-list-item.md-bg {
+  background: linear-gradient(90deg, rgba(236, 72, 153, 0.25) 0%, rgba(236, 72, 153, 0.08) 100%) !important;
+  background-color: #1A2234 !important;
   color: #FFFFFF !important;
   border-left: 3px solid #EC4899 !important;
+  border-radius: 6px !important;
   font-weight: 600 !important;
 }
 
 md-sidenav md-list-item.selected md-icon,
-.sg-folder-tree md-list-item.selected md-icon {
+.sg-folder-tree md-list-item.selected md-icon,
+md-sidenav md-list-item.sg-selected md-icon,
+md-list-item.sg-mailbox-list-item.sg-selected md-icon,
+md-list-item.sg-mailbox-list-item.md-bg md-icon,
+.sg-mailbox-list-item.sg-selected md-icon,
+.sg-mailbox-list-item.md-bg md-icon {
   color: #EC4899 !important;
+  fill: #EC4899 !important;
+}
+
+md-sidenav md-list-item.sg-selected .sg-item-name,
+md-list-item.sg-mailbox-list-item.sg-selected .sg-item-name,
+md-sidenav md-list-item.sg-selected span,
+md-list-item.sg-mailbox-list-item.sg-selected span {
+  color: #FFFFFF !important;
 }
 
 /* Unread Badge / Pill */
 .sg-badge,
 .sg-unread-count,
+.sg-counter-badge,
 span.badge {
   background-color: #EC4899 !important;
   color: #FFFFFF !important;
@@ -179,45 +235,114 @@ md-list-item.sg-tile-list-item {
   font-family: monospace !important;
 }
 
-/* 5. Reading Pane / Message Viewer (Right Column) */
+/* 5. Reading Pane / Message Viewer (Right Column - Entire Area Clean White) */
 .sg-detail-view,
 .sg-message-viewer,
 div[ui-view="detail"],
-.sg-mail-content {
-  background-color: #0B0E14 !important;
-  color: #E2E8F0 !important;
-}
-
-/* Message Card Header */
+.sg-mail-content,
+.sg-reversible,
+.sg-face,
+.sg-face md-card,
 .sg-message-viewer md-card,
 .sg-detail-view md-card,
-md-card.md-default-theme {
-  background-color: #111622 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 10px !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
-}
-
-/* Message Body Area */
+div[ui-view="detail"] md-card,
+.sg-message-viewer md-card-content,
+.sg-face md-card-content,
+md-card-content,
 .sg-message-body,
 .sg-mail-body,
 .sg-content-body {
-  background-color: #0E131F !important;
-  color: #CBD5E1 !important;
-  border-radius: 8px !important;
-  padding: 20px !important;
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
-  font-size: 13px !important;
-  line-height: 1.6 !important;
+  background-color: #FFFFFF !important;
+  color: #1E293B !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Reading Pane Header Actions */
+.sg-face md-card-actions,
+.sg-message-viewer md-card-actions {
+  background-color: #FFFFFF !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  padding: 6px 16px !important;
+}
+
+/* Subtle, Modern Expand / Reduce Button (No glowing cyan block) */
+.sg-face md-card-actions .md-icon-button,
+.sg-face md-card-actions .sg-icon-button,
+.sg-message-viewer .md-icon-button,
+.sg-message-viewer .sg-icon-button,
+.sg-face md-card-actions .md-button.md-primary.md-hue-1,
+.sg-message-viewer .md-button.md-primary.md-hue-1,
+.sg-face md-card-actions .md-button.md-primary,
+.sg-message-viewer .md-button.md-primary {
+  background-color: transparent !important;
+  color: #64748B !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+}
+
+.sg-face md-card-actions .md-icon-button:hover,
+.sg-face md-card-actions .sg-icon-button:hover,
+.sg-message-viewer .md-icon-button:hover,
+.sg-message-viewer .sg-icon-button:hover,
+.sg-face md-card-actions .md-button.md-primary.md-hue-1:hover,
+.sg-message-viewer .md-button.md-primary.md-hue-1:hover {
+  background-color: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+.sg-face md-card-actions md-icon,
+.sg-message-viewer md-card-actions md-icon {
+  color: #64748B !important;
+  fill: #64748B !important;
+}
+
+.sg-face md-card-actions .md-icon-button:hover md-icon,
+.sg-face md-card-actions .sg-icon-button:hover md-icon,
+.sg-face md-card-actions .md-button:hover md-icon,
+.sg-message-viewer .md-icon-button:hover md-icon {
+  color: #0F172A !important;
+  fill: #0F172A !important;
+}
+
+/* Star Flagged icon */
+.sg-icon-button md-icon.sg-icon-star,
+.sg-icon-star {
+  color: #F59E0B !important;
+  fill: #F59E0B !important;
+}
+
+/* Typography in White Reading Pane */
+.sg-face h5.sg-md-headline,
+.sg-message-viewer h5.sg-md-headline,
+.sg-face .sg-md-headline {
+  color: #0F172A !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+}
+
+.sg-face time.msg-date,
+.sg-message-viewer time.msg-date {
+  color: #64748B !important;
+}
+
+.sg-face a[href^="mailto:"],
+.sg-message-viewer a[href^="mailto:"] {
+  color: #2563EB !important;
+}
+
+.sg-face .sg-item-name,
+.sg-face md-chips {
+  color: #1E293B !important;
 }
 
 /* Empty Mailbox State */
-.sg-empty-state,
-.sg-no-selection {
-  color: #64748B !important;
-  font-family: monospace !important;
-  font-size: 14px !important;
+.sg-detail-view .sg-no-selection,
+.sg-detail-view .sg-empty-state {
+  background-color: #FFFFFF !important;
+  color: #94A3B8 !important;
 }
 
 /* 6. Action Buttons & Floating Action Button (Compose) */
@@ -235,30 +360,539 @@ button.md-fab:hover,
   box-shadow: 0 6px 20px rgba(236, 72, 153, 0.6) !important;
 }
 
-.md-button.md-primary {
+.md-button.md-primary:not(.md-icon-button) {
   background-color: #00F2FE !important;
   color: #07090E !important;
   font-weight: 600 !important;
   border-radius: 6px !important;
 }
 
-.md-button.md-icon-button md-icon {
+.md-button.md-icon-button:not(.sg-face md-card-actions *) md-icon {
   color: #CBD5E1 !important;
 }
 
-.md-button.md-icon-button:hover md-icon {
+.md-button.md-icon-button:not(.sg-face md-card-actions *):hover md-icon {
   color: #00F2FE !important;
 }
 
-/* 7. Dialogs, Popups & Context Menus */
+/* 7. Dialogs, Calendar Events & Task Entry Modals */
 md-dialog,
+md-dialog-content,
+.sg-has-form-sections {
+  background-color: #0E131F !important;
+  color: #E2E8F0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+}
+
+.sg-form-section {
+  background-color: #141A26 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  margin-bottom: 12px !important;
+  padding: 16px !important;
+}
+
+/* Dialog Toolbar Header */
+md-dialog md-toolbar,
+md-dialog md-toolbar.md-default-theme {
+  background-color: #0B0E14 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #FFFFFF !important;
+}
+
+md-dialog md-toolbar .md-title,
+md-dialog md-toolbar input[type="text"],
+md-dialog md-toolbar input.md-title {
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  font-size: 18px !important;
+}
+
+/* Faint Watermark Toolbar Icon (assignment_turned_in, event) */
+md-icon.sg-icon-toolbar-bg {
+  opacity: 0.12 !important;
+  color: rgba(255, 255, 255, 0.2) !important;
+  fill: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Dialog Form Labels & Placeholders */
+md-dialog md-input-container label,
+md-dialog md-input-container .md-placeholder,
+.sg-form-section md-input-container label,
+.sg-form-section label,
+.pseudo-input-label,
+label.pseudo-input-label {
+  color: #94A3B8 !important;
+  font-size: 13px !important;
+}
+
+md-dialog md-input-container.md-input-focused label,
+.sg-form-section md-input-container.md-input-focused label {
+  color: #00F2FE !important;
+}
+
+/* Dialog Form Inputs, Textareas, Datepickers & Timepickers */
+md-dialog input,
+md-dialog textarea,
+.sg-form-section input,
+.sg-form-section textarea,
+.md-datepicker-input,
+.sg-timepicker-input,
+input.md-datepicker-input,
+input.sg-timepicker-input,
+md-datepicker input,
+sg-timepicker input,
+.sg-datepicker-readonly-input-container input,
+md-dialog .md-datepicker-input,
+md-dialog .sg-timepicker-input,
+.sg-form-section .md-datepicker-input,
+.sg-form-section .sg-timepicker-input,
+md-autocomplete input,
+md-autocomplete-wrap input {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  opacity: 1 !important;
+  font-size: 14px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Ensure disabled/readonly date/time inputs remain crisp white */
+md-dialog input:disabled,
+md-dialog input[disabled],
+.sg-form-section input:disabled,
+.sg-form-section input[disabled],
+.md-datepicker-input:disabled,
+.md-datepicker-input[disabled],
+.sg-timepicker-input:disabled,
+.sg-timepicker-input[disabled],
+.sg-datepicker-readonly-input-container input:disabled,
+.sg-datepicker-readonly-input-container input[disabled] {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+}
+
+/* Focused input border */
+md-dialog input:focus,
+md-dialog textarea:focus,
+.sg-form-section input:focus,
+.sg-form-section textarea:focus,
+.md-datepicker-input-container.md-datepicker-focused,
+.sg-timepicker-input-container.sg-timepicker-focused {
+  border-bottom: 1px solid #00F2FE !important;
+}
+
+/* Date and Time Underlines */
+.md-datepicker-input-container,
+.sg-timepicker-input-container {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Triangle Dropdown Arrows in Date/Time */
+.md-datepicker-triangle-button .md-datepicker-expand-triangle,
+.sg-timepicker-triangle-button .sg-timepicker-expand-triangle {
+  border-top-color: #94A3B8 !important;
+}
+
+.md-datepicker-triangle-button:hover .md-datepicker-expand-triangle,
+.sg-timepicker-triangle-button:hover .sg-timepicker-expand-triangle {
+  border-top-color: #00F2FE !important;
+}
+
+/* Calendar & Clock Icons */
+.md-datepicker-calendar-icon,
+.sg-timepicker-icon,
+md-datepicker md-icon,
+sg-timepicker md-icon {
+  color: #CBD5E1 !important;
+  fill: #CBD5E1 !important;
+}
+
+.md-datepicker-open .md-datepicker-calendar-icon,
+.sg-timepicker-open .sg-timepicker-icon {
+  color: #00F2FE !important;
+  fill: #00F2FE !important;
+}
+
+/* Select Dropdown Trigger & Value */
+md-dialog md-select .md-select-value,
+.sg-form-section md-select .md-select-value {
+  color: #FFFFFF !important;
+  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+md-dialog md-select .md-select-icon,
+.sg-form-section md-select .md-select-icon {
+  color: #94A3B8 !important;
+}
+
+/* Chips & Categories */
+md-chips .md-chip {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #FFFFFF !important;
+}
+
+md-chips .md-chip .md-chip-remove md-icon {
+  color: #94A3B8 !important;
+  fill: #94A3B8 !important;
+}
+
+/* Priority Slider: High-Contrast Electric Pink (#EC4899) */
+md-dialog md-slider .md-track.md-track-fill,
+.sg-form-section md-slider .md-track.md-track-fill,
+md-slider .md-track.md-track-fill,
+md-slider[md-discrete] .md-track.md-track-fill {
+  background-color: #EC4899 !important;
+  border-color: #EC4899 !important;
+}
+
+md-dialog md-slider .md-thumb:after,
+.sg-form-section md-slider .md-thumb:after,
+md-slider .md-thumb:after {
+  background-color: #EC4899 !important;
+  border-color: #EC4899 !important;
+  box-shadow: 0 0 14px rgba(236, 72, 153, 0.75) !important;
+}
+
+md-dialog md-slider .md-sign,
+.sg-form-section md-slider .md-sign,
+md-slider .md-sign {
+  background-color: #EC4899 !important;
+}
+
+md-dialog md-slider .md-sign:after,
+.sg-form-section md-slider .md-sign:after,
+md-slider .md-sign:after {
+  border-top-color: #EC4899 !important;
+}
+
+md-dialog md-slider .md-focus-ring,
+.sg-form-section md-slider .md-focus-ring {
+  background-color: rgba(236, 72, 153, 0.3) !important;
+}
+
+md-dialog md-slider .md-track:not(.md-track-fill),
+.sg-form-section md-slider .md-track:not(.md-track-fill) {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+md-slider-container span {
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+
+/* Checkboxes & Radio Buttons */
+md-dialog md-checkbox .md-icon,
+.sg-form-section md-checkbox .md-icon,
+md-checkbox .md-icon {
+  border-color: #94A3B8 !important;
+}
+
+md-dialog md-checkbox.md-checked .md-icon,
+.sg-form-section md-checkbox.md-checked .md-icon,
+md-checkbox.md-checked .md-icon {
+  background-color: #00F2FE !important;
+  border-color: #00F2FE !important;
+}
+
+md-dialog md-checkbox.md-checked .md-icon:after,
+.sg-form-section md-checkbox.md-checked .md-icon:after,
+md-checkbox.md-checked .md-icon:after {
+  border-color: #07090E !important;
+}
+
+md-dialog md-checkbox .md-label,
+.sg-form-section md-checkbox .md-label,
+md-checkbox .md-label {
+  color: #E2E8F0 !important;
+}
+
+md-dialog md-radio-button .md-off,
+.sg-form-section md-radio-button .md-off {
+  border-color: #94A3B8 !important;
+}
+
+md-dialog md-radio-button.md-checked .md-off,
+.sg-form-section md-radio-button.md-checked .md-off {
+  border-color: #00F2FE !important;
+}
+
+md-dialog md-radio-button .md-on,
+.sg-form-section md-radio-button .md-on {
+  background-color: #00F2FE !important;
+}
+
+/* Action Trigger Buttons ("+ Attach", "+ Add From", "+ Add Due", Remove Circle) */
+.sg-form-section md-button,
+.sg-form-section .md-button {
+  color: #00F2FE !important;
+}
+
+.sg-form-section md-button md-icon,
+.sg-form-section .md-button md-icon {
+  color: #00F2FE !important;
+  fill: #00F2FE !important;
+}
+
+.sg-form-section .md-icon-button md-icon {
+  color: #94A3B8 !important;
+  fill: #94A3B8 !important;
+}
+
+.sg-form-section .md-icon-button:hover md-icon {
+  color: #EC4899 !important;
+  fill: #EC4899 !important;
+}
+
+.sg-form-section label.button-label,
+label.button-label {
+  color: #CBD5E1 !important;
+  cursor: pointer !important;
+}
+
+.sg-form-section label.button-label:hover,
+label.button-label:hover {
+  color: #00F2FE !important;
+}
+
+/* Dialog Footer Actions (Cancel, Reset, Save) */
+md-dialog-actions,
+md-dialog md-dialog-actions {
+  background-color: #0B0E14 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 8px 16px !important;
+}
+
+md-dialog-actions .md-button,
+md-dialog md-dialog-actions .md-button {
+  color: #94A3B8 !important;
+  border-radius: 6px !important;
+}
+
+md-dialog-actions .md-button:hover,
+md-dialog md-dialog-actions .md-button:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: #FFFFFF !important;
+}
+
+md-dialog-actions .md-button.md-primary,
+md-dialog md-dialog-actions .md-button.md-primary {
+  background-color: #00F2FE !important;
+  color: #07090E !important;
+  font-weight: 700 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.35) !important;
+}
+
+md-dialog-actions .md-button.md-primary:hover,
+md-dialog md-dialog-actions .md-button.md-primary:hover {
+  background-color: #38F8FF !important;
+  box-shadow: 0 0 22px rgba(0, 242, 254, 0.6) !important;
+}
+
+/* 8. Date & Time Picker Popovers (Obsidian Dark Cyberpunk Aesthetic) */
+
+/* Eliminate harsh white mask shadows that wash out popovers */
+.sg-timepicker-input-mask-opaque,
+.md-datepicker-input-mask-opaque {
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
+
+/* Timepicker Floating Pane */
+.sg-timepicker-time-pane,
+.sg-timepicker-time,
+.sg-time-pane {
+  background-color: #141A26 !important;
+  color: #E2E8F0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+}
+
+.sg-timepicker-open .sg-timepicker-input-container {
+  background-color: #0B0E14 !important;
+  border-bottom: 2px solid #00F2FE !important;
+}
+
+.sg-timepicker-open .sg-timepicker-input {
+  color: #00F2FE !important;
+  -webkit-text-fill-color: #00F2FE !important;
+  font-weight: 700 !important;
+}
+
+.sg-timepicker-open .sg-timepicker-icon {
+  color: #00F2FE !important;
+}
+
+/* Hours Grid & Minutes Grid */
+.hours-pane {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 12px 16px !important;
+}
+
+.min5,
+.min1 {
+  padding: 12px 16px !important;
+}
+
+/* Individual Hour and Minute Buttons */
+.sg-time-pane .hourBtn,
+.sg-time-pane .minuteBtn,
+.hourBtn.sg-time-selection-indicator,
+.minuteBtn.sg-time-selection-indicator,
+.sg-time-selection-indicator {
+  color: #CBD5E1 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  line-height: 34px !important;
+  border-radius: 50% !important;
+  margin: 3px !important;
+  background-color: transparent !important;
+  transition: all 0.15s ease !important;
+}
+
+.sg-time-pane .hourBtn:hover,
+.sg-time-pane .minuteBtn:hover,
+.hourBtn.sg-time-selection-indicator:hover,
+.minuteBtn.sg-time-selection-indicator:hover {
+  background-color: rgba(0, 242, 254, 0.15) !important;
+  color: #FFFFFF !important;
+}
+
+/* Selected Hour & Minute */
+.sg-time-selection-indicator.sg-time-selected,
+.sg-time-selection-indicator:hover.sg-time-selected,
+.sg-time-selection-indicator.md-focus.sg-time-selected,
+.hourBtn.sg-time-selected,
+.minuteBtn.sg-time-selected {
+  background-color: #00F2FE !important;
+  color: #07090E !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.5) !important;
+}
+
+/* Focused Hour or Minute (Keyboard or Click) */
+.sg-time-selection-indicator.md-focus:not(.sg-time-selected) {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+}
+
+/* Bottom Bar of Timepicker (1min / 5min precision toggle) */
+.sg-time-pane div[layout-align="center center"],
+.sg-time-pane div[md-colors*="default-background-200"],
+.sg-time-pane div[flex][layout="row"] {
+  background-color: #0B0E14 !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 8px 0 !important;
+}
+
+.sg-time-pane .toggleBtn,
+.sg-time-pane .toggleBtn.md-fab.md-mini {
+  background-color: #EC4899 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.5) !important;
+  font-weight: 700 !important;
+}
+
+.sg-time-pane .toggleBtn:hover {
+  background-color: #DB2777 !important;
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.7) !important;
+}
+
+/* Datepicker Floating Pane */
+.md-datepicker-calendar-pane,
+.md-datepicker-calendar,
+md-calendar,
+.md-calendar-scroll-mask,
+.md-calendar-scroll-container {
+  background-color: #141A26 !important;
+  color: #E2E8F0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+}
+
+.md-calendar tr:last-child td {
+  border-bottom: none !important;
+}
+
+/* Month and Year Header */
+.md-calendar-month-label {
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+}
+
+.md-calendar-month-label md-icon {
+  color: #00F2FE !important;
+  fill: #00F2FE !important;
+}
+
+/* Day of Week Header */
+.md-calendar-day-header {
+  background-color: #0B0E14 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.md-calendar-day-header th {
+  color: #94A3B8 !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+/* Calendar Days */
+.md-calendar-date {
+  color: #CBD5E1 !important;
+}
+
+.md-calendar-date .md-calendar-date-selection-indicator {
+  color: #CBD5E1 !important;
+  border-radius: 50% !important;
+  transition: all 0.15s ease !important;
+}
+
+.md-calendar-date:not(.md-disabled):hover .md-calendar-date-selection-indicator {
+  background-color: rgba(0, 242, 254, 0.15) !important;
+  color: #FFFFFF !important;
+}
+
+/* Today's Date */
+.md-calendar-date.md-calendar-date-today .md-calendar-date-selection-indicator {
+  border: 1px solid #00F2FE !important;
+  color: #00F2FE !important;
+  font-weight: 600 !important;
+}
+
+/* Selected Date */
+.md-calendar-date.md-calendar-selected-date .md-calendar-date-selection-indicator,
+.md-calendar-date.md-focus.md-calendar-selected-date .md-calendar-date-selection-indicator {
+  background-color: #00F2FE !important;
+  border-color: transparent !important;
+  color: #07090E !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.5) !important;
+}
+
+/* Disabled Dates */
+.md-calendar-date-disabled,
+.md-calendar-month-label-disabled {
+  color: rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Popups & Menus */
 md-menu-content,
 md-select-menu,
 .md-select-menu-container {
   background-color: #141A26 !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   color: #FFFFFF !important;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
   border-radius: 8px !important;
 }
 
@@ -272,23 +906,6 @@ md-option:hover,
 md-option.md-focused {
   background-color: rgba(0, 242, 254, 0.1) !important;
   color: #FFFFFF !important;
-}
-
-/* Form Inputs */
-md-input-container label,
-md-input-container .md-placeholder {
-  color: #94A3B8 !important;
-}
-
-input.md-input,
-textarea.md-input {
-  color: #FFFFFF !important;
-  border-bottom-color: rgba(255, 255, 255, 0.2) !important;
-}
-
-input.md-input:focus,
-textarea.md-input:focus {
-  border-bottom-color: #00F2FE !important;
 }
 
 /* Dividers */

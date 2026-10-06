@@ -422,24 +422,17 @@ services:
       - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
       - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
       - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
-    command:
-      - "mitmweb"
-      - "--web-host"
-      - "0.0.0.0"
-      - "--web-port"
-      - "8081"
-      - "--listen-port"
-      - "8082"
-      - "--set"
-      - "block_global=false"
-      - "--set"
-      - "web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}"
-      - "--no-web-open-browser"
-      - "-s"
-      - "/addons/github_auth.py"
+    command: >
+      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082
+      --set block_global=false
+      --set web_password=$${TOOL_EGRESS_WEB_PASSWORD:-$${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
+      --no-web-open-browser
+      -s /addons/theme_loader.py
+      -s /addons/github_auth.py
     volumes:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
       - ./config/egress/addons:/addons:ro
+      - ./config/egress/theme:/theme:ro
     networks:
       brainsos-internal:
         aliases:
