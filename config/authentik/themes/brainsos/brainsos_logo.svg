@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" width="360" height="80">
+  <defs>
+    <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <text x="180" y="44" text-anchor="middle" font-family="'JetBrains Mono', monospace, -apple-system, sans-serif" font-size="28" font-weight="800" letter-spacing="8" fill="#F8FAFC">
+    BRAINSOS<tspan fill="#00F2FE" filter="url(#cyanGlow)">.AI</tspan>
+  </text>
+  <text x="180" y="66" text-anchor="middle" font-family="'JetBrains Mono', monospace, -apple-system, sans-serif" font-size="9.5" font-weight="600" letter-spacing="3.5" fill="#94A3B8">
+    SAFE, SECURE, ASYNCHRONOUS AGENTS
+  </text>
+  <line x1="60" y1="78" x2="300" y2="78" stroke="#00F2FE" stroke-width="1.5" stroke-opacity="0.7" />
+</svg>

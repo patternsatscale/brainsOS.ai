@@ -42,6 +42,10 @@
   "http.proxyStrictSSL": false,
   "telemetry.telemetryLevel": "off",
   "workbench.startupEditor": "none",
+  "workbench.editor.restoreViewState": true,
+  "explorer.autoReveal": true,
+  "workbench.tree.renderIndentGuides": "always",
+  "workbench.tree.indent": 14,
   "files.autoSave": "afterDelay",
   "files.exclude": {
     "**/.git": false,

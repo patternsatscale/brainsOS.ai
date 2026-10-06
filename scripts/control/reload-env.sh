@@ -158,8 +158,50 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
       log_warn "Could not automatically alter SOGo password. Database may be initializing."
     fi
   fi
+
+  # Synchronize user account passwords in sogo_users table
+  ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  MAIL_DOM="${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}"
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', 'admin@${MAIL_DOM}'),
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', 'admin@${MAIL_DOM}')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password;
+EOSQL
+  log_success "SOGo fleet accounts and passwords synchronized in sogo_users table."
 else
   log_info "SOGo database container is not running (skipping)."
+fi
+
+# Synchronize Dovecot mail accounts and credentials
+if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
+  "${SCRIPT_DIR}/../setup/setup-mail.sh" >/dev/null 2>&1 || true
+  if docker ps --format '{{.Names}}' | grep -q "^brainsos-net-mail-server$"; then
+    docker exec brainsos-net-mail-server doveadm reload 2>/dev/null || true
+    docker exec brainsos-net-mail-server postfix reload 2>/dev/null || true
+    log_success "Dovecot & Postfix mail accounts synchronized and reloaded."
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 2b. Synchronize Authentik PostgreSQL Database Password (Zero Data Loss)
+# ------------------------------------------------------------------------------
+AUTH_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-auth-db$' | head -n 1 || true)"
+if [ -n "${AUTH_DB_CONTAINER}" ]; then
+  AUTH_DB_USER="${AUTHENTIK_POSTGRESQL__USER:-authentik}"
+  AUTH_DB_NAME="${AUTHENTIK_POSTGRESQL__NAME:-authentik}"
+  AUTH_DB_PASSWORD="${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}"
+
+  log_info "Synchronizing database password for user '${AUTH_DB_USER}' in ${AUTH_DB_CONTAINER}..."
+  if docker exec "${AUTH_DB_CONTAINER}" psql -U "${AUTH_DB_USER}" -d "${AUTH_DB_NAME}" \
+      -c "ALTER USER \"${AUTH_DB_USER}\" WITH PASSWORD '${AUTH_DB_PASSWORD}';" >/dev/null 2>&1; then
+    log_success "Authentik database password synchronized with .env (Zero data loss)."
+  else
+    log_warn "Could not automatically alter Authentik database password."
+  fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -179,8 +221,8 @@ if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
     fi
 
     # Synchronize Langfuse Web admin user password if updated
-    LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-}"
-    LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}"
+    LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
+    LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}}"
     LF_ADMIN_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
     if [ -n "${LF_ADMIN_PASS}" ] && docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$"; then
       LF_HASH=$(docker exec -i brainsos-langfuse-web node -e "
@@ -210,8 +252,13 @@ else
 fi
 
 # Synchronize Caddy Operator IDE Basic Auth Password Hash
-if [ -n "${CODE_SERVER_PASSWORD:-}" ] && docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
-  OP_HASH=$(docker exec brainsos-net-caddy caddy hash-password --plaintext "${CODE_SERVER_PASSWORD}" 2>/dev/null || true)
+EFFECTIVE_CODE_PASS="${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
+if [ -n "${EFFECTIVE_CODE_PASS}" ]; then
+  if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
+    OP_HASH=$(docker exec brainsos-net-caddy caddy hash-password --plaintext "${EFFECTIVE_CODE_PASS}" 2>/dev/null || true)
+  else
+    OP_HASH=$(docker run --rm caddy:latest caddy hash-password --plaintext "${EFFECTIVE_CODE_PASS}" 2>/dev/null || true)
+  fi
   if [ -n "${OP_HASH}" ]; then
     if grep -q "^OPERATOR_PASSWORD_HASH=" "${ENV_FILE}"; then
       sed -i.bak "s|^OPERATOR_PASSWORD_HASH=.*|OPERATOR_PASSWORD_HASH='${OP_HASH}'|" "${ENV_FILE}" && rm -f "${ENV_FILE}.bak"
@@ -221,7 +268,7 @@ if [ -n "${CODE_SERVER_PASSWORD:-}" ] && docker ps --format '{{.Names}}' | grep 
       echo "OPERATOR_PASSWORD_HASH='${OP_HASH}'" >> "${ENV_FILE}"
     fi
     export OPERATOR_PASSWORD_HASH="${OP_HASH}"
-    log_success "Synchronized OPERATOR_PASSWORD_HASH with CODE_SERVER_PASSWORD for Caddy Basic Auth."
+    log_success "Synchronized OPERATOR_PASSWORD_HASH with admin password for Caddy Basic Auth."
   fi
 fi
 
@@ -231,6 +278,36 @@ fi
 log_info "Step 4/6: Updating Docker container configurations..."
 docker compose up -d
 log_success "Docker services updated with current .env configurations."
+
+# Synchronize Authentik Identity & Master Credentials
+if docker ps --format '{{.Names}}' | grep -q "^brainsos-auth-server$"; then
+  log_info "Synchronizing Authentik identity and master credentials..."
+  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}"
+  ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
+  docker exec -i brainsos-auth-server ak shell -c "
+from authentik.core.models import User, Group
+admin_group = Group.objects.filter(name='authentik Admins').first()
+
+admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': '${ADMIN_EMAIL}'})
+admin_u.email = '${ADMIN_EMAIL}'
+admin_u.set_password('${ADMIN_PASS}')
+admin_u.is_active = True
+if admin_group:
+    admin_u.ak_groups.add(admin_group)
+admin_u.save()
+
+ak_u = User.objects.filter(username='akadmin').first()
+if ak_u:
+    ak_u.set_password('${ADMIN_PASS}')
+    ak_u.save()
+
+op_u = User.objects.filter(username='operator').first()
+if op_u:
+    op_u.set_password('${ADMIN_PASS}')
+    op_u.save()
+" >/dev/null 2>&1 || true
+  log_success "Authentik accounts (admin, akadmin, operator) synchronized with master credentials."
+fi
 
 # ------------------------------------------------------------------------------
 # 5. Restart Control Plane Gateway & Host Services

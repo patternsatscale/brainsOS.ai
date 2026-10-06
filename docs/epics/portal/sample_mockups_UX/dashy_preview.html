@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashy • brainsOS Web Appliance Portal</title>
+  <link rel="icon" type="image/png" href="image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "obsidian": "#0B0E14",
+            "surface": "#10131a",
+            "surface-deck": "#111622",
+            "surface-card": "#151a26",
+            "primary-cyan": "#00f2fe",
+            "accent-pink": "#ec4899",
+            "accent-amber": "#f59e0b",
+            "accent-emerald": "#10b981",
+            "accent-blue": "#3b82f6",
+            "accent-yellow": "#eab308",
+            "matrix-white": "#f8fafc",
+            "slate-matrix": "#94a3b8",
+            "muted-phosphor": "#475569"
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk", "sans-serif"],
+            "body": ["Geist", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #0B0E14;
+      color: #e1e2eb;
+      font-family: 'Geist', sans-serif;
+    }
+    .grid-bg {
+      background-color: #07090E;
+      background-image: url('matrix_cube_bg.svg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+    }
+    .dashy-card {
+      background: rgba(17, 22, 34, 0.82);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .dashy-card:hover {
+      background: rgba(23, 30, 46, 0.92);
+      transform: translateY(-2px);
+    }
+    .pulse-dot-emerald {
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+    .dashy-nav-item.active {
+      background: rgba(0, 242, 254, 0.12);
+      border-color: #00f2fe;
+      color: #ffffff;
+    }
+    .iframe-fullscreen {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 100 !important;
+      border-radius: 0 !important;
+      border: none !important;
+      margin: 0 !important;
+      max-width: 100vw !important;
+    }
+
+    /* Placement 1: Flush Left Edge (Edge-to-Edge Full Screen) */
+    body.placement-flush-left #view-workspace,
+    body.placement-flush-left header > div,
+    body.placement-flush-left section > div {
+      max-width: 100% !important;
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+    }
+    body.placement-flush-left #view-workspace {
+      gap: 0.75rem !important;
+    }
+
+    /* Placement 2: Slim Icon Rail on the Left Edge */
+    body.placement-slim-rail #view-workspace,
+    body.placement-slim-rail header > div,
+    body.placement-slim-rail section > div {
+      max-width: 100% !important;
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+    }
+    body.placement-slim-rail #workspace-sidebar {
+      width: 4.75rem !important;
+      min-width: 4.75rem !important;
+    }
+    body.placement-slim-rail #workspace-sidebar .dashy-nav-item {
+      justify-content: center !important;
+      padding: 0.5rem !important;
+    }
+    body.placement-slim-rail #workspace-sidebar .dashy-nav-item .flex-1,
+    body.placement-slim-rail #workspace-sidebar .sidebar-header-text,
+    body.placement-slim-rail #workspace-sidebar .sidebar-footer-text,
+    body.placement-slim-rail #workspace-sidebar .sidebar-header-badge {
+      display: none !important;
+    }
+
+    /* Placement 3: Bottom Dock Shelf (Horizontal below Iframe) */
+    body.placement-bottom-dock #view-workspace {
+      flex-direction: column-reverse !important;
+      max-width: 100% !important;
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+      gap: 0.75rem !important;
+      height: calc(100vh - 120px) !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar {
+      width: auto !important;
+      max-width: max-content !important;
+      margin: 0 auto !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      border-radius: 9999px !important;
+      padding: 0.35rem 1rem !important;
+      box-shadow: 0 15px 35px rgba(0,0,0,0.8), 0 0 25px rgba(0,242,254,0.15) !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar > div:first-child,
+    body.placement-bottom-dock #workspace-sidebar .sidebar-footer-text {
+      display: none !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar .overflow-y-auto {
+      display: flex !important;
+      flex-direction: row !important;
+      gap: 0.75rem !important;
+      padding: 0 !important;
+      overflow-y: visible !important;
+      align-items: center !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar .dashy-nav-item {
+      flex-direction: column !important;
+      align-items: center !important;
+      border-radius: 1rem !important;
+      padding: 0.375rem 0.625rem !important;
+      width: auto !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar .dashy-nav-item .flex-1 {
+      margin-top: 0.25rem !important;
+      text-align: center !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar .dashy-nav-item .truncate {
+      display: none !important;
+    }
+    body.placement-bottom-dock #workspace-sidebar .w-full.h-px {
+      width: 1px !important;
+      height: 2rem !important;
+      margin: 0 0.25rem !important;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col relative grid-bg antialiased selection:bg-primary-cyan selection:text-black placement-flush-left">
+
+  <!-- Ambient Luminescent Glows -->
+  <div class="pointer-events-none fixed top-10 left-1/3 -translate-x-1/2 w-[700px] h-[300px] bg-primary-cyan/8 blur-[140px] rounded-full -z-10"></div>
+  <div class="pointer-events-none fixed bottom-10 right-10 w-[500px] h-[400px] bg-accent-pink/6 blur-[130px] rounded-full -z-10"></div>
+
+  <!-- Dashy Web Header (100% Web-Based Appliance Landing) -->
+  <header class="w-full bg-[#0B0E14]/90 backdrop-blur-md border-b border-white/10 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center gap-3 min-w-max">
+        <img src="image.png" alt="BrainsOS Logo" class="w-8 h-8 rounded-lg object-contain filter drop-shadow-[0_0_10px_rgba(0,242,254,0.45)]">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-headline font-bold text-sm tracking-tight text-matrix-white">brainsOS</span>
+            <span class="font-mono text-[10px] text-primary-cyan px-1.5 py-0.5 rounded bg-primary-cyan/10 border border-primary-cyan/20">DASHY WEB</span>
+          </div>
+          <p class="font-body text-[10px] text-slate-matrix hidden sm:block">Appliance Web Portal • GX10</p>
+        </div>
+      </div>
+
+      <!-- Placement & CSS Layout Controls -->
+      <div class="flex items-center bg-surface-deck border border-white/10 rounded-lg p-0.5 text-xs font-mono">
+        <span class="text-slate-matrix px-2 text-[10px] hidden xl:inline">Box Placement:</span>
+        <button id="btn-place-flush" onclick="setPlacement('flush-left')" class="px-2.5 py-1 rounded bg-primary-cyan text-obsidian font-bold transition-all flex items-center gap-1" title="Move box flush to Left Edge (Full Width)">
+          <i class="fa-solid fa-align-left text-[11px]"></i>
+          <span class="hidden sm:inline">Left Edge</span>
+        </button>
+        <button id="btn-place-slim" onclick="setPlacement('slim-rail')" class="px-2.5 py-1 rounded text-slate-matrix hover:text-white transition-all flex items-center gap-1" title="Slim Vertical Icon Rail on Left">
+          <i class="fa-solid fa-grip-vertical text-[11px]"></i>
+          <span class="hidden sm:inline">Slim Rail</span>
+        </button>
+        <button id="btn-place-bottom" onclick="setPlacement('bottom-dock')" class="px-2.5 py-1 rounded text-slate-matrix hover:text-white transition-all flex items-center gap-1" title="Move to Bottom Shelf below Iframe">
+          <i class="fa-solid fa-window-minimize text-[11px]"></i>
+          <span class="hidden sm:inline">Bottom Dock</span>
+        </button>
+        <button id="btn-place-boxed" onclick="setPlacement('boxed')" class="px-2.5 py-1 rounded text-slate-matrix hover:text-white transition-all flex items-center gap-1" title="Boxed Centered Layout">
+          <i class="fa-solid fa-table-columns text-[11px]"></i>
+          <span class="hidden sm:inline">Boxed</span>
+        </button>
+      </div>
+
+      <!-- Right: YAML Config & Health Indicator -->
+      <div class="flex items-center gap-2 sm:gap-3 min-w-max">
+        <button onclick="openConfigModal()" title="View conf.yml" class="h-8 px-2.5 flex items-center gap-1.5 rounded-lg bg-surface-deck border border-white/10 text-xs font-mono text-slate-matrix hover:text-primary-cyan hover:border-primary-cyan/40 transition-all">
+          <i class="fa-solid fa-code"></i>
+          <span class="hidden md:inline text-[11px]">conf.yml</span>
+        </button>
+        <div class="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-full bg-accent-emerald/10 border border-accent-emerald/20 text-[11px] font-mono text-accent-emerald">
+          <span class="pulse-dot-emerald"></span>
+          <span>6/6 UP</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Top Hardware Telemetry Bar (Dashy Widget Bar) -->
+  <section class="w-full border-b border-white/5 bg-black/40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between text-xs font-mono overflow-x-auto gap-4">
+      <div class="flex items-center gap-6 min-w-max">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-matrix text-[10px] uppercase">GPU:</span>
+          <span class="text-matrix-white font-semibold">GB10 24%</span>
+          <span class="text-slate-matrix">• 48°C</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-matrix text-[10px] uppercase">LPDDR5x:</span>
+          <span class="text-matrix-white font-semibold">42.4 / 128 GB</span>
+          <span class="text-primary-cyan">@ 273 GB/s</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-matrix text-[10px] uppercase">Inference:</span>
+          <span class="text-matrix-white font-semibold">1/1 Slot</span>
+          <span class="text-accent-emerald">SERIALIZED (Rule 3)</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-[10px] text-slate-matrix min-w-max">
+        <span>CADDY INGRESS REVERSE PROXY</span>
+        <span class="text-white/20">•</span>
+        <span class="text-primary-cyan">100% WEB BASED</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Floating Subsystems Menu Expander (Shown when sidebar is hidden) -->
+  <button id="btn-expand-sidebar" onclick="toggleSidebar()" class="hidden fixed left-4 top-24 z-30 px-3.5 py-2 rounded-xl bg-surface-deck/95 backdrop-blur-md border border-primary-cyan/40 text-primary-cyan font-mono text-xs shadow-2xl flex items-center gap-2 hover:bg-primary-cyan hover:text-black transition-all group">
+    <i class="fa-solid fa-bars"></i>
+    <span class="font-bold">Subsystems</span>
+  </button>
+
+  <!-- Floating Exit Full Screen Button -->
+  <button id="btn-exit-fullscreen" onclick="toggleFullscreenIframe()" class="hidden fixed top-3 right-4 z-[110] px-4 py-2 rounded-full bg-black/90 backdrop-blur-md border border-primary-cyan/50 text-matrix-white hover:bg-primary-cyan hover:text-black text-xs font-mono flex items-center gap-2 shadow-2xl transition-all">
+    <i class="fa-solid fa-compress text-primary-cyan"></i>
+    <span class="font-bold">Exit Full Screen (Esc)</span>
+  </button>
+
+  <!-- ========================================================================= -->
+  <!-- DASHY VIEW 1: DASHY WORKSPACE MODE (layout: workspace)                     -->
+  <!-- Left Navigation Rail + Active Full Viewport Embedded Iframe              -->
+  <!-- ========================================================================= -->
+  <main id="view-workspace" class="flex-1 flex max-w-7xl w-full mx-auto p-4 sm:p-6 gap-4 h-[calc(100vh-125px)]">
+    
+    <!-- Left Navigation Rail (The 6 Subsystem Buttons) -->
+    <div id="workspace-sidebar" class="w-64 sm:w-72 flex flex-col bg-surface-deck/90 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shrink-0 shadow-2xl transition-all duration-300">
+      
+      <div class="p-4 border-b border-white/10 bg-black/40 flex items-center justify-between">
+        <div>
+          <div class="font-headline font-bold text-xs uppercase tracking-wider text-matrix-white">Subsystems</div>
+          <div class="font-mono text-[10px] text-slate-matrix">Dashy Workspace Navigation</div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] font-mono text-primary-cyan bg-primary-cyan/10 px-1.5 py-0.5 rounded border border-primary-cyan/20">6 APPS</span>
+          <button onclick="toggleSidebar()" class="p-1 rounded text-slate-matrix hover:text-white hover:bg-white/10 text-xs transition-colors" title="Hide Menu (Expand Iframe to Full Width)">
+            <i class="fa-solid fa-angles-left"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- The 6 Subsystem Buttons -->
+      <div class="flex-1 p-3 space-y-2 overflow-y-auto">
+        
+        <!-- Button 1: Console -->
+        <button id="ws-nav-console" onclick="selectWorkspaceApp('console')" class="dashy-nav-item active w-full p-3 rounded-xl border border-white/10 hover:border-primary-cyan flex items-center gap-3 transition-all text-left group">
+          <div class="w-10 h-10 rounded-lg bg-cyan-500/10 border border-primary-cyan/40 flex items-center justify-center text-primary-cyan group-hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined text-xl">terminal</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="font-headline font-bold text-xs text-matrix-white group-hover:text-primary-cyan transition-colors">Console</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-emerald shadow-[0_0_6px_#10b981]"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-matrix truncate">IDE • editor.brainsos.local</div>
+          </div>
+        </button>
+
+        <!-- Button 2: Comms -->
+        <button id="ws-nav-comms" onclick="selectWorkspaceApp('comms')" class="dashy-nav-item w-full p-3 rounded-xl border border-white/10 hover:border-accent-pink flex items-center gap-3 transition-all text-left group">
+          <div class="w-10 h-10 rounded-lg bg-pink-500/10 border border-accent-pink/40 flex items-center justify-center text-accent-pink group-hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined text-xl">mail</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="font-headline font-bold text-xs text-matrix-white group-hover:text-accent-pink transition-colors">Comms</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-emerald shadow-[0_0_6px_#10b981]"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-matrix truncate">SOGo • mail.brainsos.local</div>
+          </div>
+        </button>
+
+        <!-- Button 3: Security -->
+        <button id="ws-nav-security" onclick="selectWorkspaceApp('security')" class="dashy-nav-item w-full p-3 rounded-xl border border-white/10 hover:border-accent-amber flex items-center gap-3 transition-all text-left group">
+          <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-accent-amber/40 flex items-center justify-center text-accent-amber group-hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined text-xl">shield</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="font-headline font-bold text-xs text-matrix-white group-hover:text-accent-amber transition-colors">Security</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-emerald shadow-[0_0_6px_#10b981]"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-matrix truncate">LiteLLM • proxy.brainsos.local</div>
+          </div>
+        </button>
+
+        <!-- Button 4: Network -->
+        <button id="ws-nav-network" onclick="selectWorkspaceApp('network')" class="dashy-nav-item w-full p-3 rounded-xl border border-white/10 hover:border-accent-emerald flex items-center gap-3 transition-all text-left group">
+          <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-accent-emerald/40 flex items-center justify-center text-accent-emerald group-hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined text-xl">lan</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="font-headline font-bold text-xs text-matrix-white group-hover:text-accent-emerald transition-colors">Network</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-emerald shadow-[0_0_6px_#10b981]"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-matrix truncate">mitmproxy • efw.brainsos.local</div>
+          </div>
+        </button>
+
+        <!-- Button 5: Trace -->
+        <button id="ws-nav-trace" onclick="selectWorkspaceApp('trace')" class="dashy-nav-item w-full p-3 rounded-xl border border-white/10 hover:border-accent-blue flex items-center gap-3 transition-all text-left group">
+          <div class="w-10 h-10 rounded-lg bg-blue-500/10 border border-accent-blue/40 flex items-center justify-center text-accent-blue group-hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined text-xl">query_stats</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="font-headline font-bold text-xs text-matrix-white group-hover:text-accent-blue transition-colors">Trace</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-emerald shadow-[0_0_6px_#10b981]"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-matrix truncate">Langfuse • langfuse.brainsos.local</div>
+          </div>
+        </button>
+
+        <!-- Separator -->
+        <div class="w-full h-px bg-white/10 my-2"></div>
+
+        <!-- Button 6: Help -->
+        <button id="ws-nav-help" onclick="selectWorkspaceApp('help')" class="dashy-nav-item w-full p-3 rounded-xl border border-white/10 hover:border-accent-yellow flex items-center gap-3 transition-all text-left group">
+          <div class="w-10 h-10 rounded-lg bg-yellow-500/10 border border-accent-yellow/40 flex items-center justify-center text-accent-yellow group-hover:scale-105 transition-transform">
+            <span class="material-symbols-outlined text-xl">menu_book</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="font-headline font-bold text-xs text-matrix-white group-hover:text-accent-yellow transition-colors">Help</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-emerald shadow-[0_0_6px_#10b981]"></span>
+            </div>
+            <div class="font-mono text-[10px] text-slate-matrix truncate">Docs • docs.brainsos.local</div>
+          </div>
+        </button>
+
+      </div>
+
+      <div class="p-3 border-t border-white/10 bg-black/40 text-[10px] font-mono text-slate-matrix text-center">
+        Dashy `layout: workspace` Mode
+      </div>
+
+    </div>
+
+    <!-- Right Main Iframe Viewport Area -->
+    <div id="main-iframe-container" class="flex-1 flex flex-col bg-surface-deck/90 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative transition-all duration-300">
+      
+      <!-- Iframe Header Bar with Pop-out, Full Screen and Route -->
+      <div class="h-11 px-4 border-b border-white/10 flex items-center justify-between bg-black/50 text-xs font-mono shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span id="ws-iframe-icon" class="material-symbols-outlined text-primary-cyan text-base">terminal</span>
+          <span id="ws-iframe-title" class="font-bold text-matrix-white">Console (IDE)</span>
+          <span class="text-slate-matrix">•</span>
+          <span id="ws-iframe-url" class="text-slate-matrix text-[11px]">https://editor.brainsos.local</span>
+        </div>
+        <div class="flex items-center gap-2 sm:gap-3">
+          <span class="text-[10px] font-mono text-accent-emerald bg-accent-emerald/10 px-2 py-0.5 rounded border border-accent-emerald/20 flex items-center gap-1.5">
+            <span class="pulse-dot-emerald"></span>
+            <span class="hidden sm:inline">IFRAME CONNECTED</span>
+          </span>
+          <button onclick="toggleFullscreenIframe()" id="btn-fullscreen-toggle" class="p-1 px-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-primary-cyan text-matrix-white hover:text-primary-cyan transition-all text-xs flex items-center gap-1.5" title="Maximize Iframe to Full Screen">
+            <i class="fa-solid fa-expand text-[11px]" id="fullscreen-icon"></i>
+            <span class="text-[10px] hidden sm:inline">Full Screen</span>
+          </button>
+          <button onclick="popoutActiveApp()" title="Pop out into clean browser tab" class="p-1.5 rounded-lg text-slate-matrix hover:text-primary-cyan hover:bg-white/5 transition-all text-xs flex items-center gap-1">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            <span class="hidden sm:inline text-[10px]">Pop Out</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Web Viewport (Simulated Iframe Content) -->
+      <div class="flex-1 w-full h-full bg-[#07090E] p-6 overflow-y-auto flex flex-col justify-between" id="ws-iframe-body">
+        
+        <div class="space-y-4 max-w-3xl">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-primary-cyan/40 flex items-center justify-center text-primary-cyan text-2xl" id="app-card-icon">
+              <span class="material-symbols-outlined">terminal</span>
+            </div>
+            <div>
+              <h2 class="font-headline font-bold text-xl text-matrix-white" id="app-card-title">Console Subsystem</h2>
+              <p class="font-mono text-xs text-slate-matrix" id="app-card-desc">Monaco Code-Server & Extension Workspace</p>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-xl bg-surface-card border border-white/10 font-mono text-xs text-slate-matrix space-y-3">
+            <div class="flex items-center justify-between border-b border-white/10 pb-2">
+              <span class="text-matrix-white font-semibold">Web Iframe Rendering State:</span>
+              <span class="text-accent-emerald">HTTP/2 200 OK • 12ms</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-[11px]">
+              <div><span class="text-muted-phosphor">Caddy Ingress Route:</span> <span id="app-meta-route" class="text-primary-cyan">editor.brainsos.local:8443</span></div>
+              <div><span class="text-muted-phosphor">Authentication:</span> <span class="text-accent-emerald">Authentik forward_auth</span></div>
+              <div><span class="text-muted-phosphor">Caddy CSP:</span> <span class="text-white">frame-ancestors 'self'</span></div>
+              <div><span class="text-muted-phosphor">Container:</span> <span class="text-white">lissy93/dashy:latest</span></div>
+            </div>
+            <div class="p-3 rounded bg-black/60 border border-white/5 text-[11px] text-emerald-400 font-mono" id="app-card-snippet">
+              // Live Monaco Workspace Loaded via Caddy Reverse Proxy<br>
+              import { brainsOS } from '@brainsos/core';<br>
+              const kernel = await brainsOS.connect({ socket: 'host.docker.internal' });
+            </div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-[11px] font-mono text-slate-matrix">
+          <div>This is Dashy's built-in <strong>Workspace Iframe mode</strong> (`layout: workspace`). 100% web-based.</div>
+          <button onclick="popoutActiveApp()" class="px-3 py-1 rounded bg-primary-cyan/15 text-primary-cyan border border-primary-cyan/30 hover:bg-primary-cyan hover:text-black transition-all">
+            Open Full Screen
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- DASHY VIEW 2: DASHY CARD GRID (WITH BUILT-IN WEB MODAL IFRAMES)           -->
+  <!-- ========================================================================= -->
+  <main id="view-grid" class="hidden flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+    <div class="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
+      <div>
+        <h2 class="font-headline font-bold text-xl text-matrix-white">
+          Dashy Web Cards (Click to open in Dashy Modal Iframe)
+        </h2>
+        <p class="font-body text-xs text-slate-matrix mt-1">
+          Each card uses Dashy's native `target: modal` to launch inside a clean web popup overlay.
+        </p>
+      </div>
+      <div class="flex items-center gap-2 font-mono text-xs text-accent-emerald">
+        <span class="pulse-dot-emerald"></span>
+        <span>6 Web Cards</span>
+      </div>
+    </div>
+
+    <!-- The 6 Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      
+      <!-- Card 1: Console -->
+      <div onclick="openWebModal('Console', 'https://editor.brainsos.local', 'Monaco Code-Server & Workspace', 'terminal', '#00f2fe')" class="dashy-card rounded-2xl p-5 border-cyan-500/30 hover:border-primary-cyan cursor-pointer group flex flex-col justify-between">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border-2 border-primary-cyan flex items-center justify-center text-primary-cyan shadow-[0_0_15px_rgba(0,242,254,0.3)]">
+              <span class="material-symbols-outlined text-2xl">terminal</span>
+            </div>
+            <div>
+              <h3 class="font-headline font-bold text-base text-matrix-white group-hover:text-primary-cyan transition-colors">Console</h3>
+              <span class="font-mono text-xs text-slate-matrix">IDE • editor.brainsos.local</span>
+            </div>
+          </div>
+          <span class="font-mono text-[10px] text-primary-cyan bg-primary-cyan/10 px-2 py-0.5 rounded border border-primary-cyan/20">MODAL</span>
+        </div>
+        <p class="font-body text-xs text-slate-matrix mb-4">
+          Monaco code editor, repository tree, and container development shell.
+        </p>
+        <div class="flex items-center justify-between pt-3 border-t border-white/5 font-mono text-[11px]">
+          <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>200 OK • 12ms</span>
+          <span class="text-slate-matrix group-hover:text-white flex items-center gap-1">OPEN MODAL <i class="fa-solid fa-window-maximize text-[10px]"></i></span>
+        </div>
+      </div>
+
+      <!-- Card 2: Comms -->
+      <div onclick="openWebModal('Comms', 'https://mail.brainsos.local', 'SOGo Webmail & Agent Inboxes', 'mail', '#ec4899')" class="dashy-card rounded-2xl p-5 border-pink-500/30 hover:border-accent-pink cursor-pointer group flex flex-col justify-between">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-xl bg-pink-500/10 border-2 border-accent-pink flex items-center justify-center text-accent-pink shadow-[0_0_15px_rgba(236,72,153,0.3)]">
+              <span class="material-symbols-outlined text-2xl">mail</span>
+            </div>
+            <div>
+              <h3 class="font-headline font-bold text-base text-matrix-white group-hover:text-accent-pink transition-colors">Comms</h3>
+              <span class="font-mono text-xs text-slate-matrix">SOGo • mail.brainsos.local</span>
+            </div>
+          </div>
+          <span class="font-mono text-[10px] text-accent-pink bg-accent-pink/10 px-2 py-0.5 rounded border border-accent-pink/20">MODAL</span>
+        </div>
+        <p class="font-body text-xs text-slate-matrix mb-4">
+          Multi-tenant agent IMAP/SMTP mailboxes for Cindy Pawford and inbound communications.
+        </p>
+        <div class="flex items-center justify-between pt-3 border-t border-white/5 font-mono text-[11px]">
+          <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>200 OK • 10ms</span>
+          <span class="text-slate-matrix group-hover:text-white flex items-center gap-1">OPEN MODAL <i class="fa-solid fa-window-maximize text-[10px]"></i></span>
+        </div>
+      </div>
+
+      <!-- Card 3: Security -->
+      <div onclick="openWebModal('Security', 'https://proxy.brainsos.local', 'LiteLLM Gateway & Virtual Keys', 'shield', '#f59e0b')" class="dashy-card rounded-2xl p-5 border-amber-500/30 hover:border-accent-amber cursor-pointer group flex flex-col justify-between">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-xl bg-amber-500/10 border-2 border-accent-amber flex items-center justify-center text-accent-amber shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+              <span class="material-symbols-outlined text-2xl">shield</span>
+            </div>
+            <div>
+              <h3 class="font-headline font-bold text-base text-matrix-white group-hover:text-accent-amber transition-colors">Security</h3>
+              <span class="font-mono text-xs text-slate-matrix">LiteLLM • proxy.brainsos.local</span>
+            </div>
+          </div>
+          <span class="font-mono text-[10px] text-accent-amber bg-accent-amber/10 px-2 py-0.5 rounded border border-accent-amber/20">MODAL</span>
+        </div>
+        <p class="font-body text-xs text-slate-matrix mb-4">
+          Hardware request serialization (max: 1) protecting the GB10 unified memory bus.
+        </p>
+        <div class="flex items-center justify-between pt-3 border-t border-white/5 font-mono text-[11px]">
+          <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>200 OK • 8ms</span>
+          <span class="text-slate-matrix group-hover:text-white flex items-center gap-1">OPEN MODAL <i class="fa-solid fa-window-maximize text-[10px]"></i></span>
+        </div>
+      </div>
+
+      <!-- Card 4: Network -->
+      <div onclick="openWebModal('Network', 'https://efw.brainsos.local', 'mitmproxy Egress Gateway', 'lan', '#10b981')" class="dashy-card rounded-2xl p-5 border-emerald-500/30 hover:border-accent-emerald cursor-pointer group flex flex-col justify-between">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border-2 border-accent-emerald flex items-center justify-center text-accent-emerald shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+              <span class="material-symbols-outlined text-2xl">lan</span>
+            </div>
+            <div>
+              <h3 class="font-headline font-bold text-base text-matrix-white group-hover:text-accent-emerald transition-colors">Network</h3>
+              <span class="font-mono text-xs text-slate-matrix">mitmproxy • efw.brainsos.local</span>
+            </div>
+          </div>
+          <span class="font-mono text-[10px] text-accent-emerald bg-accent-emerald/10 px-2 py-0.5 rounded border border-accent-emerald/20">MODAL</span>
+        </div>
+        <p class="font-body text-xs text-slate-matrix mb-4">
+          Tool egress proxy, in-transit credential injection, and real-time traffic flow inspection.
+        </p>
+        <div class="flex items-center justify-between pt-3 border-t border-white/5 font-mono text-[11px]">
+          <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>200 OK • 14ms</span>
+          <span class="text-slate-matrix group-hover:text-white flex items-center gap-1">OPEN MODAL <i class="fa-solid fa-window-maximize text-[10px]"></i></span>
+        </div>
+      </div>
+
+      <!-- Card 5: Trace -->
+      <div onclick="openWebModal('Trace', 'https://langfuse.brainsos.local', 'Langfuse OTel Tracing', 'query_stats', '#3b82f6')" class="dashy-card rounded-2xl p-5 border-blue-500/30 hover:border-accent-blue cursor-pointer group flex flex-col justify-between">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-xl bg-blue-500/10 border-2 border-accent-blue flex items-center justify-center text-accent-blue shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+              <span class="material-symbols-outlined text-2xl">query_stats</span>
+            </div>
+            <div>
+              <h3 class="font-headline font-bold text-base text-matrix-white group-hover:text-accent-blue transition-colors">Trace</h3>
+              <span class="font-mono text-xs text-slate-matrix">Langfuse • langfuse.brainsos.local</span>
+            </div>
+          </div>
+          <span class="font-mono text-[10px] text-accent-blue bg-accent-blue/10 px-2 py-0.5 rounded border border-accent-blue/20">MODAL</span>
+        </div>
+        <p class="font-body text-xs text-slate-matrix mb-4">
+          OpenTelemetry prompt traces, LLM latency spans, and agent token usage telemetry.
+        </p>
+        <div class="flex items-center justify-between pt-3 border-t border-white/5 font-mono text-[11px]">
+          <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>200 OK • 19ms</span>
+          <span class="text-slate-matrix group-hover:text-white flex items-center gap-1">OPEN MODAL <i class="fa-solid fa-window-maximize text-[10px]"></i></span>
+        </div>
+      </div>
+
+      <!-- Card 6: Help -->
+      <div onclick="openWebModal('Help', 'https://docs.brainsos.local', 'Appliance Manual & Architecture', 'menu_book', '#eab308')" class="dashy-card rounded-2xl p-5 border-yellow-500/30 hover:border-accent-yellow cursor-pointer group flex flex-col justify-between">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-xl bg-yellow-500/10 border-2 border-accent-yellow flex items-center justify-center text-accent-yellow shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+              <span class="material-symbols-outlined text-2xl">menu_book</span>
+            </div>
+            <div>
+              <h3 class="font-headline font-bold text-base text-matrix-white group-hover:text-accent-yellow transition-colors">Help</h3>
+              <span class="font-mono text-xs text-slate-matrix">Docs • docs.brainsos.local</span>
+            </div>
+          </div>
+          <span class="font-mono text-[10px] text-accent-yellow bg-accent-yellow/10 px-2 py-0.5 rounded border border-accent-yellow/20">MODAL</span>
+        </div>
+        <p class="font-body text-xs text-slate-matrix mb-4">
+          Appliance documentation, zero-trust rules (Rules 1–14), and operator runbooks.
+        </p>
+        <div class="flex items-center justify-between pt-3 border-t border-white/5 font-mono text-[11px]">
+          <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>200 OK • 6ms</span>
+          <span class="text-slate-matrix group-hover:text-white flex items-center gap-1">OPEN MODAL <i class="fa-solid fa-window-maximize text-[10px]"></i></span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Dashy Web Modal (target: modal iframe) -->
+  <div id="dashy-web-modal" class="fixed inset-0 z-50 hidden bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="w-full max-w-4xl bg-surface-deck border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95">
+      <div class="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-black/40">
+        <div class="flex items-center gap-3">
+          <div id="modal-app-icon-tile" class="w-7 h-7 rounded bg-primary-cyan/10 border border-primary-cyan/30 flex items-center justify-center text-primary-cyan text-sm">
+            <span class="material-symbols-outlined text-base" id="modal-glyph">terminal</span>
+          </div>
+          <div>
+            <h3 class="font-headline font-semibold text-sm text-matrix-white" id="modal-app-title">Console</h3>
+            <p class="font-mono text-[11px] text-slate-matrix" id="modal-app-url">https://editor.brainsos.local</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="popoutModalUrl()" class="p-1.5 rounded-lg text-slate-matrix hover:text-white text-xs" title="Open in New Tab">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
+          <button onclick="closeWebModal()" class="p-1.5 rounded-lg text-slate-matrix hover:text-white text-xs" title="Close">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+      </div>
+      <div class="p-6 overflow-y-auto flex-1 font-mono text-xs text-slate-matrix space-y-4 bg-[#07090E]">
+        <div class="p-4 rounded-xl bg-surface-card border border-white/10 space-y-3">
+          <div class="flex items-center justify-between border-b border-white/10 pb-2">
+            <span class="text-matrix-white font-semibold">Dashy `target: modal` Iframe View</span>
+            <span class="text-accent-emerald">● 200 OK</span>
+          </div>
+          <p class="text-slate-matrix text-xs" id="modal-app-desc">Web application running inside Dashy's built-in iframe modal overlay.</p>
+          <div class="p-3 bg-black/60 rounded border border-white/5 font-mono text-[11px] text-primary-cyan">
+            Active Route: <span id="modal-display-url">https://editor.brainsos.local</span>
+          </div>
+        </div>
+      </div>
+      <div class="px-5 py-3 border-t border-white/10 flex items-center justify-between bg-black/40 text-[11px] font-mono">
+        <span class="text-accent-emerald flex items-center gap-1.5"><span class="pulse-dot-emerald"></span>DASHY WEB CONTAINER MODAL</span>
+        <button onclick="closeWebModal()" class="px-3 py-1 rounded bg-white/10 text-matrix-white hover:bg-white/20 transition-all">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashy conf.yml Modal -->
+  <div id="config-modal" class="fixed inset-0 z-50 hidden bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl bg-surface-deck border border-white/15 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+      <div class="px-5 py-3.5 border-b border-white/10 flex items-center justify-between bg-black/40">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-file-code text-primary-cyan"></i>
+          <span class="font-headline font-semibold text-sm text-matrix-white">config/dashy/conf.yml (100% Web Based)</span>
+        </div>
+        <button onclick="closeConfigModal()" class="text-slate-matrix hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-4 overflow-y-auto flex-1 bg-[#07090E]">
+        <pre class="font-mono text-[11px] text-emerald-400 leading-relaxed"><code>appConfig:
+  theme: matrix
+  layout: workspace    # <-- Dashy's native web iframe workspace mode!
+  customTitle: "brainsOS"
+  statusCheck: true
+
+sections:
+  - name: "Core Subsystems"
+    items:
+      - title: "Console"
+        subtitle: "IDE"
+        icon: "terminal"
+        url: "https://editor.brainsos.local"
+        target: workspace
+
+      - title: "Comms"
+        subtitle: "SOGo"
+        icon: "mail"
+        url: "https://mail.brainsos.local"
+        target: workspace
+
+      - title: "Security"
+        subtitle: "LiteLLM"
+        icon: "shield"
+        url: "https://proxy.brainsos.local"
+        target: workspace
+
+      - title: "Network"
+        subtitle: "mitmproxy"
+        icon: "lan"
+        url: "https://efw.brainsos.local"
+        target: workspace
+
+      - title: "Trace"
+        subtitle: "Langfuse"
+        icon: "query_stats"
+        url: "https://langfuse.brainsos.local"
+        target: workspace
+
+      - title: "Help"
+        subtitle: "Docs"
+        icon: "menu_book"
+        url: "https://docs.brainsos.local"
+        target: workspace</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Launch Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 hidden bg-surface-deck border border-primary-cyan/40 px-5 py-3 rounded-xl shadow-2xl text-xs font-mono text-matrix-white flex items-center gap-3 animate-in fade-in">
+    <i class="fa-solid fa-circle-check text-primary-cyan"></i>
+    <span id="toast-text">Opening in new tab...</span>
+  </div>
+
+  <script>
+    const appsData = {
+      console: {
+        title: "Console (IDE)",
+        sub: "Monaco Code-Server & Repository Workspace",
+        route: "editor.brainsos.local:8443",
+        url: "https://editor.brainsos.local",
+        icon: "terminal",
+        color: "#00f2fe",
+        snippet: "// Monaco Code-Server mounted to repository workspace root\nimport { brainsOS } from '@brainsos/core';\nconst kernel = await brainsOS.connect({ socket: 'host.docker.internal' });\nconsole.log('Nominal ARM64 runtime active.');"
+      },
+      comms: {
+        title: "Comms (SOGo)",
+        sub: "Agent Inboxes & Ingress Communications",
+        route: "mail.brainsos.local:20000",
+        url: "https://mail.brainsos.local",
+        icon: "mail",
+        color: "#ec4899",
+        snippet: "// SOGo Webmail & Dovecot IMAP/SMTP Gateway\nTenant: cindy-pawford@brainsos.local\nPending Inbound Tasks: 2 dispatches queued\nEgress Status: Authorized via Mitmproxy"
+      },
+      security: {
+        title: "Security (LiteLLM)",
+        sub: "Model Gateway, Concurrency Limits & Virtual Keys",
+        route: "proxy.brainsos.local:4000",
+        url: "https://proxy.brainsos.local",
+        icon: "shield",
+        color: "#f59e0b",
+        snippet: "// LiteLLM Concurrency & Hardware Gate\nmax_parallel_requests: 1 (Rule 3 Hardware Serialization)\nDatabase: brainsos-infra-litellm-db (PostgreSQL - Isolated)\nAudit Logging: Enabled"
+      },
+      network: {
+        title: "Network (mitmproxy)",
+        sub: "Tool Egress Gateway & In-Transit Token Injection",
+        route: "efw.brainsos.local:8081",
+        url: "https://efw.brainsos.local",
+        icon: "lan",
+        color: "#10b981",
+        snippet: "// Mitmproxy Egress Addon (Rule 10)\n[192.168.128.4] GET https://api.github.com/user -> INJECT: Cindy PAT -> 200 OK\n[Flow Redaction]: Credential masked to [INJECTED_CINDY_TOKEN]"
+      },
+      trace: {
+        title: "Trace (Langfuse)",
+        sub: "OpenTelemetry Execution Spans & LLM Telemetry",
+        route: "langfuse.brainsos.local:3000",
+        url: "https://langfuse.brainsos.local",
+        icon: "query_stats",
+        color: "#3b82f6",
+        snippet: "// Langfuse OpenTelemetry Ingestion\nTrace: hermes-agent-dispatch-8821\nGeneration Latency: 420ms | Prompt Tokens: 3,120 | Completion: 184\nModel: qwen2.5:32b-instruct"
+      },
+      help: {
+        title: "Help (Docs)",
+        sub: "Appliance Architecture, Rules & Runbooks",
+        route: "docs.brainsos.local:80",
+        url: "https://docs.brainsos.local",
+        icon: "menu_book",
+        color: "#eab308",
+        snippet: "// brainsOS Architectural Governance Matrix\nRule 1: Memory Plane Purity (/memories Markdown only)\nRule 2: Raw Ollama loopback isolation (127.0.0.1:11434)\nRule 14: Two-Repository Architecture (Core vs Fleet)"
+      }
+    };
+
+    let currentAppKey = "console";
+    let activeModalTarget = "";
+
+    function setDashyView(mode) {
+      const wsView = document.getElementById("view-workspace");
+      const gridView = document.getElementById("view-grid");
+      const wsBtn = document.getElementById("btn-mode-workspace");
+      const gridBtn = document.getElementById("btn-mode-grid");
+
+      const activeClasses = "px-3 py-1 rounded bg-primary-cyan text-obsidian font-bold shadow-[0_0_12px_rgba(0,242,254,0.3)] transition-all flex items-center gap-1.5";
+      const inactiveClasses = "px-3 py-1 rounded text-slate-matrix hover:text-white transition-all flex items-center gap-1.5";
+
+      if (mode === 'workspace') {
+        wsView.classList.remove("hidden");
+        gridView.classList.add("hidden");
+        wsBtn.className = activeClasses;
+        gridBtn.className = inactiveClasses;
+      } else {
+        wsView.classList.add("hidden");
+        gridView.classList.remove("hidden");
+        gridBtn.className = activeClasses;
+        wsBtn.className = inactiveClasses;
+      }
+    }
+
+    function selectWorkspaceApp(key) {
+      currentAppKey = key;
+      const app = appsData[key];
+      if (!app) return;
+
+      // Update sidebar buttons
+      document.querySelectorAll(".dashy-nav-item").forEach(btn => btn.classList.remove("active"));
+      const activeBtn = document.getElementById(`ws-nav-${key}`);
+      if (activeBtn) activeBtn.classList.add("active");
+
+      // Update Iframe Viewport Header
+      document.getElementById("ws-iframe-icon").innerText = app.icon;
+      document.getElementById("ws-iframe-icon").style.color = app.color;
+      document.getElementById("ws-iframe-title").innerText = app.title;
+      document.getElementById("ws-iframe-url").innerText = app.url;
+
+      // Update Iframe Content Card
+      document.getElementById("app-card-icon").innerHTML = `<span class="material-symbols-outlined text-2xl" style="color: ${app.color}">${app.icon}</span>`;
+      document.getElementById("app-card-title").innerText = app.title;
+      document.getElementById("app-card-desc").innerText = app.sub;
+      document.getElementById("app-meta-route").innerText = app.route;
+      document.getElementById("app-card-snippet").innerText = app.snippet;
+    }
+
+    function popoutActiveApp() {
+      const app = appsData[currentAppKey];
+      if (app) {
+        showToast(`Opening ${app.title} (${app.url}) in clean browser tab...`);
+      }
+    }
+
+    function openWebModal(title, url, desc, glyph, color) {
+      activeModalTarget = url;
+      document.getElementById("modal-glyph").innerText = glyph;
+      document.getElementById("modal-glyph").style.color = color;
+      document.getElementById("modal-app-title").innerText = title;
+      document.getElementById("modal-app-url").innerText = url;
+      document.getElementById("modal-display-url").innerText = url;
+      document.getElementById("modal-app-desc").innerText = desc;
+      document.getElementById("dashy-web-modal").classList.remove("hidden");
+    }
+
+    function closeWebModal() {
+      document.getElementById("dashy-web-modal").classList.add("hidden");
+    }
+
+    function popoutModalUrl() {
+      if (activeModalTarget) {
+        showToast(`Opening ${activeModalTarget} in clean browser tab...`);
+      }
+    }
+
+    function openConfigModal() {
+      document.getElementById("config-modal").classList.remove("hidden");
+    }
+
+    function closeConfigModal() {
+      document.getElementById("config-modal").classList.add("hidden");
+    }
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById("workspace-sidebar");
+      const expandBtn = document.getElementById("btn-expand-sidebar");
+      const isHidden = sidebar.classList.contains("hidden");
+      if (isHidden) {
+        sidebar.classList.remove("hidden");
+        expandBtn.classList.add("hidden");
+      } else {
+        sidebar.classList.add("hidden");
+        expandBtn.classList.remove("hidden");
+        showToast("Subsystems menu collapsed — Iframe expanded to full width");
+      }
+    }
+
+    function toggleFullscreenIframe() {
+      const container = document.getElementById("main-iframe-container");
+      const exitBtn = document.getElementById("btn-exit-fullscreen");
+      const isFs = container.classList.contains("iframe-fullscreen");
+      if (isFs) {
+        container.classList.remove("iframe-fullscreen");
+        exitBtn.classList.add("hidden");
+        showToast("Exited Full Screen");
+      } else {
+        container.classList.add("iframe-fullscreen");
+        exitBtn.classList.remove("hidden");
+        showToast("Full Screen Iframe active — Press Esc to exit");
+      }
+    }
+
+    function setPlacement(mode) {
+      const body = document.body;
+      body.classList.remove("placement-flush-left", "placement-slim-rail", "placement-bottom-dock", "placement-boxed");
+      
+      const buttons = {
+        'flush-left': document.getElementById("btn-place-flush"),
+        'slim-rail': document.getElementById("btn-place-slim"),
+        'bottom-dock': document.getElementById("btn-place-bottom"),
+        'boxed': document.getElementById("btn-place-boxed")
+      };
+
+      Object.values(buttons).forEach(btn => {
+        if (btn) btn.className = "px-2.5 py-1 rounded text-slate-matrix hover:text-white transition-all flex items-center gap-1";
+      });
+
+      body.classList.add(`placement-${mode}`);
+      if (buttons[mode]) {
+        buttons[mode].className = "px-2.5 py-1 rounded bg-primary-cyan text-obsidian font-bold transition-all flex items-center gap-1";
+      }
+
+      showToast(`Layout updated: ${mode.replace('-', ' ').toUpperCase()}`);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const container = document.getElementById("main-iframe-container");
+        if (container && container.classList.contains("iframe-fullscreen")) {
+          toggleFullscreenIframe();
+          return;
+        }
+        closeWebModal();
+        closeConfigModal();
+      }
+    });
+
+    function showToast(text) {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-text").innerText = text;
+      toast.classList.remove("hidden");
+      setTimeout(() => {
+        toast.classList.add("hidden");
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

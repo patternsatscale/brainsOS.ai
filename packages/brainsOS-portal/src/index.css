@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #07090E;
+  color: #e1e2eb;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+/* Frosted glass HUD styling */
+.frosted-drawer {
+  background: rgba(11, 14, 20, 0.95);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-right: 1px solid rgba(0, 242, 254, 0.22);
+  box-shadow: 20px 0 50px rgba(0, 0, 0, 0.85);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, visibility 0.22s;
+  will-change: transform, opacity;
+}
+
+.drawer-closed {
+  transform: translateX(-120%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.drawer-open {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.pulse-dot-emerald {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background-color: #10b981;
+  box-shadow: 0 0 10px #10b981;
+  animation: pulse-glow 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}

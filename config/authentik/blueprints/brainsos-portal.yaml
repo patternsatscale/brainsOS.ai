@@ -1,0 +1,161 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: "brainsOS Portal Ingress & SSO Setup"
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  # 1. Appliance Administrator & Operator User Accounts
+  - identifiers:
+      username: "admin"
+    model: authentik_core.user
+    id: admin_user
+    attrs:
+      username: "admin"
+      name: "Appliance Administrator"
+      email: "admin@osx.local.brainsos.ai"
+      is_active: true
+      groups:
+        - !Find [authentik_core.group, [name, "authentik Admins"]]
+
+  - identifiers:
+      username: "operator"
+    model: authentik_core.user
+    id: operator_user
+    attrs:
+      username: "operator"
+      name: "Appliance Operator"
+      email: "operator@brainsos.ai"
+      is_active: true
+      groups:
+        - !Find [authentik_core.group, [name, "authentik Admins"]]
+
+  # 2. Caddy Single-Origin Forward Auth Proxy Provider
+  - identifiers:
+      name: "brainsOS Portal Ingress"
+    model: authentik_providers_proxy.proxyprovider
+    id: brainsos_proxy_provider
+    attrs:
+      name: "brainsOS Portal Ingress"
+      authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
+      external_host: "https://osx.local.brainsos.ai"
+      internal_host: "http://brainsos-caddy:80"
+      mode: "forward_domain"
+      cookie_domain: "local.brainsos.ai"
+      redirect_uris: |
+        https://osx.local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
+        https://osx.local.brainsos.ai?X-authentik-auth-callback=true
+        https://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
+        https://local.brainsos.ai?X-authentik-auth-callback=true
+        .*
+
+  # 3. BrainsOS Appliance Application
+  - identifiers:
+      slug: "brainsos-portal"
+    model: authentik_core.application
+    id: brainsos_app
+    attrs:
+      name: "brainsOS Appliance"
+      slug: "brainsos-portal"
+      provider: !KeyOf brainsos_proxy_provider
+      meta_launch_url: "https://osx.local.brainsos.ai/"
+
+  # 4. Bind Proxy Provider to Embedded Outpost
+  - identifiers:
+      name: "authentik Embedded Outpost"
+    model: authentik_outposts.outpost
+    attrs:
+      name: "authentik Embedded Outpost"
+      type: "proxy"
+      _config:
+        authentik_host: "https://osx.local.brainsos.ai"
+      providers:
+        - !KeyOf brainsos_proxy_provider
+
+  # 5. Default Brand Customization
+  - identifiers:
+      default: true
+    model: authentik_brands.brand
+    attrs:
+      branding_title: "brainsOS Appliance"
+      branding_logo: "/static/dist/assets/icons/brainsos_logo.svg"
+      branding_favicon: "/static/dist/assets/icons/icon.png"
+
+  # 6. Customize Authentication Flow Title
+  - identifiers:
+      slug: "default-authentication-flow"
+    model: authentik_flows.flow
+    attrs:
+      title: "brainsOS • Operator Sign In"
+
+  # 7. LiteLLM Gateway OIDC Provider
+  - identifiers:
+      name: "LiteLLM Gateway OIDC"
+    model: authentik_providers_oauth2.oauth2provider
+    id: litellm_oidc_provider
+    attrs:
+      name: "LiteLLM Gateway OIDC"
+      client_type: "confidential"
+      client_id: "litellm-proxy"
+      client_secret: "brainsos_litellm_secret"
+      redirect_uris: |
+        https://osx.local.brainsos.ai/sso/callback
+        https://osx.local.brainsos.ai/proxy/ui/sso/callback
+        https://proxy.osx.local.brainsos.ai/sso/callback
+        http://localhost:4000/sso/callback
+      authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
+      include_claims_in_id_token: true
+      issuer_mode: "per_provider"
+      sub_mode: "user_email"
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "openid"]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "email"]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "profile"]]
+
+  # 8. LiteLLM Application
+  - identifiers:
+      slug: "litellm"
+    model: authentik_core.application
+    id: litellm_app
+    attrs:
+      name: "LiteLLM Gateway"
+      slug: "litellm"
+      provider: !KeyOf litellm_oidc_provider
+      meta_launch_url: "https://osx.local.brainsos.ai/proxy/ui/"
+
+  # 9. Langfuse Observability OIDC Provider
+  - identifiers:
+      name: "Langfuse Observability OIDC"
+    model: authentik_providers_oauth2.oauth2provider
+    id: langfuse_oidc_provider
+    attrs:
+      name: "Langfuse Observability OIDC"
+      client_type: "confidential"
+      client_id: "langfuse-trace"
+      client_secret: "brainsos_langfuse_secret"
+      redirect_uris: |
+        https://langfuse.osx.local.brainsos.ai/api/auth/callback/custom
+        https://langfuse.local.brainsos.ai/api/auth/callback/custom
+        http://localhost:3001/api/auth/callback/custom
+      authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
+      include_claims_in_id_token: true
+      issuer_mode: "per_provider"
+      sub_mode: "user_email"
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "openid"]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "email"]]
+        - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "profile"]]
+
+  # 10. Langfuse Application
+  - identifiers:
+      slug: "langfuse"
+    model: authentik_core.application
+    id: langfuse_app
+    attrs:
+      name: "Langfuse Observability"
+      slug: "langfuse"
+      provider: !KeyOf langfuse_oidc_provider
+      meta_launch_url: "https://langfuse.osx.local.brainsos.ai/"
+

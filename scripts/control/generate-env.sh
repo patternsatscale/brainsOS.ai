@@ -237,14 +237,22 @@ def is_placeholder(val):
     if not val:
         return True
     val_lower = val.lower().strip()
-    placeholders = [
-        "change_me", "_change_me", "change-me", "-change-me",
-        "sk-brainsos-mock-key", "mock-key", "secret_pass",
-        "password_change_me", "brainsos_operator_secret",
-        "sk-brainsos-master-key", "brainsos_admin_secret",
-        "brainsos_tool_egress_secret"
+    placeholder_fragments = [
+        "change_me", "change-me", "changeme",
+        "mock-key", "mock_key", "secret_pass",
+        "brainsos_admin_secret", "brainsos_operator_secret",
+        "brainsos_tool_egress_secret", "authentik_db_secret",
+        "authentik_db_password", "authentik_secret",
+        "authentik_bootstrap", "brainsos_authentik", "sogo_secret_pass",
+        "sogo_db_password", "admin_mail_pass", "operator_mail_pass",
+        "admin_pass", "litellm_password", "litellm_db_password",
+        "sk-brainsos-mock-key", "sk-brainsos-master-key"
     ]
-    return any(p in val_lower for p in placeholders)
+    if any(p in val_lower for p in placeholder_fragments):
+        return True
+    if "change" in val_lower:
+        return True
+    return False
 
 def gen_hex(n=16):
     return secrets.token_hex(n)
@@ -255,8 +263,13 @@ def gen_alphanumeric(n=24):
 
 # Secret generation definitions
 secret_generators = {
+    "BRAINSOS_ADMIN_PASSWORD": lambda: gen_alphanumeric(24),
     "LITELLM_MASTER_KEY": lambda: f"sk-brainsos-{gen_hex(16)}",
     "LITELLM_DB_PASSWORD": lambda: gen_hex(20),
+    "SOGO_DB_PASSWORD": lambda: gen_hex(20),
+    "AUTHENTIK_SECRET_KEY": lambda: gen_hex(32),
+    "AUTHENTIK_POSTGRESQL__PASSWORD": lambda: gen_hex(20),
+    "AUTHENTIK_BOOTSTRAP_TOKEN": lambda: f"ak-tok-{gen_hex(16)}",
     "HERMES_API_TERRASTELLA_KEY": lambda: f"sk-api-terra-{gen_hex(16)}",
     "HERMES_API_MARVIN_KEY": lambda: f"sk-api-marvin-{gen_hex(16)}",
     "HERMES_API_BAWTFORD_KEY": lambda: f"sk-api-bawt-{gen_hex(16)}",
@@ -264,12 +277,6 @@ secret_generators = {
     "MARVIN_LITELLM_KEY": lambda: f"sk-virt-marvin-{gen_hex(16)}",
     "BAWTFORD_LITELLM_KEY": lambda: f"sk-virt-bawt-{gen_hex(16)}",
     "OPERATOR_LITELLM_KEY": lambda: f"sk-virt-operator-{gen_hex(16)}",
-    "HERMES_DASHBOARD_PASSWORD": lambda: gen_hex(16),
-    "CODE_SERVER_PASSWORD": lambda: gen_hex(16),
-    "TOOL_EGRESS_WEB_PASSWORD": lambda: gen_hex(16),
-    "LANGFUSE_INIT_USER_PASSWORD": lambda: gen_hex(16),
-    "ADMIN_MAIL_PASSWORD": lambda: gen_hex(16),
-    "OPERATOR_MAIL_PASSWORD": lambda: gen_hex(16),
     "TERRASTELLA_MAIL_PASSWORD": lambda: gen_hex(16),
     "BAWTFORD_MAIL_PASSWORD": lambda: gen_hex(16),
     "MARVIN_MAIL_PASSWORD": lambda: gen_hex(16),
@@ -318,6 +325,8 @@ with open(example_file, "r", encoding="utf-8") as f:
             # Check special overrides
             if k == "BRAINSOS_DOMAIN":
                 output_lines.append(f"BRAINSOS_DOMAIN={target_domain}")
+            elif k == "BRAINSOS_ADMIN_EMAIL":
+                output_lines.append(f"BRAINSOS_ADMIN_EMAIL=admin@{target_domain}")
             elif k == "BRAINSOS_MAIL_DOMAIN":
                 output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
             elif k == "BRAINSOS_DATA_DIR":
@@ -336,8 +345,28 @@ if "BRAINSOS_MAIL_DOMAIN" not in handled_keys:
     output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
     handled_keys.add("BRAINSOS_MAIL_DOMAIN")
 
+# Filter out legacy redundant variables that inherit from BRAINSOS_ADMIN_PASSWORD
+redundant_legacy_keys = {
+    "HERMES_DASHBOARD_USER",
+    "HERMES_DASHBOARD_PASSWORD",
+    "CODE_SERVER_PASSWORD",
+    "LANGFUSE_INIT_USER_PASSWORD",
+    "LANGFUSE_INIT_USER_EMAIL",
+    "ADMIN_MAIL_PASSWORD",
+    "OPERATOR_MAIL_PASSWORD",
+    "AUTHENTIK_BOOTSTRAP_PASSWORD",
+    "AUTHENTIK_BOOTSTRAP_EMAIL",
+    "TOOL_EGRESS_WEB_PASSWORD",
+    "OPERATOR_PASSWORD_HASH",
+}
+
 # Append any custom unmapped keys from existing .env
-unmapped = [k for k in current_vars if k not in handled_keys and not k.startswith("#")]
+unmapped = [
+    k for k in current_vars
+    if k not in handled_keys
+    and not k.startswith("#")
+    and k not in redundant_legacy_keys
+]
 if unmapped:
     output_lines.append("")
     output_lines.append("# ==============================================================================")

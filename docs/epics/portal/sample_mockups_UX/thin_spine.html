@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>brainsOS • Thin Spine Portal</title>
+  <link rel="icon" type="image/png" href="image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "obsidian": "#0B0E14",
+            "surface-deck": "#111622",
+            "surface-card": "#151a26",
+            "primary-cyan": "#00f2fe",
+            "accent-pink": "#ec4899",
+            "accent-amber": "#f59e0b",
+            "accent-emerald": "#10b981",
+            "accent-blue": "#3b82f6",
+            "accent-yellow": "#eab308",
+            "matrix-white": "#f8fafc",
+            "slate-matrix": "#94a3b8",
+            "muted-phosphor": "#475569"
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk", "sans-serif"],
+            "body": ["Geist", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #07090E;
+      color: #e1e2eb;
+      font-family: 'Geist', sans-serif;
+      overflow: hidden;
+    }
+    .spine-item {
+      transition: all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .spine-item:hover {
+      transform: scale(1.08);
+    }
+    .spine-item.active {
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+    /* Robust Frosted Drawer Animation & Complete Zero-Leak Hidden State */
+    .frosted-drawer {
+      background: rgba(11, 14, 20, 0.95);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border-right: 1px solid rgba(0, 242, 254, 0.22);
+      box-shadow: 20px 0 50px rgba(0, 0, 0, 0.85);
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, visibility 0.22s;
+      will-change: transform, opacity;
+    }
+    .drawer-closed {
+      transform: translateX(-120%);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .drawer-open {
+      transform: translateX(0);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .pulse-dot-emerald {
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+  </style>
+</head>
+<body class="w-screen h-screen flex relative antialiased selection:bg-primary-cyan selection:text-black">
+
+  <!-- ========================================================================= -->
+  <!-- 1. THE THIN SPINE (56px Wide, Always Visible on Far Left Edge)            -->
+  <!-- ========================================================================= -->
+  <aside class="w-14 sm:w-16 h-screen bg-[#0B0E14] border-r border-white/10 flex flex-col justify-between items-center py-3.5 z-40 shrink-0 select-none shadow-2xl">
+    
+    <!-- Top: Hamburger Menu Button (Refined & Smaller) -->
+    <div class="flex flex-col items-center">
+      <button onclick="toggleDrawer()" id="btn-hamburger" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/5 hover:bg-white/10 hover:border-white/20 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-all group" title="Toggle Subsystems Overlay (⌘K / ☰)">
+        <i class="fa-solid fa-bars text-[11px] group-hover:scale-110 transition-transform"></i>
+      </button>
+    </div>
+
+    <!-- Center: The 6 Subsystem Squircle Buttons (Subtle, Non-Blinding, Harmonious) -->
+    <nav class="flex flex-col items-center gap-2.5 my-2">
+      
+      <!-- Button 1: Console (Cyan) -->
+      <button onclick="switchSubsystem('console')" id="spine-btn-console" class="spine-item active relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/[0.04] border border-primary-cyan/60 hover:border-primary-cyan flex items-center justify-center text-primary-cyan group" title="Console • ⌘1">
+        <span class="material-symbols-outlined text-lg">terminal</span>
+      </button>
+
+      <!-- Button 2: Comms (Pink) -->
+      <button onclick="switchSubsystem('comms')" id="spine-btn-comms" class="spine-item relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:border-accent-pink flex items-center justify-center text-accent-pink/80 hover:text-accent-pink group" title="Comms • ⌘2">
+        <span class="material-symbols-outlined text-lg">mail</span>
+      </button>
+
+      <!-- Button 3: Security (Amber) -->
+      <button onclick="switchSubsystem('security')" id="spine-btn-security" class="spine-item relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:border-accent-amber flex items-center justify-center text-accent-amber/80 hover:text-accent-amber group" title="Security • ⌘3">
+        <span class="material-symbols-outlined text-lg">shield</span>
+      </button>
+
+      <!-- Button 4: Network (Emerald) -->
+      <button onclick="switchSubsystem('network')" id="spine-btn-network" class="spine-item relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:border-accent-emerald flex items-center justify-center text-accent-emerald/80 hover:text-accent-emerald group" title="Network • ⌘4">
+        <span class="material-symbols-outlined text-lg">lan</span>
+      </button>
+
+      <!-- Button 5: Trace (Blue) -->
+      <button onclick="switchSubsystem('trace')" id="spine-btn-trace" class="spine-item relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:border-accent-blue flex items-center justify-center text-accent-blue/80 hover:text-accent-blue group" title="Trace • ⌘5">
+        <span class="material-symbols-outlined text-lg">query_stats</span>
+      </button>
+
+      <!-- Separator -->
+      <div class="w-6 h-px bg-white/10 my-0.5"></div>
+
+      <!-- Button 6: Help (Yellow Question Mark) -->
+      <button onclick="switchSubsystem('help')" id="spine-btn-help" class="spine-item relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:border-accent-yellow flex items-center justify-center text-accent-yellow/80 hover:text-accent-yellow group" title="Help • ⌘H">
+        <span class="material-symbols-outlined text-lg">help</span>
+      </button>
+
+    </nav>
+
+    <!-- Vertical Brand Spine: BRAINSOS.AI below the icons -->
+    <div class="my-auto py-4 flex items-center justify-center select-none pointer-events-none">
+      <span class="font-mono text-[11px] tracking-[0.32em] text-slate-500 hover:text-slate-400 font-semibold uppercase [writing-mode:vertical-rl] rotate-180 transition-colors">
+        BRAINSOS<span class="text-primary-cyan">.AI</span>
+      </span>
+    </div>
+
+    <!-- Bottom: Fullscreen Trigger & User Profile / Status -->
+    <div class="flex flex-col items-center gap-2.5 text-slate-matrix pb-2">
+      <button onclick="toggleFullscreen()" class="w-8 h-8 rounded-lg hover:bg-white/5 hover:text-primary-cyan flex items-center justify-center text-xs transition-colors" title="Toggle Full Screen (F11)">
+        <i class="fa-solid fa-expand"></i>
+      </button>
+
+      <!-- Operator Profile & SSO Session Trigger -->
+      <button onclick="toggleProfileModal()" id="btn-operator-profile" class="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-200 group border bg-white/[0.04] border-white/10 hover:bg-white/[0.08] hover:border-primary-cyan/40" title="Operator Profile & SSO Session (@operator)">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00f2fe]/20 to-emerald-500/20 flex items-center justify-center text-primary-cyan font-mono text-[11px] font-bold tracking-tight">
+          OP
+        </div>
+        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent-emerald ring-2 ring-[#0B0E14] shadow-[0_0_6px_#10b981] animate-pulse" title="Appliance Nominal • ASUS Ascent GX10 (ARM64)"></span>
+      </button>
+    </div>
+
+  </aside>
+
+  <!-- ========================================================================= -->
+  <!-- 2. THE EXPANDABLE OVERLAY DRAWER (FROSTED GLASS HUD)                      -->
+  <!-- Slides out from the spine OVER top of the iframe without DOM shifting     -->
+  <!-- ========================================================================= -->
+  <!-- ========================================================================= -->
+  <!-- 2. THE EXPANDABLE OVERLAY DRAWER (FROSTED GLASS HUD)                      -->
+  <!-- Slides out from the spine OVER top of the iframe without DOM shifting     -->
+  <!-- ========================================================================= -->
+  <div id="drawer-backdrop" onclick="closeDrawer()" class="fixed inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity duration-200 hidden" style="z-index: 45;"></div>
+  
+  <div id="subsystems-drawer" class="frosted-drawer drawer-closed fixed top-0 left-14 sm:left-16 w-72 sm:w-76 max-w-[calc(100vw-4rem)] h-screen z-50 flex flex-col justify-between p-4">
+    
+    <!-- Drawer Header -->
+    <div>
+      <div class="flex items-center justify-between border-b border-white/10 pb-3 mb-3.5">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-headline font-bold text-sm tracking-tight text-matrix-white">brainsOS.AI</span>
+            <span class="font-mono text-[9px] text-primary-cyan px-1.5 py-0.5 rounded bg-primary-cyan/10 border border-primary-cyan/20">APPLIANCE</span>
+          </div>
+          <p class="font-mono text-[10px] tracking-wider uppercase text-slate-500 mt-0.5 font-medium">SUBSYSTEMS</p>
+        </div>
+        <button onclick="closeDrawer()" class="w-6 h-6 rounded-md bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors" title="Close Menu (Esc)">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <!-- Subsystem Launch Cards (Clean, Colored Text, Outline Hover, Pop-out Button) -->
+      <div class="space-y-2">
+        
+        <!-- Subsystem 1: Console -->
+        <div onclick="switchSubsystem('console'); closeDrawer();" class="p-2.5 rounded-xl bg-surface-card/80 hover:bg-surface-card border border-white/5 hover:border-primary-cyan/80 hover:shadow-[0_0_12px_rgba(0,242,254,0.15)] cursor-pointer transition-all flex items-center justify-between group">
+          <div class="pr-2 min-w-0">
+            <div class="font-headline font-semibold text-xs text-primary-cyan">Console</div>
+            <div class="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">Web IDE & Terminal</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <kbd class="font-mono text-[9px] text-muted-phosphor bg-white/5 border border-white/5 px-1 py-0.5 rounded">⌘1</kbd>
+            <button onclick="openExternalApp('https://editor.brainsos.local', 'Console'); event.stopPropagation();" class="w-6 h-6 rounded-md bg-white/5 hover:bg-primary-cyan/20 hover:text-primary-cyan border border-white/10 text-slate-400 flex items-center justify-center transition-all" title="Open Console in New Tab">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Subsystem 2: Comms -->
+        <div onclick="switchSubsystem('comms'); closeDrawer();" class="p-2.5 rounded-xl bg-surface-card/80 hover:bg-surface-card border border-white/5 hover:border-accent-pink/80 hover:shadow-[0_0_12px_rgba(236,72,153,0.15)] cursor-pointer transition-all flex items-center justify-between group">
+          <div class="pr-2 min-w-0">
+            <div class="font-headline font-semibold text-xs text-accent-pink">Comms</div>
+            <div class="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">agent webmail interface</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <kbd class="font-mono text-[9px] text-muted-phosphor bg-white/5 border border-white/5 px-1 py-0.5 rounded">⌘2</kbd>
+            <button onclick="openExternalApp('https://mail.brainsos.local', 'Comms'); event.stopPropagation();" class="w-6 h-6 rounded-md bg-white/5 hover:bg-accent-pink/20 hover:text-accent-pink border border-white/10 text-slate-400 flex items-center justify-center transition-all" title="Open Comms in New Tab">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Subsystem 3: Security -->
+        <div onclick="switchSubsystem('security'); closeDrawer();" class="p-2.5 rounded-xl bg-surface-card/80 hover:bg-surface-card border border-white/5 hover:border-accent-amber/80 hover:shadow-[0_0_12px_rgba(245,158,11,0.15)] cursor-pointer transition-all flex items-center justify-between group">
+          <div class="pr-2 min-w-0">
+            <div class="font-headline font-semibold text-xs text-accent-amber">Security</div>
+            <div class="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">LiteLLM Gateway</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <kbd class="font-mono text-[9px] text-muted-phosphor bg-white/5 border border-white/5 px-1 py-0.5 rounded">⌘3</kbd>
+            <button onclick="openExternalApp('https://proxy.brainsos.local', 'Security'); event.stopPropagation();" class="w-6 h-6 rounded-md bg-white/5 hover:bg-accent-amber/20 hover:text-accent-amber border border-white/10 text-slate-400 flex items-center justify-center transition-all" title="Open Security in New Tab">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Subsystem 4: Network -->
+        <div onclick="switchSubsystem('network'); closeDrawer();" class="p-2.5 rounded-xl bg-surface-card/80 hover:bg-surface-card border border-white/5 hover:border-accent-emerald/80 hover:shadow-[0_0_12px_rgba(16,185,129,0.15)] cursor-pointer transition-all flex items-center justify-between group">
+          <div class="pr-2 min-w-0">
+            <div class="font-headline font-semibold text-xs text-accent-emerald">Network</div>
+            <div class="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">Egress proxy</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <kbd class="font-mono text-[9px] text-muted-phosphor bg-white/5 border border-white/5 px-1 py-0.5 rounded">⌘4</kbd>
+            <button onclick="openExternalApp('https://efw.brainsos.local', 'Network'); event.stopPropagation();" class="w-6 h-6 rounded-md bg-white/5 hover:bg-accent-emerald/20 hover:text-accent-emerald border border-white/10 text-slate-400 flex items-center justify-center transition-all" title="Open Network in New Tab">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Subsystem 5: Trace -->
+        <div onclick="switchSubsystem('trace'); closeDrawer();" class="p-2.5 rounded-xl bg-surface-card/80 hover:bg-surface-card border border-white/5 hover:border-accent-blue/80 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)] cursor-pointer transition-all flex items-center justify-between group">
+          <div class="pr-2 min-w-0">
+            <div class="font-headline font-semibold text-xs text-accent-blue">Trace</div>
+            <div class="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">Session Tracing</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <kbd class="font-mono text-[9px] text-muted-phosphor bg-white/5 border border-white/5 px-1 py-0.5 rounded">⌘5</kbd>
+            <button onclick="openExternalApp('https://langfuse.brainsos.local', 'Trace'); event.stopPropagation();" class="w-6 h-6 rounded-md bg-white/5 hover:bg-accent-blue/20 hover:text-accent-blue border border-white/10 text-slate-400 flex items-center justify-center transition-all" title="Open Trace in New Tab">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Subsystem 6: Help -->
+        <div onclick="switchSubsystem('help'); closeDrawer();" class="p-2.5 rounded-xl bg-surface-card/80 hover:bg-surface-card border border-white/5 hover:border-accent-yellow/80 hover:shadow-[0_0_12px_rgba(234,179,8,0.15)] cursor-pointer transition-all flex items-center justify-between group">
+          <div class="pr-2 min-w-0">
+            <div class="font-headline font-semibold text-xs text-accent-yellow">Help</div>
+            <div class="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">FAQs and Instructions</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <kbd class="font-mono text-[9px] text-muted-phosphor bg-white/5 border border-white/5 px-1 py-0.5 rounded">⌘H</kbd>
+            <button onclick="openExternalApp('https://docs.brainsos.local', 'Help'); event.stopPropagation();" class="w-6 h-6 rounded-md bg-white/5 hover:bg-accent-yellow/20 hover:text-accent-yellow border border-white/10 text-slate-400 flex items-center justify-center transition-all" title="Open Help in New Tab">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Drawer Footer: Operator Profile & Sign Out Bar + Appliance Info -->
+    <div class="pt-3 border-t border-white/10 space-y-2.5">
+      <button onclick="toggleDrawer(); toggleProfileModal();" class="w-full p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 flex items-center justify-between text-left transition-all group" title="Operator Identity & SSO Session">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-md bg-[#00f2fe]/20 text-[#00f2fe] font-mono text-[10px] font-bold flex items-center justify-center">
+            OP
+          </div>
+          <div>
+            <div class="font-headline font-semibold text-xs text-white group-hover:text-primary-cyan transition-colors">
+              brainsOS Operator
+            </div>
+            <div class="font-mono text-[9px] text-slate-400">@operator • Authentik SSO</div>
+          </div>
+        </div>
+        <i class="fa-solid fa-arrow-right-from-bracket text-xs text-slate-500 group-hover:text-red-400 transition-colors"></i>
+      </button>
+
+      <div class="font-mono text-[10.5px] text-slate-matrix space-y-1">
+        <div class="flex items-center justify-between">
+          <span class="text-muted-phosphor">Appliance Host:</span>
+          <span class="text-primary-cyan font-medium">ASUS Ascent GX10</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-muted-phosphor">BrainsOS Version:</span>
+          <span class="text-matrix-white/90">v1.0.0-arm64</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 3. THE MAIN FULL-BLEED IFRAME VIEWPORT (96%+ of Screen Real Estate)       -->
+  <!-- ========================================================================= -->
+  <main class="flex-1 h-screen flex flex-col bg-[#07090E] relative overflow-hidden">
+    
+    <!-- Ultra-Slim Subsystem Header Bar -->
+    <header class="h-10 px-4 border-b border-white/10 bg-[#0B0E14]/90 backdrop-blur-md flex items-center justify-between text-xs font-mono shrink-0 z-10">
+      <div class="flex items-center gap-2.5">
+        <span id="active-icon" class="material-symbols-outlined text-primary-cyan text-base">terminal</span>
+        <span id="active-title" class="font-headline font-bold text-matrix-white">Console</span>
+        <span class="text-muted-phosphor">•</span>
+        <span id="active-route" class="text-slate-matrix text-[11px]">https://editor.brainsos.local</span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button onclick="openActiveExternal()" class="p-1 px-2.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-slate-matrix hover:text-white transition-all text-xs flex items-center gap-1.5" title="Open in Clean Browser Tab">
+          <i class="fa-solid fa-arrow-up-right-from-square text-[11px]"></i>
+          <span class="text-[10px] hidden sm:inline">Open in New Tab</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ========================================================================= -->
+    <!-- The Active 100% Full-Bleed iFrame Area (Edge-to-Edge Canvas)              -->
+    <!-- ========================================================================= -->
+    <div class="flex-1 w-full h-full relative overflow-hidden bg-[#090C12]" id="iframe-container">
+      <iframe
+        id="subsystem-frame"
+        name="subsystem-frame"
+        class="w-full h-full border-0 block"
+        title="Subsystem Web Viewport"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+      ></iframe>
+    </div>
+
+  <!-- User Profile & SSO Session Modal -->
+  <div id="profile-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in">
+    <div onclick="closeProfileModal()" class="fixed inset-0 -z-10"></div>
+    <div class="relative w-full max-w-md bg-[#0B0E14] border border-white/10 rounded-2xl shadow-2xl overflow-hidden text-slate-200 border-t-2 border-t-[#00f2fe]" onclick="event.stopPropagation()">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-shield-halved text-[#00f2fe]"></i>
+          <span class="font-headline font-bold text-sm tracking-tight text-white">Operator Identity & SSO</span>
+        </div>
+        <button onclick="closeProfileModal()" class="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors" title="Close (Esc)">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-5 space-y-4">
+        <!-- Identity Card -->
+        <div class="flex items-center gap-3.5 p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+          <div class="relative shrink-0">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-[#00f2fe]/20 to-emerald-500/20 border border-[#00f2fe]/40 flex items-center justify-center text-[#00f2fe] font-mono text-base font-bold shadow-[0_0_15px_rgba(0,242,254,0.15)]">
+              OP
+            </div>
+            <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent-emerald ring-2 ring-[#0B0E14] shadow-[0_0_8px_#10b981] animate-pulse"></span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-headline font-bold text-sm text-white truncate">brainsOS Operator</span>
+              <span class="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#00f2fe]/10 text-[#00f2fe] border border-[#00f2fe]/20 font-semibold shrink-0">ROOT</span>
+            </div>
+            <div class="font-mono text-xs text-slate-400 mt-0.5">@operator</div>
+            <div class="font-mono text-[10px] text-slate-500 mt-0.5">operator@brainsos.ai</div>
+          </div>
+        </div>
+
+        <!-- SSO Status -->
+        <div class="rounded-xl bg-[#121620] border border-white/5 p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2 text-slate-300 font-medium">
+              <i class="fa-solid fa-lock text-accent-emerald"></i>
+              <span>Authentik SSO Ingress Status</span>
+            </div>
+            <span class="font-mono text-[10px] text-accent-emerald bg-accent-emerald/10 px-2 py-0.5 rounded border border-accent-emerald/20 font-semibold">
+              FORWARD_AUTH OK
+            </span>
+          </div>
+          <div class="font-mono text-[10.5px] space-y-1.5 pt-1 text-slate-400 border-t border-white/5">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500">Injected Header:</span>
+              <code class="text-[#00f2fe] bg-black/30 px-1.5 py-0.5 rounded">Remote-User: operator</code>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500">Identity Provider:</span>
+              <span class="text-slate-300">Authentik Core (v2024.8)</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-slate-500">Appliance Target:</span>
+              <span class="text-slate-300">ASUS Ascent GX10 (ARM64)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subsystems Delegation -->
+        <div class="space-y-1.5">
+          <div class="font-mono text-[10px] uppercase tracking-wider text-slate-400 font-semibold px-0.5">Subsystem Delegation</div>
+          <div class="grid grid-cols-2 gap-2 font-mono text-[11px]">
+            <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-accent-emerald text-xs shrink-0"></i>
+              <span class="text-slate-300 truncate">Cloud IDE (code-server)</span>
+            </div>
+            <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-accent-emerald text-xs shrink-0"></i>
+              <span class="text-slate-300 truncate">SOGo Mail / Comms</span>
+            </div>
+            <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-accent-emerald text-xs shrink-0"></i>
+              <span class="text-slate-300 truncate">Hermes Runner UI</span>
+            </div>
+            <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5 flex items-center gap-2">
+              <i class="fa-solid fa-circle-check text-accent-emerald text-xs shrink-0"></i>
+              <span class="text-slate-300 truncate">LiteLLM Gateway</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logout Section -->
+        <div class="pt-2 border-t border-white/10" id="logout-container">
+          <button onclick="initLogout()" id="btn-logout-init" class="w-full py-2.5 px-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 text-red-400 hover:text-red-300 font-medium text-xs flex items-center justify-center gap-2 transition-all group shadow-lg">
+            <i class="fa-solid fa-arrow-right-from-bracket transition-transform group-hover:translate-x-0.5"></i>
+            <span>Log Out of Appliance (@operator)</span>
+          </button>
+          <div id="logout-confirm" class="hidden p-3.5 rounded-xl bg-red-950/30 border border-red-500/40 space-y-3">
+            <div class="flex items-start gap-2.5">
+              <i class="fa-solid fa-triangle-exclamation text-red-400 shrink-0 mt-0.5"></i>
+              <div class="text-xs text-slate-300 leading-snug">
+                <span class="font-semibold text-red-300 block">End Active SSO Session?</span>
+                This will invalidate your Authentik session tokens and forward-auth headers across all appliance subsystems.
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="confirmLogoutAction()" class="flex-1 py-2 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span>Confirm Log Out</span>
+              </button>
+              <button onclick="cancelLogout()" class="py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 hidden bg-[#111622] border border-primary-cyan/40 px-5 py-3 rounded-xl shadow-2xl text-xs font-mono text-matrix-white flex items-center gap-3 animate-in fade-in">
+    <i class="fa-solid fa-circle-check text-primary-cyan"></i>
+    <span id="toast-text">Notification message</span>
+  </div>
+
+  <script>
+    const subsystems = {
+      console: {
+        title: "Console",
+        desc: "Web IDE & Terminal",
+        route: "https://editor.brainsos.local",
+        icon: "terminal",
+        color: "#00f2fe",
+        code: "// Monaco IDE code-server & Full-Screen AST Workspace\nimport { brainsOS } from '@brainsos/core';\nconst appliance = await brainsOS.boot({\n  spine: 'thin-v1',\n  realEstate: '97%'\n});"
+      },
+      comms: {
+        title: "Comms",
+        desc: "agent webmail interface",
+        route: "https://mail.brainsos.local",
+        icon: "mail",
+        color: "#ec4899",
+        code: "// SOGo Webmail & Dovecot IMAP/SMTP Gateway\nTenant: cindy-pawford@brainsos.local\nInbound Filter: Automated Task Ingestion Active\nEgress Proxy: Authorized via mitmproxy (Rule 10)"
+      },
+      security: {
+        title: "Security",
+        desc: "LiteLLM Gateway",
+        route: "https://proxy.brainsos.local",
+        icon: "shield",
+        color: "#f59e0b",
+        code: "// LiteLLM AI Gateway & Hardware Guardrail\nmax_parallel_requests: 1 (Rule 3 Hardware Serialization)\nDatabase: brainsos-infra-litellm-db (PostgreSQL - Isolated)\nVirtual Key Pool: 12 Active Tenants"
+      },
+      network: {
+        title: "Network",
+        desc: "Egress proxy",
+        route: "https://efw.brainsos.local",
+        icon: "lan",
+        color: "#10b981",
+        code: "// Mitmproxy Egress Addon (Rule 10)\n[192.168.128.4] GET https://api.github.com/user -> INJECT: Cindy PAT -> 200 OK\n[Flow Redaction]: Injected tokens masked to [INJECTED_CINDY_TOKEN]"
+      },
+      trace: {
+        title: "Trace",
+        desc: "Session Tracing",
+        route: "https://langfuse.brainsos.local",
+        icon: "query_stats",
+        color: "#3b82f6",
+        code: "// Langfuse OpenTelemetry Ingestion\nTrace ID: trace-hermes-dispatch-9941\nPrompt Tokens: 3,120 | Generation: 184 | Latency: 380ms\nModel: qwen2.5:32b-instruct"
+      },
+      help: {
+        title: "Help",
+        desc: "FAQs and Instructions",
+        route: "https://docs.brainsos.local",
+        icon: "help",
+        color: "#eab308",
+        code: "// brainsOS Architectural Governance Matrix\nRule 1: Memory Plane Purity (/memories Markdown only)\nRule 2: Raw Ollama loopback isolation (127.0.0.1:11434)\nRule 14: Two-Repository Architecture (Core vs Fleet)"
+      }
+    };
+
+    let activeKey = "console";
+    let drawerOpen = false;
+
+    function openDrawer() {
+      drawerOpen = true;
+      const drawer = document.getElementById("subsystems-drawer");
+      const backdrop = document.getElementById("drawer-backdrop");
+      if (drawer) {
+        drawer.classList.remove("drawer-closed");
+        drawer.classList.add("drawer-open");
+      }
+      if (backdrop) {
+        backdrop.classList.remove("hidden");
+      }
+    }
+
+    function closeDrawer() {
+      drawerOpen = false;
+      const drawer = document.getElementById("subsystems-drawer");
+      const backdrop = document.getElementById("drawer-backdrop");
+      if (drawer) {
+        drawer.classList.remove("drawer-open");
+        drawer.classList.add("drawer-closed");
+      }
+      if (backdrop) {
+        backdrop.classList.add("hidden");
+      }
+    }
+
+    function toggleDrawer() {
+      if (drawerOpen) {
+        closeDrawer();
+      } else {
+        openDrawer();
+      }
+    }
+
+    // Dismiss drawer immediately when clicking off / outside the popup menu
+    document.addEventListener("mousedown", (e) => {
+      if (!drawerOpen) return;
+      const drawer = document.getElementById("subsystems-drawer");
+      const hamburger = document.getElementById("btn-hamburger");
+      if (drawer && !drawer.contains(e.target) && hamburger && !hamburger.contains(e.target)) {
+        closeDrawer();
+      }
+    });
+
+    function getSubsystemDoc(key) {
+      const themes = {
+        console: {
+          bg: "#1e1e1e",
+          content: `
+            <div style="display:flex; height:100vh; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#1e1e1e; color:#cccccc; overflow:hidden; user-select:none;">
+              <!-- VS Code Activity Bar -->
+              <div style="width:48px; background:#333333; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:20px; color:#858585; border-right:1px solid #222;">
+                <div style="color:#ffffff; cursor:pointer;" title="Explorer">📁</div>
+                <div style="cursor:pointer;" title="Search">🔍</div>
+                <div style="cursor:pointer;" title="Source Control">🌿</div>
+                <div style="cursor:pointer;" title="Run & Debug">▶️</div>
+                <div style="cursor:pointer;" title="Extensions">🧩</div>
+              </div>
+              <!-- File Explorer Sidebar -->
+              <div style="width:230px; background:#252526; border-right:1px solid #181818; display:flex; flex-direction:column; font-size:12px;">
+                <div style="padding:10px 14px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; font-size:11px; color:#bbbbbb;">Explorer: brainsOS</div>
+                <div style="padding:5px 14px; color:#ffffff; background:#37373d; display:flex; align-items:center; gap:6px;">
+                  <span>📂</span> <b>packages</b>
+                </div>
+                <div style="padding:4px 26px; color:#fff; display:flex; align-items:center; gap:6px; background:#094771;">
+                  <span>🐍</span> agent.py
+                </div>
+                <div style="padding:4px 26px; color:#999999; display:flex; align-items:center; gap:6px;">
+                  <span>⚙️</span> config.yaml
+                </div>
+                <div style="padding:4px 26px; color:#999999; display:flex; align-items:center; gap:6px;">
+                  <span>📝</span> SOUL.md
+                </div>
+                <div style="padding:5px 14px; color:#999999; display:flex; align-items:center; gap:6px; margin-top:4px;">
+                  <span>📁</span> agent_workspaces
+                </div>
+                <div style="padding:5px 14px; color:#999999; display:flex; align-items:center; gap:6px;">
+                  <span>📁</span> data / memories
+                </div>
+              </div>
+              <!-- Main Editor Canvas & Integrated Terminal -->
+              <div style="flex:1; display:flex; flex-direction:column; background:#1e1e1e; overflow:hidden;">
+                <!-- Tab Bar -->
+                <div style="height:35px; background:#252526; display:flex; align-items:center; font-size:12px; border-bottom:1px solid #181818;">
+                  <div style="padding:8px 16px; background:#1e1e1e; color:#ffffff; border-top:2px solid #00f2fe; display:flex; align-items:center; gap:8px;">
+                    <span>🐍</span> agent.py <span style="font-size:10px; color:#888;">×</span>
+                  </div>
+                  <div style="padding:8px 16px; background:#2d2d2d; color:#999; display:flex; align-items:center; gap:8px;">
+                    <span>⚙️</span> config.yaml
+                  </div>
+                </div>
+                <!-- Breadcrumbs -->
+                <div style="padding:4px 16px; font-size:11px; color:#888; background:#1e1e1e; border-bottom:1px solid #282828;">
+                  packages &gt; brainsOS-agent &gt; agent.py
+                </div>
+                <!-- Code Area -->
+                <div style="flex:1; display:flex; font-family:'JetBrains Mono',Consolas,monospace; font-size:13px; line-height:20px; padding:12px 0; overflow-y:auto; user-select:text;">
+                  <!-- Line Numbers -->
+                  <div style="width:45px; text-align:right; padding-right:16px; color:#5a5a5a; user-select:none;">
+                    1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15
+                  </div>
+                  <!-- Code Content -->
+                  <div style="flex:1; color:#d4d4d4;">
+                    <span style="color:#569cd6;">from</span> dataclasses <span style="color:#569cd6;">import</span> dataclass<br>
+                    <span style="color:#569cd6;">from</span> brainsos.runtime <span style="color:#569cd6;">import</span> ApplianceHost, SubsystemRegistry<br><br>
+                    <span style="color:#6a9955;"># Production Target: ASUS Ascent GX10 (NVIDIA GB10 ARM64)</span><br>
+                    <span style="color:#569cd6;">class</span> <span style="color:#4ec9b0;">BrainsOSKernel</span>:<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#569cd6;">def</span> <span style="color:#dcdcaa;">__init__</span>(<span style="color:#9cdcfe;">self</span>, <span style="color:#9cdcfe;">host_id</span>: <span style="color:#4ec9b0;">str</span> = <span style="color:#ce9178;">"ASUS-Ascent-GX10"</span>):<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">self</span>.<span style="color:#9cdcfe;">host_id</span> = <span style="color:#9cdcfe;">host_id</span><br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">self</span>.<span style="color:#9cdcfe;">subsystems</span> = SubsystemRegistry.discover()<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#9cdcfe;">self</span>.<span style="color:#9cdcfe;">memory_bus_speed</span> = <span style="color:#ce9178;">"273 GB/s unified LPDDR5x"</span><br><br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#569cd6;">async def</span> <span style="color:#dcdcaa;">spawn_tenant_runner</span>(<span style="color:#9cdcfe;">self</span>, <span style="color:#9cdcfe;">tenant</span>: <span style="color:#4ec9b0;">str</span>):<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#6a9955;"># Enforce Rule 9 Multi-Tenant Partitioning</span><br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#c586c0;">return await</span> <span style="color:#9cdcfe;">self</span>.<span style="color:#9cdcfe;">subsystems</span>.boot_stateless_runner(<span style="color:#9cdcfe;">tenant</span>)
+                  </div>
+                </div>
+                <!-- Integrated Terminal Pane -->
+                <div style="height:150px; background:#181818; border-top:1px solid #333; display:flex; flex-direction:column; font-family:'JetBrains Mono',monospace; font-size:12px;">
+                  <div style="padding:6px 12px; background:#252526; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#aaa; border-bottom:1px solid #1e1e1e;">
+                    <div style="display:flex; gap:12px;">
+                      <span style="color:#fff; font-weight:600; border-bottom:1px solid #00f2fe;">TERMINAL</span>
+                      <span>OUTPUT</span>
+                      <span>DEBUG CONSOLE</span>
+                      <span>PORTS</span>
+                    </div>
+                    <div style="margin-left:auto; display:flex; gap:8px;">
+                      <span>bash</span>
+                      <span>+</span>
+                      <span>×</span>
+                    </div>
+                  </div>
+                  <div style="padding:10px 14px; color:#33ff33; line-height:19px; overflow-y:auto; user-select:text;">
+                    <span style="color:#00f2fe;">cindy@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ python3 -m pytest tests/ -q<br>
+                    <span style="color:#fff;">................................................. [100%]</span><br>
+                    <span style="color:#10b981; font-weight:bold;">49 passed in 0.84s (All Guardrails Satisfied)</span><br>
+                    <span style="color:#00f2fe;">cindy@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ <span style="animation:pulse 1s infinite;">█</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `
+        },
+        comms: {
+          bg: "#0B0E14",
+          content: `
+            <div style="display:flex; height:100vh; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#e2e8f0; overflow:hidden;">
+              <div style="width:200px; background:#111622; border-right:1px solid rgba(255,255,255,0.08); padding:16px 12px; display:flex; flex-direction:column; gap:6px;">
+                <div style="font-weight:700; font-size:13px; color:#ec4899; padding:4px 8px; margin-bottom:8px;">SOGo Webmail</div>
+                <div style="padding:8px 12px; background:rgba(236,72,153,0.15); border-radius:8px; font-size:12px; color:#fff; font-weight:600; display:flex; justify-content:space-between;">
+                  <span>📥 Inbox</span><span style="background:#ec4899; color:#fff; border-radius:10px; padding:0 6px; font-size:10px;">3</span>
+                </div>
+                <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📤 Sent</div>
+                <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📝 Drafts</div>
+                <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">🏷️ Ingress Tasks</div>
+              </div>
+              <div style="width:310px; background:#141a29; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column;">
+                <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:12px; font-weight:600; color:#fff;">Agent Inbox • cindy@brainsos.local</div>
+                <div style="padding:12px 14px; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
+                  <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Hermes Orchestrator</span><span style="font-size:10px; color:#94a3b8;">10:14 AM</span></div>
+                  <div style="font-size:11px; color:#ec4899; margin-top:2px;">[TICKET #246] Portal Architecture</div>
+                  <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Full-bleed iframe boundary verified on GX10...</div>
+                </div>
+                <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
+                  <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Tool Egress Gateway</span><span style="font-size:10px; color:#94a3b8;">09:45 AM</span></div>
+                  <div style="font-size:11px; color:#fff; margin-top:2px;">Egress Token Injected [OK]</div>
+                  <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Mitmproxy sanitized GitHub bearer...</div>
+                </div>
+              </div>
+              <div style="flex:1; padding:24px 32px; background:#0e131f; overflow-y:auto;">
+                <div style="font-size:18px; font-weight:700; color:#fff;">[TICKET #246] Portal Architecture Verification</div>
+                <div style="font-size:12px; color:#94a3b8; margin-top:6px;">From: <b>Hermes Orchestrator</b> &lt;hermes@brainsos.local&gt; • 10:14 AM</div>
+                <div style="margin-top:20px; font-size:13px; line-height:22px; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
+                  Cindy,<br><br>The thin spine and expandable HUD drawer are live. The full-bleed iframe has 100% canvas real estate and zero layout shift.<br><br>Appliance Host: <b>ASUS Ascent GX10</b><br>Architecture: <b>ARM64</b>
+                </div>
+              </div>
+            </div>
+          `
+        },
+        security: {
+          bg: "#0B0E14",
+          content: `
+            <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+              <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
+                <div>
+                  <h1 style="font-size:20px; font-weight:700; margin:0; color:#f59e0b;">LiteLLM Gateway &amp; Key Governance</h1>
+                  <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Hardware Concurrency Serialization • Rule 3 Protection</p>
+                </div>
+                <div style="background:rgba(245,158,11,0.15); border:1px solid #f59e0b; color:#f59e0b; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
+                  max_parallel_requests: 1 [LOCKED]
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                  <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Active Virtual Keys</div>
+                  <div style="font-size:24px; font-weight:700; color:#fff; margin-top:6px;">12 Tenants</div>
+                  <div style="font-size:11px; color:#10b981; margin-top:4px;">● Isolated PostgreSQL Vault</div>
+                </div>
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                  <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Memory Bandwidth</div>
+                  <div style="font-size:24px; font-weight:700; color:#00f2fe; margin-top:6px;">273 GB/s</div>
+                  <div style="font-size:11px; color:#94a3b8; margin-top:4px;">LPDDR5x Unified Bus</div>
+                </div>
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+                  <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Loopback Inference</div>
+                  <div style="font-size:24px; font-weight:700; color:#f59e0b; margin-top:6px;">127.0.0.1:11434</div>
+                  <div style="font-size:11px; color:#10b981; margin-top:4px;">● Rule 2 Loopback Enforced</div>
+                </div>
+              </div>
+              <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+                <div style="font-weight:600; font-size:14px; margin-bottom:12px;">Registered Models</div>
+                <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
+                  <thead>
+                    <tr style="text-align:left; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1);">
+                      <th style="padding:8px;">Model Alias</th>
+                      <th style="padding:8px;">Target Engine</th>
+                      <th style="padding:8px;">Concurrency</th>
+                      <th style="padding:8px;">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
+                      <td style="padding:10px 8px; color:#00f2fe;">qwen2.5:32b</td>
+                      <td style="padding:10px 8px;">Ollama (GB10 Natively)</td>
+                      <td style="padding:10px 8px;">1 request max</td>
+                      <td style="padding:10px 8px; color:#10b981;">Nominal</td>
+                    </tr>
+                    <tr style="color:#fff;">
+                      <td style="padding:10px 8px; color:#ec4899;">llama-3.3:70b-instruct</td>
+                      <td style="padding:10px 8px;">Host Ollama Loopback</td>
+                      <td style="padding:10px 8px;">1 request max</td>
+                      <td style="padding:10px 8px; color:#10b981;">Ready</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `
+        },
+        network: {
+          bg: "#0B0E14",
+          content: `
+            <div style="height:100vh; padding:28px 36px; font-family:monospace; background:#0B0E14; color:#10b981; overflow-y:auto;">
+              <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <h1 style="font-size:18px; font-weight:700; color:#10b981; margin:0;">mitmproxy Tool Egress Gateway</h1>
+                  <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Rule 10 In-Transit Credential Injection &amp; Masking</div>
+                </div>
+                <span style="background:rgba(16,185,129,0.15); border:1px solid #10b981; padding:4px 10px; border-radius:6px; font-size:11px;">PROXY :8082 ACTIVE</span>
+              </div>
+              <div style="background:#111622; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px; line-height:22px;">
+                <div style="color:#94a3b8; margin-bottom:8px;">// Live Egress Inspection Stream:</div>
+                <div><span style="color:#fff;">[10:18:22]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#ec4899;">POST</span> https://api.github.com/graphql &rarr; <span style="color:#f59e0b;">INJECT: Authorization: Bearer [INJECTED_CINDY_TOKEN]</span> &rarr; <span style="color:#10b981;">200 OK (210ms)</span></div>
+                <div><span style="color:#fff;">[10:19:04]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#10b981;">GET</span> https://api.github.com/repos/brainsOS/issues &rarr; <span style="color:#f59e0b;">INJECT: Authorization</span> &rarr; <span style="color:#10b981;">200 OK (145ms)</span></div>
+                <div><span style="color:#fff;">[10:20:11]</span> <span style="color:#eab308;">192.168.128.99</span> <span style="color:#ec4899;">CONNECT</span> https://unauthorized-host.com &rarr; <span style="color:#ef4444; font-weight:bold;">403 FORBIDDEN (Egress Policy Blocked)</span></div>
+              </div>
+            </div>
+          `
+        },
+        trace: {
+          bg: "#0B0E14",
+          content: `
+            <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+              <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <h1 style="font-size:18px; font-weight:700; color:#3b82f6; margin:0;">Langfuse OpenTelemetry Observatory</h1>
+                  <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Distributed Tracing &amp; Prompt Token Breakdown</div>
+                </div>
+                <div style="font-family:monospace; font-size:11px; background:rgba(59,130,246,0.15); border:1px solid #3b82f6; color:#3b82f6; padding:4px 10px; border-radius:6px;">OTEL Collector Online</div>
+              </div>
+              <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px;">
+                <div style="font-weight:600; font-size:13px; margin-bottom:12px;">Latest Trace: hermes-subagent-dispatch-8841</div>
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; font-family:monospace; font-size:11px;">
+                  <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Total Latency:</span> <b style="color:#fff;">382ms</b></div>
+                  <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Prompt Tokens:</span> <b style="color:#00f2fe;">3,120</b></div>
+                  <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Completion:</span> <b style="color:#10b981;">284</b></div>
+                  <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#ec4899;">Cost:</span> <b style="color:#ec4899;">$0.0000 (Local)</b></div>
+                </div>
+                <div style="font-family:monospace; font-size:11px; color:#94a3b8; line-height:22px; background:#0e131d; padding:12px; border-radius:6px;">
+                  &boxur;&boxh; root_span: run_turn (382ms)<br>
+                  &nbsp;&nbsp;&boxur;&boxh; model_call: qwen2.5:32b (360ms) [LiteLLM Gateway Serialized]<br>
+                  &nbsp;&nbsp;&boxur;&boxh; tool_execution: file_edit (14ms)<br>
+                  &nbsp;&nbsp;&boxur;&boxh; memory_log: write_okf_markdown (8ms) [/memories]
+                </div>
+              </div>
+            </div>
+          `
+        },
+        help: {
+          bg: "#0B0E14",
+          content: `
+            <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+              <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px;">
+                <h1 style="font-size:20px; font-weight:700; color:#eab308; margin:0;">brainsOS Documentation &amp; Instructions</h1>
+                <div style="font-size:12px; color:#94a3b8; margin-top:4px;">Appliance Architecture, Operating Discipline &amp; Zero-Trust Boundaries</div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:12px;">
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+                  <div style="font-weight:700; color:#eab308; font-size:13px; margin-bottom:8px;">Rule 1: Memory Plane Purity</div>
+                  <p style="color:#cbd5e1; line-height:20px; margin:0;">All memory mounts are strictly human-auditable Open Knowledge Format (OKF) Markdown files. SQLite, binary vector indices, and runtime core dumps are strictly prohibited.</p>
+                </div>
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+                  <div style="font-weight:700; color:#eab308; font-size:13px; margin-bottom:8px;">Rule 2: Inference Loopback Isolation</div>
+                  <p style="color:#cbd5e1; line-height:20px; margin:0;">Raw LLM backends run natively on the host bound strictly to 127.0.0.1:11434. Containers communicate exclusively through LiteLLM gateway with Rule 3 hardware serialization.</p>
+                </div>
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+                  <div style="font-weight:700; color:#eab308; font-size:13px; margin-bottom:8px;">Rule 10: In-Transit Egress Proxying</div>
+                  <p style="color:#cbd5e1; line-height:20px; margin:0;">Zero ambient secrets in containers. Outbound traffic routes through mitmproxy egress gateway where authorized tokens are dynamically injected and redacted from logs.</p>
+                </div>
+                <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+                  <div style="font-weight:700; color:#eab308; font-size:13px; margin-bottom:8px;">Rule 14: Two-Repository Architecture</div>
+                  <p style="color:#cbd5e1; line-height:20px; margin:0;">Stateless open-source platform core (brainsOS.ai) is decoupled from proprietary fleet repositories (BRAINSOS_DATA_DIR). Zero proprietary client IP in the public codebase.</p>
+                </div>
+              </div>
+            </div>
+          `
+        }
+      };
+
+      const doc = themes[key] || themes.console;
+      return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:0;background:${doc.bg};overflow:hidden;}</style></head><body>${doc.content}</body></html>`;
+    }
+
+    function switchSubsystem(key) {
+      activeKey = key;
+      const sub = subsystems[key];
+      if (!sub) return;
+
+      // Update Spine Button States (Subtle, No Blinding Glow)
+      document.querySelectorAll(".spine-item").forEach(btn => {
+        btn.classList.remove("active");
+        btn.style.boxShadow = "none";
+        btn.style.borderColor = "rgba(255, 255, 255, 0.1)";
+      });
+      const activeBtn = document.getElementById(`spine-btn-${key}`);
+      if (activeBtn) {
+        activeBtn.classList.add("active");
+        activeBtn.style.borderColor = sub.color;
+      }
+
+      // Update Header
+      document.getElementById("active-icon").innerText = sub.icon;
+      document.getElementById("active-icon").style.color = sub.color;
+      document.getElementById("active-title").innerText = sub.title;
+      document.getElementById("active-route").innerText = sub.route;
+
+      // Update Full-Bleed 100% iFrame Viewport
+      const frame = document.getElementById("subsystem-frame");
+      if (frame) {
+        frame.srcdoc = getSubsystemDoc(key);
+      }
+
+      showToast(`Switched to ${sub.title}`);
+    }
+
+    // Initialize iframe view immediately on page load
+    window.addEventListener("DOMContentLoaded", () => {
+      switchSubsystem("console");
+    });
+
+    function openExternalApp(url, name) {
+      showToast(`Opening ${name} in clean browser tab...`);
+      window.open(url, '_blank');
+    }
+
+    function openActiveExternal() {
+      const sub = subsystems[activeKey];
+      if (sub) {
+        openExternalApp(sub.route, sub.title);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+        showToast("Full Screen Mode (F11)");
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    let profileModalOpen = false;
+
+    function toggleProfileModal() {
+      profileModalOpen = !profileModalOpen;
+      const modal = document.getElementById("profile-modal");
+      if (profileModalOpen) {
+        modal.classList.remove("hidden");
+      } else {
+        closeProfileModal();
+      }
+    }
+
+    function closeProfileModal() {
+      profileModalOpen = false;
+      const modal = document.getElementById("profile-modal");
+      if (modal) modal.classList.add("hidden");
+      cancelLogout();
+    }
+
+    function initLogout() {
+      document.getElementById("btn-logout-init").classList.add("hidden");
+      document.getElementById("logout-confirm").classList.remove("hidden");
+    }
+
+    function cancelLogout() {
+      const btn = document.getElementById("btn-logout-init");
+      const conf = document.getElementById("logout-confirm");
+      if (btn) btn.classList.remove("hidden");
+      if (conf) conf.classList.add("hidden");
+    }
+
+    function confirmLogoutAction() {
+      showToast("Terminating SSO Session for @operator...");
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 700);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      // ⌘K or Ctrl+K toggles drawer
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        toggleDrawer();
+        return;
+      }
+      // ⌘U toggles Operator profile modal
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "u") {
+        e.preventDefault();
+        toggleProfileModal();
+        return;
+      }
+      // ⌘1 to ⌘6 shortcut keys
+      if ((e.metaKey || e.ctrlKey)) {
+        const keyMap = { '1': 'console', '2': 'comms', '3': 'security', '4': 'network', '5': 'trace', 'h': 'help' };
+        if (keyMap[e.key.toLowerCase()]) {
+          e.preventDefault();
+          switchSubsystem(keyMap[e.key.toLowerCase()]);
+          if (drawerOpen) toggleDrawer();
+          return;
+        }
+      }
+      if (e.key === "Escape") {
+        if (profileModalOpen) {
+          closeProfileModal();
+          return;
+        }
+        if (drawerOpen) {
+          toggleDrawer();
+          return;
+        }
+      }
+    });
+
+    function showToast(text) {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-text").innerText = text;
+      toast.classList.remove("hidden");
+      setTimeout(() => {
+        toast.classList.add("hidden");
+      }, 2500);
+    }
+  </script>
+</body>
+</html>

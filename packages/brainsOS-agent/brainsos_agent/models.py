@@ -112,22 +112,41 @@ class AgentProfile(BaseModel):
                         break
             soul_path = Path(persona_str) if Path(persona_str).is_absolute() else persona_path
 
-        default_memory = str(get_memories_dir() / agent_id)
-        default_workspace = str(get_workspaces_dir() / agent_id)
+        default_memory = get_memories_dir() / agent_id
+        default_workspace = get_workspaces_dir() / agent_id
 
-        memory_str = (
+        def _resolve_scoped_path(path_val: Any, default_path: Path, namespace: str) -> Path:
+            if not path_val:
+                return default_path
+            path_str = str(path_val)
+            p = Path(path_str)
+            if p.is_absolute():
+                return p.resolve()
+
+            norm = path_str.replace("\\", "/")
+            if norm.startswith("./"):
+                norm = norm[2:]
+            if norm.startswith("data/"):
+                norm = norm[5:]
+
+            if norm.startswith(f"{namespace}/"):
+                sub = norm[len(namespace) + 1 :]
+                target_dir = get_memories_dir() if namespace == "agent_memories" else get_workspaces_dir()
+                return (target_dir / sub).resolve()
+
+            return (base / norm).resolve()
+
+        memory_raw = (
             data.get("memory_root")
             or (data.get("memory", {}).get("path") if isinstance(data.get("memory"), dict) else None)
-            or default_memory
         )
-        workspace_str = (
+        workspace_raw = (
             data.get("workspace_root")
             or (data.get("workspace", {}).get("path") if isinstance(data.get("workspace"), dict) else None)
-            or default_workspace
         )
 
-        memory_root = Path(memory_str) if Path(memory_str).is_absolute() else base / memory_str
-        workspace_root = Path(workspace_str) if Path(workspace_str).is_absolute() else base / workspace_str
+        memory_root = _resolve_scoped_path(memory_raw, default_memory, "agent_memories")
+        workspace_root = _resolve_scoped_path(workspace_raw, default_workspace, "agent_workspaces")
 
         mcp_modules = data.get("mcp_modules") or data.get("mcp", [])
         if not isinstance(mcp_modules, list):
@@ -180,6 +199,8 @@ class AgentProfile(BaseModel):
                 base = p.parent.parent.resolve()
             elif p.parent.name in ("default_settings", "settings") and p.parent.parent.name in ("config", "data"):
                 base = p.parent.parent.parent.resolve()
+            elif p.parent.name == "settings":
+                base = p.parent.parent.resolve()
             else:
                 base = p.parent.resolve()
         else:

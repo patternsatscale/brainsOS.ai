@@ -10,6 +10,7 @@
 !config/default_runners/**
 !config/default_settings/**
 !config/default_souls/**
+!config/default_skills/**
 !config/sample_agent_app/**
 
 # Local Manifest Overrides (Host-specific fleet customization)
@@ -48,6 +49,8 @@ data/runners/*
 !data/runners/.gitkeep
 data/souls/*
 !data/souls/.gitkeep
+data/skills/*
+!data/skills/.gitkeep
 data/agent_apps/*
 !data/agent_apps/.gitkeep
 *.tar.gz
@@ -98,3 +101,7 @@ Thumbs.db
 # Local Automation & Skills (Host-Local Only)
 local-cron/
 scripts/local-cron/
+issues_dump.json
+
+# Local TLS Certificates
+config/caddy/root.crt

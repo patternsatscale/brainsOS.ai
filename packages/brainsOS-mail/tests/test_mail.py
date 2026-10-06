@@ -25,7 +25,7 @@ class TestBrainsOSMailClient(unittest.TestCase):
         self.smtp_host = os.getenv("TEST_MAIL_HOST", "127.0.0.1")
         self.smtp_port = int(os.getenv("TEST_MAIL_SMTP_PORT", "10025"))
         self.imap_port = int(os.getenv("TEST_MAIL_IMAP_PORT", "10143"))
-        self.admin_pass = os.getenv("ADMIN_MAIL_PASSWORD", "brainsos_admin_mail_secret_change_me")
+        self.admin_pass = os.getenv("ADMIN_MAIL_PASSWORD") or os.getenv("BRAINSOS_ADMIN_PASSWORD", "brainsos_admin_mail_secret_change_me")
         self.agent_pass = os.getenv("TERRASTELLA_MAIL_PASSWORD", "brainsos_terrastella_mail_secret_change_me")
 
     def test_client_init_and_env(self):

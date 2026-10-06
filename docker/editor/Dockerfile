@@ -53,13 +53,7 @@ RUN code-server --extensions-dir /opt/code-server/extensions --install-extension
 # makes code-server pass the apiKey value from chatLanguageModels.json directly into the extension.
 USER root
 RUN LITELLM_PKG=$(find /opt/code-server/extensions -path "*/gethnet.litellm-connector-copilot-*/package.json" | head -1) && \
-    python3 -c "
-import json, sys
-with open('${LITELLM_PKG}', 'r') as f: c = f.read()
-c = c.replace('\"secret\": true,', '').replace('\"secret\": true', '')
-with open('${LITELLM_PKG}', 'w') as f: f.write(c)
-print('Patched:', '${LITELLM_PKG}')
-"
+    python3 -c "import json, sys; f_path = sys.argv[1]; c = open(f_path).read().replace('\"secret\": true,', '').replace('\"secret\": true', ''); open(f_path, 'w').write(c); print('Patched:', f_path)" "${LITELLM_PKG}"
 
 # Copy entrypoint wrapper
 USER root

@@ -126,3 +126,44 @@ def test_soul_resolution_from_brainsos_data_dir(monkeypatch, tmp_path):
 
     content = resolve_soul("custom_bot")
     assert content == "I am Custom Bot from external repo!"
+
+
+def test_decoupled_manifest_path_resolution_issue_243(monkeypatch, tmp_path):
+    """Regression test for #243: verify manifest in decoupled repo settings/ does not create nested data/."""
+    ext_data = tmp_path / "decoupled_fleet_test"
+    settings_dir = ext_data / "settings"
+    settings_dir.mkdir(parents=True)
+
+    manifest_file = settings_dir / "agents.yaml"
+    manifest_file.write_text(
+        """
+agents:
+  - id: terrastella
+    name: Terrastella
+    runtime: hermes
+    memory:
+      path: "./data/agent_memories/terrastella"
+    workspace:
+      path: "./data/agent_workspaces/terrastella"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("BRAINSOS_DATA_DIR", str(ext_data))
+    monkeypatch.delenv("BRAINSOS_MEMORIES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENT_MEMORIES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_WORKSPACES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENT_WORKSPACES_DIR", raising=False)
+
+    profiles = AgentProfile.from_manifest_yaml(manifest_file)
+    assert len(profiles) == 1
+    profile = profiles[0]
+
+    # Must resolve cleanly to ext_data / agent_memories / terrastella, NOT settings/data/...
+    expected_memory = ext_data.resolve() / "agent_memories" / "terrastella"
+    expected_workspace = ext_data.resolve() / "agent_workspaces" / "terrastella"
+
+    assert profile.memory_root == expected_memory
+    assert profile.workspace_root == expected_workspace
+    assert "settings/data" not in str(profile.memory_root)
+

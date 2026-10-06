@@ -11,16 +11,6 @@ testpaths = ["packages"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-pythonpath = [
-  "packages/brainsOS-agent",
-  "packages/brainsOS-mail",
-  "packages/brainsOS-mcp",
-  "packages/brainsOS-memory",
-  "packages/brainsOS-queue",
-  "packages/brainsOS-runner",
-  "packages/brainsOS-telemetry",
-  "packages/brainsOS-terminal"
-]
 asyncio_mode = "auto"
 
 [tool.mypy]

@@ -27,7 +27,7 @@ services:
       - "${LANGFUSE_PORT:-3001}:3000"
     environment:
       - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://langfuse.osx.local.brainsos.ai}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-brainsos_langfuse_nextauth_secret_must_be_set_32_chars}
       - SALT=${SALT:-brainsos_langfuse_salt_secret_must_be_set}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
@@ -35,6 +35,15 @@ services:
       - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
       - LANGFUSE_MIGRATION_V4_WRITE_MODE=${LANGFUSE_MIGRATION_V4_WRITE_MODE:-dual}
       - NODE_ENV=production
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      # Native Authentik OIDC Single Sign-On
+      - AUTH_CUSTOM_CLIENT_ID=${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}
+      - AUTH_CUSTOM_CLIENT_SECRET=${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
+      - AUTH_CUSTOM_ISSUER=${AUTH_LANGFUSE_ISSUER:-https://osx.local.brainsos.ai/application/o/langfuse}
+      - AUTH_CUSTOM_NAME=brainsOS SSO
+      - AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=true
+      - AUTH_CUSTOM_FETCH_USERINFO=true
+      - AUTH_DISABLE_USERNAME_PASSWORD=true
       # ClickHouse OLAP Analytics Store
       - CLICKHOUSE_URL=http://clickhouse:8123
       - CLICKHOUSE_MIGRATION_URL=clickhouse://clickhouse:9000
@@ -70,14 +79,16 @@ services:
       - LANGFUSE_INIT_PROJECT_NAME=${LANGFUSE_INIT_PROJECT_NAME:-brainsOS Fleet}
       - LANGFUSE_INIT_PROJECT_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_INIT_PROJECT_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}
+      - LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.local}}
       - LANGFUSE_INIT_USER_NAME=${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}
-      - LANGFUSE_INIT_USER_PASSWORD=${LANGFUSE_INIT_USER_PASSWORD:-brainsos_admin_secret}
+      - LANGFUSE_INIT_USER_PASSWORD=${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}
       # Outbound LLM Connection Whitelist (allows reaching LiteLLM and Agents via Caddy)
       - LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST=proxy.brainsos.local,api.terrastella.brainsos.local,api.marvin.brainsos.local,api.bawtford.brainsos.local,api.cindypawford.brainsos.local,host.docker.internal,litellm,localhost
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
+      - "osx.local.brainsos.ai:host-gateway"
+      - "local.brainsos.ai:host-gateway"
       - "proxy.brainsos.local:host-gateway"
       - "api.terrastella.brainsos.local:host-gateway"
       - "api.marvin.brainsos.local:host-gateway"

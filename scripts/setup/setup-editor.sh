@@ -141,6 +141,6 @@ log_success "  - Ingress:      http://editor.localhost (or http://editor.brainso
 log_success "  - Alternate:    http://code.localhost   (or http://code.brainsos.local)"
 log_success "  - Direct Port:  http://127.0.0.1:${CODE_SERVER_PORT:-8443}"
 log_success "Credentials:"
-log_success "  - HTTP Basic Auth: ${OPERATOR_USER:-operator} / ${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
-log_success "  - IDE Password:    ${CODE_SERVER_PASSWORD:-brainsos_operator_secret}"
+log_success "  - HTTP Basic Auth: ${OPERATOR_USER:-operator} / ${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}"
+log_success "  - IDE Password:    ${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}"
 log_success "======================================================================"

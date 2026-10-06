@@ -175,7 +175,7 @@ done
 log_success "Multi-tenant account directory verified: ${USER_COUNT} identities registered."
 
 # Verify live SOGo authentication using .env credentials
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}"
 AUTH_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \

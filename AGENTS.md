@@ -11,13 +11,14 @@ This document establishes the mandatory protocol for AI agents (and human develo
   - Storage paths are parameterized via `.env`: `./data/agent_memories` for local macOS development, `/data/brainsos/agent_memories` on the production GX10.
   - Hardware package pinning (`apt-mark hold`) applies only on Linux/DGX OS (safely bypassed on macOS in `scripts/setup/setup-host.sh`).
 - **Architectural Reference**: Agents must consult [README.md](README.md) for full plane topology and system specifications.
-- **Out of Scope**: `docs/lab-work/` is the documentation and critique area and is **excluded from all coding work** — do not read it for requirements, write to it, or include it in a ticket's scope. See Rule 11.
+- **Out of Scope**: All experimental documentation, persona critiques, and lab work reside exclusively within the private fleet repository (`${BRAINSOS_DATA_DIR}/docs/lab-work/`) under the Two-Repository Architecture (Rule 14) and are **excluded from all platform core coding work**. See Rule 11.
 
 ---
 
 ## 1. The Ticket-Driven Workflow
 
 Every unit of engineering work, bug fix, or configuration change must trace to a GitHub Issue.
+For higher-level roadmap planning, multi-ticket initiative scoping, two-repository routing, and Epic decomposition, developers and AI agents must follow [PLANNING.md](PLANNING.md).
 
 ### Step 1: Claim & Read the Issue
 When assigned an issue (e.g., "Work on issue #2"):
@@ -66,7 +67,7 @@ Every ticket completion **must** include a dedicated walkthrough document:
   docs/YYYY-MM-DD-ticket<issue_number>.md
   ```
   *(Example: `docs/2026-09-06-ticket1.md`)*
-- **Epic Sub-Tickets**: When working on tickets that are part of an Epic, the walkthrough document must be placed directly inside the epic's dedicated subfolder under `docs/epics/`:
+- **Epic Sub-Tickets**: When working on tickets that are part of an Epic (decomposed per [PLANNING.md](PLANNING.md)), the walkthrough document must be placed directly inside the epic's dedicated subfolder under `docs/epics/`:
   ```text
   docs/epics/<epic-name>/YYYY-MM-DD-ticket<issue_number>.md
   ```
@@ -123,14 +124,14 @@ To ensure the Git Graph in IDEs and `git log` remains clean, linear, and instant
 
 To maintain high velocity and avoid hallucinated drift, agents must observe strict scope boundaries:
 
-1. **Atomic Scoping**: An issue should define **one single verifiable deliverable**. If a task requires more than 3-4 separate system modifications, it should be broken down into sub-tickets.
+1. **Atomic Scoping**: An issue should define **one single verifiable deliverable** (typically 1–2 days of engineering). If a task requires more than 3-4 separate system modifications, break it down into an Epic and child sub-tickets per [PLANNING.md](PLANNING.md).
 2. **Zero Scope Creep**: If an agent discovers a tangential bug, an unhandled edge case, or a potential enhancement during execution:
    - **DO NOT** expand the current branch or ticket to fix it.
-   - **File a new GitHub Issue** labeled as `type:bug` or `type:task` and place it in the Backlog.
+   - **File a new GitHub Issue** labeled as `bug` or `task`, assign it to the appropriate active milestone, and if applicable add it to the parent Epic's tasklist per [PLANNING.md](PLANNING.md).
    - Complete the original ticket strictly against its published Acceptance Criteria.
 3. **Automated QA & Regression Backlog Promotion**: When delivering core architectural components, security boundaries, or infrastructure tickets, agents frequently validate critical guarantees through manual verification, ad-hoc shell commands, or isolation inspections:
    - **DO NOT** inflate the current deliverable's scope by building an entire automated regression harness or test suite unless the ticket explicitly calls for it.
-   - **DO** file a new GitHub Issue for the Backlog labeled as `type:task`, `type:security`, or `type:infra` (e.g., `[Phase X] Automated CI/CD Regression Test Suite & Security Boundary QA`).
+   - **DO** file a new GitHub Issue for the Backlog labeled with primary type (`task`) and domain tags (`security`, `infra`) (e.g., `[Phase X] Automated CI/CD Regression Test Suite & Security Boundary QA`).
    - **Required QA Ticket Content**:
      - **Context & Originating Tickets**: Reference previous tickets where boundaries and behaviors were established.
      - **Consolidated Test Cases**: Explicit checkboxes detailing functional and security assertions (e.g., container DNS isolation, hardware concurrency limits, unauthorized key rejection, dynamic model/key persistence across restarts, memory purity, file permission masks).
@@ -195,13 +196,11 @@ Agents must never violate the following zero-trust operational boundaries:
 - **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `brainsos-internal`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
 - **Flow Display Redaction**: All injected credentials are masked to `[INJECTED_CINDY_TOKEN]` within flow displays and inspection APIs, ensuring zero ambient secrets leak into the `mitmweb` console.
 
-### Rule 11: Separation of Build and Record (`docs/lab-work/` Is Out of Scope)
-- **Out of Scope for the Coding Agent**: The directory `docs/lab-work/` is the documentation and critique working area, owned by Claude on behalf of the maintainer. Coding agents must **never** read it as a source of requirements, write to it, refactor it, reorganise it, lint it, or include it in a ticket's scope — even when a ticket's subject matter is discussed in it. Its contract is defined in `docs/lab-work/CLAUDE.md`.
-- **Why**: An actor that both builds the system and authors the account of the system has an unmanaged conflict of interest. On 2026-09-17 an agent's own status report claimed source files written and syntax-valid that were not on disk. Keeping the narrator out of the build, and the builder out of the narration, is what makes the project record usable as evidence rather than as intention.
-- **Requirements Never Originate There**: Work is authorised exclusively by a GitHub Issue per §1. A project report, pattern write-up, operating-discipline specification or stakeholder deck in `docs/lab-work/` is a record or a proposal, never a work order. If something in it needs building, it becomes an Issue first.
-- **No Runtime Coupling**: Nothing in `apps/`, `scripts/`, `config/`, `packages/` or any CI workflow may import, execute, or depend on any file under `docs/lab-work/`. Tooling that lives there is documentation tooling: it reads repository content and writes documents, and the running system must remain fully functional with the directory absent.
-- **Excluded from Automated Enforcement**: Pre-commit hooks, linters, formatters, drift checks and verification suites must exclude `docs/lab-work/` rather than fail against it. Conversely, nothing in that directory may be cited as evidence that a control is implemented — enforcement status is asserted only by a passing suite under `scripts/verify/`.
-- **Proposals Live in `docs/lab-work/scratch/`**: Recommendations addressed to the source code — operating disciplines, control specifications, proposed rules, tenet redlines — are drafted in `docs/lab-work/scratch/` and carry no authority there. Promotion is explicit: a maintainer accepts the proposal, it is filed as an Issue, and a ticket implements and verifies it. Only then does a binding version exist, owned by the repository rather than by the documentation area. A rule found in scratch is not evidence that the rule exists.
+### Rule 11: Separation of Build and Record (Lab Work Resides in Private Fleet Repository)
+- **Out of Scope for the Platform Core**: Under the Two-Repository Architecture (Rule 14), all documentation, critique areas, and experimental persona narratives (formerly in `docs/lab-work/`) reside strictly within the private fleet repository (`${BRAINSOS_DATA_DIR}/docs/lab-work/`), owned by Claude on behalf of the maintainer. Platform coding agents must **never** read private fleet records for core open-source requirements, nor commit proprietary lab work or persona critiques to the `brainsOS.ai` core.
+- **Why**: An actor that both builds the system and authors the account of the system has an unmanaged conflict of interest. Keeping the narrator out of the core build, and the builder out of private fleet narration, ensures that the open-source platform core remains uncompromised and decoupled from proprietary fleet IP.
+- **Requirements Never Originate There**: Work on `brainsOS.ai` is authorised exclusively by a GitHub Issue per §1. A project report, pattern write-up, or stakeholder deck in the private fleet repository is a record or a proposal, never an automatic core work order. If something in it needs building in `brainsOS.ai`, it becomes an open-source Issue first.
+- **No Runtime Coupling**: Nothing in `scripts/`, `config/`, `packages/`, or CI workflows may import, execute, or depend on files from the private lab-work area.
 - **The Boundary Is Reciprocal**: Claude does not write application code, scripts, configuration or infrastructure in this repository, and does not write binding documents into the repository proper. Coding agents do not write the project record.
 
 ### Rule 12: Sub-Agent Persona Isolation & Code Quality Protection
@@ -217,5 +216,6 @@ Agents must never violate the following zero-trust operational boundaries:
 - **Platform vs. Private Fleet Separation**: The `brainsOS` repository is strictly an open-source, stateless platform core containing container topologies, reusable Python packages, and operational harnesses. All proprietary agent personas (`souls/`), OKF Markdown knowledge/memories (`agent_memories/`), custom agent fleet definitions (`settings/`), agent-authored codebases (`agent_workspaces/`, `agent_apps/`), and persistent databases must be decoupled from the core repository.
 - **Dynamic Path Parameterization**: All platform containers, packages, and scripts must resolve data paths via `BRAINSOS_DATA_DIR` (defaulting to `./data` for local mode, or an external private repository path like `/path/to/my-fleet-repo` in decoupled mode). Sub-path overrides (`BRAINSOS_AGENT_MEMORIES_DIR`, `BRAINSOS_SOULS_DIR`, etc.) inherit dynamically from `BRAINSOS_DATA_DIR`.
 - **Zero Proprietary Fleet Commits to Core**: Proprietary agent personas, client memories, and confidential manifests must **never** be committed to `brainsOS.ai`. When decoupled, fleet state is committed and pushed exclusively to the private fleet repository using `./scripts/control/snapshot-memories.sh` or Git workflows within `BRAINSOS_DATA_DIR`.
+- **Strict Exclusion of Private Fleet Repository Names**: AI agents and developers must **NEVER** mention or commit the literal private fleet repository name or private developer filesystem paths in public GitHub issues, PR titles/descriptions, commit messages, or core platform codebase files. Always refer to external fleet storage using the parameter `${BRAINSOS_DATA_DIR}`, generic descriptions ("the external private fleet repository"), or sample documentation placeholders (`/path/to/my-fleet-repo`). Zero private leakage is strictly enforced locally via `./scripts/verify/verify-no-private-refs.sh` and remotely in CI (`.github/workflows/pre-commit.yml`).
 
 

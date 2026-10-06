@@ -16,8 +16,8 @@ DB_NAME="${SOGO_DB_NAME:-sogo}"
 
 export PGPASSWORD="${DB_PASS}"
 
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}"
 TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
 BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
 MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
@@ -59,6 +59,8 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
         ('marvin@${MAIL_DOMAIN}', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
         ('ping@${MAIL_DOMAIN}', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
         ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
+        ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
+        ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
         ('operator', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
         ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
         ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
@@ -85,6 +87,16 @@ echo "[BRAINSOS-SOGO] Spawning background sogo-ealarms-notify daemon (60s cycle)
 # 5. Start nginx web server for WebServerResources static assets & reverse proxy
 echo "[BRAINSOS-SOGO] Starting in-container nginx dispatcher on port 20000..."
 service nginx start
+
+# 5b. Render dynamic sogo.conf with live credentials if template exists
+if [ -f /etc/sogo/sogo.conf.template ]; then
+    echo "[BRAINSOS-SOGO] Generating /etc/sogo/sogo.conf from template..."
+    sed -e "s|sogo_secret_pass|${DB_PASS}|g" \
+        -e "s|brainsos.local|${MAIL_DOMAIN}|g" \
+        /etc/sogo/sogo.conf.template > /etc/sogo/sogo.conf
+    chown sogo:sogo /etc/sogo/sogo.conf
+    chmod 600 /etc/sogo/sogo.conf
+fi
 
 # 6. Start main sogod process in foreground on loopback port 20001
 echo "[BRAINSOS-SOGO] Starting sogod daemon on loopback port 20001..."

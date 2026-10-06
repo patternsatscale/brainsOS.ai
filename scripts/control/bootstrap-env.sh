@@ -95,6 +95,7 @@ DATA_DIRS=(
   "${DATA_ROOT}/control_plane/vscode_config"
   "${DATA_ROOT}/control_plane/vscode_data"
   "${DATA_ROOT}/souls"
+  "${DATA_ROOT}/skills"
   "${DATA_ROOT}/agent_apps"
   "${DATA_ROOT}/telemetry"
   "${DATA_ROOT}/backups"
@@ -107,10 +108,11 @@ for dir in "${DATA_DIRS[@]}"; do
   fi
 done
 
-# Touch .gitkeep files in comms and backups
+# Touch .gitkeep files in comms, backups, and skills
 touch "${DATA_ROOT}/comms/spool/.gitkeep" 2>/dev/null || true
 touch "${DATA_ROOT}/comms/maildir/.gitkeep" 2>/dev/null || true
 touch "${DATA_ROOT}/backups/.gitkeep" 2>/dev/null || true
+touch "${DATA_ROOT}/skills/.gitkeep" 2>/dev/null || true
 
 # Seed default settings into settings if not already present
 if [ -d "${REPO_ROOT}/config/default_settings" ]; then
@@ -128,6 +130,12 @@ fi
 if [ -d "${REPO_ROOT}/config/default_souls" ]; then
   log_info "Seeding default souls from config/default_souls into ${DATA_ROOT}/souls..."
   cp -n -R "${REPO_ROOT}/config/default_souls/"* "${DATA_ROOT}/souls/" 2>/dev/null || true
+fi
+
+# Seed default agent skills into skills if not already present
+if [ -d "${REPO_ROOT}/config/default_skills" ]; then
+  log_info "Seeding default agent skills from config/default_skills into ${DATA_ROOT}/skills..."
+  cp -n -R "${REPO_ROOT}/config/default_skills/"* "${DATA_ROOT}/skills/" 2>/dev/null || true
 fi
 
 # Seed sample agent app templates into agent_apps if not already present
@@ -148,11 +156,6 @@ if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
   touch "${DATA_ROOT}/control_plane/caddy_root.crt"
   chmod 664 "${DATA_ROOT}/control_plane/caddy_root.crt" 2>/dev/null || true
   log_info "Initialized ${DATA_ROOT}/control_plane/caddy_root.crt placeholder"
-fi
-
-# Export active Caddy root CA certificate if Caddy container or caddy_data volume is available
-if [ -x "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" ]; then
-  "${REPO_ROOT}/scripts/setup/trust-caddy-ca.sh" --export-only >/dev/null 2>&1 || true
 fi
 
 # 3. Python Virtual Environment & Packages
@@ -188,6 +191,31 @@ elif command -v python3 >/dev/null 2>&1; then
   done
 else
   log_warn "Neither 'uv' nor 'python3' detected on host. Skipping local Python package bootstrap."
+fi
+
+# 4. Synchronize Active Skills to Workspace for Antigravity IDE
+if [ -f "${REPO_ROOT}/.venv/bin/brainsos-skills" ]; then
+  log_info "Synchronizing active skills into .agents/skills for Antigravity IDE..."
+  "${REPO_ROOT}/.venv/bin/brainsos-skills" sync --repo "${REPO_ROOT}" --data "${DATA_ROOT}/skills" --target "${REPO_ROOT}/.agents/skills" >/dev/null 2>&1 || true
+elif [ -d "${DATA_ROOT}/skills" ]; then
+  mkdir -p "${REPO_ROOT}/.agents/skills"
+  cp -R "${DATA_ROOT}/skills/"* "${REPO_ROOT}/.agents/skills/" 2>/dev/null || true
+fi
+
+# 5. Configure Git Pre-Commit Hook (Rule 11 & Rule 14 Leakage Gate)
+if [ -d "${REPO_ROOT}/.git" ]; then
+  log_info "Configuring git pre-commit hook to prevent private fleet leakage..."
+  mkdir -p "${REPO_ROOT}/.git/hooks"
+  cat << 'HOOK' > "${REPO_ROOT}/.git/hooks/pre-commit"
+#!/usr/bin/env bash
+# brainsOS Git Pre-Commit Hook: Prevents Private Fleet Leakage
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if [ -f "${REPO_ROOT}/scripts/verify/verify-no-private-refs.sh" ]; then
+  "${REPO_ROOT}/scripts/verify/verify-no-private-refs.sh" --staged-only
+fi
+HOOK
+  chmod +x "${REPO_ROOT}/.git/hooks/pre-commit"
+  log_success "Git pre-commit hook installed!"
 fi
 
 log_success "brainsOS environment bootstrap complete!"
