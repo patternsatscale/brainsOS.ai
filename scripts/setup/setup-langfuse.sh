@@ -141,6 +141,12 @@ with open(file_path, 'w') as f:
   update_env_var "MINIO_ROOT_PASSWORD" "${SEC_MINIO}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_ORG_ID" "${LANGFUSE_INIT_ORG_ID:-brainsos}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_ORG_NAME" "\"${LANGFUSE_INIT_ORG_NAME:-brainsOS}\"" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_PROJECT_ID" "${LANGFUSE_INIT_PROJECT_ID:-brainsos}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_PROJECT_NAME" "\"${LANGFUSE_INIT_PROJECT_NAME:-brainsOS Fleet}\"" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_PROJECT_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "LANGFUSE_INIT_PROJECT_SECRET_KEY" "${SEC_SECRET_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_DB_DATA_DIR" "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_CLICKHOUSE_DATA_DIR" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_REDIS_DATA_DIR" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
@@ -150,14 +156,20 @@ with open(file_path, 'w') as f:
     _ROOT_EMAIL=$(grep '^LANGFUSE_INIT_USER_EMAIL=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
     _ROOT_NAME=$(grep '^LANGFUSE_INIT_USER_NAME=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
     _ROOT_PASS=$(grep '^LANGFUSE_INIT_USER_PASSWORD=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+    if [ -z "${_ROOT_PASS}" ]; then
+      _ROOT_PASS=$(grep '^BRAINSOS_ADMIN_PASSWORD=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+    fi
+    if [ -z "${_ROOT_EMAIL}" ]; then
+      _ROOT_EMAIL=$(grep '^BRAINSOS_ADMIN_EMAIL=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+    fi
     [ -n "${_ROOT_EMAIL}" ] && LANGFUSE_INIT_USER_EMAIL="${_ROOT_EMAIL}"
     [ -n "${_ROOT_NAME}" ] && LANGFUSE_INIT_USER_NAME="${_ROOT_NAME}"
     [ -n "${_ROOT_PASS}" ] && LANGFUSE_INIT_USER_PASSWORD="${_ROOT_PASS}"
   fi
 
-  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}"
+  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@osx.local.brainsos.ai}}"
   LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
-  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-brainsos_admin_secret}"
+  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
 
   # Propagate to container-specific env file (docker/langfuse/.env)
   update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${LANGFUSE_ENV_FILE}"
@@ -165,7 +177,7 @@ with open(file_path, 'w') as f:
   update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_MIGRATION_V4_WRITE_MODE" "${LANGFUSE_MIGRATION_V4_WRITE_MODE:-dual}" "${LANGFUSE_ENV_FILE}"
 
-  export LANGFUSE_HOST="http://langfuse.brainsos.local:${LANGFUSE_PORT}"
+  export LANGFUSE_HOST="http://127.0.0.1:${LANGFUSE_PORT}"
   export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
   export LANGFUSE_SECRET_KEY="${SEC_SECRET_KEY}"
   export LANGFUSE_OTEL_AUTH="${SEC_OTEL_AUTH}"
@@ -175,13 +187,13 @@ with open(file_path, 'w') as f:
 }
 
 # ------------------------------------------------------------------------------
-# Action: Password Synchronization
+# Action: Password & Organization Synchronization
 # ------------------------------------------------------------------------------
 sync_user_password() {
   if [ -n "${LANGFUSE_INIT_USER_PASSWORD:-}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL:-}" ] && \
      docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$" && \
      docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
-    log_info "Synchronizing Langfuse admin password in database from root .env..."
+    log_info "Synchronizing Langfuse admin users, organization, and project memberships in database..."
     local user_hash
     user_hash=$(docker exec -i brainsos-langfuse-web node -e "
       const p = process.argv[1];
@@ -191,23 +203,58 @@ sync_user_password() {
     if [ -n "${user_hash}" ]; then
       docker exec -i brainsos-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
         -c "
+          -- 1. Ensure brainsOS organization and project exist
+          INSERT INTO organizations (id, name, created_at, updated_at)
+          VALUES ('brainsos', 'brainsOS', NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET name = 'brainsOS', updated_at = NOW();
+
+          INSERT INTO projects (id, name, org_id, created_at, updated_at)
+          VALUES ('brainsos', 'brainsOS Fleet', 'brainsos', NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET name = 'brainsOS Fleet', org_id = 'brainsos', updated_at = NOW();
+
+          -- 2. Reassign primary API key to brainsos project
+          UPDATE api_keys SET project_id = 'brainsos' WHERE public_key = '${SEC_PUBLIC_KEY}';
+
+          -- 3. Wipe out legacy Titan tech debt
+          DELETE FROM organization_memberships WHERE org_id = 'titan';
+          DELETE FROM api_keys WHERE project_id = 'titan';
+          DELETE FROM projects WHERE id = 'titan';
+          DELETE FROM organizations WHERE id = 'titan';
+          DELETE FROM users WHERE email LIKE '%@titan.local';
+
+          -- 4. Update or create primary admin user
           DO \$\$
           BEGIN
             IF EXISTS (SELECT 1 FROM users WHERE email = '${LANGFUSE_INIT_USER_EMAIL}') THEN
-              UPDATE users SET password = '${user_hash}', updated_at = NOW() WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';
+              UPDATE users SET password = '${user_hash}', updated_at = NOW(), admin = true WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';
             ELSE
-              UPDATE users SET email = '${LANGFUSE_INIT_USER_EMAIL}', name = '${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}', password = '${user_hash}', updated_at = NOW()
+              UPDATE users SET email = '${LANGFUSE_INIT_USER_EMAIL}', name = '${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}', password = '${user_hash}', updated_at = NOW(), admin = true
               WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
             END IF;
           END \$\$;
+
+          -- 5. Grant OWNER role on brainsos organization to all operator & admin accounts
+          INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
+          SELECT 'om_' || substr(md5(u.id || 'brainsos'), 1, 20), u.id, 'brainsos', 'OWNER', NOW(), NOW()
+          FROM users u
+          WHERE u.email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@osx.local.brainsos.ai}')
+          ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW();
+
+          -- 6. Grant ADMIN role on brainsos project to all members
+          INSERT INTO project_memberships (project_id, user_id, org_membership_id, role, created_at, updated_at)
+          SELECT 'brainsos', om.user_id, om.id, 'ADMIN', NOW(), NOW()
+          FROM organization_memberships om
+          WHERE om.org_id = 'brainsos'
+          ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', updated_at = NOW();
+
+          UPDATE users SET admin = true WHERE email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@osx.local.brainsos.ai}');
         " >/dev/null 2>&1 || true
-      log_success "Langfuse admin user password synchronized in PostgreSQL."
+      log_success "Langfuse organization 'brainsos' and admin permissions synchronized in PostgreSQL."
     fi
   fi
   sync_llm_connection
 }
 
-# ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # Action: LLM Gateway & Fleet Agent Preconfigured Connections
 # ------------------------------------------------------------------------------
@@ -230,12 +277,18 @@ sync_llm_connection() {
     fi
     [ -z "${agent_key}" ] && agent_key="sk-brainsos-agent-key"
 
-    local manifest="${REPO_ROOT}/config/agents.yaml"
-    if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
-      manifest="${REPO_ROOT}/config/agents.local.yaml"
+    local manifest="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/settings/agents.yaml"
+    if [ ! -f "${manifest}" ]; then
+      manifest="${REPO_ROOT}/config/default_settings/agents.yaml"
     fi
+
+    local python_bin="${REPO_ROOT}/.venv/bin/python"
+    if [ ! -x "${python_bin}" ]; then
+      python_bin="python3"
+    fi
+
     local agents_json
-    agents_json=$(python3 -c "
+    agents_json=$("${python_bin}" -c "
 import yaml, json
 with open('${manifest}') as f:
     d = yaml.safe_load(f)

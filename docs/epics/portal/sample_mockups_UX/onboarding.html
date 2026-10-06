@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>brainsOS.AI • The 8-Step First Flight Experience</title>
+  <link rel="icon" type="image/png" href="image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "obsidian": "#07090E",
+            "surface-deck": "#0B0E14",
+            "surface-card": "#111622",
+            "surface-container": "#1d2026",
+            "surface-high": "#272a31",
+            "primary-cyan": "#00f2fe",
+            "primary-cyan-dim": "#00dce6",
+            "neural-violet": "#7928ca",
+            "neural-violet-light": "#dbb8ff",
+            "synthetic-emerald": "#10b981",
+            "system-critical": "#f43f5e",
+            "system-warning": "#f59e0b",
+            "slate-matrix": "#94a3b8",
+            "muted-phosphor": "#475569"
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk", "sans-serif"],
+            "body": ["Geist", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #07090E;
+      color: #e1e2eb;
+      font-family: 'Geist', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .ambient-glow {
+      position: absolute;
+      width: 900px;
+      height: 900px;
+      border-radius: 9999px;
+      background: radial-gradient(circle, rgba(0, 242, 254, 0.08) 0%, rgba(121, 40, 202, 0.03) 45%, transparent 70%);
+      top: 15%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .grid-lines {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    }
+    .glass-panel {
+      background: rgba(11, 14, 20, 0.88);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 254, 0.06);
+    }
+    .terminal-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .terminal-scroll::-webkit-scrollbar-track {
+      background: rgba(7, 9, 14, 0.8);
+    }
+    .terminal-scroll::-webkit-scrollbar-thumb {
+      background: #1d2026;
+      border-radius: 3px;
+    }
+    .terminal-scroll::-webkit-scrollbar-thumb:hover {
+      background: #00f2fe;
+    }
+    .step-pill-active {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(121, 40, 202, 0.25));
+      border: 1px solid #00f2fe;
+      color: #00f2fe;
+      box-shadow: 0 0 16px rgba(0, 242, 254, 0.35);
+    }
+    .step-pill-done {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid #10b981;
+      color: #10b981;
+    }
+    .step-pill-pending {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #64748b;
+    }
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 10px rgba(0, 242, 254, 0.2); }
+      100% { box-shadow: 0 0 25px rgba(0, 242, 254, 0.6); }
+    }
+  </style>
+</head>
+<body class="grid-lines flex flex-col min-h-screen relative antialiased selection:bg-primary-cyan selection:text-black">
+
+  <!-- Ambient Glow -->
+  <div class="ambient-glow"></div>
+
+  <!-- Top Navigation & Stage Header -->
+  <header class="w-full border-b border-white/10 bg-surface-deck/90 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand & OS Tagline -->
+      <div class="flex items-center gap-4">
+        <a href="portal_prototype.html#dock" class="flex items-center gap-2 group">
+          <div class="w-3 h-3 rounded-full bg-primary-cyan shadow-[0_0_12px_#00f2fe] group-hover:scale-125 transition-transform"></div>
+          <span class="font-mono text-lg font-bold tracking-[0.25em] text-white">
+            BRAINSOS<span class="text-primary-cyan">.AI</span>
+          </span>
+        </a>
+        <div class="hidden md:flex items-center gap-2 pl-4 border-l border-white/10 text-xs font-mono text-slate-matrix">
+          <span class="inline-block w-2 h-2 rounded-full bg-synthetic-emerald animate-ping"></span>
+          <span>THE ONBOARDING RITUAL (8 STEPS)</span>
+        </div>
+      </div>
+
+      <!-- Quick Action Controls -->
+      <div class="flex items-center gap-3">
+        <span id="current-step-indicator" class="hidden sm:inline-block font-mono text-xs text-primary-cyan px-3 py-1 rounded-full bg-primary-cyan/10 border border-primary-cyan/30">
+          STEP 1 OF 8 • HOST TERMINAL BOOTSTRAP
+        </span>
+        <a href="portal_prototype.html#dock" class="px-3 py-1.5 text-xs font-mono rounded-lg bg-surface-card border border-white/10 hover:border-white/30 text-white flex items-center gap-1.5 transition-all">
+          <span>Exit to Dock</span>
+          <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-primary-cyan"></i>
+        </a>
+      </div>
+
+    </div>
+
+    <!-- 8-Step Interactive Progress Bar -->
+    <div class="w-full bg-obsidian/80 border-t border-white/5 px-4 sm:px-8 py-2 overflow-x-auto no-scrollbar">
+      <div class="max-w-7xl mx-auto flex items-center gap-1.5 text-[11px] font-mono whitespace-nowrap">
+        <button onclick="setStage(1)" id="stage-btn-1" class="px-2.5 py-1 rounded step-pill-active transition-all">1. make setup</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(2)" id="stage-btn-2" class="px-2.5 py-1 rounded step-pill-pending transition-all">2. SSO Sign-In</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(3)" id="stage-btn-3" class="px-2.5 py-1 rounded step-pill-pending transition-all">3. code-server</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(4)" id="stage-btn-4" class="px-2.5 py-1 rounded step-pill-pending transition-all">4. setup brainsOS</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(5)" id="stage-btn-5" class="px-2.5 py-1 rounded step-pill-pending transition-all">5. The Mission</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(6)" id="stage-btn-6" class="px-2.5 py-1 rounded step-pill-pending transition-all">6. Webmail Dispatch</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(7)" id="stage-btn-7" class="px-2.5 py-1 rounded step-pill-pending transition-all">7. LiteLLM & Traces</button>
+        <span class="text-muted-phosphor">›</span>
+        <button onclick="setStage(8)" id="stage-btn-8" class="px-2.5 py-1 rounded step-pill-pending transition-all">8. Help & Next Steps</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Viewport Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 flex flex-col justify-center z-10 w-full">
+
+    <!-- STAGE 1: Host Terminal Bootstrap (`git clone` & `make setup`) -->
+    <section id="stage-section-1" class="stage-content space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 01 // The Bare-Metal Genesis ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">Clone Repo & Run `make setup`</h1>
+          <p class="text-slate-matrix text-sm mt-1">The operator downloads the platform and initializes primary administrative credentials directly in their host shell.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="simulateHostSetup()" class="px-4 py-2 bg-primary-cyan text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+            <i class="fa-solid fa-play mr-1.5"></i>Simulate Terminal Run
+          </button>
+          <button onclick="setStage(2)" class="px-4 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-xs font-mono font-bold hover:bg-white/20 transition-all">
+            Next: SSO Sign-In →
+          </button>
+        </div>
+      </div>
+
+      <div class="glass-panel rounded-2xl p-6 border border-white/10 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-white/10">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500/80 inline-block"></span>
+            <span class="ml-2 font-mono text-xs text-slate-matrix">pats@macbook-pro ~ (zsh)</span>
+          </div>
+          <span class="text-[10px] font-mono text-muted-phosphor">HOST WORKSTATION</span>
+        </div>
+
+        <div id="host-term-output" class="bg-obsidian/95 rounded-xl p-5 font-mono text-xs text-slate-300 min-h-[360px] max-h-[440px] overflow-y-auto terminal-scroll leading-relaxed space-y-1.5">
+          <div class="text-slate-500"># 1. Clone repository from GitHub</div>
+          <div class="text-primary-cyan">$ git clone https://github.com/brainsOS/brainsos.git</div>
+          <div class="text-slate-400">Cloning into 'brainsos'...</div>
+          <div class="text-slate-400">remote: Enumerating objects: 1248, done.</div>
+          <div class="text-synthetic-emerald">[✓] Repository cloned to ~/brainsos</div>
+          <div class="text-primary-cyan mt-2">$ cd brainsos && make setup</div>
+          <div class="text-slate-400">[INFO] Executing scripts/control/bootstrap-env.sh...</div>
+          <div class="text-synthetic-emerald">[✓] Docker Engine detected: v27.2.0 (ARM64 native)</div>
+          <div class="text-synthetic-emerald">[✓] Docker Compose detected: v2.29.0</div>
+          
+          <div class="p-3 my-2 rounded-lg bg-surface-card border border-primary-cyan/30 text-white space-y-1">
+            <div class="text-primary-cyan font-bold">🧠 Configure Operator Account Credentials:</div>
+            <div>&gt; Operator Username: <span class="text-yellow-400 font-bold">admin</span></div>
+            <div>&gt; Operator Password: <span class="text-yellow-400">••••••••••••</span></div>
+            <div>&gt; Confirm Password:  <span class="text-yellow-400">••••••••••••</span></div>
+          </div>
+
+          <div class="text-slate-400">[INFO] Argon2 hash generated. Initializing .env secrets...</div>
+          <div class="text-synthetic-emerald">[✓] Scaffolding runtime directories in ./data</div>
+          <div class="text-slate-400">[INFO] Launching minimal staging core (caddy, code-server)...</div>
+          <div class="text-slate-300">Container brainsos-net-caddy         Started</div>
+          <div class="text-slate-300">Container brainsos-app-code-server   Started</div>
+          
+          <div class="text-synthetic-emerald font-bold mt-3">┌─────────────────────────────────────────────────────────────┐</div>
+          <div class="text-synthetic-emerald font-bold">│              brainsOS Staging Ingress Online                │</div>
+          <div class="text-synthetic-emerald font-bold">├─────────────────────────────────────────────────────────────┤</div>
+          <div class="text-slate-200">│ Single Sign-On URL: <a href="javascript:setStage(2)" class="text-primary-cyan underline font-bold">https://brainsos.local</a>                    │</div>
+          <div class="text-slate-200">│ Localhost Fallback: <a href="javascript:setStage(2)" class="text-primary-cyan underline font-bold">http://127.0.0.1:8080</a>                     │</div>
+          <div class="text-slate-200">│ Initial Username:   <span class="text-yellow-400 font-bold">admin</span>                                     │</div>
+          <div class="text-synthetic-emerald font-bold">└─────────────────────────────────────────────────────────────┘</div>
+          <div class="text-primary-cyan font-bold pt-1">Opening https://brainsos.local in your default browser...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAGE 2: SSO Sign-In Page -->
+    <section id="stage-section-2" class="stage-content hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 02 // The Gatekeeper ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">Single Sign-On (SSO) Portal</h1>
+          <p class="text-slate-matrix text-sm mt-1">The browser opens to the secure SSO gateway. The operator logs in with the credentials created in Step 1.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="setStage(1)" class="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-xs font-mono hover:bg-white/10 transition-all">
+            ← Back
+          </button>
+          <button onclick="setStage(3)" class="px-4 py-2 bg-primary-cyan text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+            Next: code-server Studio →
+          </button>
+        </div>
+      </div>
+
+      <!-- Centered Authentik Sign-In Card Simulation -->
+      <div class="max-w-md mx-auto my-6 glass-panel rounded-2xl p-8 border border-white/15 relative overflow-hidden">
+        <div class="text-center mb-8">
+          <span class="font-mono text-2xl font-bold tracking-[0.35em] text-white">
+            BRAINSOS<span class="text-primary-cyan">.AI</span>
+          </span>
+          <p class="text-slate-matrix font-mono text-xs mt-2 uppercase tracking-widest">Operator Identity Gateway</p>
+        </div>
+
+        <form onsubmit="simulateSSOLogin(event)" class="space-y-4 font-mono text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1">Username:</label>
+            <input type="text" id="sso-user" value="admin" class="w-full bg-obsidian border border-white/15 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-cyan">
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">Password:</label>
+            <input type="password" id="sso-pass" value="brainsos_master_secret" class="w-full bg-obsidian border border-white/15 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-cyan">
+          </div>
+
+          <button type="submit" id="sso-submit-btn" class="w-full py-3 bg-primary-cyan text-black font-headline font-bold text-xs tracking-wider uppercase rounded-xl hover:shadow-[0_0_25px_rgba(0,242,254,0.5)] transition-all flex items-center justify-center gap-2 mt-4">
+            <i class="fa-solid fa-right-to-bracket"></i>
+            <span id="sso-btn-text">Sign In to brainsOS</span>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-4 border-t border-white/10 text-center text-[11px] font-mono text-slate-500">
+          Forward-Auth protected via Caddy & Authentik
+        </div>
+      </div>
+    </section>
+
+    <!-- STAGE 3: Landing in code-server Studio -->
+    <section id="stage-section-3" class="stage-content hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 03 // The Operator Cockpit ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">Operator IDE (`code-server`) Entry</h1>
+          <p class="text-slate-matrix text-sm mt-1">Authenticated directly into the cloud editor. The integrated terminal prompts the user to launch full deployment.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="setStage(2)" class="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-xs font-mono hover:bg-white/10 transition-all">
+            ← Back
+          </button>
+          <button onclick="setStage(4)" class="px-4 py-2 bg-primary-cyan text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+            Next: Run `setup brainsOS` →
+          </button>
+        </div>
+      </div>
+
+      <!-- Simulated VS Code Studio Window -->
+      <div class="glass-panel rounded-2xl overflow-hidden border border-white/15">
+        <!-- Window title bar -->
+        <div class="bg-[#0b0e14] px-4 py-2.5 border-b border-white/10 flex items-center justify-between font-mono text-xs text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500/80 inline-block"></span>
+            <span class="ml-2 text-white font-bold">brainsOS Studio — editor.brainsos.local</span>
+          </div>
+          <span class="text-[11px] text-primary-cyan">SESSION: ADMIN (AUTHENTICATED)</span>
+        </div>
+
+        <div class="grid grid-cols-12 min-h-[420px]">
+          <!-- Sidebar: File Explorer -->
+          <div class="col-span-3 bg-[#07090e]/95 border-r border-white/10 p-3 font-mono text-xs text-slate-400 space-y-1 hidden sm:block">
+            <div class="text-[10px] uppercase font-bold text-slate-500 mb-2">EXPLORER: BRAINSOS</div>
+            <div class="text-slate-200 flex items-center gap-1.5"><i class="fa-regular fa-folder-open text-primary-cyan"></i> brainsos</div>
+            <div class="pl-4 text-slate-400">├── config/</div>
+            <div class="pl-4 text-slate-400">├── docker/</div>
+            <div class="pl-4 text-slate-400">├── packages/</div>
+            <div class="pl-4 text-slate-400">├── scripts/</div>
+            <div class="pl-4 text-synthetic-emerald">├── .env</div>
+            <div class="pl-4 text-slate-300">├── docker-compose.yml</div>
+            <div class="pl-4 text-primary-cyan">└── README.md</div>
+          </div>
+
+          <!-- Main Viewport: Integrated Terminal Focus -->
+          <div class="col-span-12 sm:col-span-9 bg-[#0B0E14] p-5 flex flex-col justify-between font-mono text-xs">
+            <div class="space-y-2">
+              <div class="text-slate-500">brainsOS Cloud IDE Runtime (code-server v4.95.3)</div>
+              <div class="text-slate-500">Connected to isolated operator volume: /workspace/brainsos</div>
+              
+              <div class="p-4 my-3 rounded-xl bg-surface-card border border-primary-cyan/40 text-slate-200 space-y-2">
+                <div class="text-primary-cyan font-bold text-sm">✨ Welcome to brainsOS Operator Cockpit!</div>
+                <p class="text-slate-300 text-xs leading-relaxed">
+                  Your core staging container is online. To parameterize your network domains, initialize the mail server, and bring up LiteLLM and the autonomous agent fleet, run:
+                </p>
+                <div class="pt-1">
+                  <code class="px-3 py-1.5 bg-obsidian rounded-lg border border-primary-cyan text-primary-cyan font-bold text-xs inline-block">
+                    setup brainsOS
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-4 border-t border-white/10 flex items-center justify-between">
+              <div class="flex items-center gap-2 text-slate-400">
+                <span class="text-synthetic-emerald">coder@brainsos-operator:/workspace$</span>
+                <span class="text-white font-bold">setup brainsOS</span>
+                <span class="inline-block w-2 h-4 bg-primary-cyan animate-pulse"></span>
+              </div>
+              <button onclick="setStage(4)" class="px-4 py-2 bg-primary-cyan text-black font-bold font-mono text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+                Execute Command ↵
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAGE 4: `setup brainsOS` — Domain & Full Topology Provisioning -->
+    <section id="stage-section-4" class="stage-content hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 04 // Dynamic Parameterization ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">Domain Questionnaire & Mesh Launch</h1>
+          <p class="text-slate-matrix text-sm mt-1">The system queries for the desired URLs, generates root CAs, parameters Caddy, and fires up all agent planes.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="setStage(3)" class="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-xs font-mono hover:bg-white/10 transition-all">
+            ← Back
+          </button>
+          <button onclick="setStage(5)" class="px-4 py-2 bg-primary-cyan text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+            Next: The First Flight Mission →
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Interactive Domain Questionnaire -->
+        <div class="lg:col-span-5 glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
+          <h2 class="font-headline font-bold text-white text-base flex items-center gap-2">
+            <i class="fa-solid fa-network-wired text-primary-cyan"></i>
+            Routing Profile Questionnaire
+          </h2>
+
+          <div class="space-y-3 font-mono text-xs">
+            <label class="block text-slate-400">Select Resolution Strategy:</label>
+            
+            <label class="block p-3 rounded-xl border border-primary-cyan/40 bg-primary-cyan/10 cursor-pointer">
+              <input type="radio" name="domain-profile" checked class="mr-2 text-primary-cyan">
+              <b class="text-primary-cyan">1) Local mDNS (*.brainsos.local)</b>
+              <div class="text-[11px] text-slate-400 mt-1 pl-5">Caddy internal PKI. Zero port clutter.</div>
+            </label>
+
+            <label class="block p-3 rounded-xl border border-white/10 bg-surface-card hover:border-white/30 cursor-pointer">
+              <input type="radio" name="domain-profile" class="mr-2">
+              <b class="text-white">2) Localhost Port Map (*:80, *:8443, *:20000)</b>
+              <div class="text-[11px] text-slate-400 mt-1 pl-5">Infallible direct loopback without mDNS.</div>
+            </label>
+
+            <label class="block p-3 rounded-xl border border-white/10 bg-surface-card hover:border-white/30 cursor-pointer">
+              <input type="radio" name="domain-profile" class="mr-2">
+              <b class="text-white">3) Custom Domain / MagicDNS Mesh</b>
+              <div class="text-[11px] text-slate-400 mt-1 pl-5">Tailscale node or public FQDN with Let's Encrypt.</div>
+            </label>
+
+            <div class="pt-2">
+              <button onclick="deployFullMesh()" id="mesh-deploy-btn" class="w-full py-3 bg-primary-cyan text-black font-headline font-bold text-xs tracking-wider uppercase rounded-xl hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+                Apply Routing & Launch Mesh
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Real-Time Mesh Deployment Waterfall -->
+        <div class="lg:col-span-7 glass-panel rounded-2xl p-6 border border-white/10 flex flex-col justify-between">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-white/10">
+              <span class="font-mono text-xs text-slate-300">Deployment Telemetry Waterfall</span>
+              <span id="mesh-status-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-synthetic-emerald/20 text-synthetic-emerald font-bold">READY</span>
+            </div>
+
+            <div id="mesh-logs" class="bg-obsidian/95 rounded-xl p-4 font-mono text-xs text-slate-300 min-h-[260px] max-h-[300px] overflow-y-auto terminal-scroll space-y-1.5 leading-relaxed">
+              <div class="text-slate-500">Waiting for routing selection confirmation...</div>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-white/10 flex items-center justify-between text-xs font-mono text-slate-400">
+            <span>Container Mesh: 8 Services</span>
+            <span class="text-synthetic-emerald">Parity: ARM64 Native</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAGE 5: The "First Flight Mission" Instruction Card -->
+    <section id="stage-section-5" class="stage-content hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 05 // The Mission Briefing ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">Your First Flight Mission</h1>
+          <p class="text-slate-matrix text-sm mt-1">All engines are green. The operator is tasked with their first real autonomous agent test.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="setStage(4)" class="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-xs font-mono hover:bg-white/10 transition-all">
+            ← Back
+          </button>
+          <button onclick="setStage(6)" class="px-4 py-2 bg-primary-cyan text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+            Open Webmail to Send →
+          </button>
+        </div>
+      </div>
+
+      <!-- The Grand Mission Card -->
+      <div class="max-w-3xl mx-auto my-6 glass-panel rounded-3xl p-8 border border-primary-cyan/40 bg-gradient-to-b from-primary-cyan/[0.04] to-transparent relative overflow-hidden space-y-6 shadow-[0_0_50px_rgba(0,242,254,0.1)]">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-primary-cyan/10 border border-primary-cyan/40 flex items-center justify-center text-primary-cyan text-xl">
+              <i class="fa-solid fa-satellite-dish"></i>
+            </div>
+            <div>
+              <span class="text-[11px] font-mono text-primary-cyan font-bold uppercase tracking-widest">MISSION PROTOCOL 001</span>
+              <h2 class="text-2xl font-headline font-bold text-white">"Search the internet for content about &lt;blank&gt;"</h2>
+            </div>
+          </div>
+          <span class="px-3 py-1 rounded-full text-xs font-mono bg-synthetic-emerald/20 text-synthetic-emerald font-bold">READY TO DISPATCH</span>
+        </div>
+
+        <p class="text-slate-300 text-sm leading-relaxed">
+          BrainsOS does not rely on fragile synchronous chat prompts. Autonomous agents communicate through an enterprise-grade <b>asynchronous email plane</b> (Postfix + Dovecot + SOGo).
+        </p>
+
+        <div class="p-5 rounded-2xl bg-surface-card border border-white/10 space-y-3 font-mono text-xs">
+          <div class="text-primary-cyan font-bold uppercase tracking-wider">Mission Execution Steps:</div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-primary-cyan/20 text-primary-cyan font-bold flex items-center justify-center text-[10px]">1</span>
+            <span class="text-slate-200">Open SOGo Webmail at <code class="text-primary-cyan font-bold">https://mail.brainsos.local</code> (or click the button below).</span>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-primary-cyan/20 text-primary-cyan font-bold flex items-center justify-center text-[10px]">2</span>
+            <span class="text-slate-200">Click <b>New Message</b> and address it to: <code class="text-yellow-400 font-bold">terrastella@brainsos.local</code></span>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-primary-cyan/20 text-primary-cyan font-bold flex items-center justify-center text-[10px]">3</span>
+            <span class="text-slate-200">Write your research prompt: <i class="text-slate-300">"Search the internet for content about solar microgrids in remote regions and summarize the top 3 findings."</i></span>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-primary-cyan/20 text-primary-cyan font-bold flex items-center justify-center text-[10px]">4</span>
+            <span class="text-slate-200">Hit <b>Send</b> and switch to Step 7 to observe the tokens and traces light up!</span>
+          </div>
+        </div>
+
+        <div class="text-center pt-2">
+          <button onclick="setStage(6)" class="px-8 py-3.5 bg-primary-cyan text-black font-headline font-bold text-sm tracking-wide rounded-xl hover:shadow-[0_0_30px_rgba(0,242,254,0.5)] transition-all inline-flex items-center gap-2">
+            <span>Proceed to Webmail Client</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAGE 6: The SOGo Webmail Client Experience -->
+    <section id="stage-section-6" class="stage-content hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 06 // The Email Ritual ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">SOGo Webmail & Agent Dispatch</h1>
+          <p class="text-slate-matrix text-sm mt-1">The operator composes and sends the test email to autonomous fleet unit Terrastella.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="setStage(5)" class="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-xs font-mono hover:bg-white/10 transition-all">
+            ← Back
+          </button>
+          <button onclick="setStage(7)" class="px-4 py-2 bg-primary-cyan text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] transition-all">
+            Next: View Live Traces →
+          </button>
+        </div>
+      </div>
+
+      <!-- SOGo Webmail Window Simulation -->
+      <div class="glass-panel rounded-2xl overflow-hidden border border-white/15">
+        <div class="bg-[#0b0e14] px-4 py-2.5 border-b border-white/10 flex items-center justify-between font-mono text-xs text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500/80 inline-block"></span>
+            <span class="ml-2 text-white font-bold">SOGo Groupware — mail.brainsos.local</span>
+          </div>
+          <span class="text-slate-300">USER: admin@brainsos.local</span>
+        </div>
+
+        <div class="p-6 sm:p-8 space-y-4 max-w-2xl mx-auto font-mono text-xs">
+          <div class="flex items-center justify-between pb-3 border-b border-white/10">
+            <h3 class="font-headline font-bold text-white text-base flex items-center gap-2">
+              <i class="fa-solid fa-pen-to-square text-primary-cyan"></i>
+              Compose Message to Agent
+            </h3>
+            <span class="text-[11px] text-synthetic-emerald font-bold">● SMTP RELAY READY</span>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-slate-400 mb-1">To:</label>
+              <input type="text" id="webmail-to" value="terrastella@brainsos.local" class="w-full bg-obsidian border border-white/15 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-cyan">
+            </div>
+
+            <div>
+              <label class="block text-slate-400 mb-1">Subject:</label>
+              <input type="text" id="webmail-subject" value="Research Assignment: Solar Microgrids" class="w-full bg-obsidian border border-white/15 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-cyan">
+            </div>
+
+            <div>
+              <label class="block text-slate-400 mb-1">Body:</label>
+              <textarea id="webmail-body" rows="4" class="w-full bg-obsidian border border-white/15 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-cyan leading-relaxed">Search the internet for content about solar microgrids in remote regions and summarize the top 3 findings.</textarea>
+            </div>
+
+            <div class="pt-2">
+              <button onclick="dispatchWebmail()" id="webmail-send-btn" class="w-full py-3.5 bg-primary-cyan text-black font-headline font-bold text-sm tracking-wide rounded-xl hover:shadow-[0_0_25px_rgba(0,242,254,0.5)] transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-paper-plane"></i>
+                <span id="webmail-btn-text">Send Message to Terrastella</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAGE 7: The Observability & Trace "Aha!" Moment -->
+    <section id="stage-section-7" class="stage-content hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-4">
+        <div>
+          <span class="text-primary-cyan font-mono text-xs uppercase tracking-widest">[ Step 07 // The Under-the-Hood Revelation ]</span>
+          <h1 class="text-3xl font-headline font-bold text-white mt-1">LiteLLM Tokens & Langfuse Traces</h1>
+          <p class="text-slate-matrix text-sm mt-1">The operator watches the agent reason, execute the tool call, generate tokens, and reply to webmail.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="setStage(6)" class="px-4 py-2 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-xs font-mono hover:bg-white/10 transition-all">
+            ← Back
+          </button>
+          <button onclick="setStage(8)" class="px-4 py-2 bg-synthetic-emerald text-black font-mono font-bold text-xs rounded-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all">
+            Next: Help & Next Steps →
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: LiteLLM Virtual Key & Token Spend Station -->
+        <div class="lg:col-span-5 glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
+          <div class="flex items-center justify-between pb-3 border-b border-white/10">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-bolt text-primary-cyan text-lg"></i>
+              <h3 class="font-headline font-bold text-white text-base">LiteLLM Control Plane</h3>
+            </div>
+            <span class="font-mono text-[10px] text-slate-400">proxy.brainsos.local</span>
+          </div>
+
+          <div class="space-y-4 font-mono text-xs">
+            <div class="p-3 rounded-xl bg-surface-card border border-white/5 space-y-1">
+              <span class="text-slate-400 text-[10px]">ACTIVE VIRTUAL KEY:</span>
+              <div class="text-primary-cyan font-bold truncate">sk-brainsos-terrastella-virtual-key</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 text-center">
+              <div class="p-3 rounded-xl bg-surface-card border border-white/5">
+                <span class="text-slate-400 text-[10px] block">TOKENS GENERATED:</span>
+                <span id="litellm-token-counter" class="text-2xl font-bold text-white mt-1 block">184</span>
+              </div>
+              <div class="p-3 rounded-xl bg-surface-card border border-white/5">
+                <span class="text-slate-400 text-[10px] block">THERMODYNAMIC ENERGY:</span>
+                <span class="text-2xl font-bold text-synthetic-emerald mt-1 block">28.4 mJ</span>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl bg-surface-card border border-white/5 space-y-1">
+              <span class="text-slate-400 text-[10px]">HARDWARE SERIALIZATION (RULE 3):</span>
+              <div class="text-slate-200">max_parallel_requests: 1 (Bus Protection Active)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Langfuse Live Trajectory & In-Reply-To Delivery -->
+        <div class="lg:col-span-7 glass-panel rounded-2xl p-6 border border-white/10 space-y-5">
+          <div class="flex items-center justify-between pb-3 border-b border-white/10">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-chart-line text-neural-violet-light text-lg"></i>
+              <h3 class="font-headline font-bold text-white text-base">Langfuse Observability Trace</h3>
+            </div>
+            <span class="font-mono text-[10px] text-synthetic-emerald font-bold">TRACE ID: mail_terra_9f2</span>
+          </div>
+
+          <!-- Trace Spans Waterfall -->
+          <div class="space-y-2.5 font-mono text-xs">
+            <div class="p-2.5 rounded-lg bg-surface-card border border-white/5 flex items-center justify-between">
+              <span class="text-slate-300">1. Dovecot Sieve Inbound Webhook</span>
+              <span class="text-synthetic-emerald">4.2ms [PASS]</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-surface-card border border-white/5 flex items-center justify-between">
+              <span class="text-slate-300">2. WorkQueue Thread Lock (terrastella)</span>
+              <span class="text-synthetic-emerald">1.8ms [PASS]</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-surface-card border border-primary-cyan/40 bg-primary-cyan/5 flex items-center justify-between">
+              <span class="text-primary-cyan font-bold">3. Tool Egress: web_search("solar microgrids")</span>
+              <span class="text-primary-cyan">142ms [PROXIED :8082]</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-surface-card border border-white/5 flex items-center justify-between">
+              <span class="text-slate-300">4. LLM Completion Synthesis (LiteLLM)</span>
+              <span class="text-synthetic-emerald">320ms [184 tokens]</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-surface-card border border-white/5 flex items-center justify-between">
+              <span class="text-slate-300">5. Outbound Postfix SMTP Delivery</span>
+              <span class="text-synthetic-emerald">12ms [RFC 5322]</span>
+            </div>
+          </div>
+
+          <!-- Delivered Agent Email Card -->
+          <div class="p-4 rounded-xl bg-surface-card border border-synthetic-emerald/40 space-y-2 font-mono text-xs">
+            <div class="flex items-center justify-between pb-2 border-b border-white/5 text-slate-400">
+              <span class="text-synthetic-emerald font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-inbox"></i>
+                Delivered to operator@brainsos.local Inbox
+              </span>
+              <span>Just now</span>
+            </div>
+            <div class="text-slate-300 font-bold">Subject: Re: Research Assignment: Solar Microgrids</div>
+            <p class="text-slate-400 text-[11px] leading-relaxed">
+              "Operator, research complete. Top findings: (1) Hybrid battery-solar nodes improve remote grid uptime by 44%. (2) Local autonomous demand shifting reduces peak battery strain. (3) Decentralized DC microgrids cut inverter heat dissipation by 18%."
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- STAGE 8: System Nominal & The Help / Next Steps Console -->
+    <section id="stage-section-8" class="stage-content hidden space-y-8">
+      <div class="text-center max-w-2xl mx-auto space-y-3">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-synthetic-emerald/10 border border-synthetic-emerald/30 text-synthetic-emerald text-xs font-mono">
+          <i class="fa-solid fa-circle-check"></i>
+          <span>ONBOARDING COMPLETE // SYSTEM NOMINAL</span>
+        </div>
+        <h1 class="text-4xl sm:text-5xl font-headline font-bold text-white tracking-tight">Your brainsOS Node is Alive</h1>
+        <p class="text-slate-matrix text-sm sm:text-base leading-relaxed">
+          From downloading the repo to receiving an email reply from your first autonomous agent, your edge appliance is fully operational.
+        </p>
+      </div>
+
+      <!-- Next Steps & Cheat Sheet Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto font-mono text-xs">
+        
+        <div class="glass-panel rounded-2xl p-6 border border-white/10 space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-primary-cyan/10 border border-primary-cyan/30 flex items-center justify-center text-primary-cyan text-base">
+            <i class="fa-solid fa-user-plus"></i>
+          </div>
+          <h3 class="font-headline font-bold text-white text-base">Scaffold New Agents</h3>
+          <p class="text-slate-matrix text-[11px] leading-relaxed">
+            Create a custom autonomous agent partition with isolated memories and its own mailbox:
+          </p>
+          <code class="block p-2 bg-obsidian rounded border border-white/10 text-primary-cyan">make agent-new name=myagent</code>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-6 border border-white/10 space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-neural-violet/20 border border-neural-violet/40 flex items-center justify-center text-neural-violet-light text-base">
+            <i class="fa-solid fa-book-open"></i>
+          </div>
+          <h3 class="font-headline font-bold text-white text-base">Inspect OKF Memories</h3>
+          <p class="text-slate-matrix text-[11px] leading-relaxed">
+            Rule 1 ensures memory plane purity. All agent knowledge is stored in human-readable Markdown:
+          </p>
+          <code class="block p-2 bg-obsidian rounded border border-white/10 text-slate-300">ls -la ./data/agent_memories</code>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-6 border border-white/10 space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-system-critical/10 border border-system-critical/30 flex items-center justify-center text-system-critical text-base">
+            <i class="fa-solid fa-power-off"></i>
+          </div>
+          <h3 class="font-headline font-bold text-white text-base">Emergency Circuit Breaker</h3>
+          <p class="text-slate-matrix text-[11px] leading-relaxed">
+            If an agent ever loops or burns excess power, trigger the deterministic hardware kill switch:
+          </p>
+          <code class="block p-2 bg-obsidian rounded border border-white/10 text-system-critical">make emergency-stop</code>
+        </div>
+
+      </div>
+
+      <!-- Big Launch Button -->
+      <div class="text-center pt-4">
+        <a href="portal_prototype.html#dock" class="inline-flex items-center gap-3 px-8 py-4 bg-primary-cyan text-black font-headline font-bold text-base rounded-2xl hover:shadow-[0_0_40px_rgba(0,242,254,0.6)] hover:scale-105 transition-all">
+          <span>Enter brainsOS Desktop & Help Center</span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Persistent Bottom Status Bar -->
+  <footer class="w-full border-t border-white/10 bg-surface-deck/80 backdrop-blur-md py-3 px-4 sm:px-8 text-xs font-mono text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 z-40">
+    <div class="flex items-center gap-3">
+      <span class="flex items-center gap-1.5 text-slate-400">
+        <span class="w-2 h-2 rounded-full bg-synthetic-emerald"></span>
+        <span>DAEMONS NOMINAL</span>
+      </span>
+      <span>•</span>
+      <span>PostgreSQL 16 (Isolated)</span>
+      <span>•</span>
+      <span>Postfix / Dovecot (IMAP/SMTP)</span>
+      <span>•</span>
+      <span>LiteLLM (:4000)</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <a href="login.html" class="hover:text-primary-cyan transition-colors">SSO Login Gateway</a>
+      <a href="portal_prototype.html#dock" class="hover:text-primary-cyan transition-colors">Portal Desktop</a>
+      <span class="text-slate-600">brainsOS.ai v0.9-alpha</span>
+    </div>
+  </footer>
+
+  <!-- Interactive 8-Stage Controller Script -->
+  <script>
+    let currentStage = 1;
+
+    const stageTitles = {
+      1: "STEP 1 OF 8 • HOST TERMINAL BOOTSTRAP",
+      2: "STEP 2 OF 8 • SINGLE SIGN-ON (SSO) PORTAL",
+      3: "STEP 3 OF 8 • OPERATOR STUDIO (CODE-SERVER)",
+      4: "STEP 4 OF 8 • ROUTING & FULL MESH LAUNCH",
+      5: "STEP 5 OF 8 • FIRST FLIGHT MISSION BRIEFING",
+      6: "STEP 6 OF 8 • SOGO WEBMAIL AGENT DISPATCH",
+      7: "STEP 7 OF 8 • LITELLM TOKENS & LANGFUSE TRACES",
+      8: "STEP 8 OF 8 • SYSTEM NOMINAL & NEXT STEPS"
+    };
+
+    function setStage(num) {
+      currentStage = num;
+      
+      // Toggle sections
+      document.querySelectorAll('.stage-content').forEach(el => el.classList.add('hidden'));
+      const activeSection = document.getElementById(`stage-section-${num}`);
+      if (activeSection) activeSection.classList.remove('hidden');
+
+      // Update pill states
+      for (let i = 1; i <= 8; i++) {
+        const btn = document.getElementById(`stage-btn-${i}`);
+        if (!btn) continue;
+        btn.className = "px-2.5 py-1 rounded transition-all ";
+        if (i === num) {
+          btn.className += "step-pill-active";
+        } else if (i < num) {
+          btn.className += "step-pill-done";
+        } else {
+          btn.className += "step-pill-pending";
+        }
+      }
+
+      // Update indicator text
+      const ind = document.getElementById('current-step-indicator');
+      if (ind && stageTitles[num]) {
+        ind.textContent = stageTitles[num];
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function simulateHostSetup() {
+      const out = document.getElementById('host-term-output');
+      const lines = [
+        "[INFO] Validating host hardware bus...",
+        "[✓] ARM64 LPDDR5x unified memory bus detected (~273 GB/s)",
+        "[INFO] Seeding /data/agent_memories, /data/comms...",
+        "[SUCCESS] Staging container started. Opening browser..."
+      ];
+      lines.forEach((l, idx) => {
+        setTimeout(() => {
+          const div = document.createElement('div');
+          div.className = "text-synthetic-emerald";
+          div.textContent = l;
+          out.appendChild(div);
+          out.scrollTop = out.scrollHeight;
+        }, (idx + 1) * 350);
+      });
+      setTimeout(() => setStage(2), 2000);
+    }
+
+    function simulateSSOLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('sso-submit-btn');
+      const txt = document.getElementById('sso-btn-text');
+      btn.disabled = true;
+      btn.className = "w-full py-3 bg-synthetic-emerald text-black font-headline font-bold text-xs tracking-wider uppercase rounded-xl transition-all flex items-center justify-center gap-2 mt-4";
+      txt.textContent = "Authenticated. Opening code-server...";
+      setTimeout(() => setStage(3), 1000);
+    }
+
+    function deployFullMesh() {
+      const btn = document.getElementById('mesh-deploy-btn');
+      const badge = document.getElementById('mesh-status-badge');
+      const logs = document.getElementById('mesh-logs');
+      btn.disabled = true;
+      btn.textContent = "Deploying Mesh...";
+      badge.textContent = "DEPLOYING";
+      badge.className = "px-2 py-0.5 rounded text-[10px] font-mono bg-yellow-400/20 text-yellow-400 font-bold";
+
+      const steps = [
+        "[INFO] Applying domain: brainsos.local to .env...",
+        "[✓] Caddy internal root certificate authority generated.",
+        "[INFO] Starting Postfix/Dovecot & SOGo Webmail on port 20000...",
+        "[✓] Container brainsos-net-mail-server: Healthy",
+        "[✓] Container brainsos-net-sogo: Healthy",
+        "[INFO] Starting isolated LiteLLM Postgres store & gateway...",
+        "[✓] Container brainsos-infra-litellm-db: Healthy",
+        "[✓] Host LiteLLM gateway (:4000) active with max_parallel_requests: 1",
+        "[INFO] Starting warm agent runner (hermes-runner:8642)...",
+        "[✓] Container brainsos-runner-hermes: Healthy",
+        "[SUCCESS] Full brainsOS topology online! (8/8 Services Green)"
+      ];
+
+      logs.innerHTML = "";
+      steps.forEach((s, idx) => {
+        setTimeout(() => {
+          const d = document.createElement('div');
+          d.className = s.includes('SUCCESS') || s.includes('[✓]') ? "text-synthetic-emerald font-bold" : "text-slate-300";
+          d.textContent = s;
+          logs.appendChild(d);
+          logs.scrollTop = logs.scrollHeight;
+        }, (idx + 1) * 250);
+      });
+
+      setTimeout(() => {
+        badge.textContent = "8/8 HEALTHY";
+        badge.className = "px-2 py-0.5 rounded text-[10px] font-mono bg-synthetic-emerald/20 text-synthetic-emerald font-bold";
+        btn.textContent = "Mesh Deployed Successfully ✓";
+        setTimeout(() => setStage(5), 1200);
+      }, (steps.length + 1) * 250);
+    }
+
+    function dispatchWebmail() {
+      const btn = document.getElementById('webmail-send-btn');
+      const txt = document.getElementById('webmail-btn-text');
+      btn.disabled = true;
+      btn.className = "w-full py-3.5 bg-synthetic-emerald text-black font-headline font-bold text-sm tracking-wide rounded-xl transition-all flex items-center justify-center gap-2";
+      txt.textContent = "Email Dispatched to Postfix Queue!";
+      setTimeout(() => setStage(7), 1200);
+    }
+  </script>
+</body>
+</html>

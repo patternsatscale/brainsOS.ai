@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrainsOS.AI Control Center — Desktop Dock & Ingress</title>
+  <link rel="icon" type="image/png" href="image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "obsidian": "#0B0E14",
+            "surface": "#10131a",
+            "surface-deck": "#111622",
+            "surface-container": "#1d2026",
+            "surface-low": "#191c22",
+            "surface-high": "#272a31",
+            "primary-cyan": "#00f2fe",
+            "primary-cyan-dim": "#00dce6",
+            "neural-violet": "#7928ca",
+            "neural-violet-light": "#dbb8ff",
+            "synthetic-emerald": "#10b981",
+            "system-critical": "#f43f5e",
+            "matrix-white": "#f8fafc",
+            "slate-matrix": "#94a3b8",
+            "muted-phosphor": "#475569"
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk", "sans-serif"],
+            "body": ["Geist", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #0B0E14;
+      color: #e1e2eb;
+      font-family: 'Geist', sans-serif;
+    }
+    .grid-bg {
+      background-color: #07090E;
+      background-image: url('matrix_cube_bg.svg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+    }
+    .glass-card {
+      background: rgba(17, 22, 34, 0.82);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .glass-card:hover {
+      border-color: rgba(0, 242, 254, 0.4);
+      box-shadow: 0 0 24px -4px rgba(0, 242, 254, 0.2);
+      transform: translateY(-2px);
+    }
+    .dock-shelf {
+      background: rgba(17, 22, 34, 0.88);
+      backdrop-filter: blur(24px);
+      border: 1px solid rgba(0, 242, 254, 0.22);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 254, 0.12);
+    }
+    .dock-item {
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .dock-item:hover {
+      transform: translateY(-10px) scale(1.18);
+    }
+    .accent-cyan-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1.5px;
+      background: linear-gradient(90deg, transparent, #00f2fe, transparent);
+      opacity: 0.9;
+    }
+    .accent-violet-line {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1.5px;
+      background: linear-gradient(90deg, transparent, #7928ca, transparent);
+      opacity: 0.9;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 9999px;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col relative grid-bg antialiased selection:bg-primary-cyan selection:text-black">
+
+  <!-- Ambient Luminescent Glows -->
+  <div class="pointer-events-none fixed top-10 left-1/2 -translate-x-1/2 w-[800px] h-[350px] bg-primary-cyan/8 blur-[140px] rounded-full -z-10"></div>
+  <div class="pointer-events-none fixed bottom-10 right-10 w-[450px] h-[450px] bg-neural-violet/10 blur-[130px] rounded-full -z-10"></div>
+
+  <!-- Global Prototype Controller Header -->
+  <header class="w-full border-b border-white/10 bg-[#0B0E14]/90 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="image.png" alt="BrainsOS Logo" class="w-8 h-8 rounded-lg object-contain filter drop-shadow-[0_0_10px_rgba(0,242,254,0.45)]">
+        <span class="font-headline font-bold text-sm tracking-tight text-matrix-white">brainsOS.AI</span>
+        <span class="hidden sm:inline font-mono text-[11px] text-primary-cyan px-2 py-0.5 rounded bg-primary-cyan/10 border border-primary-cyan/20">KERNEL V1.0</span>
+      </div>
+
+      <!-- State Navigator Bar (4 Modes) -->
+      <div class="flex items-center gap-1.5 bg-surface-deck border border-white/10 rounded-lg p-1">
+        <button id="btn-show-login" onclick="switchView('login')" class="px-3 py-1 rounded text-xs font-mono font-medium transition-all text-slate-matrix hover:text-white">
+          1. OS Login (Split)
+        </button>
+        <button id="btn-show-dock" onclick="switchView('dock')" class="px-3 py-1 rounded text-xs font-mono font-semibold bg-primary-cyan text-obsidian shadow-[0_0_12px_rgba(0,242,254,0.3)] transition-all">
+          2. Docky Launcher
+        </button>
+        <a href="dashy_preview.html" id="btn-show-dashy" class="px-3 py-1 rounded text-xs font-mono font-medium transition-all text-primary-cyan hover:bg-primary-cyan/10 border border-primary-cyan/30 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-synthetic-emerald"></span>
+          <span>Dashy Dashboard (#246)</span>
+        </a>
+        <a href="onboarding.html" id="btn-show-onboarding" class="px-3 py-1 rounded text-xs font-mono font-medium transition-all text-synthetic-emerald hover:bg-synthetic-emerald/10 border border-synthetic-emerald/30 flex items-center gap-1.5">
+          <i class="fa-solid fa-plane-departure text-[10px]"></i>
+          <span>First Flight (Onboarding)</span>
+        </a>
+        <button id="btn-show-help" onclick="switchView('help')" class="px-3 py-1 rounded text-xs font-mono font-medium transition-all text-slate-matrix hover:text-white">
+          3. Help & Architecture
+        </button>
+      </div>
+
+      <!-- Quick Session Indicator -->
+      <div class="flex items-center gap-3">
+        <div class="hidden md:flex items-center gap-2 text-xs font-mono text-slate-matrix">
+          <span class="w-1.5 h-1.5 rounded-full bg-synthetic-emerald"></span>
+          <span>GX10 • ARM64</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- VIEW 1: OPERATING SYSTEM LOGIN SCREEN (SIDE-BY-SIDE EQUALLY SIZED)        -->
+  <!-- ========================================================================= -->
+  <section id="view-login" class="hidden flex-1 flex flex-col items-center justify-center p-6 lg:p-12 relative z-10 my-auto">
+    <div class="max-w-5xl w-full flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-16">
+
+      <!-- Left Column: Big Prominent Logo Stage (Equally Sized) -->
+      <div class="flex-1 w-full max-w-[420px] flex flex-col items-center justify-center text-center">
+        <div class="relative group flex items-center justify-center w-64 h-64 md:w-72 md:h-72 lg:w-80 lg:h-80 mb-4">
+          <div class="absolute inset-0 rounded-full bg-gradient-to-tr from-primary-cyan/25 via-neural-violet/20 to-transparent blur-3xl opacity-75 group-hover:opacity-100 transition-opacity duration-700"></div>
+          <img src="image.png" alt="BrainsOS.AI" class="relative w-full h-full object-contain filter drop-shadow-[0_15px_35px_rgba(0,242,254,0.35)] transition-transform duration-500 group-hover:scale-105">
+        </div>
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/90 border border-slate-800 text-[11px] font-mono text-slate-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Kernel v1.0.0 &bull; Build 247.10-arm64</span>
+        </div>
+        <p class="font-mono text-xs text-slate-500 mt-2">
+          ASUS Ascent GX10 Appliance &bull; NVIDIA GB10
+        </p>
+      </div>
+
+      <!-- Right Column: Sign-in Form Card (Equally Sized) -->
+      <div class="flex-1 w-full max-w-[420px] flex flex-col">
+        <div class="mb-4">
+          <h1 class="font-headline font-bold text-2xl text-slate-100 tracking-tight">Sign into BrainsOS.AI</h1>
+          <p class="font-body text-sm text-slate-400 mt-1">Enter your operator username and password</p>
+        </div>
+
+        <div class="w-full rounded-2xl bg-[#111622]/95 border border-slate-800 shadow-2xl p-7 relative overflow-hidden backdrop-blur-sm">
+          <div class="accent-cyan-line"></div>
+
+          <form onsubmit="event.preventDefault(); switchView('dock');" class="space-y-4">
+            <div>
+              <label for="login-username" class="block text-xs font-medium text-slate-300 mb-1.5 font-body">Operator Username</label>
+              <div class="relative flex items-center">
+                <span class="material-symbols-outlined absolute left-3.5 text-slate-500 text-lg pointer-events-none">person</span>
+                <input id="login-username" type="text" value="operator" required autocomplete="username"
+                       class="w-full bg-[#0B0E14] border border-slate-700/80 rounded-lg pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-primary-cyan focus:ring-1 focus:ring-primary-cyan/30 transition-all font-body">
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label for="login-password" class="block text-xs font-medium text-slate-300 font-body">Password</label>
+                <a href="#" onclick="alert('Host terminal break-glass recovery available on loopback (127.0.0.1:8443).'); return false;" class="text-xs text-primary-cyan hover:underline font-body">Forgot password?</a>
+              </div>
+              <div class="relative flex items-center">
+                <span class="material-symbols-outlined absolute left-3.5 text-slate-500 text-lg pointer-events-none">lock</span>
+                <input id="login-password" type="password" value="brainsos_master_secret" required autocomplete="current-password"
+                       class="w-full bg-[#0B0E14] border border-slate-700/80 rounded-lg pl-10 pr-10 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-primary-cyan focus:ring-1 focus:ring-primary-cyan/30 transition-all font-body">
+                <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 text-slate-400 hover:text-slate-200 p-1">
+                  <span id="eye-icon" class="material-symbols-outlined text-lg">visibility</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-0.5">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked class="w-4 h-4 rounded border-slate-700 bg-[#0B0E14] text-primary-cyan focus:ring-0 focus:ring-offset-0 cursor-pointer">
+                <span class="text-xs text-slate-400 font-body">Keep signed in</span>
+              </label>
+              <span class="text-[11px] font-mono text-slate-500">Node Online</span>
+            </div>
+
+            <button type="submit" class="w-full py-2.5 px-4 bg-primary-cyan hover:bg-cyan-300 text-obsidian font-headline font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(0,242,254,0.25)] hover:shadow-[0_0_20px_rgba(0,242,254,0.4)] flex items-center justify-center gap-2">
+              <span>Sign In</span>
+              <span class="material-symbols-outlined text-base">arrow_forward</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- VIEW 2: DOCK LAUNCHER ("DOCKEY LOOK" — OS DESKTOP & FLOATING DOCK)        -->
+  <!-- ========================================================================= -->
+  <main id="view-dock" class="flex-1 flex flex-col justify-between max-w-7xl w-full mx-auto relative z-10 px-4 sm:px-6 py-4 pb-28">
+    
+    <!-- 1. DESKTOP SURFACE (Widgets + Center Watermark) -->
+    <div id="desktop-surface" class="w-full flex-1 flex flex-col justify-between min-h-[calc(100vh-210px)] transition-opacity duration-300">
+      
+      <!-- Hardware Telemetry Gauge Widget -->
+      <div class="w-full flex flex-col md:flex-row items-start justify-between gap-4">
+        <div class="glass-card rounded-2xl p-4 w-full md:w-auto min-w-[340px]">
+          <div class="flex items-center justify-between text-xs font-mono text-slate-matrix mb-2">
+            <span class="flex items-center gap-1.5 text-matrix-white font-medium">
+              <span class="pulse-dot"></span> NVIDIA GB10 GPU
+            </span>
+            <span class="text-primary-cyan">38°C &bull; 273 GB/s Bus</span>
+          </div>
+          <!-- Real-time Sparkline Simulation -->
+          <div class="h-10 w-full flex items-end gap-1 pt-2 border-b border-white/5 pb-2">
+            <div class="w-1.5 h-4 bg-synthetic-emerald rounded-t"></div>
+            <div class="w-1.5 h-6 bg-synthetic-emerald rounded-t"></div>
+            <div class="w-1.5 h-5 bg-synthetic-emerald rounded-t"></div>
+            <div class="w-1.5 h-8 bg-primary-cyan rounded-t"></div>
+            <div class="w-1.5 h-7 bg-primary-cyan rounded-t"></div>
+            <div class="w-1.5 h-9 bg-primary-cyan rounded-t"></div>
+            <div class="w-1.5 h-6 bg-synthetic-emerald rounded-t"></div>
+            <div class="w-1.5 h-8 bg-primary-cyan rounded-t"></div>
+            <div class="w-1.5 h-10 bg-primary-cyan rounded-t animate-pulse"></div>
+            <div class="w-1.5 h-7 bg-primary-cyan rounded-t"></div>
+            <div class="w-1.5 h-5 bg-synthetic-emerald rounded-t"></div>
+            <div class="w-1.5 h-6 bg-synthetic-emerald rounded-t"></div>
+            <div class="w-1.5 h-8 bg-primary-cyan rounded-t"></div>
+            <div class="w-1.5 h-4 bg-synthetic-emerald rounded-t"></div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] font-mono text-slate-matrix mt-2">
+            <span>ASUS Ascent GX10 Appliance</span>
+            <span>Memory Bandwidth: Nominal</span>
+          </div>
+        </div>
+
+        <!-- Active Fleet Status Widget -->
+        <div class="glass-card rounded-2xl p-4 w-full md:w-auto min-w-[340px]">
+          <div class="flex items-center justify-between text-xs font-mono text-slate-matrix mb-2.5">
+            <span class="text-matrix-white font-medium">Autonomous Multi-Agent Fleet</span>
+            <span class="text-synthetic-emerald font-semibold">3/3 Online</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="flex-1 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-cyan"></span>
+              <div class="flex flex-col">
+                <span class="font-headline font-bold text-xs text-white">Terrastella</span>
+                <span class="font-mono text-[9px] text-slate-matrix">Orchestrator</span>
+              </div>
+            </div>
+            <div class="flex-1 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-neural-violet-light"></span>
+              <div class="flex flex-col">
+                <span class="font-headline font-bold text-xs text-white">Bawtford</span>
+                <span class="font-mono text-[9px] text-slate-matrix">Creative Dir</span>
+              </div>
+            </div>
+            <div class="flex-1 px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary-cyan"></span>
+              <div class="flex flex-col">
+                <span class="font-headline font-bold text-xs text-white">Marvin</span>
+                <span class="font-mono text-[9px] text-slate-matrix">Sports/Lab</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] font-mono text-slate-matrix mt-2">
+            <span>Runner: :8642 (LiteLLM L4)</span>
+            <span class="text-primary-cyan cursor-pointer hover:underline" onclick="switchView('help')">View Tenets &rarr;</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Desktop Watermark -->
+      <div class="my-auto flex flex-col items-center justify-center text-center select-none py-10 opacity-70 hover:opacity-100 transition-opacity duration-300">
+        <div class="w-28 h-28 mb-3 drop-shadow-[0_0_30px_rgba(0,242,254,0.3)]">
+          <img src="image.png" alt="BrainsOS.AI" class="w-full h-full object-contain">
+        </div>
+        <h2 class="font-headline font-bold text-xl text-matrix-white tracking-wide">BrainsOS.AI</h2>
+        <p class="font-mono text-xs text-slate-matrix mt-0.5">Hardware-Accelerated Autonomous Multi-Agent OS</p>
+        <p class="font-mono text-[11px] text-primary-cyan/80 mt-2 bg-primary-cyan/10 border border-primary-cyan/20 px-3 py-1 rounded-full">
+          Select an application in the dock below to launch embedded workspace
+        </p>
+      </div>
+    </div>
+
+    <!-- 2. IFRAME APPLICATION VIEWPORT (ACTIVE APPLICATION CONTAINER) -->
+    <div id="app-surface" class="hidden w-full flex-1 flex flex-col h-[calc(100vh-175px)] rounded-2xl border border-white/15 bg-[#0B0E14]/95 backdrop-blur-xl shadow-2xl overflow-hidden relative animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- OS Window Title Bar -->
+      <div class="h-10 border-b border-white/10 bg-[#111622]/90 px-4 flex items-center justify-between select-none">
+        <div class="flex items-center gap-2.5">
+          <div class="flex items-center gap-1.5 mr-2">
+            <span onclick="minimizeToDesktop()" class="w-3 h-3 rounded-full bg-rose-500/80 hover:bg-rose-500 cursor-pointer transition-colors" title="Close Application"></span>
+            <span onclick="minimizeToDesktop()" class="w-3 h-3 rounded-full bg-amber-500/80 hover:bg-amber-500 cursor-pointer transition-colors" title="Minimize to Desktop"></span>
+            <span onclick="alert('Full-screen mode active. Use Minimize or Dock to navigate.');" class="w-3 h-3 rounded-full bg-emerald-500/80 hover:bg-emerald-500 cursor-pointer transition-colors" title="Maximize"></span>
+          </div>
+          <span id="window-icon" class="material-symbols-outlined text-primary-cyan text-base">terminal</span>
+          <span id="window-title" class="font-headline font-bold text-xs text-white">Console — editor.brainsos.local</span>
+          <span class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-mono text-emerald-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>FORWARD-AUTH OK &bull; PORT :8443</span>
+          </span>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-mono">
+          <button onclick="minimizeToDesktop()" class="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-slate-300 transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">keyboard_arrow_down</span>
+            <span>Minimize to Desktop</span>
+          </button>
+          <a id="window-popout" href="https://editor.brainsos.local" target="_blank" class="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 text-primary-cyan transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">open_in_new</span>
+            <span>Pop Out</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Iframe Viewport Area with Simulated Live Subsystem Consoles -->
+      <div id="iframe-viewport" class="flex-1 w-full bg-[#07090E] relative overflow-hidden">
+        
+        <!-- App Frame: Console (IDE) -->
+        <div id="frame-console" class="app-frame w-full h-full flex flex-col">
+          <div class="flex items-center justify-between border-b border-white/10 bg-[#0B0E14] px-4 py-1.5 text-xs font-mono text-slate-400">
+            <div class="flex items-center gap-3">
+              <span class="text-white font-semibold">WORKSPACE</span>
+              <span class="px-2 py-0.5 rounded bg-primary-cyan/10 text-primary-cyan border border-primary-cyan/20">main.py</span>
+              <span class="hover:text-white cursor-pointer">docker-compose.yml</span>
+              <span class="hover:text-white cursor-pointer">README.md</span>
+            </div>
+            <div class="text-[11px] text-slate-500">Monaco Language Server Ready</div>
+          </div>
+          <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <div class="w-48 border-r border-white/5 bg-[#090C12] p-3 text-xs font-mono text-slate-400 space-y-2 select-none">
+              <div class="text-[10px] uppercase tracking-wider text-slate-500">EXPLORER</div>
+              <div class="text-primary-cyan flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">folder_open</span> brainsOS.ai</div>
+              <div class="pl-4 space-y-1 text-slate-300">
+                <div class="text-cyan-300 flex items-center gap-1">&bull; main.py</div>
+                <div class="hover:text-white cursor-pointer flex items-center gap-1">&bull; Caddyfile</div>
+                <div class="hover:text-white cursor-pointer flex items-center gap-1">&bull; docker-compose.yml</div>
+                <div class="hover:text-white cursor-pointer flex items-center gap-1">&bull; config/dashy/conf.yml</div>
+              </div>
+            </div>
+            <!-- Code Editor & Terminal -->
+            <div class="flex-1 flex flex-col bg-[#07090E]">
+              <div class="flex-1 p-4 font-mono text-xs text-slate-200 overflow-y-auto space-y-1 leading-relaxed">
+                <div><span class="text-purple-400">import</span> os, sys, asyncio</div>
+                <div><span class="text-purple-400">from</span> brainsos_agent <span class="text-purple-400">import</span> HermesRunner, AutonomousFleet</div>
+                <div><span class="text-purple-400">from</span> brainsos_queue <span class="text-purple-400">import</span> MessageBus</div>
+                <div class="text-slate-600"># Autonomous Multi-Agent Kernel Orchestrator</div>
+                <div><span class="text-blue-400">async def</span> <span class="text-cyan-300">boot_appliance_orchestrator</span>():</div>
+                <div class="pl-4">fleet = AutonomousFleet(manifest=<span class="text-emerald-400">"/data/settings/agents.yaml"</span>)</div>
+                <div class="pl-4"><span class="text-blue-400">await</span> fleet.initialize_runtime(gateway=<span class="text-emerald-400">"http://localhost:4000/v1"</span>)</div>
+                <div class="pl-4">print(<span class="text-emerald-400">"[KERNEL] System Online: NVIDIA GB10 Memory Bus Serialized (max_parallel=1)"</span>)</div>
+              </div>
+              <div class="h-28 border-t border-white/10 bg-[#06080C] p-3 font-mono text-[11px] text-emerald-400 overflow-y-auto select-all">
+                <div class="text-slate-500 mb-1">TERMINAL &bull; zsh &bull; /Users/pats/Development/brainsOS.ai</div>
+                <div>operator@ascent-gx10:~$ ./scripts/verify/verify-portal.sh</div>
+                <div class="text-cyan-400">[ASSERT] Docker compose topology: OK (12 services)</div>
+                <div class="text-emerald-400">[ASSERT] Authentik SSO forward_auth policy: FULL WALL ACTIVE</div>
+                <div class="text-slate-400">[WAIT] Listening for operator input...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Frame: Comms (SOGo Webmail) -->
+        <div id="frame-comms" class="app-frame hidden w-full h-full flex flex-col bg-[#07090E]">
+          <div class="flex items-center justify-between border-b border-white/10 bg-[#0B0E14] px-4 py-2 text-xs font-mono text-slate-300">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-pink-400">mail</span>
+              <span class="font-bold text-white">SOGo Enterprise Webmail</span>
+              <span class="text-slate-500">&bull; operator@brainsos.local</span>
+            </div>
+            <button class="px-2.5 py-1 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30 text-xs">New Message</button>
+          </div>
+          <div class="flex-1 flex overflow-hidden">
+            <div class="w-48 border-r border-white/5 bg-[#090C12] p-3 text-xs font-mono text-slate-400 space-y-2">
+              <div class="text-pink-400 font-semibold">&bull; Inbox (3)</div>
+              <div class="text-slate-500">&bull; Sent</div>
+              <div class="text-slate-500">&bull; Drafts</div>
+              <div class="text-slate-500">&bull; Quarantine (DLQ)</div>
+            </div>
+            <div class="w-80 border-r border-white/5 p-3 space-y-2 font-mono text-xs overflow-y-auto">
+              <div class="p-2 rounded bg-pink-500/10 border border-pink-500/30 cursor-pointer">
+                <div class="font-bold text-white flex justify-between"><span>Terrastella</span> <span class="text-[10px] text-slate-500">14:22</span></div>
+                <div class="text-cyan-300 text-[11px] truncate">Sprint 12 Architectural Review Complete</div>
+                <div class="text-slate-400 text-[10px] truncate">LiteLLM virtual keys have been generated...</div>
+              </div>
+              <div class="p-2 rounded bg-white/5 hover:bg-white/10 cursor-pointer">
+                <div class="font-bold text-slate-300 flex justify-between"><span>Cindy Pawford</span> <span class="text-[10px] text-slate-500">11:05</span></div>
+                <div class="text-slate-300 text-[11px] truncate">Brand Design Tokens v2.4 Published</div>
+              </div>
+            </div>
+            <div class="flex-1 p-6 text-sm font-body text-slate-200">
+              <h2 class="font-headline font-bold text-lg text-white mb-2">Sprint 12 Architectural Review Complete</h2>
+              <div class="text-xs font-mono text-slate-400 pb-4 border-b border-white/10 mb-4">From: Terrastella &lt;terrastella@brainsos.local&gt; &bull; To: operator@brainsos.local</div>
+              <p class="leading-relaxed text-slate-300">The memory plane purity assertions passed 100%. All sub-agents are operating with isolated OKF markdown memories in <code>/data/agent_memories/</code>. LiteLLM DB isolation is verified under Rule 6.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Frame: Security (LiteLLM) -->
+        <div id="frame-security" class="app-frame hidden w-full h-full flex flex-col p-6 bg-[#07090E] overflow-y-auto">
+          <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-6">
+            <div>
+              <h2 class="font-headline font-bold text-xl text-white">LiteLLM Security Gateway & Virtual Keys</h2>
+              <p class="font-mono text-xs text-amber-400">Port :4000 &bull; Rule 6 Isolated Database &bull; Serialized GB10 Requests</p>
+            </div>
+            <button class="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono text-xs font-semibold">+ Generate Virtual Key</button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="glass-card p-4 rounded-xl">
+              <div class="text-xs font-mono text-slate-400">ACTIVE VIRTUAL KEYS</div>
+              <div class="font-headline font-bold text-2xl text-amber-400 mt-1">4 Keys</div>
+              <div class="text-[11px] font-mono text-emerald-400 mt-1">All rate-limited (max_parallel=1)</div>
+            </div>
+            <div class="glass-card p-4 rounded-xl">
+              <div class="text-xs font-mono text-slate-400">TOTAL TOKENS TODAY</div>
+              <div class="font-headline font-bold text-2xl text-white mt-1">248,120</div>
+              <div class="text-[11px] font-mono text-primary-cyan mt-1">Ollama Native + Cloud Hybrid</div>
+            </div>
+            <div class="glass-card p-4 rounded-xl">
+              <div class="text-xs font-mono text-slate-400">SECURITY AUDIT STATUS</div>
+              <div class="font-headline font-bold text-2xl text-emerald-400 mt-1">Zero Leaks</div>
+              <div class="text-[11px] font-mono text-slate-400 mt-1">In-transit header injection enabled</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Frame: Network (mitmproxy) -->
+        <div id="frame-network" class="app-frame hidden w-full h-full flex flex-col p-6 bg-[#07090E] overflow-y-auto">
+          <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-6">
+            <div>
+              <h2 class="font-headline font-bold text-xl text-white">Tool Egress Gateway & Traffic Inspector</h2>
+              <p class="font-mono text-xs text-emerald-400">mitmproxy :8081 &bull; Egress Redaction &bull; In-Transit Token Injection</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-xs">PROXY ACTIVE (8082)</span>
+          </div>
+          <div class="glass-card rounded-xl overflow-hidden font-mono text-xs">
+            <div class="grid grid-cols-5 p-3 bg-white/5 text-slate-400 font-semibold border-b border-white/5">
+              <span>METHOD</span><span>HOST</span><span>CLIENT IP</span><span>STATUS</span><span>TOKEN INJECTION</span>
+            </div>
+            <div class="divide-y divide-white/5">
+              <div class="grid grid-cols-5 p-3 text-slate-200 hover:bg-white/5">
+                <span class="text-emerald-400 font-bold">GET</span><span>api.github.com/repos</span><span>172.28.0.5 (Cindy)</span><span class="text-emerald-400">200 OK</span><span class="text-primary-cyan font-mono">[INJECTED_CINDY_TOKEN]</span>
+              </div>
+              <div class="grid grid-cols-5 p-3 text-slate-200 hover:bg-white/5">
+                <span class="text-blue-400 font-bold">POST</span><span>api.github.com/graphql</span><span>172.28.0.5 (Cindy)</span><span class="text-emerald-400">200 OK</span><span class="text-primary-cyan font-mono">[INJECTED_CINDY_TOKEN]</span>
+              </div>
+              <div class="grid grid-cols-5 p-3 text-slate-200 hover:bg-white/5">
+                <span class="text-emerald-400 font-bold">GET</span><span>huggingface.co/models</span><span>172.28.0.4 (Runner)</span><span class="text-emerald-400">200 OK</span><span class="text-slate-500">None (Public)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- App Frame: Trace (Langfuse) -->
+        <div id="frame-trace" class="app-frame hidden w-full h-full flex flex-col p-6 bg-[#07090E] overflow-y-auto">
+          <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-6">
+            <div>
+              <h2 class="font-headline font-bold text-xl text-white">Langfuse LLM Observability & Tracing</h2>
+              <p class="font-mono text-xs text-blue-400">Port :3000 &bull; Real-time Token Latency & Cost Tracking</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-xs">COLLECTOR ACTIVE</span>
+          </div>
+          <div class="glass-card rounded-xl p-4 font-mono text-xs space-y-3">
+            <div class="flex justify-between text-slate-400 border-b border-white/5 pb-2">
+              <span>TRACE RUN</span><span>MODEL</span><span>LATENCY</span><span>COST</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-200 hover:bg-white/5 p-2 rounded">
+              <span class="text-blue-400">#tr-8492 (agent-synthesize-ticket)</span>
+              <span>qwen2.5:32b</span>
+              <span class="text-emerald-400">842ms</span>
+              <span class="text-slate-400">$0.00 (Local GB10)</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-200 hover:bg-white/5 p-2 rounded">
+              <span class="text-blue-400">#tr-8491 (code-architect-review)</span>
+              <span>gemini-2.5-flash</span>
+              <span class="text-emerald-400">310ms</span>
+              <span class="text-slate-400">$0.0004</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 3. FLOATING PERSISTENT DOCK ("THE DOCKEY LOOK" - HOVERS OVER DESKTOP OR IFRAME) -->
+    <div id="floating-dock-container" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 transition-all duration-300">
+      <div class="dock-shelf rounded-3xl px-5 py-3 md:px-6 md:py-3.5 flex items-center justify-center gap-2.5 sm:gap-4 md:gap-6 relative max-w-full overflow-x-auto shadow-2xl">
+        
+        <!-- App 1: Console (ide) -->
+        <div id="dock-btn-console" onclick="openEmbeddedApp('console', 'Console — editor.brainsos.local', '8443', 'terminal', '#00f2fe', 'https://editor.brainsos.local')" class="dock-item flex flex-col items-center group cursor-pointer p-1">
+          <div class="dock-icon-tile relative w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16 rounded-2xl bg-gradient-to-b from-[#182338] to-[#0B0E14] border-2 border-cyan-400/50 group-hover:border-primary-cyan flex items-center justify-center shadow-lg group-hover:shadow-[0_0_25px_rgba(0,242,254,0.4)] transition-all">
+            <span class="material-symbols-outlined text-primary-cyan text-2xl md:text-3xl">terminal</span>
+            <span class="dock-pip absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-synthetic-emerald shadow-[0_0_8px_#10b981]"></span>
+          </div>
+          <span class="font-headline font-bold text-[11px] md:text-xs text-slate-200 group-hover:text-primary-cyan mt-1.5 transition-colors">Console</span>
+          <span class="font-mono text-[9px] text-slate-500 group-hover:text-slate-400">IDE</span>
+        </div>
+
+        <!-- App 2: Comms (sogo email) -->
+        <div id="dock-btn-comms" onclick="openEmbeddedApp('comms', 'Comms — mail.brainsos.local', '20000', 'mail', '#ec4899', 'https://mail.brainsos.local')" class="dock-item flex flex-col items-center group cursor-pointer p-1">
+          <div class="dock-icon-tile relative w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16 rounded-2xl bg-gradient-to-b from-[#2b162f] to-[#0B0E14] border-2 border-pink-500/50 group-hover:border-pink-400 flex items-center justify-center shadow-lg group-hover:shadow-[0_0_25px_rgba(236,72,153,0.4)] transition-all">
+            <span class="material-symbols-outlined text-pink-400 text-2xl md:text-3xl">mail</span>
+            <span class="dock-pip absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-synthetic-emerald shadow-[0_0_8px_#10b981]"></span>
+          </div>
+          <span class="font-headline font-bold text-[11px] md:text-xs text-slate-200 group-hover:text-pink-400 mt-1.5 transition-colors">Comms</span>
+          <span class="font-mono text-[9px] text-slate-500 group-hover:text-slate-400">SOGo</span>
+        </div>
+
+        <!-- App 3: Security (liteLLM) -->
+        <div id="dock-btn-security" onclick="openEmbeddedApp('security', 'Security — proxy.brainsos.local', '4000', 'shield', '#f59e0b', 'https://proxy.brainsos.local')" class="dock-item flex flex-col items-center group cursor-pointer p-1">
+          <div class="dock-icon-tile relative w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16 rounded-2xl bg-gradient-to-b from-[#2d2215] to-[#0B0E14] border-2 border-amber-500/50 group-hover:border-amber-400 flex items-center justify-center shadow-lg group-hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-all">
+            <span class="material-symbols-outlined text-amber-400 text-2xl md:text-3xl">shield</span>
+            <span class="dock-pip absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-synthetic-emerald shadow-[0_0_8px_#10b981]"></span>
+          </div>
+          <span class="font-headline font-bold text-[11px] md:text-xs text-slate-200 group-hover:text-amber-400 mt-1.5 transition-colors">Security</span>
+          <span class="font-mono text-[9px] text-slate-500 group-hover:text-slate-400">LiteLLM</span>
+        </div>
+
+        <!-- App 4: Network (mitmproxy) -->
+        <div id="dock-btn-network" onclick="openEmbeddedApp('network', 'Network — efw.brainsos.local', '8081', 'lan', '#10b981', 'https://efw.brainsos.local')" class="dock-item flex flex-col items-center group cursor-pointer p-1">
+          <div class="dock-icon-tile relative w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16 rounded-2xl bg-gradient-to-b from-[#11261f] to-[#0B0E14] border-2 border-emerald-500/50 group-hover:border-emerald-400 flex items-center justify-center shadow-lg group-hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] transition-all">
+            <span class="material-symbols-outlined text-emerald-400 text-2xl md:text-3xl">lan</span>
+            <span class="dock-pip absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-synthetic-emerald shadow-[0_0_8px_#10b981]"></span>
+          </div>
+          <span class="font-headline font-bold text-[11px] md:text-xs text-slate-200 group-hover:text-emerald-400 mt-1.5 transition-colors">Network</span>
+          <span class="font-mono text-[9px] text-slate-500 group-hover:text-slate-400">mitmproxy</span>
+        </div>
+
+        <!-- App 5: Trace (langfuse) -->
+        <div id="dock-btn-trace" onclick="openEmbeddedApp('trace', 'Trace — langfuse.brainsos.local', '3000', 'query_stats', '#3b82f6', 'https://langfuse.brainsos.local')" class="dock-item flex flex-col items-center group cursor-pointer p-1">
+          <div class="dock-icon-tile relative w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16 rounded-2xl bg-gradient-to-b from-[#14213d] to-[#0B0E14] border-2 border-blue-500/50 group-hover:border-blue-400 flex items-center justify-center shadow-lg group-hover:shadow-[0_0_25px_rgba(59,130,246,0.4)] transition-all">
+            <span class="material-symbols-outlined text-blue-400 text-2xl md:text-3xl">query_stats</span>
+            <span class="dock-pip absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-synthetic-emerald shadow-[0_0_8px_#10b981]"></span>
+          </div>
+          <span class="font-headline font-bold text-[11px] md:text-xs text-slate-200 group-hover:text-blue-400 mt-1.5 transition-colors">Trace</span>
+          <span class="font-mono text-[9px] text-slate-500 group-hover:text-slate-400">Langfuse</span>
+        </div>
+
+        <!-- Separator -->
+        <div class="w-px h-8 bg-white/10 mx-0.5"></div>
+
+        <!-- App 6: Help (current portal to be reworked) -->
+        <div id="dock-btn-help" onclick="switchView('help')" class="dock-item flex flex-col items-center group cursor-pointer p-1">
+          <div class="dock-icon-tile relative w-13 h-13 sm:w-15 sm:h-15 md:w-16 md:h-16 rounded-2xl bg-gradient-to-b from-[#2b271a] to-[#0B0E14] border-2 border-yellow-500/50 group-hover:border-yellow-400 flex items-center justify-center shadow-lg group-hover:shadow-[0_0_25px_rgba(234,179,8,0.4)] transition-all">
+            <span class="material-symbols-outlined text-yellow-400 text-2xl md:text-3xl">menu_book</span>
+            <span class="dock-pip absolute bottom-1.5 right-1.5 w-2 h-2 rounded-full bg-synthetic-emerald shadow-[0_0_8px_#10b981]"></span>
+          </div>
+          <span class="font-headline font-bold text-[11px] md:text-xs text-slate-200 group-hover:text-yellow-400 mt-1.5 transition-colors">Help</span>
+          <span class="font-mono text-[9px] text-slate-500 group-hover:text-slate-400">Docs</span>
+        </div>
+
+        <!-- Dock Auto-hide Toggle Pill -->
+        <button onclick="toggleDockCollapse()" class="ml-1 p-1 rounded-lg text-slate-500 hover:text-white transition-colors" title="Toggle Dock Auto-hide">
+          <span id="dock-collapse-icon" class="material-symbols-outlined text-sm">unfold_less</span>
+        </button>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- VIEW 3: APPLIANCE HELP & ARCHITECTURE MATRIX (FULL REFERENCE DOCUMENT)     -->
+  <!-- ========================================================================= -->
+  <main id="view-help" class="hidden flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+    
+    <!-- Hero Header & Appliance Spec Matrix -->
+    <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-white/10">
+      <div class="flex items-center gap-5">
+        <div class="relative group flex-shrink-0">
+          <div class="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary-cyan to-neural-violet opacity-35 blur-md group-hover:opacity-70 transition duration-500"></div>
+          <img src="image.png" alt="BrainsOS Logo" class="relative w-16 h-16 md:w-20 md:h-20 rounded-xl object-contain bg-[#111622] border border-white/15 p-1 shadow-2xl">
+        </div>
+        <div>
+          <div class="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full border border-primary-cyan/30 bg-primary-cyan/10 font-mono text-[11px] text-primary-cyan mb-2">
+            <span class="pulse-dot"></span>
+            <span>APPLIANCE HELP & ARCHITECTURAL REFERENCE</span>
+          </div>
+          <h1 class="font-headline font-bold text-3xl md:text-4xl tracking-tight text-matrix-white">
+            BrainsOS Systems Topology
+          </h1>
+          <p class="font-body text-slate-matrix text-sm mt-0.5">
+            L1–L7 Plane Architecture, Port Specifications, Sockets, and Isolation Tenets
+          </p>
+        </div>
+      </div>
+
+      <!-- Spec Badges -->
+      <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
+        <div class="px-3 py-1.5 rounded bg-surface-deck border border-white/10 text-slate-matrix">
+          SoC: <strong class="text-matrix-white font-semibold">NVIDIA GB10</strong>
+        </div>
+        <div class="px-3 py-1.5 rounded bg-surface-deck border border-white/10 text-slate-matrix">
+          Bus: <strong class="text-primary-cyan font-semibold">273 GB/s LPDDR5x</strong>
+        </div>
+        <div class="px-3 py-1.5 rounded bg-surface-deck border border-white/10 text-slate-matrix">
+          SSO: <strong class="text-synthetic-emerald font-semibold">Authentik Forward-Auth</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashy Live Search & Fast Filter Bar -->
+    <div class="mb-8 flex items-center justify-between gap-4">
+      <div class="relative flex-1 max-w-md">
+        <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-matrix text-lg">search</span>
+        <input id="service-search" oninput="filterCards()" type="text" placeholder="Type / to filter services or agents..." class="w-full bg-surface-deck border border-white/15 focus:border-primary-cyan rounded-lg pl-10 pr-4 py-2 text-sm font-mono text-matrix-white placeholder:text-muted-phosphor outline-none transition-all">
+      </div>
+      <div class="flex items-center gap-2 font-mono text-xs text-slate-matrix">
+        <button onclick="switchView('dock')" class="px-3 py-2 rounded bg-surface-deck border border-white/10 hover:border-primary-cyan transition-all flex items-center gap-2 text-primary-cyan">
+          <span class="material-symbols-outlined text-base">dashboard</span>
+          <span>Back to Dock</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- PLANE 1: LEVELS 6 & 7 (AUTONOMOUS MULTI-AGENT FLEET) -->
+    <section class="mb-10 service-plane" data-plane="fleet">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-xs px-2 py-0.5 rounded bg-neural-violet/20 border border-neural-violet/40 text-neural-violet-light font-medium">LEVELS 6 & 7</span>
+          <h2 class="font-headline font-bold text-lg text-matrix-white">Autonomous Multi-Agent Fleet</h2>
+        </div>
+        <span class="font-mono text-xs text-slate-matrix">Stateless Runner Partition Injection (:8642)</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Terrastella -->
+        <div class="glass-card rounded-xl p-5 relative overflow-hidden service-card" data-title="terrastella primary orchestrator">
+          <div class="accent-cyan-line"></div>
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <span class="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-primary-cyan/10 border border-primary-cyan/30 text-primary-cyan">Primary Orchestrator</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white mt-1">Terrastella</h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> ONLINE
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix line-clamp-2 mb-4">
+            Coordinates multi-agent fleet operations, verifies Open Knowledge Format memory purity, and oversees system telemetry.
+          </p>
+          <div class="flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-matrix pt-3 border-t border-white/5">
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">brainsos-core</span>
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">terrastella@brainsos.local</span>
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">OKF Markdown</span>
+          </div>
+        </div>
+
+        <!-- Bawtford -->
+        <div class="glass-card rounded-xl p-5 relative overflow-hidden service-card" data-title="bawtford cindy pawford creative director">
+          <div class="accent-violet-line"></div>
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <span class="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-neural-violet/20 border border-neural-violet/40 text-neural-violet-light">Creative Director</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white mt-1">Bawtford</h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> ONLINE
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix line-clamp-2 mb-4">
+            Autonomous digital fashion publisher, Cindy Pawford website orchestrator, and web sub-agent supervisor.
+          </p>
+          <div class="flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-matrix pt-3 border-t border-white/5">
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">brainsos-core</span>
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">cindypawford/site</span>
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">bawtford@brainsos.local</span>
+          </div>
+        </div>
+
+        <!-- Marvin -->
+        <div class="glass-card rounded-xl p-5 relative overflow-hidden service-card" data-title="marvin sports analytics millijoule">
+          <div class="accent-cyan-line"></div>
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <span class="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-primary-cyan/10 border border-primary-cyan/30 text-primary-cyan">Sports & Thermodynamic Analytics</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white mt-1">Marvin</h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> IDLE
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix line-clamp-2 mb-4">
+            Millijoule thermodynamic telemetry evaluator, Stella 50 EM logging inspector, and real-time athletic data engine.
+          </p>
+          <div class="flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-matrix pt-3 border-t border-white/5">
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">brainsos-core</span>
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">fleet-telemetry</span>
+            <span class="px-2 py-0.5 rounded bg-black/40 border border-white/5">marvin@brainsos.local</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PLANE 2: LEVEL 3 (DEVELOPMENT & ORCHESTRATION) -->
+    <section class="mb-10 service-plane" data-plane="ide">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-xs px-2 py-0.5 rounded bg-primary-cyan/20 border border-primary-cyan/40 text-primary-cyan font-medium">LEVEL 3</span>
+          <h2 class="font-headline font-bold text-lg text-matrix-white">Operator Development & Agent Runtimes</h2>
+        </div>
+        <span class="font-mono text-xs text-slate-matrix">Forward-Auth SSO Protected</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Operator IDE -->
+        <a href="https://editor.brainsos.local" target="_blank" class="glass-card rounded-xl p-5 relative overflow-hidden block group service-card" data-title="operator ide code-server monaco editor 8443">
+          <div class="accent-cyan-line"></div>
+          <div class="flex items-start justify-between mb-2">
+            <div>
+              <span class="font-mono text-[10px] text-slate-matrix">SYS::8443 • FULLSCREEN</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white flex items-center gap-2 mt-0.5">
+                Operator IDE (Code-Server)
+                <span class="material-symbols-outlined text-sm text-slate-matrix group-hover:text-primary-cyan transition-colors">open_in_new</span>
+              </h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> 200 OK • 8ms
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix mb-4">
+            Containerized VS Code with full Monaco editor and terminal support. Operates full-screen with zero iframe cursor corruption or xterm layout destruction.
+          </p>
+          <div class="flex items-center justify-between font-mono text-xs text-primary-cyan pt-3 border-t border-white/5">
+            <span>editor.brainsos.local</span>
+            <span class="text-slate-matrix group-hover:translate-x-1 transition-transform">Launch IDE &rarr;</span>
+          </div>
+        </a>
+
+        <!-- Hermes Runner WebUI -->
+        <a href="https://hermes.runner.brainsos.local" target="_blank" class="glass-card rounded-xl p-5 relative overflow-hidden block group service-card" data-title="hermes agent runner webui 8642 8787">
+          <div class="accent-cyan-line"></div>
+          <div class="flex items-start justify-between mb-2">
+            <div>
+              <span class="font-mono text-[10px] text-slate-matrix">SYS::8642 • RUNNER CONFIG</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white flex items-center gap-2 mt-0.5">
+                Hermes Runner WebUI
+                <span class="material-symbols-outlined text-sm text-slate-matrix group-hover:text-primary-cyan transition-colors">open_in_new</span>
+              </h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> 200 OK • 14ms
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix mb-4">
+            Interactive control interface for Hermes stateless runner. Inspect active toolsets, disable web/terminal gateways, and burn configurations to Git via Makefile.
+          </p>
+          <div class="flex items-center justify-between font-mono text-xs text-primary-cyan pt-3 border-t border-white/5">
+            <span>hermes.runner.brainsos.local</span>
+            <span class="text-slate-matrix group-hover:translate-x-1 transition-transform">Configure Runner &rarr;</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <!-- PLANE 3: LEVEL 2 (COMMUNICATIONS & WEBMAIL) -->
+    <section class="mb-10 service-plane" data-plane="comms">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-xs px-2 py-0.5 rounded bg-synthetic-emerald/20 border border-synthetic-emerald/40 text-synthetic-emerald font-medium">LEVEL 2</span>
+          <h2 class="font-headline font-bold text-lg text-matrix-white">Communications & Groupware Substrate</h2>
+        </div>
+        <span class="font-mono text-xs text-slate-matrix">Universal Message Bus</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- SOGo Webmail -->
+        <a href="https://mail.brainsos.local" target="_blank" class="glass-card rounded-xl p-5 relative overflow-hidden block group service-card" data-title="sogo webmail groupware mail 20000 10025">
+          <div class="accent-cyan-line"></div>
+          <div class="flex items-start justify-between mb-2">
+            <div>
+              <span class="font-mono text-[10px] text-slate-matrix">PORT::20000 / :10025 / :10143</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white flex items-center gap-2 mt-0.5">
+                SOGo Webmail & Groupware
+                <span class="material-symbols-outlined text-sm text-slate-matrix group-hover:text-primary-cyan transition-colors">open_in_new</span>
+              </h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> 200 OK • 18ms
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix mb-4">
+            RFC-compliant email and CalDAV scheduling client mediating operator-agent dialogues. Postfix SMTP & Dovecot IMAP backends.
+          </p>
+          <div class="flex items-center justify-between font-mono text-xs text-primary-cyan pt-3 border-t border-white/5">
+            <span>mail.brainsos.local</span>
+            <span class="text-slate-matrix group-hover:translate-x-1 transition-transform">Open Mailbox &rarr;</span>
+          </div>
+        </a>
+
+        <!-- LiteLLM Gateway -->
+        <a href="https://proxy.brainsos.local" target="_blank" class="glass-card rounded-xl p-5 relative overflow-hidden block group service-card" data-title="litellm proxy gateway control plane 4000">
+          <div class="accent-cyan-line"></div>
+          <div class="flex items-start justify-between mb-2">
+            <div>
+              <span class="font-mono text-[10px] text-slate-matrix">PORT::4000 • SERIALIZED SCHEDULER</span>
+              <h3 class="font-headline font-bold text-lg text-matrix-white flex items-center gap-2 mt-0.5">
+                LiteLLM Control Plane Gateway
+                <span class="material-symbols-outlined text-sm text-slate-matrix group-hover:text-primary-cyan transition-colors">open_in_new</span>
+              </h3>
+            </div>
+            <span class="flex items-center gap-1.5 font-mono text-[11px] text-synthetic-emerald status-pill">
+              <span class="pulse-dot"></span> 200 OK • 5ms
+            </span>
+          </div>
+          <p class="font-body text-xs text-slate-matrix mb-4">
+            Universal model router serializing access to host Ollama/vLLM weights. Enforces virtual key budgets and isolated database persistence (Rule 6).
+          </p>
+          <div class="flex items-center justify-between font-mono text-xs text-primary-cyan pt-3 border-t border-white/5">
+            <span>proxy.brainsos.local</span>
+            <span class="text-slate-matrix group-hover:translate-x-1 transition-transform">Control Specs &rarr;</span>
+          </div>
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Interactive App Launch Modal -->
+  <div id="app-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+    <div class="glass-card rounded-2xl p-6 max-w-md w-full border border-white/15 shadow-2xl relative animate-in fade-in zoom-in duration-150">
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <div id="modal-icon-bg" class="w-12 h-12 rounded-xl flex items-center justify-center border border-white/20">
+            <span id="modal-icon" class="material-symbols-outlined text-2xl">apps</span>
+          </div>
+          <div>
+            <h3 id="modal-title" class="font-headline font-bold text-lg text-white">Application</h3>
+            <p id="modal-subtitle" class="font-body text-xs text-slate-400">App description</p>
+          </div>
+        </div>
+        <button onclick="closeAppModal()" class="text-slate-400 hover:text-white p-1">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+
+      <div class="space-y-3 my-4">
+        <div class="p-3 rounded-lg bg-black/40 border border-white/5 space-y-1.5 font-mono text-xs">
+          <div class="flex justify-between text-slate-400">
+            <span>Access Route:</span>
+            <span id="modal-route" class="text-primary-cyan select-all">https://*.brainsos.local</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Container Port:</span>
+            <span id="modal-port" class="text-white">Port</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Security Layer:</span>
+            <span class="text-synthetic-emerald flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-synthetic-emerald"></span> Authentik SSO
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-white/10">
+        <button onclick="closeAppModal()" class="px-4 py-2 rounded-lg text-xs font-body font-medium text-slate-300 hover:bg-white/5 transition-colors">
+          Dismiss
+        </button>
+        <a id="modal-open-link" href="#" target="_blank" class="px-4 py-2 rounded-lg text-xs font-headline font-bold bg-primary-cyan text-obsidian hover:bg-cyan-300 transition-all flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,242,254,0.3)]">
+          <span>Launch Service</span>
+          <span class="material-symbols-outlined text-sm">open_in_new</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentApp = null;
+    let dockCollapsed = false;
+
+    function openEmbeddedApp(appId, title, port, icon, color, url) {
+      if (currentApp === appId) {
+        minimizeToDesktop();
+        return;
+      }
+      currentApp = appId;
+
+      // Hide desktop surface, show app surface
+      document.getElementById('desktop-surface').classList.add('hidden');
+      document.getElementById('app-surface').classList.remove('hidden');
+
+      // Update window titlebar
+      document.getElementById('window-title').innerText = title;
+      document.getElementById('window-icon').innerText = icon;
+      document.getElementById('window-icon').style.color = color;
+      document.getElementById('window-popout').href = url;
+
+      // Hide all frames, show selected frame
+      document.querySelectorAll('.app-frame').forEach(el => el.classList.add('hidden'));
+      const activeFrame = document.getElementById('frame-' + appId);
+      if (activeFrame) activeFrame.classList.remove('hidden');
+
+      // Update dock highlighting: active ring on current item
+      const appKeys = ['console', 'comms', 'security', 'network', 'trace'];
+      appKeys.forEach(key => {
+        const btn = document.getElementById('dock-btn-' + key);
+        if (!btn) return;
+        const tile = btn.querySelector('.dock-icon-tile');
+        if (key === appId) {
+          tile.classList.add('ring-2', 'ring-primary-cyan', 'shadow-[0_0_25px_rgba(0,242,254,0.6)]');
+        } else {
+          tile.classList.remove('ring-2', 'ring-primary-cyan', 'shadow-[0_0_25px_rgba(0,242,254,0.6)]');
+        }
+      });
+    }
+
+    function minimizeToDesktop() {
+      currentApp = null;
+      document.getElementById('app-surface').classList.add('hidden');
+      document.getElementById('desktop-surface').classList.remove('hidden');
+      
+      // Clear dock highlighting
+      const appKeys = ['console', 'comms', 'security', 'network', 'trace'];
+      appKeys.forEach(key => {
+        const btn = document.getElementById('dock-btn-' + key);
+        if (!btn) return;
+        const tile = btn.querySelector('.dock-icon-tile');
+        tile.classList.remove('ring-2', 'ring-primary-cyan', 'shadow-[0_0_25px_rgba(0,242,254,0.6)]');
+      });
+    }
+
+    function toggleDockCollapse() {
+      dockCollapsed = !dockCollapsed;
+      const dock = document.getElementById('floating-dock-container');
+      const icon = document.getElementById('dock-collapse-icon');
+      if (dockCollapsed) {
+        dock.style.transform = 'translate(-50%, 82%)';
+        icon.innerText = 'unfold_more';
+      } else {
+        dock.style.transform = 'translate(-50%, 0)';
+        icon.innerText = 'unfold_less';
+      }
+    }
+
+    function launchApp(name, desc, url, port, icon, color, appId) {
+      openEmbeddedApp(appId, `${name} — ${url.replace('https://', '')}`, port, icon, color, url);
+    }
+
+    function closeAppModal() {
+      document.getElementById('app-modal').classList.add('hidden');
+    }
+
+    // Close modal on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeAppModal();
+        if (currentApp) minimizeToDesktop();
+      }
+    });
+
+    function switchView(view) {
+      const loginView = document.getElementById('view-login');
+      const dockView = document.getElementById('view-dock');
+      const helpView = document.getElementById('view-help');
+      const btnLogin = document.getElementById('btn-show-login');
+      const btnDock = document.getElementById('btn-show-dock');
+      const btnHelp = document.getElementById('btn-show-help');
+
+      const activeClass = "px-3 py-1 rounded text-xs font-mono font-semibold bg-primary-cyan text-obsidian shadow-[0_0_12px_rgba(0,242,254,0.3)] transition-all";
+      const inactiveClass = "px-3 py-1 rounded text-xs font-mono font-medium text-slate-matrix hover:text-white transition-all";
+
+      loginView.classList.add('hidden');
+      dockView.classList.add('hidden');
+      helpView.classList.add('hidden');
+      btnLogin.className = inactiveClass;
+      btnDock.className = inactiveClass;
+      btnHelp.className = inactiveClass;
+
+      if (view === 'login') {
+        loginView.classList.remove('hidden');
+        btnLogin.className = activeClass;
+        window.location.hash = 'login';
+      } else if (view === 'help') {
+        helpView.classList.remove('hidden');
+        btnHelp.className = activeClass;
+        window.location.hash = 'help';
+      } else {
+        dockView.classList.remove('hidden');
+        btnDock.className = activeClass;
+        window.location.hash = 'dock';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const hash = window.location.hash;
+      if (hash === '#help') {
+        switchView('help');
+      } else if (hash === '#dashy' || hash === '#dock') {
+        switchView('dock');
+      } else {
+        switchView('login');
+      }
+    });
+
+    function togglePasswordVisibility() {
+      const pwd = document.getElementById('login-password');
+      const eye = document.getElementById('eye-icon');
+      if (pwd.type === 'password') {
+        pwd.type = 'text';
+        eye.innerText = 'visibility_off';
+      } else {
+        pwd.type = 'password';
+        eye.innerText = 'visibility';
+      }
+    }
+
+    function filterCards() {
+      const q = document.getElementById('service-search').value.toLowerCase();
+      const cards = document.querySelectorAll('.service-card');
+      cards.forEach(card => {
+        const text = (card.getAttribute('data-title') || '') + ' ' + card.innerText.toLowerCase();
+        if (text.includes(q)) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    // Keyboard shortcut '/' to focus search
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        const s = document.getElementById('service-search');
+        if (s) {
+          switchView('help');
+          setTimeout(() => s.focus(), 50);
+        }
+      }
+    });
+  </script>
+</body>
+</html>

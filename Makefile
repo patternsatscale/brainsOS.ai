@@ -38,7 +38,11 @@ runner-base:
 	docker build -t brainsos-runner-base:latest -f docker/runners/base/Dockerfile .
 
 runner-hermes: runner-base
+	@scripts/control/burn-hermes-config.sh
 	docker compose build runner-hermes
+
+burn-hermes:
+	@scripts/control/burn-hermes-config.sh
 
 runner-openai: runner-base
 	docker compose build runner-openai
@@ -47,6 +51,17 @@ runner-claude: runner-base
 	docker compose build runner-claude
 
 runners: runner-base runner-hermes runner-openai runner-claude
+
+portal-build:
+	@cd packages/brainsOS-portal && npm run build
+
+portal-setup:
+	@scripts/setup/setup-portal.sh
+
+portal-verify:
+	@scripts/verify/verify-portal.sh
+
+portal: portal-setup portal-verify
 
 setup:
 	@scripts/control/bootstrap-env.sh
@@ -58,6 +73,9 @@ reload_env: reload-env
 
 reload-env:
 	@scripts/control/reload-env.sh $(ARGS)
+
+refresh-env: reload-env
+refresh_env: reload-env
 
 urls:
 	@scripts/control/show-urls.sh $(ARGS)

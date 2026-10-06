@@ -1,27 +1,13 @@
 {
   "folders": [
     {
-      "name": "brainsOS (Repository)",
-      "path": "/workspace/brainsos"
-    },
-    {
-      "name": "Memory Plane (OKF Markdown)",
-      "path": "/memories"
-    },
-    {
-      "name": "Agent Workspaces (State & Logs)",
-      "path": "/data/workspace"
-    },
-    {
-      "name": "Communications Gateways (Signal & Email)",
-      "path": "/data/comms"
-    },
-    {
-      "name": "Cindy Pawford (App Canvas)",
-      "path": "/data/agent_apps/cindypawford/site"
+      "path": "/data"
     }
   ],
   "settings": {
+    "workbench.colorTheme": "Default Dark Modern",
+    "window.autoDetectColorScheme": false,
+    "terminal.integrated.cwd": "/data",
     "security.workspace.trust.enabled": false,
     "security.workspace.trust.startupPrompt": "never",
     "security.workspace.trust.emptyWindow": true,

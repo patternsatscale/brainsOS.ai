@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>brainsOS.AI • Operator Sign In</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230B0E14'/><circle cx='50' cy='50' r='30' fill='%2300f2fe'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "obsidian": "#07090E",
+            "surface-deck": "#0B0E14",
+            "surface-card": "#111622",
+            "primary-cyan": "#00f2fe",
+            "slate-matrix": "#94a3b8",
+            "muted-phosphor": "#475569"
+          },
+          fontFamily: {
+            "headline": ["Space Grotesk", "sans-serif"],
+            "body": ["Geist", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #07090E;
+      color: #e1e2eb;
+      font-family: 'Geist', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .ambient-glow {
+      position: absolute;
+      width: 650px;
+      height: 650px;
+      border-radius: 9999px;
+      background: radial-gradient(circle, rgba(0, 242, 254, 0.08) 0%, rgba(0, 242, 254, 0.015) 45%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .grid-lines {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    }
+    .sso-card {
+      background: rgba(11, 14, 20, 0.88);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 45px rgba(0, 242, 254, 0.08);
+      position: relative;
+      overflow: hidden;
+    }
+    .sso-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 15%;
+      right: 15%;
+      height: 1.5px;
+      background: linear-gradient(90deg, transparent, #00f2fe, transparent);
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body class="grid-lines flex flex-col justify-between items-center p-6 relative antialiased selection:bg-primary-cyan selection:text-black">
+
+  <!-- Ambient Radial Glow -->
+  <div class="ambient-glow"></div>
+
+  <!-- Spacer to center cleanly vertically -->
+  <div class="h-4"></div>
+
+  <!-- Center Stage: Authentik Sign-In Card -->
+  <main class="w-full max-w-[420px] my-auto z-10 py-6">
+    
+    <div class="sso-card rounded-2xl p-7 sm:p-9">
+      
+      <!-- Brand Header: Splashy Commanding Title with Monospace Identity -->
+      <div class="text-center mb-12 sm:mb-14 select-none">
+        
+        <div class="mb-3">
+          <span class="font-mono text-[29px] sm:text-[33px] tracking-[0.36em] font-bold uppercase text-slate-100">
+            BRAINSOS<span class="text-primary-cyan drop-shadow-[0_0_18px_rgba(0,242,254,0.55)]">.AI</span>
+          </span>
+        </div>
+
+        <p class="font-mono text-[11px] sm:text-[12px] tracking-[0.26em] uppercase text-slate-400 font-medium">
+          SAFE, SECURE, ASYNCHRONOUS AGENTS
+        </p>
+
+        <div class="w-20 h-px bg-gradient-to-r from-transparent via-primary-cyan/60 to-transparent mx-auto mt-6 mb-4"></div>
+
+        <h1 class="font-headline font-bold text-lg text-white tracking-tight">
+          brainsOS • Operator Sign In
+        </h1>
+        <p class="font-mono text-[11px] text-slate-400 mt-1">
+          Login to continue to brainsOS Appliance.
+        </p>
+      </div>
+
+      <!-- Authentication Form (Integrated with Authentik Flow Action) -->
+      <form id="login-form" method="POST" action="%(url)s" class="space-y-4">
+        <input type="hidden" name="csrfmiddlewaretoken" value="%(csrf_token)s">
+        
+        <!-- Field 1: Operator Username -->
+        <div>
+          <label class="block font-mono text-[11px] text-slate-400 mb-1.5 font-medium tracking-wide" for="username">
+            Operator Username
+          </label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+              <i class="fa-solid fa-user text-xs"></i>
+            </div>
+            <input 
+              id="username"
+              name="uid"
+              type="text" 
+              required
+              class="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#141924]/90 border border-white/10 focus:border-primary-cyan/70 focus:bg-[#161c28] focus:ring-1 focus:ring-primary-cyan/40 font-mono text-xs text-white placeholder-slate-600 transition-all outline-none"
+              placeholder="operator"
+              value="operator"
+            >
+          </div>
+        </div>
+
+        <!-- Field 2: Password -->
+        <div>
+          <label class="block font-mono text-[11px] text-slate-400 mb-1.5 font-medium tracking-wide" for="password">
+            Password
+          </label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+              <i class="fa-solid fa-lock text-xs"></i>
+            </div>
+            <input 
+              id="password"
+              name="password"
+              type="password" 
+              required
+              class="w-full pl-9 pr-10 py-2.5 rounded-xl bg-[#141924]/90 border border-white/10 focus:border-primary-cyan/70 focus:bg-[#161c28] focus:ring-1 focus:ring-primary-cyan/40 font-mono text-xs text-white placeholder-slate-600 transition-all outline-none"
+              placeholder="Enter password"
+            >
+            <button 
+              type="button" 
+              onclick="togglePassword()" 
+              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+              title="Toggle password visibility"
+            >
+              <i id="password-toggle-icon" class="fa-regular fa-eye text-xs"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Checkbox: Remember me -->
+        <div class="flex items-center justify-between pt-0.5">
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input 
+              type="checkbox" 
+              name="remember_me"
+              checked
+              class="w-3.5 h-3.5 rounded border border-white/20 bg-white/5 text-primary-cyan focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#00f2fe]"
+            >
+            <span class="font-mono text-[11px] text-slate-400">Remember me</span>
+          </label>
+        </div>
+
+        <!-- Primary Action: Sign In Button -->
+        <div class="pt-1.5">
+          <button 
+            type="submit" 
+            id="btn-submit"
+            class="w-full py-3 rounded-xl bg-primary-cyan hover:bg-[#38f8ff] text-black font-headline font-bold text-xs tracking-wider uppercase shadow-[0_0_22px_rgba(0,242,254,0.32)] transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span id="btn-text">SIGN IN</span>
+            <i id="btn-icon" class="fa-solid fa-arrow-right text-[11px]"></i>
+          </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="relative py-2 flex items-center justify-center">
+          <div class="w-full border-t border-white/10"></div>
+          <span class="absolute px-3 bg-[#0B0E14] font-mono text-[9.5px] text-slate-500 uppercase tracking-widest">
+            OR CONTINUE WITH
+          </span>
+        </div>
+
+        <!-- Passkey & Social Logins -->
+        <div class="space-y-2 pt-0.5">
+          <!-- Passkey / Security Key -->
+          <a 
+            href="/flows/-/default/authentication/?stage=webauthn"
+            class="w-full py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-slate-300 font-mono text-xs flex items-center justify-center gap-2.5 transition-all group"
+          >
+            <i class="fa-solid fa-fingerprint text-primary-cyan group-hover:scale-110 transition-transform"></i>
+            <span>Sign in with Passkey</span>
+          </a>
+
+          <!-- Social Logins Grid: GitHub & Google -->
+          <div class="grid grid-cols-2 gap-2">
+            <a 
+              href="/source/oauth/github/"
+              class="py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-slate-300 font-mono text-xs flex items-center justify-center gap-2 transition-all group"
+              title="Sign in with GitHub"
+            >
+              <i class="fa-brands fa-github text-sm text-white group-hover:scale-110 transition-transform"></i>
+              <span>GitHub</span>
+            </a>
+
+            <a 
+              href="/source/oauth/google/"
+              class="py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-slate-300 font-mono text-xs flex items-center justify-center gap-2 transition-all group"
+              title="Sign in with Google"
+            >
+              <i class="fa-brands fa-google text-xs text-white group-hover:scale-110 transition-transform"></i>
+              <span>Google</span>
+            </a>
+          </div>
+        </div>
+
+      </form>
+
+      <!-- Card Footer: Full-Width Version Box Across the Whole Bottom -->
+      <div class="-mx-7 sm:-mx-9 -mb-7 sm:-mb-9 mt-8 py-3.5 px-6 bg-[#080C14]/90 border-t border-white/10 flex items-center justify-center font-mono text-xs text-primary-cyan tracking-[0.25em] font-medium select-none shadow-[0_-4px_20px_rgba(0,0,0,0.25)]">
+        <span>v1.0.0-arm64</span>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Clean Minimal Footer -->
+  <footer class="w-full max-w-md mx-auto text-center z-10 py-3 font-mono text-[11px] text-slate-600 select-none">
+    <div class="flex items-center justify-center gap-4">
+      <span>brainsOS.ai</span>
+      <span>•</span>
+      <span class="text-slate-500">ASUS Ascent GX10 Appliance</span>
+    </div>
+  </footer>
+
+  <script>
+    function togglePassword() {
+      const passwordInput = document.getElementById('password');
+      const toggleIcon = document.getElementById('password-toggle-icon');
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        toggleIcon.classList.remove('fa-eye');
+        toggleIcon.classList.add('fa-eye-slash');
+      } else {
+        passwordInput.type = 'password';
+        toggleIcon.classList.remove('fa-eye-slash');
+        toggleIcon.classList.add('fa-eye');
+      }
+    }
+  </script>
+</body>
+</html>

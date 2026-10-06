@@ -1,0 +1,14 @@
+{
+  "name": "system-terminal",
+  "displayName": "brainsOS System Terminal",
+  "description": "Opens brainsOS system terminal front and center in the editor area on startup",
+  "version": "1.0.0",
+  "publisher": "brainsos",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./extension.js"
+}

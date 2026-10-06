@@ -32,14 +32,14 @@ fi
 mkdir -p "$VMAIL_DIR" "$CONFIG_DIR" "$SNAPPY_DIR"
 
 # 1. Seed Accounts and Credentials
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}"
-TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
-BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
-MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
-PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
-CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
-GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_terrastella_mail_secret_change_me}}"
+BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_bawtford_mail_secret_change_me}}"
+MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_marvin_mail_secret_change_me}}"
+PING_PASS="${PING_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_ping_mail_secret_change_me}}"
+CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_claude_mail_secret_change_me}}"
+GPT_PASS="${GPT_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_gpt_mail_secret_change_me}}"
 
 echo "[INFO] Generating account directory in $CONFIG_DIR/users..."
 SETUP_DOMAINS=("brainsos.local" "local.brainsos.ai")
@@ -71,6 +71,7 @@ for d in "${UNIQUE_SETUP_DOMAINS[@]}"; do
 cat << EOF >> "$CONFIG_DIR/users"
 admin@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
 operator@${d}:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operator::
+akadmin@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
 terrastella@${d}:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
 bawtford@${d}:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
 marvin@${d}:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
@@ -82,6 +83,7 @@ EOF
 cat << EOF >> "$CONFIG_DIR/vmailbox"
 admin@${d} admin
 operator@${d} operator
+akadmin@${d} admin
 terrastella@${d} terrastella
 bawtford@${d} bawtford
 marvin@${d} marvin
@@ -91,8 +93,9 @@ gpt@${d} gpt
 EOF
 
 cat << EOF >> "$CONFIG_DIR/virtual"
-postmaster@${d} admin@brainsos.local
-root@${d} admin@brainsos.local
+postmaster@${d} admin@${d}
+root@${d} admin@${d}
+akadmin@${d} admin@${d}
 cindy@${d} bawtford@${d}
 EOF
 done

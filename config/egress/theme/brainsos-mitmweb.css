@@ -1,0 +1,211 @@
+/* ==============================================================================
+ * brainsOS: Obsidian Cybernetic Theme for mitmproxy (mitmweb)
+ * Subsystem: Tool Egress Gateway & Inspection Console (/efw/)
+ * ============================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #07090E !important;
+  --bg-secondary: #0B0E14 !important;
+  --bg-tertiary: #111622 !important;
+  --bg-card: #141A26 !important;
+  --accent-cyan: #00F2FE !important;
+  --accent-pink: #EC4899 !important;
+  --accent-emerald: #10B981 !important;
+  --border-subtle: rgba(255, 255, 255, 0.08) !important;
+  --border-focus: rgba(0, 242, 254, 0.5) !important;
+  --text-main: #F8FAFC !important;
+  --text-muted: #94A3B8 !important;
+}
+
+/* 1. Global Document & Viewport Reset */
+html, body, #mitmproxy {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-main) !important;
+  font-family: 'JetBrains Mono', -apple-system, BlinkMacSystemFont, monospace !important;
+  font-size: 12px !important;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-radius: 3px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 242, 254, 0.4) !important;
+}
+
+/* 2. Top Navigation Bar & Header Controls */
+header, nav, .navbar, .nav-tabs {
+  background-color: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  color: #FFFFFF !important;
+}
+
+header .nav-tabs > li > a {
+  color: var(--text-muted) !important;
+  border-radius: 6px 6px 0 0 !important;
+  transition: all 0.15s ease !important;
+}
+
+header .nav-tabs > li.active > a,
+header .nav-tabs > li > a:hover {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--accent-cyan) !important;
+  border-color: var(--border-subtle) var(--border-subtle) transparent !important;
+}
+
+/* Filter / Search Bar & Inputs */
+input, select, textarea, .form-control {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: #FFFFFF !important;
+  border-radius: 6px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+input:focus, select:focus, textarea:focus, .form-control:focus {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3) !important;
+  outline: none !important;
+}
+
+/* Buttons */
+button, .btn, .btn-default {
+  background-color: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  transition: all 0.15s ease !important;
+}
+
+button:hover, .btn:hover, .btn-default:hover {
+  background-color: rgba(0, 242, 254, 0.12) !important;
+  color: var(--accent-cyan) !important;
+  border-color: var(--accent-cyan) !important;
+}
+
+button.btn-primary, .btn-primary {
+  background-color: var(--accent-cyan) !important;
+  color: #000000 !important;
+  border: none !important;
+  font-weight: 600 !important;
+}
+
+button.btn-primary:hover, .btn-primary:hover {
+  background-color: #38F8FF !important;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.5) !important;
+}
+
+/* 3. Flow Table (Request List) */
+table, .flow-table, .main-table {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+table tr, .flow-table tr {
+  background-color: var(--bg-secondary) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  transition: background-color 0.1s ease !important;
+}
+
+table th, .flow-table th {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+table tr:hover, .flow-table tr:hover {
+  background-color: rgba(0, 242, 254, 0.06) !important;
+}
+
+table tr.selected, .flow-table tr.selected, table tr.has-focus, .flow-table tr.has-focus {
+  background-color: rgba(0, 242, 254, 0.14) !important;
+  border-left: 3px solid var(--accent-cyan) !important;
+}
+
+/* 4. HTTP Status Code Styling */
+.status-2xx, [data-status^="2"] {
+  color: var(--accent-emerald) !important;
+  font-weight: 600 !important;
+}
+
+.status-3xx, [data-status^="3"] {
+  color: #3B82F6 !important;
+  font-weight: 600 !important;
+}
+
+.status-4xx, [data-status^="4"] {
+  color: #F59E0B !important;
+  font-weight: 600 !important;
+}
+
+.status-5xx, [data-status^="5"] {
+  color: #EF4444 !important;
+  font-weight: 600 !important;
+}
+
+/* 5. Detail Pane & Payload Viewer */
+.flow-detail, .contentview, .split-pane, .tab-pane, pre, code, .CodeMirror {
+  background-color: #0E131F !important;
+  color: #CBD5E1 !important;
+  border-color: var(--border-subtle) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  line-height: 1.5 !important;
+}
+
+.headers .kv-key, .trailers .kv-key {
+  color: var(--accent-cyan) !important;
+}
+
+.headers .kv-value, .trailers .kv-value {
+  color: #FFFFFF !important;
+}
+
+/* 6. Event Log & Footer */
+footer, .eventlog, .command-title {
+  background-color: var(--bg-secondary) !important;
+  border-top: 1px solid var(--border-subtle) !important;
+  color: var(--text-muted) !important;
+  box-shadow: none !important;
+}
+
+.eventlog > pre {
+  background-color: var(--bg-primary) !important;
+  color: #CBD5E1 !important;
+}
+
+/* Dialogs & Menus */
+.modal-content, .dropdown-menu {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8) !important;
+  border-radius: 8px !important;
+}
+
+.dropdown-menu > li > a {
+  color: #CBD5E1 !important;
+}
+
+.dropdown-menu > li > a:hover {
+  background-color: rgba(0, 242, 254, 0.12) !important;
+  color: var(--accent-cyan) !important;
+}

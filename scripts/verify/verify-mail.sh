@@ -45,7 +45,7 @@ CADDY_CONTAINER="brainsos-net-caddy"
 
 SMTP_PORT="${MAIL_SMTP_PORT:-10025}"
 IMAP_PORT="${MAIL_IMAP_PORT:-10143}"
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-brainsos_admin_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}"
 AGENT_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
 BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 

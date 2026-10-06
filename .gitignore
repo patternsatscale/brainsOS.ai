@@ -102,3 +102,6 @@ Thumbs.db
 local-cron/
 scripts/local-cron/
 issues_dump.json
+
+# Local TLS Certificates
+config/caddy/root.crt
