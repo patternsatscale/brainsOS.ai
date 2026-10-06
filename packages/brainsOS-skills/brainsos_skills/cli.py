@@ -7,10 +7,9 @@ import sys
 from pathlib import Path
 
 from brainsos_skills.loader import (
-    load_bundled_skills,
-    load_workspace_skills,
-    load_hierarchical_skills,
     discover_skills_in_dir,
+    load_hierarchical_skills,
+    load_workspace_skills,
     sync_skills_to_workspace,
 )
 from brainsos_skills.models import SkillSourceType

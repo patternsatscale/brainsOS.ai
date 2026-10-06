@@ -4,7 +4,7 @@ Discovery and loading utilities for brainsOS skills.
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 from brainsos_skills.models import Skill, SkillSourceType
 from brainsos_skills.registry import SkillRegistry

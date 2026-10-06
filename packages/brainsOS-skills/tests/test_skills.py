@@ -2,12 +2,13 @@
 Unit tests for brainsOS-skills package.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
+from brainsos_skills.loader import BUNDLED_SKILLS_DIR, load_bundled_skills, sync_skills_to_workspace
 from brainsos_skills.models import Skill, SkillMetadata, SkillSourceType
-from brainsos_skills.validator import parse_skill_text, validate_skill_file
 from brainsos_skills.registry import SkillRegistry
-from brainsos_skills.loader import load_bundled_skills, sync_skills_to_workspace, BUNDLED_SKILLS_DIR
+from brainsos_skills.validator import parse_skill_text, validate_skill_file
 
 
 def test_parse_valid_skill():

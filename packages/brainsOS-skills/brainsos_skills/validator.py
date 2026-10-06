@@ -4,7 +4,8 @@ Validation and parsing utilities for brainsOS SKILL.md files.
 
 import re
 from pathlib import Path
-from typing import Tuple, Dict, Any
+from typing import Any, Dict, Optional, Tuple
+
 import yaml
 from pydantic import ValidationError
 
@@ -13,7 +14,7 @@ from brainsos_skills.models import Skill, SkillMetadata, SkillSourceType
 FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 
 
-def parse_skill_text(content: str, file_path: Path = None, source_type: SkillSourceType = SkillSourceType.BUNDLED) -> Skill:
+def parse_skill_text(content: str, file_path: Optional[Path] = None, source_type: SkillSourceType = SkillSourceType.BUNDLED) -> Skill:
     """
     Parse a SKILL.md text containing YAML frontmatter and a markdown body.
     """

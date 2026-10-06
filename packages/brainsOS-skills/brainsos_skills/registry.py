@@ -3,6 +3,7 @@ Registry for brainsOS Agent Skills and Planning Archetypes.
 """
 
 from typing import Dict, List, Optional
+
 from brainsos_skills.models import Skill
 
 
