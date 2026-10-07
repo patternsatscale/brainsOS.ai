@@ -158,6 +158,12 @@ if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
   log_info "Initialized ${DATA_ROOT}/control_plane/caddy_root.crt placeholder"
 fi
 
+# 2.5 Initialize Langfuse Distributed Observability Configuration
+if [ -f "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
+  log_info "Initializing Langfuse distributed observability configuration..."
+  "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" setup >/dev/null 2>&1 || true
+fi
+
 # 3. Python Virtual Environment & Packages
 if command -v uv >/dev/null 2>&1; then
   log_info "Found 'uv' package manager."

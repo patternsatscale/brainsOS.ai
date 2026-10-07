@@ -208,6 +208,7 @@ echo ""
 log_info "Generating secure environment file (.env)..."
 
 python3 - << EOF
+import base64
 import os
 import secrets
 import sys
@@ -246,7 +247,9 @@ def is_placeholder(val):
         "authentik_bootstrap", "brainsos_authentik", "sogo_secret_pass",
         "sogo_db_password", "admin_mail_pass", "operator_mail_pass",
         "admin_pass", "litellm_password", "litellm_db_password",
-        "sk-brainsos-mock-key", "sk-brainsos-master-key"
+        "sk-brainsos-mock-key", "sk-brainsos-master-key",
+        "brainsos_langfuse_secret", "brainsos_langfuse_salt",
+        "brainsos_langfuse_nextauth", "miniosecret", "myredissecret"
     ]
     if any(p in val_lower for p in placeholder_fragments):
         return True
@@ -283,6 +286,14 @@ secret_generators = {
     "PING_MAIL_PASSWORD": lambda: gen_hex(16),
     "CLAUDE_MAIL_PASSWORD": lambda: gen_hex(16),
     "GPT_MAIL_PASSWORD": lambda: gen_hex(16),
+    "NEXTAUTH_SECRET": lambda: base64.b64encode(secrets.token_bytes(32)).decode(),
+    "SALT": lambda: base64.b64encode(secrets.token_bytes(32)).decode(),
+    "ENCRYPTION_KEY": lambda: gen_hex(32),
+    "LANGFUSE_DB_PASSWORD": lambda: gen_hex(16),
+    "REDIS_AUTH": lambda: gen_hex(16),
+    "MINIO_ROOT_PASSWORD": lambda: gen_hex(16),
+    "LANGFUSE_PUBLIC_KEY": lambda: f"pk-lf-{gen_hex(16)}",
+    "LANGFUSE_SECRET_KEY": lambda: f"sk-lf-{gen_hex(16)}",
 }
 
 generated_secrets = {}
@@ -299,6 +310,12 @@ db_port = current_vars.get("LITELLM_DB_PORT", "5432")
 db_name = current_vars.get("LITELLM_DB_NAME", "litellm")
 db_pass = generated_secrets["LITELLM_DB_PASSWORD"]
 generated_secrets["DATABASE_URL"] = f"postgresql://{db_user}:{db_pass}@127.0.0.1:{db_port}/{db_name}"
+
+# Sync Langfuse OTel Basic Auth header
+lf_pub = generated_secrets.get("LANGFUSE_PUBLIC_KEY", "")
+lf_sec = generated_secrets.get("LANGFUSE_SECRET_KEY", "")
+if lf_pub and lf_sec:
+    generated_secrets["LANGFUSE_OTEL_AUTH"] = f"Basic {base64.b64encode(f'{lf_pub}:{lf_sec}'.encode()).decode()}"
 
 # Format output matching .env.example
 output_lines = []
@@ -391,6 +408,12 @@ fi
 mv "${ENV_FILE}.tmp" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 log_success "Generated secure .env file with permissions 600."
+
+# Synchronize Langfuse distributed stack environment
+if [ -f "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
+  log_info "Synchronizing Langfuse distributed environment configuration..."
+  "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" setup || true
+fi
 
 # ------------------------------------------------------------------------------
 # Rebuild & Reload Services
