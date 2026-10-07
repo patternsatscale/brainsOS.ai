@@ -9,7 +9,7 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync
+.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
@@ -23,6 +23,8 @@ help:
 	@echo "  make up             - Start platform Docker services and shared runner"
 	@echo "  make down           - Stop all Docker services and host control plane"
 	@echo "  make stop-all       - Stop all Docker containers, host LiteLLM, Ollama, and workers"
+	@echo "  make langfuse       - Start Langfuse v4 distributed observability stack"
+	@echo "  make langfuse-status- Check Langfuse health, containers, and OTel ingestion"
 	@echo "  make nuke           - Forcefully terminate all brainsOS containers and background processes (battery saver)"
 	@echo "  make backup         - Create a full data plane backup archive"
 	@echo "  make restore        - Restore data planes from latest archive (or ARCHIVE=<file>)"
@@ -62,6 +64,21 @@ portal-verify:
 	@scripts/verify/verify-portal.sh
 
 portal: portal-setup portal-verify
+
+langfuse:
+	@scripts/setup/setup-langfuse.sh start
+
+langfuse-setup:
+	@scripts/setup/setup-langfuse.sh setup
+
+langfuse-status:
+	@scripts/setup/setup-langfuse.sh status
+
+langfuse-stop:
+	@scripts/setup/setup-langfuse.sh stop
+
+langfuse-sync:
+	@scripts/setup/setup-langfuse.sh sync
 
 setup:
 	@scripts/control/bootstrap-env.sh
