@@ -65,7 +65,7 @@ import tls_policy.caddy
 	@proxy_host header_regexp Host (?i)^proxy\.
 	handle @proxy_host {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
@@ -75,7 +75,7 @@ import tls_policy.caddy
 	@proxy_api_path path /proxy/v1/* /v1/*
 	handle @proxy_api_path {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			flush_interval -1
 		}
 	}
@@ -207,25 +207,25 @@ import tls_policy.caddy
 	}
 
 	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
-	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui /ui/
-	redir @proxy_ui_defaults /proxy/ui/usage 308
+	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui
+	redir @proxy_ui_defaults /ui/ 308
 	handle /proxy/ui/* {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /ui/* {
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /sso/* {
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
@@ -233,42 +233,52 @@ import tls_policy.caddy
 	}
 	handle /proxy/sso/* {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /litellm-asset-prefix/* {
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /.well-known/litellm-ui-config {
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /litellm/.well-known/litellm-ui-config {
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /proxy/.well-known/litellm-ui-config {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	handle /proxy/litellm/.well-known/litellm-ui-config {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
 	@litellm_api path /key/* /model/* /models* /model_group/* /user/* /team/* /customer/* /spend/* /global/* /health/* /routes* /config/* /service_account/* /public/* /settings/* /get_favicon
 	handle @litellm_api {
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
@@ -277,7 +287,7 @@ import tls_policy.caddy
 	@proxy_litellm_api path /proxy/key/* /proxy/model/* /proxy/models* /proxy/model_group/* /proxy/user/* /proxy/team/* /proxy/customer/* /proxy/spend/* /proxy/global/* /proxy/health/* /proxy/routes* /proxy/config/* /proxy/service_account/* /proxy/public/* /proxy/settings/*
 	handle @proxy_litellm_api {
 		uri strip_prefix /proxy
-		reverse_proxy host.docker.internal:4000 {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1

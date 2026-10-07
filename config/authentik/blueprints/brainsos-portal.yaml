@@ -101,8 +101,12 @@ entries:
       redirect_uris: |
         https://osx.local.brainsos.ai/sso/callback
         https://osx.local.brainsos.ai/proxy/ui/sso/callback
-        https://proxy.osx.local.brainsos.ai/sso/callback
+        https://dgx.local.brainsos.ai/sso/callback
+        https://dgx.local.brainsos.ai/proxy/ui/sso/callback
+        https://local.brainsos.ai/sso/callback
+        https://local.brainsos.ai/proxy/ui/sso/callback
         http://localhost:4000/sso/callback
+        .*
       authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
       include_claims_in_id_token: true
       issuer_mode: "per_provider"

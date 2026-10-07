@@ -8,7 +8,7 @@ model_list:
   - model_name: brainsos-core
     litellm_params:
       model: os.environ/BRAINSOS_CORE_MODEL
-      api_base: http://127.0.0.1:11434
+      api_base: os.environ/OLLAMA_API_BASE
       # Hardware serialization: Protects unified LPDDR5x memory bus on GB10 / Apple Silicon
       max_parallel_requests: 1
       timeout: 300
@@ -18,7 +18,7 @@ model_list:
   - model_name: qwen3.8:latest
     litellm_params:
       model: ollama_chat/qwen3.8:latest
-      api_base: http://127.0.0.1:11434
+      api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
       num_ctx: 4096
@@ -38,7 +38,7 @@ model_list:
   - model_name: llama3.2:3b
     litellm_params:
       model: ollama_chat/llama3.2:3b
-      api_base: http://127.0.0.1:11434
+      api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
       num_ctx: 4096
@@ -46,7 +46,7 @@ model_list:
   - model_name: qwen2.5:latest
     litellm_params:
       model: ollama_chat/qwen2.5:latest
-      api_base: http://127.0.0.1:11434
+      api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
       num_ctx: 4096
@@ -55,7 +55,7 @@ model_list:
   - model_name: cindy-active-coding-model
     litellm_params:
       model: ollama_chat/qwen2.5:latest
-      api_base: http://127.0.0.1:11434
+      api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
       num_ctx: 4096
@@ -64,7 +64,7 @@ model_list:
   - model_name: gemma2:2b
     litellm_params:
       model: ollama_chat/gemma2:2b
-      api_base: http://127.0.0.1:11434
+      api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
       num_ctx: 4096
@@ -87,3 +87,5 @@ general_settings:
   database_url: os.environ/DATABASE_URL
   # Dynamic persistence: stores model definitions in database across restarts
   store_model_in_db: true
+  # Disable environment-credential login path (security hardening per documentation)
+  disable_env_credential_login: true
