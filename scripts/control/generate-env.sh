@@ -140,6 +140,9 @@ fi
 TARGET_DOMAIN="${CUSTOM_DOMAIN:-${EXISTING_DOMAIN:-brainsos.local}}"
 TARGET_MAIL_DOMAIN="${CUSTOM_MAIL_DOMAIN:-${EXISTING_MAIL_DOMAIN}}"
 TARGET_DATA_DIR="${CUSTOM_DATA_DIR:-${EXISTING_DATA_DIR:-./data}}"
+if [[ "${TARGET_DATA_DIR}" == ~* ]]; then
+  TARGET_DATA_DIR="${TARGET_DATA_DIR/#\~/$HOME}"
+fi
 
 # ------------------------------------------------------------------------------
 # Interactive Q&A

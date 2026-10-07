@@ -37,11 +37,68 @@ cd "${REPO_ROOT}"
 echo -e "${BOLD}brainsOS Environment Bootstrap${NC}"
 echo -e "Target Root: ${REPO_ROOT}"
 
+# Parse CLI options
+BUILD_IMAGES=true
+BUILD_PORTAL=true
+CUSTOM_DATA_DIR=""
+
+show_help() {
+  echo -e "${BOLD}brainsOS Turnkey Environment Bootstrap${NC}"
+  echo ""
+  echo "Usage:"
+  echo "  $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  --data-dir <path>     Specify custom runtime data directory"
+  echo "  --no-build            Skip building Docker images"
+  echo "  --skip-images         Skip building Docker images"
+  echo "  --skip-portal         Skip building portal React SPA"
+  echo "  -h, --help            Show this help documentation"
+  echo ""
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-build|--skip-build|--skip-images)
+      BUILD_IMAGES=false
+      shift
+      ;;
+    --skip-portal)
+      BUILD_PORTAL=false
+      shift
+      ;;
+    --data-dir)
+      CUSTOM_DATA_DIR="$2"
+      shift 2
+      ;;
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    *)
+      log_warn "Unknown bootstrap option: $1 (ignoring)"
+      shift
+      ;;
+  esac
+done
+
+# Expand tilde in CUSTOM_DATA_DIR if present
+if [[ "${CUSTOM_DATA_DIR}" == ~* ]]; then
+  CUSTOM_DATA_DIR="${CUSTOM_DATA_DIR/#\~/$HOME}"
+fi
+
 # 1. Environment Configuration (.env)
 if [ ! -f "${REPO_ROOT}/.env" ]; then
-  if [ -f "${REPO_ROOT}/.env.example" ]; then
+  if [ -f "${SCRIPT_DIR}/generate-env.sh" ] && command -v python3 >/dev/null 2>&1; then
+    log_info "No .env found. Generating secure credentials and configuration..."
+    "${SCRIPT_DIR}/generate-env.sh" --defaults --no-rebuild ${CUSTOM_DATA_DIR:+--data-dir "${CUSTOM_DATA_DIR}"}
+    log_success "Generated secure ${REPO_ROOT}/.env"
+  elif [ -f "${REPO_ROOT}/.env.example" ]; then
     log_info "Creating .env from .env.example..."
     cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env"
+    if [ -n "${CUSTOM_DATA_DIR}" ]; then
+      echo "BRAINSOS_DATA_DIR=\"${CUSTOM_DATA_DIR}\"" >> "${REPO_ROOT}/.env"
+    fi
     log_success "Created ${REPO_ROOT}/.env"
   else
     log_error "No .env.example found! Cannot generate .env."
@@ -49,10 +106,18 @@ if [ ! -f "${REPO_ROOT}/.env" ]; then
   fi
 else
   log_info ".env already exists. Preserving existing configuration."
+  if [ -n "${CUSTOM_DATA_DIR}" ]; then
+    if grep -q "^BRAINSOS_DATA_DIR=" "${REPO_ROOT}/.env"; then
+      sed -i.bak "s|^BRAINSOS_DATA_DIR=.*|BRAINSOS_DATA_DIR=\"${CUSTOM_DATA_DIR}\"|" "${REPO_ROOT}/.env" && rm -f "${REPO_ROOT}/.env.bak"
+    else
+      echo "BRAINSOS_DATA_DIR=\"${CUSTOM_DATA_DIR}\"" >> "${REPO_ROOT}/.env"
+    fi
+    log_info "Updated BRAINSOS_DATA_DIR in .env to ${CUSTOM_DATA_DIR}"
+  fi
 fi
 
 # Load active .env to read BRAINSOS_DATA_DIR if not already provided in environment
-_EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-}"
+_EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-${CUSTOM_DATA_DIR:-}}"
 if [ -f "${REPO_ROOT}/.env" ]; then
   set -a
   . "${REPO_ROOT}/.env"
@@ -63,6 +128,9 @@ if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
 fi
 
 DATA_ROOT="${BRAINSOS_DATA_DIR:-./data}"
+if [[ "${DATA_ROOT}" == ~* ]]; then
+  DATA_ROOT="${DATA_ROOT/#\~/$HOME}"
+fi
 if [[ "$DATA_ROOT" != /* ]]; then
   DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
 fi
@@ -87,11 +155,18 @@ DATA_DIRS=(
   "${DATA_ROOT}/comms"
   "${DATA_ROOT}/comms/spool"
   "${DATA_ROOT}/comms/maildir"
+  "${DATA_ROOT}/comms/sogo/db"
+  "${DATA_ROOT}/comms/sogo/spool"
+  "${DATA_ROOT}/comms/email/vmail"
+  "${DATA_ROOT}/comms/email/config"
+  "${DATA_ROOT}/comms/signal"
   "${DATA_ROOT}/queue"
   "${DATA_ROOT}/runners"
   "${DATA_ROOT}/settings"
   "${DATA_ROOT}/control_plane"
   "${DATA_ROOT}/control_plane/litellm_db"
+  "${DATA_ROOT}/control_plane/authentik_db"
+  "${DATA_ROOT}/control_plane/authentik_media"
   "${DATA_ROOT}/control_plane/vscode_config"
   "${DATA_ROOT}/control_plane/vscode_data"
   "${DATA_ROOT}/souls"
@@ -107,6 +182,9 @@ for dir in "${DATA_DIRS[@]}"; do
     log_info "Created directory: ${dir}"
   fi
 done
+
+# Pre-create portal dist directory so Docker does not create it as root
+mkdir -p "${REPO_ROOT}/packages/brainsOS-portal/dist"
 
 # Touch .gitkeep files in comms, backups, and skills
 touch "${DATA_ROOT}/comms/spool/.gitkeep" 2>/dev/null || true
@@ -167,13 +245,16 @@ if command -v uv >/dev/null 2>&1; then
   fi
 
   log_info "Installing dev tooling and brainsOS packages in editable mode..."
-  uv pip install --python "${REPO_ROOT}/.venv/bin/python" pytest pytest-asyncio ruff mypy
+  uv pip install --python "${REPO_ROOT}/.venv/bin/python" pytest pytest-asyncio ruff mypy tiktoken "litellm[proxy]" "prisma" "mcp<2" "langfuse>=2.0.0,<3.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
+  pkg_args=()
   for pkg in "${REPO_ROOT}/packages/"*/; do
     if [ -f "${pkg}/pyproject.toml" ]; then
-      log_info "Installing package: $(basename "${pkg}")..."
-      uv pip install -e "${pkg}" --python "${REPO_ROOT}/.venv/bin/python"
+      pkg_args+=("-e" "${pkg}")
     fi
   done
+  if [ ${#pkg_args[@]} -gt 0 ]; then
+    uv pip install "${pkg_args[@]}" --python "${REPO_ROOT}/.venv/bin/python"
+  fi
 elif command -v python3 >/dev/null 2>&1; then
   log_warn "'uv' not found. Falling back to python3 venv/pip."
   if [ ! -d "${REPO_ROOT}/.venv" ]; then
@@ -182,15 +263,26 @@ elif command -v python3 >/dev/null 2>&1; then
   fi
 
   log_info "Installing dev tooling and brainsOS packages in editable mode..."
-  "${REPO_ROOT}/.venv/bin/pip" install --quiet pytest pytest-asyncio ruff mypy
+  "${REPO_ROOT}/.venv/bin/pip" install --quiet pytest pytest-asyncio ruff mypy tiktoken "litellm[proxy]" "prisma" "mcp<2" "langfuse>=2.0.0,<3.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
+  pkg_args=()
   for pkg in "${REPO_ROOT}/packages/"*/; do
     if [ -f "${pkg}/pyproject.toml" ]; then
-      log_info "Installing package: $(basename "${pkg}")..."
-      "${REPO_ROOT}/.venv/bin/pip" install -e "${pkg}" --quiet
+      pkg_args+=("-e" "${pkg}")
     fi
   done
+  if [ ${#pkg_args[@]} -gt 0 ]; then
+    "${REPO_ROOT}/.venv/bin/pip" install "${pkg_args[@]}" --quiet
+  fi
 else
   log_warn "Neither 'uv' nor 'python3' detected on host. Skipping local Python package bootstrap."
+fi
+
+# Pre-generate Prisma client Python bindings for LiteLLM database operations
+LITELLM_SCHEMA=$(find "${REPO_ROOT}/.venv" -name "schema.prisma" 2>/dev/null | head -n 1)
+if [ -n "${LITELLM_SCHEMA}" ] && [ -f "${LITELLM_SCHEMA}" ] && [ -x "${REPO_ROOT}/.venv/bin/prisma" ]; then
+  log_info "Pre-generating Prisma client bindings from ${LITELLM_SCHEMA}..."
+  PATH="${REPO_ROOT}/.venv/bin:${PATH}" "${REPO_ROOT}/.venv/bin/prisma" generate --schema "${LITELLM_SCHEMA}" >/dev/null 2>&1 || true
+  log_success "Prisma client bindings pre-generated."
 fi
 
 # 4. Synchronize Active Skills to Workspace for Antigravity IDE
@@ -218,4 +310,55 @@ HOOK
   log_success "Git pre-commit hook installed!"
 fi
 
+# 6. Build Portal Web SPA Bundle (packages/brainsOS-portal)
+if [ "${BUILD_PORTAL}" = true ]; then
+  if command -v npm >/dev/null 2>&1 && [ -d "${REPO_ROOT}/packages/brainsOS-portal" ]; then
+    log_info "Building brainsOS Thin-Spine Portal SPA..."
+    if [ -f "${SCRIPT_DIR}/../setup/setup-portal.sh" ]; then
+      "${SCRIPT_DIR}/../setup/setup-portal.sh" >/dev/null 2>&1 || {
+        log_warn "Portal setup script encountered a non-fatal warning; attempting npm build directly..."
+        (cd "${REPO_ROOT}/packages/brainsOS-portal" && npm install --silent && npm run build) >/dev/null 2>&1 || log_warn "Portal build skipped."
+      }
+    else
+      (cd "${REPO_ROOT}/packages/brainsOS-portal" && npm install --silent && npm run build) >/dev/null 2>&1 || log_warn "Portal build skipped."
+    fi
+    if [ -f "${REPO_ROOT}/packages/brainsOS-portal/dist/index.html" ]; then
+      log_success "Portal static bundle built at packages/brainsOS-portal/dist/."
+    fi
+  else
+    log_info "Node/npm not detected or portal directory missing. Skipping portal build."
+  fi
+fi
+
+# 7. Build Platform Docker Images & Base Runner
+if [ "${BUILD_IMAGES}" = true ]; then
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    log_info "Building brainsOS base runner image (brainsos-runner-base:latest)..."
+    docker build -t brainsos-runner-base:latest -f "${REPO_ROOT}/docker/runners/base/Dockerfile" "${REPO_ROOT}"
+    log_success "Base runner image built successfully."
+
+    if [ -f "${SCRIPT_DIR}/burn-hermes-config.sh" ]; then
+      log_info "Preparing Hermes runner configuration..."
+      "${SCRIPT_DIR}/burn-hermes-config.sh" >/dev/null 2>&1 || true
+    fi
+
+    log_info "Building all platform container images via Docker Compose..."
+    docker compose build
+    log_success "All brainsOS platform Docker images built successfully!"
+  else
+    log_warn "Docker daemon is not running or accessible. Skipping container image builds."
+    log_warn "Run 'make up' once Docker is running to launch platform services."
+  fi
+else
+  log_info "Skipping Docker image builds as requested (--no-build)."
+fi
+
+echo ""
+log_success "=============================================================================="
 log_success "brainsOS environment bootstrap complete!"
+log_success "=============================================================================="
+echo -e "Next steps:"
+echo -e "  - Start platform services:           ${BOLD}make up${NC}"
+echo -e "  - View service URLs & credentials:  ${BOLD}make urls${NC}"
+echo -e "  - Run full test suite:              ${BOLD}make test${NC}"
+echo ""

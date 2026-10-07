@@ -283,10 +283,10 @@ status_services() {
   fi
 
   # Shared Stateless Hermes Runner status
-  if docker compose ps hermes-runner 2>/dev/null | grep -qE "(Up|running)"; then
-    log_success "Hermes Runner: RUNNING (brainsos-agent-hermes-runner:8642)"
+  if docker compose ps runner-hermes 2>/dev/null | grep -qE "(Up|running)"; then
+    log_success "Hermes Runner: RUNNING (runner-hermes:8642)"
   else
-    log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d hermes-runner)"
+    log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d runner-hermes)"
   fi
 }
 
@@ -427,6 +427,26 @@ for root, _, files in os.walk(out_dir):
 ' 2>/dev/null || true
     fi
 
+    # Combine local Caddy CA with system certifi CA if custom Caddy root certificate exists,
+    # ensuring internal Authentik SSO calls pass while preserving access to external APIs & pricing maps.
+    if [ -s "${CADDY_CA_FILE}" ]; then
+      SYSTEM_CA="$("${REPO_ROOT}/.venv/bin/python" -m certifi 2>/dev/null || true)"
+      if [ -z "${SYSTEM_CA}" ] && [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+        SYSTEM_CA="/etc/ssl/certs/ca-certificates.crt"
+      fi
+      if [ -n "${SYSTEM_CA}" ] && [ -f "${SYSTEM_CA}" ]; then
+        COMBINED_CA="${PID_DIR}/combined_ca.pem"
+        cat "${SYSTEM_CA}" "${CADDY_CA_FILE}" > "${COMBINED_CA}" 2>/dev/null || cp "${CADDY_CA_FILE}" "${COMBINED_CA}"
+        export SSL_CERT_FILE="${COMBINED_CA}"
+        export REQUESTS_CA_BUNDLE="${COMBINED_CA}"
+      else
+        export SSL_CERT_FILE="${CADDY_CA_FILE}"
+        export REQUESTS_CA_BUNDLE="${CADDY_CA_FILE}"
+      fi
+    else
+      unset SSL_CERT_FILE REQUESTS_CA_BUNDLE 2>/dev/null || true
+    fi
+
     DATABASE_URL="${DATABASE_URL}" \
     LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
     LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
@@ -436,8 +456,6 @@ for root, _, files in os.walk(out_dir):
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
-    SSL_CERT_FILE="${CADDY_CA_FILE}" \
-    REQUESTS_CA_BUNDLE="${CADDY_CA_FILE}" \
     GENERIC_CLIENT_ID="${GENERIC_CLIENT_ID:-litellm-proxy}" \
     GENERIC_CLIENT_SECRET="${GENERIC_CLIENT_SECRET:-brainsos_litellm_secret}" \
     GENERIC_AUTHORIZATION_ENDPOINT="${GENERIC_AUTHORIZATION_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/authorize/}" \
@@ -496,8 +514,8 @@ for root, _, files in os.walk(out_dir):
   fi
 
   # 5. Start Shared Stateless Hermes Agent Runner container
-  log_info "Ensuring shared stateless Hermes runner (hermes-runner) is running..."
-  docker compose up -d hermes-runner 2>/dev/null || log_warn "Could not start hermes-runner container (Docker may be inactive)."
+  log_info "Ensuring shared stateless Hermes runner (runner-hermes) is running..."
+  docker compose up -d runner-hermes 2>/dev/null || log_warn "Could not start runner-hermes container (Docker may be inactive)."
 
   # 6. Start Unified Asynchronous Queue Worker & Mail Ingress
   if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then

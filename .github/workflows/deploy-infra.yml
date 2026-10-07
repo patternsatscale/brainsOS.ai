@@ -1,0 +1,73 @@
+name: Deploy brainsOS Cloud Infrastructure (SST)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+      - ".github/workflows/deploy-infra.yml"
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "SST deployment stage (production / staging / dev)"
+        required: true
+        default: "production"
+      zone_name:
+        description: "Route 53 Hosted Zone Name (e.g. brainsos.ai)"
+        required: false
+        default: "brainsos.ai"
+      subdomain:
+        description: "Platform Subdomain (e.g. brainsos)"
+        required: false
+        default: "brainsos"
+
+concurrency:
+  group: brainsos-infra-sst-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Deploy SST Ion Infrastructure to AWS
+    runs-on: ubuntu-latest
+    env:
+      STAGE: ${{ github.event.inputs.stage || 'production' }}
+      BRAINSOS_ZONE_NAME: ${{ github.event.inputs.zone_name || 'brainsos.ai' }}
+      BRAINSOS_SUBDOMAIN: ${{ github.event.inputs.subdomain || 'brainsos' }}
+    steps:
+      - name: Checkout brainsOS
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Install Dependencies & Providers
+        working-directory: infra
+        run: |
+          npm ci
+          npx sst install
+
+      - name: Validate TypeScript Types
+        working-directory: infra
+        run: npm run typecheck
+
+      - name: Deploy SST Infrastructure
+        working-directory: infra
+        run: |
+          echo "--> Deploying brainsOS SST platform infrastructure to AWS (${STAGE})..."
+          npx sst deploy --stage "${STAGE}"

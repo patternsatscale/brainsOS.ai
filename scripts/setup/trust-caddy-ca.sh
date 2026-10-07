@@ -41,10 +41,16 @@ for attempt in 1 2 3 4 5; do
     docker compose exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
   fi
 
-if [ ! -s "${TARGET_CERT_FILE}" ]; then
-  # Fallback: run temporary lightweight container mounting brainsos_caddy_data volume
-  docker run --rm -v brainsos_caddy_data:/data alpine cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
-fi
+  if [ ! -s "${TARGET_CERT_FILE}" ]; then
+    # Fallback: run temporary lightweight container mounting brainsos_caddy_data volume
+    docker run --rm -v brainsos_caddy_data:/data alpine cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
+  fi
+
+  if [ -s "${TARGET_CERT_FILE}" ]; then
+    break
+  fi
+  sleep 1
+done
 
 if [ ! -s "${TARGET_CERT_FILE}" ]; then
   log_error "Could not retrieve Caddy root CA certificate. Ensure Caddy container is initialized and running."
