@@ -410,7 +410,10 @@ services:
   # Forward proxy listens on internal port 8082
   # ============================================================================
   tool-egress-proxy:
-    image: mitmproxy/mitmproxy:latest
+    build:
+      context: .
+      dockerfile: docker/egress/Dockerfile
+    image: brainsos-net-egress-proxy:latest
     container_name: brainsos-net-egress-proxy
     restart: unless-stopped
     security_opt:

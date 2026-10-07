@@ -40,6 +40,7 @@ echo -e "Target Root: ${REPO_ROOT}"
 # Parse CLI options
 BUILD_IMAGES=true
 BUILD_PORTAL=true
+PULL_MODELS=true
 CUSTOM_DATA_DIR=""
 
 show_help() {
@@ -53,6 +54,7 @@ show_help() {
   echo "  --no-build            Skip building Docker images"
   echo "  --skip-images         Skip building Docker images"
   echo "  --skip-portal         Skip building portal React SPA"
+  echo "  --skip-models         Skip pulling LLM weights in host Ollama"
   echo "  -h, --help            Show this help documentation"
   echo ""
 }
@@ -65,6 +67,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-portal)
       BUILD_PORTAL=false
+      shift
+      ;;
+    --skip-models|--no-models)
+      PULL_MODELS=false
       shift
       ;;
     --data-dir)
@@ -292,6 +298,16 @@ if [ -f "${REPO_ROOT}/.venv/bin/brainsos-skills" ]; then
 elif [ -d "${DATA_ROOT}/skills" ]; then
   mkdir -p "${REPO_ROOT}/.agents/skills"
   cp -R "${DATA_ROOT}/skills/"* "${REPO_ROOT}/.agents/skills/" 2>/dev/null || true
+fi
+
+# 4.5. Host LLM Model Synchronization in Ollama
+if [ "${PULL_MODELS}" = true ]; then
+  if command -v ollama >/dev/null 2>&1 && [ -f "${SCRIPT_DIR}/../setup/setup-models.sh" ]; then
+    log_info "Synchronizing host Ollama LLM models..."
+    "${SCRIPT_DIR}/../setup/setup-models.sh" || log_warn "Model synchronization encountered a non-fatal warning."
+  else
+    log_info "Ollama not detected or setup-models.sh missing. Skipping host model pull."
+  fi
 fi
 
 # 5. Configure Git Pre-Commit Hook (Rule 11 & Rule 14 Leakage Gate)

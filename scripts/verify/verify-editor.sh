@@ -324,17 +324,50 @@ else
   fail_check "Startup terminal extension (brainsos.system-terminal) not listed in code-server! Found: ${EXTS}"
 fi
 
-# VS Code AI settings & Language Models Custom Endpoint verification
-log_info "Verifying VS Code built-in AI settings and LiteLLM Custom Endpoint..."
+# VS Code AI settings & Language Models Dynamic Discovery verification
+log_info "Verifying VS Code built-in AI settings and dynamic LiteLLM Connector..."
 if docker compose exec -T code-server test -f /home/coder/.local/share/code-server/User/chatLanguageModels.json; then
   log_success "chatLanguageModels.json verified at /home/coder/.local/share/code-server/User/chatLanguageModels.json."
-  docker compose exec -T code-server grep -q '"vendor": *"customendpoint"' /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
-    fail_check "chatLanguageModels.json missing customendpoint vendor."
-  docker compose exec -T code-server grep -q "http://litellm:4000/v1" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+  docker compose exec -T code-server grep -q '"vendor": *"litellm-connector"' /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
+    fail_check "chatLanguageModels.json missing litellm-connector vendor."
+  docker compose exec -T code-server grep -q "http://litellm:4000" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
     fail_check "chatLanguageModels.json missing LiteLLM gateway endpoint."
-  log_success "VS Code built-in language models custom endpoint pointing to LiteLLM verified."
+  log_success "Dynamic LiteLLM connector configuration verified in chatLanguageModels.json."
 else
   fail_check "chatLanguageModels.json missing inside container."
+fi
+
+# Pruned Explorer Views & BYOK Chat Settings verification
+log_info "Verifying pruned explorer view configurations and BYOK settings in settings.json..."
+docker compose exec -T code-server grep -q '"explorer.openEditors.visible": *0' /home/coder/.local/share/code-server/User/settings.json || \
+  fail_check "Open Editors view is not hidden in settings.json ('explorer.openEditors.visible: 0' missing)."
+docker compose exec -T code-server grep -q '"outline.collapseItems": *"alwaysCollapse"' /home/coder/.local/share/code-server/User/settings.json || \
+  fail_check "Outline view collapse setting missing in settings.json."
+docker compose exec -T code-server grep -q '"timeline.excludeSources"' /home/coder/.local/share/code-server/User/settings.json || \
+  fail_check "Timeline view exclusion missing in settings.json."
+docker compose exec -T code-server grep -q '"chat.byokUtilityModelDefault": *"mainAgent"' /home/coder/.local/share/code-server/User/settings.json || \
+  fail_check "BYOK utility model default setting missing in settings.json."
+log_success "Pruned explorer views and BYOK chat settings verified in settings.json."
+
+# Verify Foam extension explorer views are disabled (when: false)
+log_info "Verifying Foam extension explorer views are disabled in package.json..."
+if docker compose exec -T code-server python3 -c '
+import json, glob, sys
+pkgs = glob.glob("/home/coder/.local/share/code-server/extensions/foam.foam-vscode-*/package.json")
+if not pkgs:
+    print("Foam package.json not found")
+    sys.exit(1)
+for p in pkgs:
+    d = json.load(open(p))
+    for v in d.get("contributes", {}).get("views", {}).get("explorer", []):
+        if v.get("when") != "false":
+            print("View not disabled:", v.get("id"), "when:", v.get("when"))
+            sys.exit(1)
+print("OK")
+' 2>/dev/null; then
+  log_success "All Foam explorer subviews (connections, tags, notes, orphans) verified disabled (when: false)."
+else
+  fail_check "Foam explorer subviews are not properly disabled in package.json!"
 fi
 
 # In-container System Terminal Make commands verification

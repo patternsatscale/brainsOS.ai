@@ -9,7 +9,24 @@ set -eu
 mkdir -p /home/coder/.local/share/code-server/extensions
 if [ -d "/opt/code-server/extensions" ]; then
   cp -rn /opt/code-server/extensions/* /home/coder/.local/share/code-server/extensions/ 2>/dev/null || true
+  # Always ensure brainsOS custom system terminal is updated to the latest build
+  cp -r /opt/code-server/extensions/brainsos.system-terminal-1.0.0 /home/coder/.local/share/code-server/extensions/ 2>/dev/null || true
 fi
+
+# Ensure Foam explorer subviews are hidden by default to preserve a clean, focused explorer view
+python3 - << 'EOF' || true
+import json, glob
+for p in glob.glob('/home/coder/.local/share/code-server/extensions/foam.foam-vscode-*/package.json'):
+    try:
+        with open(p, 'r') as f:
+            d = json.load(f)
+        for v in d.get('contributes', {}).get('views', {}).get('explorer', []):
+            v['when'] = 'false'
+        with open(p, 'w') as f:
+            json.dump(d, f, indent=2)
+    except Exception:
+        pass
+EOF
 
 # Purge deprecated Continue extension artifacts if present to ensure clean environment
 rm -rf /home/coder/.local/share/code-server/extensions/*continue* /home/coder/.continue /opt/code-server/extensions/*continue* 2>/dev/null || true
@@ -69,122 +86,37 @@ disable-update-check: true
 disable-workspace-trust: true
 EOF
 
-# 3. Scaffolding default VS Code User settings.json with explicit workspace trust & SSL security bypass
+# 3. Dynamic Configuration of VS Code User settings.json and chatLanguageModels.json
 mkdir -p /home/coder/.local/share/code-server/User
-SETTINGS_FILE="/home/coder/.local/share/code-server/User/settings.json"
-if [ ! -f "${SETTINGS_FILE}" ]; then
-  cat << 'EOF' > "${SETTINGS_FILE}"
-{
-  "workbench.colorTheme": "Dark Modern",
-  "window.autoDetectColorScheme": false,
-  "terminal.integrated.cwd": "/data",
-  "terminal.integrated.defaultLocation": "editor",
-  "terminal.integrated.defaultProfile.linux": "bash",
-  "chat.commandCenter.enabled": true,
-  "chat.defaultModel": "brainsos-core",
-  "chat.byokUtilityModelDefault": "mainAgent",
-  "chat.agentFilesLocations": {
-    ".github/agents": true,
-    ".claude/agents": true,
-    ".agents/souls": true,
-    "souls": true
-  },
-  "chat.useAgentSkills": true,
-  "chat.agentSkillsLocations": {
-    ".agents/skills": true,
-    ".github/skills": true,
-    ".claude/skills": true
-  },
-  "github.copilot.chat.customOAIModels": {
-    "brainsos-core": {
-      "name": "brainsOS Core (Default)",
-      "url": "http://litellm:4000/v1",
-      "maxInputTokens": 32768,
-      "maxOutputTokens": 4096,
-      "toolCalling": true,
-      "vision": false
-    },
-    "qwen2.5:latest": {
-      "name": "Qwen 2.5",
-      "url": "http://litellm:4000/v1",
-      "maxInputTokens": 32768,
-      "maxOutputTokens": 4096,
-      "toolCalling": true,
-      "vision": false
-    }
-  },
-  "security.workspace.trust.enabled": false,
-  "security.workspace.trust.startupPrompt": "never",
-  "security.workspace.trust.emptyWindow": true,
-  "http.proxyStrictSSL": false,
-  "telemetry.telemetryLevel": "off",
-  "workbench.startupEditor": "none",
-  "workbench.editor.restoreViewState": true,
-  "explorer.autoReveal": true,
-  "workbench.tree.renderIndentGuides": "always",
-  "workbench.tree.indent": 14,
-  "files.autoSave": "afterDelay",
-  "files.exclude": {
-    "**/.git": false,
-    "**/.svn": true,
-    "**/.hg": true,
-    "**/CVS": true,
-    "**/.DS_Store": true,
-    "**/Thumbs.db": true,
-    "**/.vscode": false
-  },
-  "search.exclude": {
-    "**/node_modules": true,
-    "**/bower_components": true,
-    "**/*.code-search": true,
-    "**/data/litellm_db": true,
-    "**/data/postgres": true,
-    "**/data/langfuse_*": true,
-    "**/data/langfuse_clickhouse": true,
-    "**/data/langfuse_postgres": true,
-    "**/data/telemetry": true,
-    "**/data/control_plane/litellm_db": true
-  },
-  "files.watcherExclude": {
-    "**/.git/objects/**": true,
-    "**/.git/subtree-cache/**": true,
-    "**/node_modules/**": true,
-    "**/.cache/**": true,
-    "**/data/litellm_db/**": true,
-    "**/data/postgres/**": true,
-    "**/data/langfuse_*/**": true,
-    "**/data/langfuse_clickhouse/**": true,
-    "**/data/langfuse_postgres/**": true,
-    "**/data/control_plane/**": true,
-    "**/data/control_plane/litellm_db/**": true,
-    "**/data/workspace/**": true,
-    "**/data/agent_workspaces/**": true,
-    "**/data/comms/**": true,
-    "**/data/telemetry/**": true,
-    "**/.venv/**": true,
-    "**/dist/**": true,
-    "**/build/**": true
-  }
-}
-EOF
-else
-  # Ensure existing settings have dark modern theme, terminal front & center, AI settings, and exclusions
-  python3 - << 'EOF' || true
+python3 - << 'PYEOF' || true
 import json, os
-p = "/home/coder/.local/share/code-server/User/settings.json"
+
+settings_path = "/home/coder/.local/share/code-server/User/settings.json"
+lm_json_path = "/home/coder/.local/share/code-server/User/chatLanguageModels.json"
+
 try:
-    with open(p, "r", encoding="utf-8") as f:
-        d = json.load(f)
+    if os.path.exists(settings_path):
+        with open(settings_path, "r", encoding="utf-8") as f:
+            d = json.load(f)
+    else:
+        d = {}
 except Exception:
     d = {}
+
+op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KEY") or "sk-brainsos-operator-virtual-key"
+
+# Core workbench and theme
 d["workbench.colorTheme"] = "Dark Modern"
 d["window.autoDetectColorScheme"] = False
 d["terminal.integrated.cwd"] = "/data"
 d["terminal.integrated.defaultLocation"] = "editor"
 d["terminal.integrated.defaultProfile.linux"] = "bash"
+
+# AI & Copilot settings (LiteLLM handles all models dynamically via virtual key)
 d["chat.commandCenter.enabled"] = True
 d["chat.defaultModel"] = "brainsos-core"
 d["chat.byokUtilityModelDefault"] = "mainAgent"
+d["chat.promptFiles"] = True
 d["chat.agentFilesLocations"] = {
     ".github/agents": True,
     ".claude/agents": True,
@@ -197,32 +129,60 @@ d["chat.agentSkillsLocations"] = {
     ".github/skills": True,
     ".claude/skills": True
 }
-d["github.copilot.chat.customOAIModels"] = {
-    "brainsos-core": {
-        "name": "brainsOS Core (Default)",
-        "url": "http://litellm:4000/v1",
-        "maxInputTokens": 32768,
-        "maxOutputTokens": 4096,
-        "toolCalling": True,
-        "vision": False
-    },
-    "qwen2.5:latest": {
-        "name": "Qwen 2.5",
-        "url": "http://litellm:4000/v1",
-        "maxInputTokens": 32768,
-        "maxOutputTokens": 4096,
-        "toolCalling": True,
-        "vision": False
-    }
+# Remove any legacy hardcoded model dictionaries
+d.pop("github.copilot.chat.customOAIModels", None)
+
+d["litellm-connector.discoveryTimeoutMs"] = 5000
+d["litellm-connector.enableModelOverrides"] = False
+d["litellm-connector.displayPricingInPicker"] = False
+d["litellm-connector.modelCapabilitiesOverrides"] = {
+    "qwen3.8:latest": "toolCalling",
+    "brainsos-core": "toolCalling",
+    "qwen2.5:latest": "toolCalling"
 }
+
+# Security & telemetry
 d["security.workspace.trust.enabled"] = False
 d["security.workspace.trust.startupPrompt"] = "never"
 d["security.workspace.trust.emptyWindow"] = True
 d["http.proxyStrictSSL"] = False
+d["telemetry.telemetryLevel"] = "off"
+d["workbench.startupEditor"] = "none"
 d["workbench.editor.restoreViewState"] = True
+
+# Pruned Explorer View & Outline / Timeline exclusions
 d["explorer.autoReveal"] = True
+d["explorer.openEditors.visible"] = 0
+d["outline.collapseItems"] = "alwaysCollapse"
+d["outline.showProblems"] = False
+d["timeline.excludeSources"] = ["*"]
+d["npm.exclude"] = ["**"]
+d["foam.orphans.exclude"] = ["**/*"]
+d["foam.placeholders.exclude"] = ["**/*"]
 d["workbench.tree.renderIndentGuides"] = "always"
 d["workbench.tree.indent"] = 14
+d["files.autoSave"] = "afterDelay"
+d["files.exclude"] = {
+    "**/.git": False,
+    "**/.svn": True,
+    "**/.hg": True,
+    "**/CVS": True,
+    "**/.DS_Store": True,
+    "**/Thumbs.db": True,
+    "**/.vscode": False
+}
+d["search.exclude"] = {
+    "**/node_modules": True,
+    "**/bower_components": True,
+    "**/*.code-search": True,
+    "**/data/litellm_db": True,
+    "**/data/postgres": True,
+    "**/data/langfuse_*": True,
+    "**/data/langfuse_clickhouse": True,
+    "**/data/langfuse_postgres": True,
+    "**/data/telemetry": True,
+    "**/data/control_plane/litellm_db": True
+}
 d["files.watcherExclude"] = {
     "**/.git/objects/**": True,
     "**/.git/subtree-cache/**": True,
@@ -243,30 +203,22 @@ d["files.watcherExclude"] = {
     "**/dist/**": True,
     "**/build/**": True
 }
-d["search.exclude"] = {
-    "**/node_modules": True,
-    "**/bower_components": True,
-    "**/*.code-search": True,
-    "**/data/litellm_db": True,
-    "**/data/postgres": True,
-    "**/data/langfuse_*": True,
-    "**/data/langfuse_clickhouse": True,
-    "**/data/langfuse_postgres": True,
-    "**/data/telemetry": True,
-    "**/data/control_plane/litellm_db": True
-}
-with open(p, "w", encoding="utf-8") as f:
-    json.dump(d, f, indent=2)
-EOF
-fi
 
-# 3b. Scaffolding VS Code built-in Language Models (Custom Endpoint to LiteLLM)
-SRC_LM_JSON="/etc/brainsos/editor/chatLanguageModels.json"
-TARGET_LM_JSON="/home/coder/.local/share/code-server/User/chatLanguageModels.json"
-OP_KEY="${OPENAI_API_KEY:-${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}}"
-if [ -f "${SRC_LM_JSON}" ]; then
-  sed "s|\${OPENAI_API_KEY}|${OP_KEY}|g" "${SRC_LM_JSON}" > "${TARGET_LM_JSON}"
-fi
+with open(settings_path, "w", encoding="utf-8") as f:
+    json.dump(d, f, indent=2)
+
+# 3b. Dynamic chatLanguageModels.json with LiteLLM Connector (Zero hardcoded models)
+chat_lm = [
+    {
+        "name": "LiteLLM",
+        "vendor": "litellm-connector",
+        "baseUrl": "http://litellm:4000",
+        "apiKey": op_key
+    }
+]
+with open(lm_json_path, "w", encoding="utf-8") as f:
+    json.dump(chat_lm, f, indent=2)
+PYEOF
 
 # 3c. Ensure /etc/brainsos/system.mk exists for the make wrapper
 if [ ! -f /etc/brainsos/system.mk ] && [ -f /etc/brainsos/editor/system.mk ]; then

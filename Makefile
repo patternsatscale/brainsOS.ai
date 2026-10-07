@@ -9,13 +9,15 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra
+.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
 	@echo "  make setup          - Turnkey bootstrap (.env, data dirs, venv, packages, portal & images)"
+	@echo "  make models-pull    - Seed and pull required LLM weights into local Ollama"
+	@echo "  make models-check   - Check presence of required LLM weights in local Ollama"
 	@echo "  make build          - Build base runner and all platform container images"
 	@echo "  make ssl-wildcard   - Configure public wildcard SSL via Route 53 & SST Ion (*.local.<zone>)"
 	@echo "  make deploy-infra   - Deploy platform cloud infrastructure via SST Ion (Route 53, ACME IAM, SES)"
@@ -37,6 +39,12 @@ help:
 	@echo "  make runner-base    - Build base runner container image (brainsos-runner-base:latest)"
 	@echo "  make runners        - Build all runner images (hermes, openai, claude)"
 	@echo "  make emergency-stop - Instantly terminate agent runner container"
+
+models-pull:
+	@scripts/setup/setup-models.sh $(ARGS)
+
+models-check:
+	@scripts/setup/setup-models.sh --check
 
 ssl-wildcard:
 	@scripts/setup/setup-wildcard-ssl.sh $(ARGS)
