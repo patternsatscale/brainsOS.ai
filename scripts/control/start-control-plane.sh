@@ -84,7 +84,7 @@ LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-}"
 LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY:-}"
 LANGFUSE_OTEL_AUTH="${LANGFUSE_OTEL_AUTH:-}"
 
-# Ensure .venv/bin is in PATH for prisma and litellm
+# Ensure .venv/bin is in PATH for dev tools
 export PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 export DATABASE_URL="${DATABASE_URL}"
 export INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX}"
@@ -97,10 +97,19 @@ get_docker_gateway() {
   echo "${gw:-172.17.0.1}"
 }
 
-# Helper to check if database port is listening
+# Helper to check if LiteLLM database container is running and healthy (Rule 6: isolated on brainsos-litellm-net)
 check_db_ready() {
-  (echo > /dev/tcp/127.0.0.1/"${LITELLM_DB_PORT}") >/dev/null 2>&1 || \
-    (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "${LITELLM_DB_PORT}" >/dev/null 2>&1)
+  local status
+  status=$(docker inspect --format '{{.State.Health.Status}}' brainsos-infra-litellm-db 2>/dev/null || true)
+  if [ "${status}" = "healthy" ]; then
+    return 0
+  fi
+  docker compose exec -T litellm-db pg_isready -U "${LITELLM_DB_USER:-litellm}" -d "${LITELLM_DB_NAME:-litellm}" >/dev/null 2>&1
+}
+
+# Helper to check if containerized LiteLLM gateway is responding
+check_litellm_ready() {
+  curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'
 }
 
 # Helper to identify ASUS Ascent GX10 / DGX OS hardware context
@@ -126,10 +135,18 @@ is_gx10_hardware() {
 stop_services() {
   log_info "Stopping brainsOS host control plane..."
   
+  # 1. Stop containerized LiteLLM gateway
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-infra-litellm"; then
+    log_info "Stopping containerized LiteLLM gateway..."
+    docker compose stop litellm 2>/dev/null || true
+    log_success "LiteLLM stopped."
+  fi
+
+  # Fallback: terminate legacy host PID if present
   if [ -f "${LITELLM_PID_FILE}" ]; then
     PID=$(cat "${LITELLM_PID_FILE}")
     if kill -0 "${PID}" 2>/dev/null; then
-      log_info "Stopping LiteLLM (PID: ${PID})..."
+      log_info "Stopping legacy host LiteLLM (PID: ${PID})..."
       kill "${PID}" || true
       for i in {1..20}; do
         if ! kill -0 "${PID}" 2>/dev/null; then
@@ -142,25 +159,18 @@ stop_services() {
       fi
     fi
     rm -f "${LITELLM_PID_FILE}"
-    log_success "LiteLLM stopped."
   fi
 
-  # Fallback: terminate any residual process on LITELLM_PORT
+  # Fallback: terminate any residual host process on LITELLM_PORT (excluding docker containers)
   if command -v lsof >/dev/null 2>&1; then
     PORT_PIDS=$(lsof -ti :"${LITELLM_PORT}" 2>/dev/null || true)
     if [ -n "${PORT_PIDS}" ]; then
-      log_info "Stopping residual process on port ${LITELLM_PORT} (PID: ${PORT_PIDS})..."
       for p in ${PORT_PIDS}; do
-        kill "${p}" 2>/dev/null || true
+        if ! ps -p "${p}" -o comm= 2>/dev/null | grep -qE "(docker|containerd)"; then
+          log_info "Stopping residual host process on port ${LITELLM_PORT} (PID: ${p})..."
+          kill "${p}" 2>/dev/null || true
+        fi
       done
-      sleep 1
-      REMAINING=$(lsof -ti :"${LITELLM_PORT}" 2>/dev/null || true)
-      if [ -n "${REMAINING}" ]; then
-        for p in ${REMAINING}; do
-          kill -9 "${p}" 2>/dev/null || true
-        done
-      fi
-      log_success "Port ${LITELLM_PORT} freed."
     fi
   fi
 
@@ -239,16 +249,16 @@ status_services() {
     log_warn "Ollama: NOT RUNNING on http://127.0.0.1:11434"
   fi
 
-  # Database status
+  # Database status (Rule 6: isolated on brainsos-litellm-net)
   if check_db_ready; then
-    log_success "Database (PostgreSQL): RUNNING on 127.0.0.1:${LITELLM_DB_PORT}"
+    log_success "Database (PostgreSQL): RUNNING (brainsos-infra-litellm-db: healthy, Rule 6 isolated)"
   else
-    log_warn "Database (PostgreSQL): NOT RUNNING on 127.0.0.1:${LITELLM_DB_PORT}"
+    log_warn "Database (PostgreSQL): NOT RUNNING (brainsos-infra-litellm-db)"
   fi
 
-  # LiteLLM status
-  if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
-    log_success "LiteLLM: RUNNING on http://127.0.0.1:${LITELLM_PORT} (UI: /ui)"
+  # LiteLLM status (Containerized)
+  if check_litellm_ready; then
+    log_success "LiteLLM: RUNNING (brainsos-infra-litellm on http://127.0.0.1:${LITELLM_PORT})"
   else
     log_warn "LiteLLM: NOT RUNNING on http://127.0.0.1:${LITELLM_PORT}"
   fi
@@ -333,9 +343,9 @@ start_services() {
     "${REPO_ROOT}/scripts/setup/setup-models.sh" || log_warn "Model seeding encountered a warning."
   fi
 
-  # 2. Verify or start dedicated LiteLLM PostgreSQL database container
+  # 2. Verify or start dedicated LiteLLM PostgreSQL database container (Rule 6: isolated)
   if check_db_ready; then
-    log_info "LiteLLM PostgreSQL database is already responding on 127.0.0.1:${LITELLM_DB_PORT}."
+    log_info "LiteLLM PostgreSQL database is already responding (brainsos-infra-litellm-db)."
   else
     log_info "Starting dedicated LiteLLM PostgreSQL database (brainsos-infra-litellm-db)..."
     docker compose up -d litellm-db
@@ -350,7 +360,7 @@ start_services() {
     done
 
     if [ "${DB_READY}" != true ]; then
-      log_error "Failed to start LiteLLM PostgreSQL database on 127.0.0.1:${LITELLM_DB_PORT}."
+      log_error "Failed to start LiteLLM PostgreSQL database container (brainsos-infra-litellm-db)."
       exit 1
     fi
     log_success "LiteLLM PostgreSQL database started and responding."
@@ -367,131 +377,16 @@ start_services() {
     fi
   fi
 
-  # Dynamic LiteLLM Observability Configuration
-  LITELLM_SUCCESS_CALLBACKS=""
-  LITELLM_FAILURE_CALLBACKS=""
-  OTEL_EXPORTER_OTLP_ENDPOINT=""
-  OTEL_EXPORTER_OTLP_HEADERS=""
-
-  if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && [ -n "${LANGFUSE_SECRET_KEY}" ]; then
-    LITELLM_SUCCESS_CALLBACKS="langfuse,otel"
-    LITELLM_FAILURE_CALLBACKS="langfuse,otel"
-    
-    # Resolve host-level endpoint: if LANGFUSE_HOST points to brainsos.local and does not resolve natively on host, use loopback
-    HOST_LANGFUSE_URL="${LANGFUSE_HOST}"
-    if [[ "${HOST_LANGFUSE_URL}" == *"langfuse.brainsos.local"* ]] && ! curl -s -m 1 "${HOST_LANGFUSE_URL}/api/public/health" >/dev/null 2>&1; then
-      HOST_LANGFUSE_URL="http://127.0.0.1:${LANGFUSE_PORT}"
-    fi
-
-    OTEL_EXPORTER_OTLP_ENDPOINT="${HOST_LANGFUSE_URL}/api/public/otel"
-    if [ -z "${LANGFUSE_OTEL_AUTH}" ] || [ "${LANGFUSE_OTEL_AUTH}" = "Basic" ] || [[ "${LANGFUSE_OTEL_AUTH}" != *" "* ]]; then
-      LANGFUSE_OTEL_AUTH="Basic $(echo -n "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\r\n')"
-    fi
-    OTEL_EXPORTER_OTLP_HEADERS="Authorization=${LANGFUSE_OTEL_AUTH}"
-    log_info "LiteLLM Observability: ENABLED (Langfuse & OTel -> ${HOST_LANGFUSE_URL})"
+  # 3. Verify or start containerized LiteLLM gateway
+  if check_litellm_ready; then
+    log_info "LiteLLM gateway is already running on http://127.0.0.1:${LITELLM_PORT}."
   else
-    log_info "LiteLLM Observability: STANDBY (LANGFUSE_PUBLIC_KEY unset)"
-  fi
+    log_info "Starting containerized LiteLLM gateway (brainsos-infra-litellm)..."
+    docker compose up -d litellm
 
-  # 3. Start LiteLLM if not already responding
-  if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
-    log_info "LiteLLM is already running on http://127.0.0.1:${LITELLM_PORT}."
-  else
-    if [ ! -x ".venv/bin/python" ]; then
-      log_error "Python not found in .venv/bin/python. Please run ./scripts/setup/setup-host.sh first."
-      exit 1
-    fi
-
-    log_info "Starting LiteLLM proxy gateway on port ${LITELLM_PORT}..."
-    CADDY_CA_FILE="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}/caddy_root.crt"
-    if [ ! -f "${CADDY_CA_FILE}" ] && [ -f "${REPO_ROOT}/config/caddy/root.crt" ]; then
-      CADDY_CA_FILE="${REPO_ROOT}/config/caddy/root.crt"
-    fi
-
-    # Enforce LiteLLM UI Dark Theme patch across all static UI bundles
-    _litellm_ui_out="$(find "${REPO_ROOT}/.venv" -type d -path "*/litellm/proxy/_experimental/out" 2>/dev/null | head -n 1)"
-    if [ -n "${_litellm_ui_out}" ] && [ -d "${_litellm_ui_out}" ]; then
-      "${REPO_ROOT}/.venv/bin/python" -c '
-import os
-out_dir = "'"${_litellm_ui_out}"'"
-for root, _, files in os.walk(out_dir):
-    for file in files:
-        if file.endswith((".html", ".txt", ".js")):
-            filepath = os.path.join(root, file)
-            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-            modified = False
-            if "(\"class\",\"theme\",\"light\"" in content:
-                content = content.replace("(\"class\",\"theme\",\"light\"", "(\"class\",\"theme\",\"dark\"")
-                modified = True
-            if "\"defaultTheme\":\"light\"" in content:
-                content = content.replace("\"defaultTheme\":\"light\"", "\"defaultTheme\":\"dark\"")
-                modified = True
-            if file.endswith(".html") and "<html lang=\"en\">" in content:
-                content = content.replace("<html lang=\"en\">", "<html lang=\"en\" class=\"dark\"><head><script>try{localStorage.setItem(\"theme\",\"dark\");document.documentElement.classList.add(\"dark\");}catch(e){}</script>")
-                content = content.replace("<head><script>try{localStorage.setItem(\"theme\",\"dark\");document.documentElement.classList.add(\"dark\");}catch(e){}</script><head>", "<head><script>try{localStorage.setItem(\"theme\",\"dark\");document.documentElement.classList.add(\"dark\");}catch(e){}</script>")
-                modified = True
-            if modified:
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(content)
-' 2>/dev/null || true
-    fi
-
-    # Combine local Caddy CA with system certifi CA if custom Caddy root certificate exists,
-    # ensuring internal Authentik SSO calls pass while preserving access to external APIs & pricing maps.
-    if [ -s "${CADDY_CA_FILE}" ]; then
-      SYSTEM_CA="$("${REPO_ROOT}/.venv/bin/python" -m certifi 2>/dev/null || true)"
-      if [ -z "${SYSTEM_CA}" ] && [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
-        SYSTEM_CA="/etc/ssl/certs/ca-certificates.crt"
-      fi
-      if [ -n "${SYSTEM_CA}" ] && [ -f "${SYSTEM_CA}" ]; then
-        COMBINED_CA="${PID_DIR}/combined_ca.pem"
-        cat "${SYSTEM_CA}" "${CADDY_CA_FILE}" > "${COMBINED_CA}" 2>/dev/null || cp "${CADDY_CA_FILE}" "${COMBINED_CA}"
-        export SSL_CERT_FILE="${COMBINED_CA}"
-        export REQUESTS_CA_BUNDLE="${COMBINED_CA}"
-      else
-        export SSL_CERT_FILE="${CADDY_CA_FILE}"
-        export REQUESTS_CA_BUNDLE="${CADDY_CA_FILE}"
-      fi
-    else
-      unset SSL_CERT_FILE REQUESTS_CA_BUNDLE 2>/dev/null || true
-    fi
-
-    DATABASE_URL="${DATABASE_URL}" \
-    LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
-    LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
-    LANGFUSE_HOST="${HOST_LANGFUSE_URL:-${LANGFUSE_HOST}}" \
-    LANGFUSE_BASE_URL="${HOST_LANGFUSE_URL:-${LANGFUSE_HOST}}" \
-    LITELLM_SUCCESS_CALLBACKS="${LITELLM_SUCCESS_CALLBACKS}" \
-    LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
-    OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
-    OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
-    GENERIC_CLIENT_ID="${GENERIC_CLIENT_ID:-litellm-proxy}" \
-    GENERIC_CLIENT_SECRET="${GENERIC_CLIENT_SECRET:-brainsos_litellm_secret}" \
-    GENERIC_AUTHORIZATION_ENDPOINT="${GENERIC_AUTHORIZATION_ENDPOINT:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/authorize/}" \
-    GENERIC_TOKEN_ENDPOINT="${GENERIC_TOKEN_ENDPOINT:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/token/}" \
-    GENERIC_USERINFO_ENDPOINT="${GENERIC_USERINFO_ENDPOINT:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/userinfo/}" \
-    PROXY_BASE_URL="${PROXY_BASE_URL:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
-    AUTO_REDIRECT_UI_LOGIN_TO_SSO="${AUTO_REDIRECT_UI_LOGIN_TO_SSO:-true}" \
-    PROXY_ADMIN_ID="${PROXY_ADMIN_ID:-${BRAINSOS_ADMIN_USERNAME:-admin}}" \
-    UI_USERNAME="${BRAINSOS_ADMIN_USERNAME:-admin}" \
-    UI_PASSWORD="${BRAINSOS_ADMIN_PASSWORD}" \
-    LITELLM_PROXY_ADMIN_NAME="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
-    PROXY_ADMIN_EMAILS="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}},operator@brainsos.ai,operator@${BRAINSOS_DOMAIN:-local.brainsos.ai}" \
-    nohup ${SETSID_CMD} .venv/bin/python .venv/bin/litellm \
-      --config "${REPO_ROOT}/config/litellm/config.yaml" \
-      --host "0.0.0.0" \
-      --port "${LITELLM_PORT}" \
-      --num_workers 1 \
-      </dev/null >"${PID_DIR}/litellm.log" 2>&1 &
-    LITELLM_PID=$!
-    disown "${LITELLM_PID}" 2>/dev/null || true
-    echo "${LITELLM_PID}" > "${LITELLM_PID_FILE}"
-
-    # Wait for LiteLLM
     READY=false
-    for i in {1..90}; do
-      if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
+    for i in {1..45}; do
+      if check_litellm_ready; then
         READY=true
         break
       fi
@@ -500,10 +395,10 @@ for root, _, files in os.walk(out_dir):
 
     if [ "${READY}" != true ]; then
       log_error "Failed to start LiteLLM on port ${LITELLM_PORT}."
-      log_error "Check logs at: ${PID_DIR}/litellm.log"
+      log_error "Check container logs with: docker compose logs litellm"
       exit 1
     fi
-    log_success "LiteLLM gateway started (PID: ${LITELLM_PID})."
+    log_success "LiteLLM gateway started."
   fi
 
   # 4. Provision fleet virtual keys in LiteLLM control plane database

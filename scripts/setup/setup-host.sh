@@ -71,19 +71,11 @@ if command -v docker >/dev/null 2>&1; then
   fi
 fi
 
-# 0C. External LiteLLM & Port Conflict Precheck
-EXTERNAL_LITELLM="$(command -v litellm 2>/dev/null || true)"
-if [ -n "${EXTERNAL_LITELLM}" ] && [[ "${EXTERNAL_LITELLM}" != "${REPO_ROOT}/.venv/*" ]]; then
-  log_warn "Detected external LiteLLM binary at: ${EXTERNAL_LITELLM}"
-  log_warn "brainsOS encapsulates its control plane in ${REPO_ROOT}/.venv."
-  log_warn "Ensure external LiteLLM processes (e.g. from pipx) are not actively running."
-fi
-
-# Check for residual process on LiteLLM port (default 4000)
+# 0C. Port Conflict Precheck
 CHECK_PORT="${LITELLM_PORT:-4000}"
 if (echo > /dev/tcp/127.0.0.1/"${CHECK_PORT}") >/dev/null 2>&1 || \
    (command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "${CHECK_PORT}" >/dev/null 2>&1); then
-  log_warn "Port ${CHECK_PORT} is already listening on localhost. Verify it is not occupied by an external service."
+  log_info "Port ${CHECK_PORT} is currently active (LiteLLM control plane gateway)."
 fi
 
 # ------------------------------------------------------------------------------
@@ -226,37 +218,23 @@ if [ -z "${UV_BIN}" ]; then
 fi
 
 if [ -n "${UV_BIN}" ] && [ -x "${UV_BIN}" ]; then
-  log_info "Using uv (${UV_BIN}) to manage LiteLLM virtualenv..."
+  log_info "Using uv (${UV_BIN}) to manage host dev virtualenv..."
   if [ ! -d ".venv" ]; then
     log_info "Creating .venv virtual environment..."
     "${UV_BIN}" venv .venv
   fi
-  # The distributed observability platform server runs containerized Langfuse v4.38.0.
-  log_info "Ensuring 'litellm[proxy]', 'prisma', 'langfuse' (LiteLLM logger), and 'opentelemetry' are installed in .venv..."
-  "${UV_BIN}" pip install --python .venv/bin/python "litellm[proxy]" "prisma" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
+  log_info "Ensuring dev tooling and observability packages are installed in .venv..."
+  "${UV_BIN}" pip install --python .venv/bin/python pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
 else
-  log_info "Using system python3 to manage LiteLLM virtualenv..."
+  log_info "Using system python3 to manage host dev virtualenv..."
   if [ ! -d ".venv" ]; then
     python3 -m venv .venv
   fi
   .venv/bin/pip install --upgrade pip >/dev/null 2>&1 || true
-  .venv/bin/pip install "litellm[proxy]" "prisma" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
+  .venv/bin/pip install pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
 fi
 
-if [ -x ".venv/bin/litellm" ]; then
-  log_success "LiteLLM control plane gateway installed in .venv."
-else
-  log_error "Failed to verify LiteLLM binary in .venv/bin/litellm"
-  exit 1
-fi
-
-# Pre-generate Prisma client Python bindings for LiteLLM database operations
-LITELLM_SCHEMA=$(find .venv -name "schema.prisma" 2>/dev/null | head -n 1)
-if [ -n "${LITELLM_SCHEMA}" ] && [ -f "${LITELLM_SCHEMA}" ]; then
-  log_info "Pre-generating Prisma client bindings from ${LITELLM_SCHEMA}..."
-  PATH="${REPO_ROOT}/.venv/bin:${PATH}" .venv/bin/prisma generate --schema "${LITELLM_SCHEMA}" >/dev/null 2>&1 || true
-  log_success "Prisma client bindings pre-generated."
-fi
+log_success "Host Python environment initialized in .venv."
 
 # ------------------------------------------------------------------------------
 # 3. Docker & Docker Compose Verification
