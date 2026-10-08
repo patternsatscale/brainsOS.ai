@@ -248,3 +248,17 @@ def test_cli_once():
         exit_code = cli_main(["--once", "--queue-url", "https://sqs.mock/queue", "--smtp-port", "10025"])
         assert exit_code == 0
         mock_instance.poll_once.assert_called_once()
+
+
+def test_sqs_consumer_unconfigured_queue_url():
+    config = IngressConfig(sqs_queue_url="")
+    consumer = SqsIngressConsumer(config=config)
+    assert consumer.poll_once() == 0
+
+
+def test_sqs_consumer_run_stops_cleanly_when_unconfigured():
+    config = IngressConfig(sqs_queue_url="")
+    consumer = SqsIngressConsumer(config=config)
+    consumer.stop()
+    consumer.run()
+    assert consumer._running is False

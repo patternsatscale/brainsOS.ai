@@ -88,7 +88,20 @@ entries:
     attrs:
       title: "brainsOS • Operator Sign In"
 
-  # 7. LiteLLM Gateway OIDC Provider
+  # 7. LiteLLM Groups Scope Mapping
+  - identifiers:
+      scope_name: "groups"
+    model: authentik_providers_oauth2.scopemapping
+    id: litellm_groups_mapping
+    attrs:
+      name: "LiteLLM Groups Scope Mapping"
+      scope_name: "groups"
+      expression: |
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()]
+        }
+
+  # 7b. LiteLLM Gateway OIDC Provider
   - identifiers:
       name: "LiteLLM Gateway OIDC"
     model: authentik_providers_oauth2.oauth2provider
@@ -99,12 +112,10 @@ entries:
       client_id: "litellm-proxy"
       client_secret: "brainsos_litellm_secret"
       redirect_uris: |
-        https://osx.local.brainsos.ai/sso/callback
-        https://osx.local.brainsos.ai/proxy/ui/sso/callback
-        https://dgx.local.brainsos.ai/sso/callback
-        https://dgx.local.brainsos.ai/proxy/ui/sso/callback
-        https://local.brainsos.ai/sso/callback
-        https://local.brainsos.ai/proxy/ui/sso/callback
+        https://.*\.local\.brainsos\.ai/sso/callback
+        https://.*\.local\.brainsos\.ai/proxy/ui/sso/callback
+        https://.*\.brainsos\.ai/sso/callback
+        https://.*\.brainsos\.ai/proxy/ui/sso/callback
         http://localhost:4000/sso/callback
         .*
       authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
@@ -116,6 +127,7 @@ entries:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "openid"]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "email"]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, "profile"]]
+        - !KeyOf litellm_groups_mapping
 
   # 8. LiteLLM Application
   - identifiers:
@@ -126,7 +138,7 @@ entries:
       name: "LiteLLM Gateway"
       slug: "litellm"
       provider: !KeyOf litellm_oidc_provider
-      meta_launch_url: "https://osx.local.brainsos.ai/proxy/ui/"
+      meta_launch_url: "https://local.brainsos.ai/proxy/ui/"
 
   # 9. Langfuse Observability OIDC Provider
   - identifiers:

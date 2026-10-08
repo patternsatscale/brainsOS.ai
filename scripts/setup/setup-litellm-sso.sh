@@ -170,7 +170,6 @@ SSO_PAYLOAD=$(cat <<EOF
   "role_mappings": {
     "provider": "generic",
     "group_claim": "groups",
-    "default_role": "internal_user",
     "roles": {
       "proxy_admin": ["authentik Admins", "admins", "admin", "appliance-admins"]
     }

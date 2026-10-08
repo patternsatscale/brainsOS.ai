@@ -5,6 +5,12 @@
 
 name: brainsos
 
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ============================================================================
   # L7: Communications & UX Plane
@@ -137,6 +143,8 @@ services:
 
   # Communications & Mail Plane: Inbound Email Ingress Daemon (AWS SQS/S3 -> Postfix)
   mail-ingress:
+    profiles:
+      - mail-ingress
     build:
       context: .
       dockerfile: docker/mail/Dockerfile.ingress
@@ -171,6 +179,7 @@ services:
       - LOCAL_SMTP_PORT=25
       - INGRESS_POLL_WAIT_SECONDS=${INGRESS_POLL_WAIT_SECONDS:-20}
       - INGRESS_MAX_MESSAGES=${INGRESS_MAX_MESSAGES:-5}
+    logging: *default-logging
 
   # Communications Plane: Dedicated Isolated SOGo Database (PostgreSQL 16)
   # Rule 6 Invariant: Completely isolated from brainsos-infra-litellm-db.
@@ -581,7 +590,7 @@ services:
   # Rule 2: Routes completions to host Ollama (http://host.docker.internal:11434)
   # Rule 6: Strictly isolated database access over brainsos-litellm-net
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm-database:main-latest
     container_name: brainsos-infra-litellm
     restart: unless-stopped
     security_opt:
@@ -606,24 +615,23 @@ services:
       # Authentik OIDC Single Sign-On
       - AUTO_REDIRECT_UI_LOGIN_TO_SSO=true
       - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}
-      - PROXY_ADMIN_ID=admin@${BRAINSOS_DOMAIN:-brainsos.local}
-      - LITELLM_PROXY_ADMIN_NAME=admin@${BRAINSOS_DOMAIN:-brainsos.local}
-      - PROXY_ADMIN_EMAILS=admin@${BRAINSOS_DOMAIN:-brainsos.local},admin@dgx,admin@osx.local.brainsos.ai,operator@brainsos.ai,admin
+      - PROXY_ADMIN_ID=${BRAINSOS_ADMIN_USERNAME:-admin}
+      - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
+      - PROXY_ADMIN_EMAILS=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}},admin@dgx,admin@osx.local.brainsos.ai,operator@brainsos.ai,admin
       - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
       - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
       - GENERIC_AUTHORIZATION_ENDPOINT=https://${BRAINSOS_DOMAIN:-brainsos.local}/application/o/authorize/
       - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
       - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
-      - GENERIC_USER_ID_ATTRIBUTE=email
-      - "GENERIC_ROLE_MAPPINGS_ROLES={'proxy_admin': ['authentik Admins', 'admins', 'admin']}"
-      - GENERIC_ROLE_MAPPINGS_GROUP_CLAIM=groups
-      - GENERIC_ROLE_MAPPINGS_DEFAULT_ROLE=internal_user
+      - GENERIC_USER_ID_ATTRIBUTE=preferred_username
     networks:
       brainsos-litellm-net:
       brainsos-internal:
         aliases:
           - litellm
           - brainsos-litellm
+      brainsos-ingress:
+    logging: *default-logging
     depends_on:
       litellm-db:
         condition: service_healthy
