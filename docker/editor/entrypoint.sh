@@ -28,6 +28,24 @@ for p in glob.glob('/home/coder/.local/share/code-server/extensions/foam.foam-vs
         pass
 EOF
 
+# Patch LiteLLM Connector extension in user and opt extensions directories:
+# In headless code-server, VS Code's SecretStorage cannot resolve secrets via GUI prompt.
+# Removing "secret": true ensures VS Code passes apiKey from chatLanguageModels.json directly.
+python3 - << 'EOF' || true
+import glob
+for p in glob.glob('/home/coder/.local/share/code-server/extensions/gethnet.litellm-connector-copilot-*/package.json') + \
+         glob.glob('/opt/code-server/extensions/gethnet.litellm-connector-copilot-*/package.json'):
+    try:
+        with open(p, 'r') as f:
+            c = f.read()
+        if '"secret": true' in c:
+            c = c.replace('"secret": true,', '').replace('"secret": true', '')
+            with open(p, 'w') as f:
+                f.write(c)
+    except Exception:
+        pass
+EOF
+
 # Purge deprecated Continue extension artifacts if present to ensure clean environment
 rm -rf /home/coder/.local/share/code-server/extensions/*continue* /home/coder/.continue /opt/code-server/extensions/*continue* 2>/dev/null || true
 
@@ -145,6 +163,8 @@ d["litellm-connector.modelCapabilitiesOverrides"] = {
 d["security.workspace.trust.enabled"] = False
 d["security.workspace.trust.startupPrompt"] = "never"
 d["security.workspace.trust.emptyWindow"] = True
+d["extensions.autoUpdate"] = False
+d["extensions.autoCheckUpdates"] = False
 d["http.proxyStrictSSL"] = False
 d["telemetry.telemetryLevel"] = "off"
 d["workbench.startupEditor"] = "none"

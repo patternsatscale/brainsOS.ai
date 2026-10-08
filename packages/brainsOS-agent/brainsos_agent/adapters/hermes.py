@@ -129,11 +129,16 @@ class HermesMailAdapter(AgentRuntime):
         # 3. Stateless API dispatch to Hermes (POST /v1/chat/completions)
         runner_url = (self.runner_url or "http://127.0.0.1:8642/v1").rstrip("/")
         endpoint = f"{runner_url}/chat/completions"
+        session_id = f"mail-{email.thread_id.strip('<>')}"
         request_payload = {
             "model": profile.model,
             "messages": messages,
             "temperature": 0.7,
             "stream": False,
+            "metadata": {
+                "session_id": session_id,
+                "agent_id": profile.id or profile.name,
+            },
             "extra_body": {
                 "agent_id": profile.id or profile.name,
                 "workspace_root": str(profile.workspace_root),
@@ -145,6 +150,7 @@ class HermesMailAdapter(AgentRuntime):
         headers = {
             "Content-Type": "application/json",
             "X-BrainsOS-Agent": profile.id or profile.name,
+            "x-litellm-session-id": session_id,
         }
 
         # Issue request via httpx

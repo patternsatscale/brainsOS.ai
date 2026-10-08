@@ -231,17 +231,16 @@ if [ -n "${UV_BIN}" ] && [ -x "${UV_BIN}" ]; then
     log_info "Creating .venv virtual environment..."
     "${UV_BIN}" venv .venv
   fi
-  # LiteLLM's LangfusePromptManagement logger requires langfuse SDK v2.x (langfuse>=2.0.0,<3.0.0).
   # The distributed observability platform server runs containerized Langfuse v4.38.0.
   log_info "Ensuring 'litellm[proxy]', 'prisma', 'langfuse' (LiteLLM logger), and 'opentelemetry' are installed in .venv..."
-  "${UV_BIN}" pip install --python .venv/bin/python "litellm[proxy]" "prisma" "langfuse>=2.0.0,<3.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
+  "${UV_BIN}" pip install --python .venv/bin/python "litellm[proxy]" "prisma" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
 else
   log_info "Using system python3 to manage LiteLLM virtualenv..."
   if [ ! -d ".venv" ]; then
     python3 -m venv .venv
   fi
   .venv/bin/pip install --upgrade pip >/dev/null 2>&1 || true
-  .venv/bin/pip install "litellm[proxy]" "prisma" "langfuse>=2.0.0,<3.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
+  .venv/bin/pip install "litellm[proxy]" "prisma" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
 fi
 
 if [ -x ".venv/bin/litellm" ]; then

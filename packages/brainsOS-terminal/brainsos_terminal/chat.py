@@ -34,10 +34,15 @@ def send_chat_message(agent: str, prompt: str) -> str:
     target_url = cfg["url"]
     auth_key = os.environ.get(cfg["key_env"], "")
 
+    session_id = f"cli-{agent}-{os.getpid()}"
     payload = json.dumps(
         {
             "model": "hermes-agent",
             "messages": [{"role": "user", "content": prompt}],
+            "metadata": {
+                "session_id": session_id,
+                "agent_id": agent,
+            },
         }
     ).encode("utf-8")
 
@@ -47,6 +52,7 @@ def send_chat_message(agent: str, prompt: str) -> str:
         headers={
             "Authorization": f"Bearer {auth_key}",
             "Content-Type": "application/json",
+            "x-litellm-session-id": session_id,
         },
     )
 

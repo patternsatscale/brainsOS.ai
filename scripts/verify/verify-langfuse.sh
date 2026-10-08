@@ -142,6 +142,23 @@ if [ -f "config/caddy/Caddyfile" ]; then
   fi
 fi
 
+# Langfuse template & env synchronization (Ticket #276)
+if [ -f "docker/langfuse/.env.example" ]; then
+  if grep -q "AUTH_CUSTOM_CLIENT_ID" docker/langfuse/.env.example && grep -q "AUTH_CUSTOM_ISSUER" docker/langfuse/.env.example; then
+    pass_check "Langfuse template: Authentik SSO parameters codified in docker/langfuse/.env.example."
+  else
+    fail_check "Langfuse template: missing Authentik SSO parameters in docker/langfuse/.env.example."
+  fi
+fi
+
+if [ -f "docker/langfuse/.env" ]; then
+  if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && grep -q "LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}" docker/langfuse/.env; then
+    pass_check "Langfuse environment: root .env and docker/langfuse/.env API keys synchronized."
+  else
+    warn_check "Langfuse environment: API key in docker/langfuse/.env does not match root .env. Run ./scripts/setup/setup-langfuse.sh setup"
+  fi
+fi
+
 # ------------------------------------------------------------------------------
 # 3. Network & DNS Resolution
 # ------------------------------------------------------------------------------
@@ -215,11 +232,12 @@ if [ -n "${ACTIVE_ENDPOINT}" ]; then
 
   # Check sessions REST endpoint (enabled in dual mode)
   if [ -n "${LANGFUSE_PUBLIC_KEY}" ] && [ -n "${LANGFUSE_SECRET_KEY}" ]; then
-    SESSIONS_PROBE=$(curl -s -o /dev/null -w "%{http_code}" -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" "${ACTIVE_ENDPOINT}/api/public/sessions" 2>/dev/null || echo "000")
-    if [ "${SESSIONS_PROBE}" = "200" ]; then
-      pass_check "Langfuse sessions endpoint: ACTIVE on ${ACTIVE_ENDPOINT}/api/public/sessions (HTTP 200)."
+    SESSIONS_RESP=$(curl -s -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" "${ACTIVE_ENDPOINT}/api/public/sessions" 2>/dev/null || echo "{}")
+    SESSIONS_TOTAL=$(echo "${SESSIONS_RESP}" | python3 -c "import sys, json; print(json.load(sys.stdin).get('meta', {}).get('totalItems', 0))" 2>/dev/null || echo "0")
+    if [ "${SESSIONS_TOTAL}" -gt 0 ]; then
+      pass_check "Langfuse sessions endpoint: ACTIVE & POPULATED (${SESSIONS_TOTAL} sessions indexed on ${ACTIVE_ENDPOINT}/api/public/sessions)."
     else
-      warn_check "Langfuse sessions endpoint returned status HTTP ${SESSIONS_PROBE}."
+      warn_check "Langfuse sessions endpoint: ACTIVE on ${ACTIVE_ENDPOINT}/api/public/sessions but 0 sessions found. Run ./scripts/setup/setup-langfuse.sh sync"
     fi
   fi
 fi

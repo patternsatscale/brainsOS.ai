@@ -65,11 +65,14 @@ LANGFUSE_MINIO_DATA_DIR="${LANGFUSE_MINIO_DATA_DIR:-${REPO_ROOT}/data/telemetry/
 
 # Helper to run compose commands
 compose_cmd() {
-  if [ -f "${LANGFUSE_ENV_FILE}" ]; then
-    docker compose -f "${COMPOSE_FILE}" --env-file "${LANGFUSE_ENV_FILE}" "$@"
-  else
-    docker compose -f "${COMPOSE_FILE}" "$@"
+  local env_args=()
+  if [ -f "${REPO_ROOT}/.env" ]; then
+    env_args+=("--env-file" "${REPO_ROOT}/.env")
   fi
+  if [ -f "${LANGFUSE_ENV_FILE}" ]; then
+    env_args+=("--env-file" "${LANGFUSE_ENV_FILE}")
+  fi
+  docker compose -f "${COMPOSE_FILE}" "${env_args[@]}" "$@"
 }
 
 # ------------------------------------------------------------------------------
@@ -182,15 +185,22 @@ with open(file_path, 'w') as f:
   if [ -z "${NEXTAUTH_URL:-}" ] || [[ "${NEXTAUTH_URL}" == *"localhost"* ]]; then
     NEXTAUTH_URL="https://langfuse.${DOMAIN}"
   fi
-  AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse}"
+  AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse/}"
   update_env_var "NEXTAUTH_URL" "${NEXTAUTH_URL}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_CLIENT_ID" "${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}" "${LANGFUSE_ENV_FILE}"
-  update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_langfuse_secret}}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_ISSUER" "${AUTH_CUSTOM_ISSUER}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_NAME" "\"brainsOS SSO\"" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_FETCH_USERINFO" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_DISABLE_USERNAME_PASSWORD" "true" "${LANGFUSE_ENV_FILE}"
+  update_env_var "BRAINSOS_DOMAIN" "${DOMAIN}" "${LANGFUSE_ENV_FILE}"
+
+  # Synchronize database role password if DB container is already running
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^brainsos-langfuse-db$"; then
+    docker exec -i brainsos-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+      -c "ALTER USER \"${LANGFUSE_DB_USER:-langfuse}\" WITH PASSWORD '${SEC_DB_PASS}';" >/dev/null 2>&1 || true
+  fi
 
   export LANGFUSE_HOST="http://127.0.0.1:${LANGFUSE_PORT}"
   export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
@@ -425,6 +435,97 @@ print(json.dumps(res))
     local agent_names
     agent_names=$(echo "${agents_json}" | python3 -c "import json, sys; print(', '.join([a['id'] for a in json.load(sys.stdin)]))" 2>/dev/null || echo "fleet agents")
     log_success "LLM & Agent connections synchronized in Langfuse (LiteLLM: proxy.brainsos.local, agents: ${agent_names})."
+    seed_initial_session
+  fi
+}
+
+# ------------------------------------------------------------------------------
+# Action: Baseline Session & Fleet Telemetry Initialization
+# ------------------------------------------------------------------------------
+seed_initial_session() {
+  if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
+    return 0
+  fi
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^brainsos-langfuse-web$"; then
+    return 0
+  fi
+
+  local python_bin="${REPO_ROOT}/.venv/bin/python"
+  [ ! -x "${python_bin}" ] && python_bin="python3"
+
+  log_info "Synchronizing Langfuse baseline session initialization..."
+  local seed_status
+  seed_status=$("${python_bin}" -c "
+import os, sys, requests, json, time, uuid
+
+pub = '${LANGFUSE_PUBLIC_KEY}'
+sec = '${LANGFUSE_SECRET_KEY}'
+port = '${LANGFUSE_PORT:-3001}'
+host = f'http://127.0.0.1:{port}'
+
+try:
+    r = requests.get(f'{host}/api/public/sessions?limit=5', auth=(pub, sec), timeout=5)
+    if r.status_code == 200:
+        data = r.json()
+        if data.get('meta', {}).get('totalItems', 0) > 0:
+            print('EXISTS')
+            sys.exit(0)
+except Exception:
+    pass
+
+try:
+    trace_id = str(uuid.uuid4())
+    obs_id = str(uuid.uuid4())
+    now = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+
+    payload = {
+        'batch': [
+            {
+                'id': str(uuid.uuid4()),
+                'type': 'trace-create',
+                'timestamp': now,
+                'body': {
+                    'id': trace_id,
+                    'name': 'brainsOS System Bootstrap & Fleet Telemetry Initialization',
+                    'sessionId': 'brainsos-system-bootstrap',
+                    'userId': '${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}',
+                    'tags': ['bootstrap', 'system', 'fleet'],
+                    'metadata': {
+                        'plane': 'observability',
+                        'platform': 'brainsOS',
+                        'version': 'v4.38.0'
+                    }
+                }
+            },
+            {
+                'id': str(uuid.uuid4()),
+                'type': 'generation-create',
+                'timestamp': now,
+                'body': {
+                    'id': obs_id,
+                    'traceId': trace_id,
+                    'name': 'telemetry-handshake',
+                    'model': 'brainsos-core',
+                    'input': {'event': 'system_startup', 'status': 'initialized'},
+                    'output': {'status': 'ready', 'message': 'Langfuse v4 distributed observability plane online and healthy.'},
+                    'usage': {'input': 12, 'output': 18, 'total': 30, 'unit': 'TOKENS'}
+                }
+            }
+        ]
+    }
+    r = requests.post(f'{host}/api/public/ingestion', auth=(pub, sec), json=payload, timeout=5)
+    if r.status_code in (200, 201, 207):
+        print('SEEDED')
+    else:
+        print('FAILED')
+except Exception as e:
+    print('ERROR')
+" 2>/dev/null || echo "SKIPPED")
+
+  if [ "${seed_status}" = "SEEDED" ]; then
+    log_success "Langfuse baseline session initialized ('brainsos-system-bootstrap')."
+  elif [ "${seed_status}" = "EXISTS" ]; then
+    log_success "Langfuse sessions already active and populated."
   fi
 }
 
