@@ -162,14 +162,14 @@ Agents must never violate the following zero-trust operational boundaries:
 - Never commit `.env` or sensitive API keys to Git. Keep all configuration templated in `.env.example`.
 
 ### Rule 6: Control Plane Database Isolation
-- The dedicated PostgreSQL persistence store (`brainsos-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
-- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`brainsos-litellm-net`), or storage volume mounts to the database.
-- The database port has zero host port bindings; it communicates strictly over the isolated `brainsos-litellm-net` network with the containerized LiteLLM gateway.
+- The dedicated PostgreSQL persistence store (`brainsos-control-litellm-db`, formerly `brainsos-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
+- The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`brainsos-control-net`), or storage volume mounts to the database.
+- The database port has zero host port bindings; it communicates strictly over the isolated `brainsos-control-net` network with the containerized LiteLLM gateway.
 - Strict isolation is enforced in `.github/workflows/pre-commit.yml` on every commit and PR.
 
 ### Rule 7: Information Compartmentalization in Agent Context
 - Persona documents (`SOUL.md`), agent prompts, and runtime configurations provided to the agent plane (`hermes`) must observe strict need-to-know principles.
-- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `brainsos-infra-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
+- **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `brainsos-control-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
 - The agent must be instructed exclusively on its assigned interfaces (e.g. its OpenAI-compatible completions endpoint `http://litellm:4000/v1`), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
 
 ### Rule 8: Script-Driven Discipline (Zero Ad-Hoc Container/Host Patching)
@@ -192,8 +192,8 @@ Agents must never violate the following zero-trust operational boundaries:
 
 ### Rule 10: In-Transit Egress Credential Injection
 - **Zero Ambient Container Secrets**: Agent containers must **never** hold raw GitHub tokens (`GH_TOKEN`, `GITHUB_TOKEN`), personal access tokens (PATs), or third-party egress API secrets in their environment variables, `.env` mounts, or on-disk configuration files.
-- **Dedicated Egress Proxying**: All outbound internet traffic from agent containers routes through the dedicated Tool Egress Gateway proxy (`brainsos-net-egress-proxy:8082` via `HTTPS_PROXY`), maintaining 100% standard destination URLs (`https://github.com`, `https://api.github.com`) without fragile URL rewrites or custom enterprise host overrides.
-- **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `brainsos-internal`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
+- **Dedicated Egress Proxying**: All outbound internet traffic from agent containers routes through the dedicated Tool Egress Gateway proxy (`brainsos-agent-egress-proxy:8082` via `HTTPS_PROXY`), maintaining 100% standard destination URLs (`https://github.com`, `https://api.github.com`) without fragile URL rewrites or custom enterprise host overrides.
+- **Multi-Tenant In-Transit Injection & Isolation**: The egress proxy addon (`config/egress/addons/github_auth.py`) inspects client container IP identity on `brainsos-internal-net`. Authorized tenants (e.g. Cindy Pawford) have credentials injected in transit (`Authorization: Bearer` for REST/GraphQL APIs, `Authorization: Basic` for Git Smart HTTP) while unauthorized tenants are rejected (`403 Forbidden`).
 - **Flow Display Redaction**: All injected credentials are masked to `[INJECTED_CINDY_TOKEN]` within flow displays and inspection APIs, ensuring zero ambient secrets leak into the `mitmweb` console.
 
 ### Rule 11: Separation of Build and Record (Lab Work Resides in Private Fleet Repository)

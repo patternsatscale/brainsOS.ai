@@ -62,7 +62,7 @@ log_success "Fleet manifest and compose topology are 100% in sync with zero drif
 # ------------------------------------------------------------------------------
 # 2. Caddy Configuration Syntax Validation
 # ------------------------------------------------------------------------------
-CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?caddy$' | head -n 1 || echo 'brainsos-net-caddy')"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || echo 'brainsos-ingress-caddy')"
 docker exec "${CADDY_CONTAINER}" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 || \
   fail_check "Caddyfile syntax validation failed."
 log_success "Caddyfile configuration syntax validated successfully."

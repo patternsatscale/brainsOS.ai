@@ -201,9 +201,10 @@ fi
 # ------------------------------------------------------------------------------
 # 4. Authentik User Email Synchronization (If auth container active)
 # ------------------------------------------------------------------------------
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-auth-server"; then
+AUTH_SERVER_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
+if [ -n "${AUTH_SERVER_C}" ]; then
   log_info "Step 4: Synchronizing Authentik administrator email in local IdP..."
-  docker exec brainsos-auth-server python3 -c "
+  docker exec "${AUTH_SERVER_C}" python3 -c "
 import os, django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'authentik.root.settings')
 django.setup()

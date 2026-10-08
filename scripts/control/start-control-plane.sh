@@ -97,10 +97,10 @@ get_docker_gateway() {
   echo "${gw:-172.17.0.1}"
 }
 
-# Helper to check if LiteLLM database container is running and healthy (Rule 6: isolated on brainsos-litellm-net)
+# Helper to check if LiteLLM database container is running and healthy (Rule 6: isolated on brainsos-control-net)
 check_db_ready() {
   local status
-  status=$(docker inspect --format '{{.State.Health.Status}}' brainsos-infra-litellm-db 2>/dev/null || true)
+  status=$(docker inspect --format '{{.State.Health.Status}}' brainsos-control-litellm-db 2>/dev/null || docker inspect --format '{{.State.Health.Status}}' brainsos-infra-litellm-db 2>/dev/null || true)
   if [ "${status}" = "healthy" ]; then
     return 0
   fi
@@ -136,7 +136,7 @@ stop_services() {
   log_info "Stopping brainsOS host control plane..."
   
   # 1. Stop containerized LiteLLM gateway
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-infra-litellm"; then
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "brainsos-(control-|infra-)?litellm"; then
     log_info "Stopping containerized LiteLLM gateway..."
     docker compose stop litellm 2>/dev/null || true
     log_success "LiteLLM stopped."
@@ -249,16 +249,16 @@ status_services() {
     log_warn "Ollama: NOT RUNNING on http://127.0.0.1:11434"
   fi
 
-  # Database status (Rule 6: isolated on brainsos-litellm-net)
+  # Database status (Rule 6: isolated on brainsos-control-net)
   if check_db_ready; then
-    log_success "Database (PostgreSQL): RUNNING (brainsos-infra-litellm-db: healthy, Rule 6 isolated)"
+    log_success "Database (PostgreSQL): RUNNING (brainsos-control-litellm-db: healthy, Rule 6 isolated)"
   else
-    log_warn "Database (PostgreSQL): NOT RUNNING (brainsos-infra-litellm-db)"
+    log_warn "Database (PostgreSQL): NOT RUNNING (brainsos-control-litellm-db)"
   fi
 
   # LiteLLM status (Containerized)
   if check_litellm_ready; then
-    log_success "LiteLLM: RUNNING (brainsos-infra-litellm on http://127.0.0.1:${LITELLM_PORT})"
+    log_success "LiteLLM: RUNNING (brainsos-control-litellm on http://127.0.0.1:${LITELLM_PORT})"
   else
     log_warn "LiteLLM: NOT RUNNING on http://127.0.0.1:${LITELLM_PORT}"
   fi
@@ -345,9 +345,9 @@ start_services() {
 
   # 2. Verify or start dedicated LiteLLM PostgreSQL database container (Rule 6: isolated)
   if check_db_ready; then
-    log_info "LiteLLM PostgreSQL database is already responding (brainsos-infra-litellm-db)."
+    log_info "LiteLLM PostgreSQL database is already responding (brainsos-control-litellm-db)."
   else
-    log_info "Starting dedicated LiteLLM PostgreSQL database (brainsos-infra-litellm-db)..."
+    log_info "Starting dedicated LiteLLM PostgreSQL database (brainsos-control-litellm-db)..."
     docker compose up -d litellm-db
     
     DB_READY=false
@@ -360,7 +360,7 @@ start_services() {
     done
 
     if [ "${DB_READY}" != true ]; then
-      log_error "Failed to start LiteLLM PostgreSQL database container (brainsos-infra-litellm-db)."
+      log_error "Failed to start LiteLLM PostgreSQL database container (brainsos-control-litellm-db)."
       exit 1
     fi
     log_success "LiteLLM PostgreSQL database started and responding."
@@ -381,7 +381,7 @@ start_services() {
   if check_litellm_ready; then
     log_info "LiteLLM gateway is already running on http://127.0.0.1:${LITELLM_PORT}."
   else
-    log_info "Starting containerized LiteLLM gateway (brainsos-infra-litellm)..."
+    log_info "Starting containerized LiteLLM gateway (brainsos-control-litellm)..."
     docker compose up -d litellm
 
     READY=false

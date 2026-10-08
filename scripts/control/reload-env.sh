@@ -179,9 +179,10 @@ fi
 # Synchronize Dovecot mail accounts and credentials
 if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
   "${SCRIPT_DIR}/../setup/setup-mail.sh" >/dev/null 2>&1 || true
-  if docker ps --format '{{.Names}}' | grep -q "^brainsos-net-mail-server$"; then
-    docker exec brainsos-net-mail-server doveadm reload 2>/dev/null || true
-    docker exec brainsos-net-mail-server postfix reload 2>/dev/null || true
+  MAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || true)"
+  if [ -n "${MAIL_CONTAINER}" ]; then
+    docker exec "${MAIL_CONTAINER}" doveadm reload 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" postfix reload 2>/dev/null || true
     log_success "Dovecot & Postfix mail accounts synchronized and reloaded."
   fi
 fi
@@ -189,7 +190,7 @@ fi
 # ------------------------------------------------------------------------------
 # 2b. Synchronize Authentik PostgreSQL Database Password (Zero Data Loss)
 # ------------------------------------------------------------------------------
-AUTH_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-auth-db$' | head -n 1 || true)"
+AUTH_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-db$' | head -n 1 || true)"
 if [ -n "${AUTH_DB_CONTAINER}" ]; then
   AUTH_DB_USER="${AUTHENTIK_POSTGRESQL__USER:-authentik}"
   AUTH_DB_NAME="${AUTHENTIK_POSTGRESQL__NAME:-authentik}"
@@ -207,7 +208,9 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Synchronize Langfuse Database Password (if local container is running)
 # ------------------------------------------------------------------------------
-if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
+LF_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
+LF_WEB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-|langfuse-)?web$' | head -n 1 || true)"
+if [ -n "${LF_DB_CONTAINER}" ]; then
   log_info "Step 3/6: Synchronizing local Langfuse database credentials..."
   LANGFUSE_ENV_FILE="${REPO_ROOT}/docker/langfuse/.env"
   if [ -f "${LANGFUSE_ENV_FILE}" ]; then
@@ -215,7 +218,7 @@ if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
     LF_DB_USER=$(grep "^LANGFUSE_DB_USER=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "langfuse")
     LF_DB_NAME=$(grep "^LANGFUSE_DB_NAME=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "langfuse")
     if [ -n "${LF_DB_PASS}" ]; then
-      docker exec brainsos-langfuse-db psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
+      docker exec "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
         -c "ALTER USER \"${LF_DB_USER}\" WITH PASSWORD '${LF_DB_PASS}';" >/dev/null 2>&1 || true
       log_success "Langfuse database password synchronized."
     fi
@@ -224,14 +227,14 @@ if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
     LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
     LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}}"
     LF_ADMIN_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
-    if [ -n "${LF_ADMIN_PASS}" ] && docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$"; then
-      LF_HASH=$(docker exec -i brainsos-langfuse-web node -e "
+    if [ -n "${LF_ADMIN_PASS}" ] && [ -n "${LF_WEB_CONTAINER}" ]; then
+      LF_HASH=$(docker exec -i "${LF_WEB_CONTAINER}" node -e "
         const p = process.argv[1];
         const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
         console.log(bcrypt.hashSync(p, 12));
       " "${LF_ADMIN_PASS}" 2>/dev/null || true)
       if [ -n "${LF_HASH}" ]; then
-        docker exec -i brainsos-langfuse-db psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
+        docker exec -i "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
           -c "
             DO \$\$
             BEGIN
@@ -254,8 +257,9 @@ fi
 # Synchronize Caddy Operator IDE Basic Auth Password Hash
 EFFECTIVE_CODE_PASS="${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
 if [ -n "${EFFECTIVE_CODE_PASS}" ]; then
-  if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
-    OP_HASH=$(docker exec brainsos-net-caddy caddy hash-password --plaintext "${EFFECTIVE_CODE_PASS}" 2>/dev/null || true)
+  CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || true)"
+  if [ -n "${CADDY_CONTAINER}" ]; then
+    OP_HASH=$(docker exec "${CADDY_CONTAINER}" caddy hash-password --plaintext "${EFFECTIVE_CODE_PASS}" 2>/dev/null || true)
   else
     OP_HASH=$(docker run --rm caddy:latest caddy hash-password --plaintext "${EFFECTIVE_CODE_PASS}" 2>/dev/null || true)
   fi
@@ -284,11 +288,12 @@ docker compose up -d
 log_success "Docker services updated with current .env configurations."
 
 # Synchronize Authentik Identity & Master Credentials
-if docker ps --format '{{.Names}}' | grep -q "^brainsos-auth-server$"; then
+AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
+if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
   log_info "Synchronizing Authentik identity and master credentials..."
   ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}"
   ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
-  docker exec -i brainsos-auth-server ak shell -c "
+  docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
 from authentik.core.models import User, Group
 admin_group = Group.objects.filter(name='authentik Admins').first()
 
@@ -314,7 +319,7 @@ if op_u:
 
   # Synchronize Authentik Outpost & Proxy Provider domain routing
   EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
-  docker exec -i brainsos-auth-server ak shell -c "
+  docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
 from authentik.outposts.models import Outpost
 from authentik.providers.proxy.models import ProxyProvider
 from authentik.core.models import Application
@@ -418,7 +423,7 @@ EOF
   log_info "Configured Caddy TLS policy for internal private CA."
 fi
 
-if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(net-)?caddy$'; then
+if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(ingress-|net-)?caddy$'; then
   docker compose restart caddy >/dev/null 2>&1
   log_success "Caddy ingress reloaded."
 fi

@@ -197,8 +197,10 @@ with open(file_path, 'w') as f:
   update_env_var "BRAINSOS_DOMAIN" "${DOMAIN}" "${LANGFUSE_ENV_FILE}"
 
   # Synchronize database role password if DB container is already running
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^brainsos-langfuse-db$"; then
-    docker exec -i brainsos-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+  local lf_db_c
+  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
+  if [ -n "${lf_db_c}" ]; then
+    docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
       -c "ALTER USER \"${LANGFUSE_DB_USER:-langfuse}\" WITH PASSWORD '${SEC_DB_PASS}';" >/dev/null 2>&1 || true
   fi
 
@@ -215,18 +217,20 @@ with open(file_path, 'w') as f:
 # Action: Password & Organization Synchronization
 # ------------------------------------------------------------------------------
 sync_user_password() {
+  local lf_web_c lf_db_c
+  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?web$' | head -n 1 || true)"
+  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
   if [ -n "${LANGFUSE_INIT_USER_PASSWORD:-}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL:-}" ] && \
-     docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$" && \
-     docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
+     [ -n "${lf_web_c}" ] && [ -n "${lf_db_c}" ]; then
     log_info "Synchronizing Langfuse admin users, organization, and project memberships in database..."
     local user_hash
-    user_hash=$(docker exec -i brainsos-langfuse-web node -e "
+    user_hash=$(docker exec -i "${lf_web_c}" node -e "
       const p = process.argv[1];
       const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
       console.log(bcrypt.hashSync(p, 12));
     " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
     if [ -n "${user_hash}" ]; then
-      docker exec -i brainsos-langfuse-db psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+      docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
         -c "
           -- 1. Ensure brainsOS organization and project exist
           INSERT INTO organizations (id, name, created_at, updated_at)
@@ -284,8 +288,10 @@ sync_user_password() {
 # Action: LLM Gateway & Fleet Agent Preconfigured Connections
 # ------------------------------------------------------------------------------
 sync_llm_connection() {
-  if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-web$" && \
-     docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
+  local lf_web_c lf_db_c
+  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?web$' | head -n 1 || true)"
+  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
+  if [ -n "${lf_web_c}" ] && [ -n "${lf_db_c}" ]; then
     log_info "Synchronizing preconfigured LLM & Agent connections in Langfuse project 'brainsos'..."
     local litellm_key="${LITELLM_MASTER_KEY:-sk-supergr00vyd00d!!!}"
     if [ -f "${REPO_ROOT}/.env" ]; then
@@ -321,7 +327,7 @@ res = [{'id': a['id'], 'name': a.get('name', a['id']), 'subdomain': a.get('comms
 print(json.dumps(res))
 " 2>/dev/null || echo "[]")
 
-    docker exec -i brainsos-langfuse-web node -e "
+    docker exec -i "${lf_web_c}" node -e "
       const crypto = require('crypto');
       const { PrismaClient } = require('/app/node_modules/.pnpm/@prisma+client@6.19.3_@typescript+typescript6@6.0.2_prisma@6.19.3_@typescript+typescript6@6.0.2_magicast@0.5.2_/node_modules/@prisma/client');
       const prisma = new PrismaClient();
@@ -446,7 +452,7 @@ seed_initial_session() {
   if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
     return 0
   fi
-  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^brainsos-langfuse-web$"; then
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "^brainsos-(telemetry-|langfuse-)?web$"; then
     return 0
   fi
 

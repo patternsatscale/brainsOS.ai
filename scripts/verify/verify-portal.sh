@@ -161,7 +161,7 @@ if grep -E 'docker\.sock.*(authentik|runner)' <<< "${COMPOSE_YAML}" >/dev/null; 
 fi
 
 # Rule 6: Verify LiteLLM database is isolated
-if grep -E 'brainsos-infra-litellm-db.*(hermes|portal|authentik)' <<< "${COMPOSE_YAML}" >/dev/null; then
+if grep -E 'brainsos-(control-|infra-)?litellm-db.*(hermes|portal|authentik)' <<< "${COMPOSE_YAML}" >/dev/null; then
   fail_check "Rule 6 Violation: LiteLLM database exposed to non-control containers."
 fi
 

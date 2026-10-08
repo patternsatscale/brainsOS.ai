@@ -260,14 +260,14 @@ else
   log_success "Docker socket is strictly absent from ${TARGET_CONTAINER} container."
 fi
 
-# Assert NOT connected to brainsos-litellm-net
+# Assert NOT connected to brainsos-control-net
 log_info "Verifying control plane database network isolation..."
 TARGET_NETWORKS=$(docker inspect "${TARGET_CONTAINER}" --format '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null || echo "")
-if echo "${TARGET_NETWORKS}" | grep -q "brainsos-litellm-net"; then
-  log_error "SECURITY VIOLATION: ${TARGET_CONTAINER} is attached to brainsos-litellm-net!"
+if echo "${TARGET_NETWORKS}" | grep -qE "brainsos-(control|litellm)-net"; then
+  log_error "SECURITY VIOLATION: ${TARGET_CONTAINER} is attached to control plane database network!"
   exit 1
 else
-  log_success "${TARGET_CONTAINER} is strictly isolated from LiteLLM database network."
+  log_success "${TARGET_CONTAINER} is strictly isolated from control plane database network."
 fi
 
 # ------------------------------------------------------------------------------

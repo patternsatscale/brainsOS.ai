@@ -153,7 +153,7 @@ fi
 log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
 SIGNAL_ABOUT=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about || echo "failed")
 if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
-  log_success "Signal-CLI daemon reachable on brainsos-internal network (REST API)."
+  log_success "Signal-CLI daemon reachable on brainsos-internal-net network (REST API)."
 else
   log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
   exit 1

@@ -193,8 +193,9 @@ for i in {1..25}; do
     -H "Content-Type: application/json" > "${TMP_SESSIONS}" 2>/dev/null || true
 
   CH_COUNT=0
-  if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-clickhouse$"; then
-    CH_COUNT=$(docker exec brainsos-langfuse-clickhouse clickhouse-client -q "SELECT count() FROM default.traces WHERE (user_id='${TEST_AGENT}' OR session_id='${TEST_SESSION_ID}') AND timestamp >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
+  CH_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-|langfuse-)?clickhouse$' | head -n 1 || true)"
+  if [ -n "${CH_CONTAINER}" ]; then
+    CH_COUNT=$(docker exec "${CH_CONTAINER}" clickhouse-client -q "SELECT count() FROM default.traces WHERE (user_id='${TEST_AGENT}' OR session_id='${TEST_SESSION_ID}') AND timestamp >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
   fi
 
   MATCH_COUNT=$(python3 -c "

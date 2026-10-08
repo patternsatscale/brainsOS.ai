@@ -53,8 +53,9 @@ OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me
 # 1. Container Status & Health Check
 # ------------------------------------------------------------------------------
 log_info "Step 1: Checking Mail server and Agent container health..."
+MAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || echo 'brainsos-app-mail-server')"
 REQUIRED_CONTAINERS=(
-    "brainsos-net-mail-server"
+    "${MAIL_CONTAINER}"
     "brainsos-agent-terrastella"
     "brainsos-agent-marvin"
     "brainsos-agent-bawtford"

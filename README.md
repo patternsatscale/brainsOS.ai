@@ -128,9 +128,11 @@ graph TD
     end
 
     subgraph "L2: Virtualization & Isolated Bridge Networks"
-        NET_INGRESS["brainsos-ingress"]:::l2
-        NET_INTERNAL["brainsos-internal"]:::l2
-        NET_LITELLM["brainsos-litellm-net"]:::l2
+        NET_INGRESS["brainsos-ingress-net"]:::l2
+        NET_INTERNAL["brainsos-internal-net"]:::l2
+        NET_CONTROL["brainsos-control-net"]:::l2
+        NET_IDE["brainsos-ide-net"]:::l2
+        NET_TELEMETRY["brainsos-telemetry-net"]:::l2
     end
 
     subgraph "L1: Physical & Hardware Layer"
@@ -158,7 +160,7 @@ graph TD
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ L7: Communications, UX & Operator IDE                                       │
 │     - Ingress Reverse Proxy: Caddy (*.brainsos.local, TLS)                 │
-│     - Messaging Daemons: brainsos-net-signal-cli, Postfix SMTP, SOGo        │
+│     - Messaging Daemons: brainsos-app-signal-cli, Postfix SMTP, SOGo        │
 │     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)│
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Execution Plane (Warm Stateless Hermes Runner & Dynamic Profiles) │
@@ -176,17 +178,19 @@ graph TD
 │ L4: Routing, Security & ACSG Control Plane                                  │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
 │     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
-│     - Tool Egress Proxy: brainsos-net-egress-proxy (:8081/8082, flows & auth)│
-│     - Control Plane DB: brainsos-infra-litellm-db (PostgreSQL, isolated)    │
+│     - Tool Egress Proxy: brainsos-agent-egress-proxy (:8081/8082, flows & auth)│
+│     - Control Plane DB: brainsos-control-litellm-db (PostgreSQL, isolated)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane                                                         │
 │     - Host Ollama / vLLM bound strictly to loopback (127.0.0.1:11434)       │
 │     - Zero direct agent access; all completions route through LiteLLM       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L2: Virtualization & Isolated Bridge Networks                               │
-│     - brainsos-ingress (Caddy -> Service ports)                             │
-│     - brainsos-internal (Agent egress & messaging daemons)                  │
-│     - brainsos-litellm-net (Strictly isolates PostgreSQL from agents)       │
+│     - brainsos-ingress-net (Caddy -> Service ports & SSO gates)             │
+│     - brainsos-internal-net (Agent execution, messaging & egress proxy)     │
+│     - brainsos-control-net (Strictly isolates control plane DB from agents) │
+│     - brainsos-ide-net (Isolates Operator VS Code IDE & WebSockets)         │
+│     - brainsos-telemetry-net (Langfuse, ClickHouse, Redis, MinIO bus)       │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L1: Hardware & Physical Plane                                               │
 │     - Bare-Metal Target: ASUS Ascent GX10 (NVIDIA GB10 ARM64, unified memory)│
@@ -418,7 +422,8 @@ brainsOS/
 │   ├── brainsOS-mcp/         # Dynamic FastMCP server exposing tools across packages
 │   ├── brainsOS-queue/       # Modular asynchronous FIFO work queue manager
 │   └── brainsOS-telemetry/   # Decoupled Observer/Observable bus & SyntheticEnergyObserver
-├── docker/                   # Dockerfiles for mail, caddy, editor, hermes, langfuse
+├── docker/                   # Dockerfiles and modular Compose topologies
+│   └── compose/              # Modular Compose v2 files by plane (ingress, agents, control, apps, telemetry)
 ├── docs/  
 │   ├── cohumain/             # COHUMAIN ACSG 25-control catalog & conformance roadmap
 │   ├── project-titan/        # Historical ticket & walkthrough archive (September 2026)

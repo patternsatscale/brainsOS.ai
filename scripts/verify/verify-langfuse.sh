@@ -209,9 +209,10 @@ else
 fi
 
 if command -v docker >/dev/null 2>&1 && [ -n "${ACTIVE_ENDPOINT}" ]; then
-  for c in brainsos-langfuse-web brainsos-langfuse-worker brainsos-langfuse-clickhouse brainsos-langfuse-redis brainsos-langfuse-minio brainsos-langfuse-db; do
-    if docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
-      pass_check "Container '${c}': RUNNING."
+  for c in web worker clickhouse redis minio db; do
+    matched_c="$(docker ps --format '{{.Names}}' | grep -E "^brainsos-(telemetry-|langfuse-)?${c}$" | head -n 1 || true)"
+    if [ -n "${matched_c}" ]; then
+      pass_check "Container '${matched_c}': RUNNING."
     fi
   done
 fi
@@ -262,14 +263,15 @@ fi
 # ------------------------------------------------------------------------------
 # 6. Preconfigured LLM Gateway & Fleet Agent Connections in Langfuse
 # ------------------------------------------------------------------------------
-if docker ps --format '{{.Names}}' | grep -q "^brainsos-langfuse-db$"; then
+LF_DB_C="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
+if [ -n "${LF_DB_C}" ]; then
   log_info "Checking preconfigured LLM & Agent connections in Langfuse..."
-  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
+  if docker exec "${LF_DB_C}" psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE provider='LiteLLM';" 2>/dev/null | grep -q "LiteLLM"; then
     pass_check "Langfuse LLM Connection: 'LiteLLM' (http://proxy.brainsos.local/v1) preconfigured."
   else
     warn_check "Langfuse LLM Connection: 'LiteLLM' not found in database. Run ./scripts/setup/setup-langfuse.sh sync"
   fi
-  if docker exec brainsos-langfuse-db psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE provider IN ('bawtford', 'Bawtford', 'Cindy-Pawford', 'cindy-pawford');" 2>/dev/null | grep -qiE "bawtford|cindy-pawford"; then
+  if docker exec "${LF_DB_C}" psql -U langfuse -d langfuse -t -c "SELECT provider FROM llm_api_keys WHERE provider IN ('bawtford', 'Bawtford', 'Cindy-Pawford', 'cindy-pawford');" 2>/dev/null | grep -qiE "bawtford|cindy-pawford"; then
     pass_check "Langfuse Agent Connection: Creative Director preconfigured."
   else
     warn_check "Langfuse Agent Connection: Creative Director not found in database. Run ./scripts/setup/setup-langfuse.sh sync"

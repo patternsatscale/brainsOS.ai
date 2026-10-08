@@ -57,10 +57,10 @@ elif [ -f .env.example ]; then
   set +a
 fi
 
-PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'brainsos-net-egress-proxy')"
+PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(agent-|net-)?(tool-)?egress-proxy$' | head -n 1 || echo 'brainsos-agent-egress-proxy')"
 CINDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-agent-(bawtford|cindy-pawford)$' | head -n 1 || echo 'brainsos-agent-bawtford')"
 UNAUTH_CONTAINER="brainsos-agent-terrastella"
-CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(net-)?caddy$' | head -n 1 || echo 'brainsos-net-caddy')"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || echo 'brainsos-ingress-caddy')"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
 WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}"
