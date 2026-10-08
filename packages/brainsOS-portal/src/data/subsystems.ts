@@ -147,9 +147,9 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
   },
   security: {
     id: "security",
-    title: "Security",
+    title: "LiteLLM",
     desc: "LiteLLM Gateway & Virtual Keys",
-    route: "/proxy/ui/usage",
+    route: "/ui/",
     hotkey: "⌘3",
     color: "#f59e0b",
     icon: "Shield",

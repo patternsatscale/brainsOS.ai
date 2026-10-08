@@ -167,7 +167,7 @@ with open(file_path, 'w') as f:
     [ -n "${_ROOT_PASS}" ] && LANGFUSE_INIT_USER_PASSWORD="${_ROOT_PASS}"
   fi
 
-  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@osx.local.brainsos.ai}}"
+  LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}}"
   LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
   LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
 
@@ -178,7 +178,7 @@ with open(file_path, 'w') as f:
   update_env_var "LANGFUSE_MIGRATION_V4_WRITE_MODE" "${LANGFUSE_MIGRATION_V4_WRITE_MODE:-dual}" "${LANGFUSE_ENV_FILE}"
 
   # Native Authentik OIDC Single Sign-On & Ingress Callback URL
-  DOMAIN="${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}"
+  DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
   if [ -z "${NEXTAUTH_URL:-}" ] || [[ "${NEXTAUTH_URL}" == *"localhost"* ]]; then
     NEXTAUTH_URL="https://langfuse.${DOMAIN}"
   fi
@@ -252,7 +252,7 @@ sync_user_password() {
           INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
           SELECT 'om_' || substr(md5(u.id || 'brainsos'), 1, 20), u.id, 'brainsos', 'OWNER', NOW(), NOW()
           FROM users u
-          WHERE u.email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@osx.local.brainsos.ai}')
+          WHERE u.email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}')
           ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW();
 
           -- 6. Grant ADMIN role on brainsos project to all members
@@ -262,7 +262,7 @@ sync_user_password() {
           WHERE om.org_id = 'brainsos'
           ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', updated_at = NOW();
 
-          UPDATE users SET admin = true WHERE email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@osx.local.brainsos.ai}');
+          UPDATE users SET admin = true WHERE email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}');
         " >/dev/null 2>&1 || true
       log_success "Langfuse organization 'brainsos' and admin permissions synchronized in PostgreSQL."
     fi

@@ -98,6 +98,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.region is not None:
         config.aws_region = args.region
 
+    if not config.sqs_queue_url:
+        logging.getLogger(__name__).warning(
+            "INGRESS_QUEUE_URL is not configured. Inbound email ingress daemon will not start."
+        )
+        return 0
+
     consumer = SqsIngressConsumer(config=config)
 
     if args.once:

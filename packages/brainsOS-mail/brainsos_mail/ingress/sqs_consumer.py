@@ -142,7 +142,7 @@ class SqsIngressConsumer:
         Returns number of successfully processed messages.
         """
         if not self.config.sqs_queue_url:
-            logger.error("Cannot poll SQS: sqs_queue_url is not configured")
+            logger.warning("Cannot poll SQS: sqs_queue_url is not configured")
             return 0
 
         try:
@@ -153,6 +153,7 @@ class SqsIngressConsumer:
             )
         except (ClientError, BotoCoreError) as exc:
             logger.error("Error receiving messages from SQS (%s): %s", self.config.sqs_queue_url, exc)
+            self._stop_event.wait(timeout=5.0)
             return 0
 
         messages = response.get("Messages", [])
@@ -193,11 +194,21 @@ class SqsIngressConsumer:
             # Not in main thread or unsupported platform
             pass
 
+        if not self.config.sqs_queue_url:
+            logger.warning(
+                "sqs_queue_url is not configured. Inbound email ingress consumer will not run. Exiting.",
+            )
+            self._running = False
+            return
+
         while self._running and not self._stop_event.is_set():
             try:
-                self.poll_once()
+                count = self.poll_once()
+                if count == 0 and self.config.poll_wait_seconds == 0:
+                    self._stop_event.wait(timeout=1.0)
             except Exception as exc:
                 logger.error("Unhandled error in consumer polling loop: %s", exc, exc_info=True)
-                time.sleep(2.0)
+                self._stop_event.wait(timeout=5.0)
 
+        self._running = False
         logger.info("brainsOS-mail SQS Ingress Consumer daemon stopped.")

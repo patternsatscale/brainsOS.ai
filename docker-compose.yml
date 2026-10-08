@@ -5,6 +5,12 @@
 
 name: brainsos
 
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ============================================================================
   # L7: Communications & UX Plane
@@ -49,25 +55,22 @@ services:
       - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
       - ACME_EMAIL=${ACME_EMAIL:-}
     command: >
-      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi;
-      if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
+      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
         export OPERATOR_PASSWORD_HASH="$$(caddy hash-password --plaintext "$${CODE_SERVER_PASSWORD}")";
-      fi;
-      if [ -z "$${BRAINSOS_MAIL_HOST}" ]; then
+      fi; if [ -z "$${BRAINSOS_MAIL_HOST}" ]; then
         if [ "$${BRAINSOS_MAIL_DOMAIN}" = "$${BRAINSOS_DOMAIN}" ] || [ -z "$${BRAINSOS_MAIL_DOMAIN}" ]; then
           export BRAINSOS_MAIL_HOST="mail.$${BRAINSOS_DOMAIN}";
         else
           export BRAINSOS_MAIL_HOST="$${BRAINSOS_MAIL_DOMAIN}";
         fi;
-      fi;
-      exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+      fi; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
     image: bbernhard/signal-cli-rest-api:latest
     container_name: brainsos-net-signal-cli
     restart: unless-stopped
-    entrypoint: ["/entrypoint-brainsos.sh"]
+    entrypoint: [ "/entrypoint-brainsos.sh" ]
     security_opt:
       - "no-new-privileges:true"
     environment:
@@ -122,7 +125,7 @@ services:
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
     healthcheck:
-      test: ["CMD-SHELL", "/usr/sbin/postfix status >/dev/null 2>&1"]
+      test: [ "CMD-SHELL", "/usr/sbin/postfix status >/dev/null 2>&1" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -137,6 +140,8 @@ services:
 
   # Communications & Mail Plane: Inbound Email Ingress Daemon (AWS SQS/S3 -> Postfix)
   mail-ingress:
+    profiles:
+      - mail-ingress
     build:
       context: .
       dockerfile: docker/mail/Dockerfile.ingress
@@ -171,6 +176,7 @@ services:
       - LOCAL_SMTP_PORT=25
       - INGRESS_POLL_WAIT_SECONDS=${INGRESS_POLL_WAIT_SECONDS:-20}
       - INGRESS_MAX_MESSAGES=${INGRESS_MAX_MESSAGES:-5}
+    logging: *default-logging
 
   # Communications Plane: Dedicated Isolated SOGo Database (PostgreSQL 16)
   # Rule 6 Invariant: Completely isolated from brainsos-infra-litellm-db.
@@ -252,7 +258,7 @@ services:
     networks:
       - brainsos-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTHENTIK_POSTGRESQL__USER:-authentik} -d ${AUTHENTIK_POSTGRESQL__NAME:-authentik}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${AUTHENTIK_POSTGRESQL__USER:-authentik} -d ${AUTHENTIK_POSTGRESQL__NAME:-authentik}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -266,7 +272,7 @@ services:
     networks:
       - brainsos-internal
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -292,6 +298,7 @@ services:
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
       AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN:-local.brainsos.ai}
+      BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
     volumes:
       - ./config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ./config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
@@ -330,6 +337,7 @@ services:
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
       AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN:-local.brainsos.ai}
+      BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
     volumes:
       - ./config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ./config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
@@ -355,8 +363,7 @@ services:
     ports:
       - "127.0.0.1:${CODE_SERVER_PORT:-8443}:8443"
     extra_hosts:
-      - "host.docker.internal:host-gateway"
-      - "litellm:host-gateway"
+      - "host.docker.internal:${DOCKER_HOST_GATEWAY:-host-gateway}"
     volumes:
       - ${BRAINSOS_CODE_SERVER_CONFIG:-${BRAINSOS_DATA_DIR:-./data}/control_plane/vscode_config}:/home/coder/.config
       - ${BRAINSOS_CODE_SERVER_DATA:-${BRAINSOS_DATA_DIR:-./data}/control_plane/vscode_data}:/home/coder/.local/share/code-server
@@ -426,12 +433,7 @@ services:
       - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
       - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
     command: >
-      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082
-      --set block_global=false
-      --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
-      --no-web-open-browser
-      -s /addons/theme_loader.py
-      -s /addons/github_auth.py
+      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 --set block_global=false --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}} --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
     volumes:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
       - ./config/egress/addons:/addons:ro
@@ -558,13 +560,12 @@ services:
   # Control plane persistence: Dedicated PostgreSQL Database for LiteLLM
   # Decoupled dynamic persistence for models, virtual keys, rate limits & budgets
   # Strictly isolated on brainsos-litellm-net; unreachable by agent containers
+  # Rule 6 Hardening: Host port binding removed; accessible exclusively over brainsos-litellm-net
   # ============================================================================
   litellm-db:
     image: postgres:16-alpine
     container_name: brainsos-infra-litellm-db
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:${LITELLM_DB_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${LITELLM_DB_NAME:-litellm}
       POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
@@ -574,10 +575,67 @@ services:
     networks:
       - brainsos-litellm-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}" ]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Control Plane Gateway: Containerized LiteLLM Proxy
+  # Rule 2: Routes completions to host Ollama (http://host.docker.internal:11434)
+  # Rule 6: Strictly isolated database access over brainsos-litellm-net
+  litellm:
+    image: ghcr.io/berriai/litellm-database:v1.104.2
+    container_name: brainsos-infra-litellm
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_HOST_GATEWAY:-host-gateway}"
+    volumes:
+      - ${LITELLM_CONFIG:-./config/litellm/config.yaml}:/app/config.yaml:ro
+      - ${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-./data}/control_plane}/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
+    environment:
+      - PORT=4000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - DATABASE_URL=postgresql://${LITELLM_DB_USER:-litellm}:${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}@litellm-db:5432/${LITELLM_DB_NAME:-litellm}
+      - STORE_MODEL_IN_DB=True
+      - BRAINSOS_CORE_MODEL=${BRAINSOS_CORE_MODEL:-ollama_chat/llama3.2:3b}
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      # Authentik OIDC Single Sign-On
+      - AUTO_REDIRECT_UI_LOGIN_TO_SSO=true
+      - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}
+      - PROXY_ADMIN_ID=${BRAINSOS_ADMIN_USERNAME:-admin}
+      - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
+      - PROXY_ADMIN_EMAILS=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}},operator@brainsos.ai,admin
+      - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
+      - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
+      - GENERIC_AUTHORIZATION_ENDPOINT=https://${BRAINSOS_DOMAIN:-brainsos.local}/application/o/authorize/
+      - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
+      - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
+      - GENERIC_USER_ID_ATTRIBUTE=preferred_username
+    networks:
+      brainsos-litellm-net:
+      brainsos-internal:
+        aliases:
+          - litellm
+          - brainsos-litellm
+      brainsos-ingress:
+    logging: *default-logging
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    command: [ "--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0", "--num_workers", "1" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:4000/health/liveness\")'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 # ==============================================================================
 # Isolated Network Topology (L2: Virtualization & Isolation)

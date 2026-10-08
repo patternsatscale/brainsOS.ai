@@ -37,6 +37,16 @@ export function App() {
     window.location.hostname.includes('brainsos')
   );
 
+  // Enforce obsidian dark theme across appliance and same-origin frames
+  useEffect(() => {
+    try {
+      localStorage.setItem('theme', 'dark');
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.style.colorScheme = 'dark';
+    } catch {}
+  }, []);
+
   // Fetch real authenticated user identity from Authentik API immediately on load
   useEffect(() => {
     fetch('/api/v3/core/users/me/', { credentials: 'include' })

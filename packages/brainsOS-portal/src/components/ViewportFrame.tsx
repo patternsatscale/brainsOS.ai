@@ -68,8 +68,8 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       }
       return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
-    if (item.id === 'security' || item.route.includes('/proxy')) {
-      return `${proto}//${host}${port}/proxy/ui/usage`;
+    if (item.id === 'security' || item.route.includes('/proxy') || item.route.includes('/ui')) {
+      return `${proto}//${host}${port}/ui/`;
     }
     return item.route;
   };
@@ -108,7 +108,7 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       return `${baseHost}/project/brainsos/sessions`;
     }
     if (subsystem.id === 'security') {
-      return `${host}/proxy/ui/usage`;
+      return `${host}/proxy/ui/usage/`;
     }
     if (subsystem.route.startsWith('/')) {
       return `${host}${subsystem.route}`;
@@ -222,6 +222,17 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
               }`}
               title={`${item.title} Subsystem Viewport`}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+              onLoad={(e) => {
+                try {
+                  const doc = e.currentTarget.contentDocument;
+                  if (doc) {
+                    doc.documentElement.classList.add('dark');
+                    doc.documentElement.setAttribute('data-theme', 'dark');
+                    doc.documentElement.style.colorScheme = 'dark';
+                    doc.body?.classList.add('dark');
+                  }
+                } catch {}
+              }}
               src={useLiveUrl ? targetUrl : undefined}
               srcDoc={
                 useLiveUrl

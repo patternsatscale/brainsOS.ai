@@ -164,7 +164,7 @@ Agents must never violate the following zero-trust operational boundaries:
 ### Rule 6: Control Plane Database Isolation
 - The dedicated PostgreSQL persistence store (`brainsos-infra-litellm-db`) is strictly reserved for LiteLLM's internal control plane (dynamic model registrations, virtual keys, rate limits, audit tables).
 - The agent plane (`hermes`) must **never** be given database credentials, connection strings (`DATABASE_URL`), network access (`brainsos-litellm-net`), or storage volume mounts to the database.
-- The database port is bound strictly to `127.0.0.1:${LITELLM_DB_PORT:-5432}` on the host for LiteLLM's use only.
+- The database port has zero host port bindings; it communicates strictly over the isolated `brainsos-litellm-net` network with the containerized LiteLLM gateway.
 - Strict isolation is enforced in `.github/workflows/pre-commit.yml` on every commit and PR.
 
 ### Rule 7: Information Compartmentalization in Agent Context

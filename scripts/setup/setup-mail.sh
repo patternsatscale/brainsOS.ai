@@ -175,6 +175,14 @@ docker run --rm -v "$MAIL_DIR:/mail" alpine sh -c "chmod -R 777 /mail && chown -
 echo "[INFO] Building brainsos-mail-server container image..."
 docker build -t brainsos-mail-server:latest "$REPO_ROOT/docker/mail"
 
+# 5. External Email Ingress Daemon (Optional)
+if [[ -n "${INGRESS_QUEUE_URL:-}" ]]; then
+    echo "[INFO] INGRESS_QUEUE_URL is configured. Starting external mail-ingress..."
+    docker compose --profile mail-ingress up -d mail-ingress
+else
+    echo "[INFO] External email ingress (mail-ingress) is not configured (INGRESS_QUEUE_URL is unset). Service remains dormant."
+fi
+
 echo "[SUCCESS] Mail infrastructure setup complete!"
 echo "[INFO] Accounts provisioned:"
 echo "       - admin@brainsos.local (Full shared access over all agent mailboxes)"

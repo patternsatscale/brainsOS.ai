@@ -120,7 +120,7 @@ graph TD
     subgraph "L4: Routing, Security & Control Plane"
         LITELLM["LiteLLM Gateway (:4000)<br/>(Virtual Keys & Spend Limits)"]:::l4
         MITM["Tool Egress Gateway (:8082)<br/>(In-Transit Credential Injection)"]:::l4
-        DB["Control DB (:5432)<br/>(PostgreSQL - Isolated)"]:::l4
+        DB["Control DB<br/>(PostgreSQL - Isolated)"]:::l4
     end
 
     subgraph "L3: Host Inference Plane (Loopback Bound)"

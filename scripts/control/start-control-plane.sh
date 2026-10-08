@@ -468,16 +468,16 @@ for root, _, files in os.walk(out_dir):
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
     GENERIC_CLIENT_ID="${GENERIC_CLIENT_ID:-litellm-proxy}" \
     GENERIC_CLIENT_SECRET="${GENERIC_CLIENT_SECRET:-brainsos_litellm_secret}" \
-    GENERIC_AUTHORIZATION_ENDPOINT="${GENERIC_AUTHORIZATION_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/authorize/}" \
-    GENERIC_TOKEN_ENDPOINT="${GENERIC_TOKEN_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/token/}" \
-    GENERIC_USERINFO_ENDPOINT="${GENERIC_USERINFO_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/userinfo/}" \
-    PROXY_BASE_URL="${PROXY_BASE_URL:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}}" \
+    GENERIC_AUTHORIZATION_ENDPOINT="${GENERIC_AUTHORIZATION_ENDPOINT:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/authorize/}" \
+    GENERIC_TOKEN_ENDPOINT="${GENERIC_TOKEN_ENDPOINT:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/token/}" \
+    GENERIC_USERINFO_ENDPOINT="${GENERIC_USERINFO_ENDPOINT:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/userinfo/}" \
+    PROXY_BASE_URL="${PROXY_BASE_URL:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
     AUTO_REDIRECT_UI_LOGIN_TO_SSO="${AUTO_REDIRECT_UI_LOGIN_TO_SSO:-true}" \
     PROXY_ADMIN_ID="${PROXY_ADMIN_ID:-${BRAINSOS_ADMIN_USERNAME:-admin}}" \
     UI_USERNAME="${BRAINSOS_ADMIN_USERNAME:-admin}" \
     UI_PASSWORD="${BRAINSOS_ADMIN_PASSWORD}" \
-    LITELLM_PROXY_ADMIN_NAME="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}}" \
-    PROXY_ADMIN_EMAILS="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}},operator@brainsos.ai,operator@${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}" \
+    LITELLM_PROXY_ADMIN_NAME="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
+    PROXY_ADMIN_EMAILS="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}},operator@brainsos.ai,operator@${BRAINSOS_DOMAIN:-local.brainsos.ai}" \
     nohup ${SETSID_CMD} .venv/bin/python .venv/bin/litellm \
       --config "${REPO_ROOT}/config/litellm/config.yaml" \
       --host "0.0.0.0" \
