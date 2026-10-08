@@ -256,8 +256,21 @@ if docker compose exec -T code-server test -f /home/coder/.local/share/code-serv
   docker compose exec -T code-server grep -q "litellm:4000" /home/coder/.local/share/code-server/User/chatLanguageModels.json || \
     fail_check "chatLanguageModels.json missing LiteLLM baseUrl (http://litellm:4000)."
   log_success "LiteLLM Connector endpoint verified in chatLanguageModels.json."
+  if docker compose exec -T code-server bash -c '! grep -rq "\"secret\": true" /home/coder/.local/share/code-server/extensions/gethnet.litellm-connector-copilot-*/package.json 2>/dev/null'; then
+    log_success "LiteLLM Connector headless apiKey patch verified (secret: true stripped from package.json)."
+  else
+    fail_check "LiteLLM Connector package.json still contains 'secret: true' which blocks headless API key resolution."
+  fi
 else
   fail_check "chatLanguageModels.json missing inside container."
+fi
+
+# Extension auto-update disabled verification
+log_info "Verifying extension auto-updates disabled in settings.json..."
+if docker compose exec -T code-server grep -qE '"extensions.autoUpdate": *(false|"off")' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Extension auto-update is disabled in settings.json."
+else
+  fail_check "Extension auto-update is not disabled in settings.json!"
 fi
 
 # Workspace trust and SSL bypass verification

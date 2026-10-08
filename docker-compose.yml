@@ -398,6 +398,7 @@ services:
       - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
       - OPENAI_API_BASE=http://litellm:4000/v1
       - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}
+      - OPERATOR_LITELLM_KEY=${OPERATOR_LITELLM_KEY:-}
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
@@ -618,6 +619,10 @@ services:
       - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
       - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
       - GENERIC_USER_ID_ATTRIBUTE=preferred_username
+      # Langfuse Observability Tracing
+      - LANGFUSE_HOST=${LITELLM_LANGFUSE_HOST:-http://host.docker.internal:3001}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
     networks:
       brainsos-litellm-net:
       brainsos-internal:

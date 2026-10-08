@@ -65,9 +65,9 @@ log_success "Rule 1 verified: ZERO portal build artifacts or databases in /memor
 log_info "Step 2: Validating React Thin-Spine Portal SPA build..."
 PORTAL_DIST="${REPO_ROOT}/packages/brainsOS-portal/dist"
 
-if [ ! -f "${PORTAL_DIST}/index.html" ]; then
-  log_warn "Portal build dist missing. Triggering setup-portal.sh build..."
-  "${REPO_ROOT}/scripts/setup/setup-portal.sh"
+if [ ! -f "${PORTAL_DIST}/index.html" ] || [ "${REPO_ROOT}/packages/brainsOS-portal/index.html" -nt "${PORTAL_DIST}/index.html" ]; then
+  log_info "Portal build missing or source index.html updated. Compiling bundle..."
+  (cd "${REPO_ROOT}/packages/brainsOS-portal" && npm run build)
 fi
 
 if [ ! -f "${PORTAL_DIST}/index.html" ]; then
@@ -76,10 +76,16 @@ fi
 
 INDEX_HTML=$(cat "${PORTAL_DIST}/index.html")
 
-grep "brainsOS • Thin Spine Portal" <<< "${INDEX_HTML}" >/dev/null || \
-  fail_check "Portal title missing from compiled bundle."
+grep -qi "<title>.*</title>" <<< "${INDEX_HTML}" || \
+  fail_check "Portal <title> tag missing from compiled bundle."
 
-log_success "Portal static distribution verified (dist/index.html & assets present)."
+EXPECTED_TITLE=$(grep -o '<title>.*</title>' "${REPO_ROOT}/packages/brainsOS-portal/index.html" || true)
+if [ -n "${EXPECTED_TITLE}" ]; then
+  grep -F "${EXPECTED_TITLE}" <<< "${INDEX_HTML}" >/dev/null || \
+    fail_check "Compiled bundle title does not match source index.html (${EXPECTED_TITLE})."
+fi
+
+log_success "Portal static distribution verified (dist/index.html with ${EXPECTED_TITLE} & assets present)."
 
 # ------------------------------------------------------------------------------
 # 3. Authentik Bespoke Theme Verification (Issue #245)
