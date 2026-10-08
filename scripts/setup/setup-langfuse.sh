@@ -177,6 +177,21 @@ with open(file_path, 'w') as f:
   update_env_var "LANGFUSE_INIT_USER_PASSWORD" "${LANGFUSE_INIT_USER_PASSWORD}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_MIGRATION_V4_WRITE_MODE" "${LANGFUSE_MIGRATION_V4_WRITE_MODE:-dual}" "${LANGFUSE_ENV_FILE}"
 
+  # Native Authentik OIDC Single Sign-On & Ingress Callback URL
+  DOMAIN="${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}"
+  if [ -z "${NEXTAUTH_URL:-}" ] || [[ "${NEXTAUTH_URL}" == *"localhost"* ]]; then
+    NEXTAUTH_URL="https://langfuse.${DOMAIN}"
+  fi
+  AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse}"
+  update_env_var "NEXTAUTH_URL" "${NEXTAUTH_URL}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_CLIENT_ID" "${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_langfuse_secret}}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_ISSUER" "${AUTH_CUSTOM_ISSUER}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_NAME" "\"brainsOS SSO\"" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING" "true" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_FETCH_USERINFO" "true" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_DISABLE_USERNAME_PASSWORD" "true" "${LANGFUSE_ENV_FILE}"
+
   export LANGFUSE_HOST="http://127.0.0.1:${LANGFUSE_PORT}"
   export LANGFUSE_PUBLIC_KEY="${SEC_PUBLIC_KEY}"
   export LANGFUSE_SECRET_KEY="${SEC_SECRET_KEY}"
