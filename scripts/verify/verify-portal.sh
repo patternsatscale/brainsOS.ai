@@ -164,7 +164,7 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 6: Validating Single-Origin Path Ingress Topology via Live HTTP requests..."
 
-TARGET_HOST="${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}"
+TARGET_HOST="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
 RESOLVE_ARG="${TARGET_HOST}:443:127.0.0.1"
 
 # A. Trailing-slash redirects
@@ -231,12 +231,13 @@ else
   fail_check "Tool Egress Proxy upstream failed: HTTP ${MITM_UPSTREAM}."
 fi
 
-# Issue #260: LiteLLM Master Key Injection
-LITELLM_UPSTREAM=$(docker compose exec -T caddy sh -c 'curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $LITELLM_MASTER_KEY" http://host.docker.internal:4000/ui/' 2>/dev/null || echo "000")
-if [ "${LITELLM_UPSTREAM}" == "200" ]; then
-  log_success "LiteLLM Admin Console upstream verified with Master Key (HTTP 200 OK)."
+# Issue #260 & #270: LiteLLM Container Upstream
+TARGET_LITELLM="${LITELLM_UPSTREAM:-litellm:4000}"
+LITELLM_STATUS=$(docker compose exec -T caddy sh -c "curl -s -o /dev/null -w \"%{http_code}\" -H \"Authorization: Bearer \$LITELLM_MASTER_KEY\" http://${TARGET_LITELLM}/ui/ || curl -s -o /dev/null -w \"%{http_code}\" http://host.docker.internal:4000/ui/" 2>/dev/null || echo "000")
+if [ "${LITELLM_STATUS}" == "200" ]; then
+  log_success "LiteLLM Admin Console upstream verified at ${TARGET_LITELLM} (HTTP 200 OK)."
 else
-  fail_check "LiteLLM Admin Console upstream failed: HTTP ${LITELLM_UPSTREAM}."
+  fail_check "LiteLLM Admin Console upstream failed: HTTP ${LITELLM_STATUS}."
 fi
 
 echo -e "\n${BOLD}${GREEN}====================================================================${NC}"

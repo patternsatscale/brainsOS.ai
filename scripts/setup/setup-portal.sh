@@ -125,6 +125,7 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-auth-server";
 from authentik.outposts.models import Outpost
 from authentik.providers.proxy.models import ProxyProvider
 from authentik.core.models import Application
+from authentik.providers.oauth2.models import OAuth2Provider
 
 domain = '${EFFECTIVE_DOMAIN}'
 cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else domain
@@ -145,9 +146,17 @@ for a in Application.objects.all():
         a.meta_launch_url = f'https://{domain}/'
         a.save()
     elif a.slug == 'litellm':
-        a.meta_launch_url = f'https://{domain}/proxy/ui/'
+        a.meta_launch_url = f'https://{domain}/ui/'
         a.save()
-" 2>/dev/null || true
+    elif a.slug == 'langfuse':
+        a.meta_launch_url = f'https://langfuse.{domain}/'
+        a.save()
+
+for oa in OAuth2Provider.objects.all():
+    if oa.name == 'Langfuse Observability OIDC':
+        oa.redirect_uris = f'https://langfuse.{domain}/api/auth/callback/custom\nhttps://langfuse.local.brainsos.ai/api/auth/callback/custom\nhttp://localhost:3001/api/auth/callback/custom\n.*'
+        oa.save()
+"
   log_success "Authentik blueprint applied and domain synchronized with '${EFFECTIVE_DOMAIN}'."
 fi
 

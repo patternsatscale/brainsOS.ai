@@ -6,6 +6,7 @@ import json
 import logging
 import signal
 import threading
+import time
 from typing import Any, Dict, Optional
 
 import boto3

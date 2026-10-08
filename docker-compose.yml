@@ -55,25 +55,22 @@ services:
       - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
       - ACME_EMAIL=${ACME_EMAIL:-}
     command: >
-      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi;
-      if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
+      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
         export OPERATOR_PASSWORD_HASH="$$(caddy hash-password --plaintext "$${CODE_SERVER_PASSWORD}")";
-      fi;
-      if [ -z "$${BRAINSOS_MAIL_HOST}" ]; then
+      fi; if [ -z "$${BRAINSOS_MAIL_HOST}" ]; then
         if [ "$${BRAINSOS_MAIL_DOMAIN}" = "$${BRAINSOS_DOMAIN}" ] || [ -z "$${BRAINSOS_MAIL_DOMAIN}" ]; then
           export BRAINSOS_MAIL_HOST="mail.$${BRAINSOS_DOMAIN}";
         else
           export BRAINSOS_MAIL_HOST="$${BRAINSOS_MAIL_DOMAIN}";
         fi;
-      fi;
-      exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+      fi; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
     image: bbernhard/signal-cli-rest-api:latest
     container_name: brainsos-net-signal-cli
     restart: unless-stopped
-    entrypoint: ["/entrypoint-brainsos.sh"]
+    entrypoint: [ "/entrypoint-brainsos.sh" ]
     security_opt:
       - "no-new-privileges:true"
     environment:
@@ -128,7 +125,7 @@ services:
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
     healthcheck:
-      test: ["CMD-SHELL", "/usr/sbin/postfix status >/dev/null 2>&1"]
+      test: [ "CMD-SHELL", "/usr/sbin/postfix status >/dev/null 2>&1" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -261,7 +258,7 @@ services:
     networks:
       - brainsos-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTHENTIK_POSTGRESQL__USER:-authentik} -d ${AUTHENTIK_POSTGRESQL__NAME:-authentik}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${AUTHENTIK_POSTGRESQL__USER:-authentik} -d ${AUTHENTIK_POSTGRESQL__NAME:-authentik}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -275,7 +272,7 @@ services:
     networks:
       - brainsos-internal
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -301,6 +298,7 @@ services:
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
       AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN:-local.brainsos.ai}
+      BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
     volumes:
       - ./config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ./config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
@@ -339,6 +337,7 @@ services:
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
       AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN:-local.brainsos.ai}
+      BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
     volumes:
       - ./config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ./config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
@@ -434,12 +433,7 @@ services:
       - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
       - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
     command: >
-      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082
-      --set block_global=false
-      --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
-      --no-web-open-browser
-      -s /addons/theme_loader.py
-      -s /addons/github_auth.py
+      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 --set block_global=false --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}} --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
     volumes:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
       - ./config/egress/addons:/addons:ro
@@ -581,7 +575,7 @@ services:
     networks:
       - brainsos-litellm-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -590,7 +584,7 @@ services:
   # Rule 2: Routes completions to host Ollama (http://host.docker.internal:11434)
   # Rule 6: Strictly isolated database access over brainsos-litellm-net
   litellm:
-    image: ghcr.io/berriai/litellm-database:main-latest
+    image: ghcr.io/berriai/litellm-database:v1.104.2
     container_name: brainsos-infra-litellm
     restart: unless-stopped
     security_opt:
@@ -617,7 +611,7 @@ services:
       - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}
       - PROXY_ADMIN_ID=${BRAINSOS_ADMIN_USERNAME:-admin}
       - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
-      - PROXY_ADMIN_EMAILS=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}},admin@dgx,admin@osx.local.brainsos.ai,operator@brainsos.ai,admin
+      - PROXY_ADMIN_EMAILS=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}},operator@brainsos.ai,admin
       - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
       - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
       - GENERIC_AUTHORIZATION_ENDPOINT=https://${BRAINSOS_DOMAIN:-brainsos.local}/application/o/authorize/
@@ -635,9 +629,9 @@ services:
     depends_on:
       litellm-db:
         condition: service_healthy
-    command: ["--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0", "--num_workers", "1"]
+    command: [ "--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0", "--num_workers", "1" ]
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:4000/health/liveness\")'"]
+      test: [ "CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:4000/health/liveness\")'" ]
       interval: 10s
       timeout: 5s
       retries: 5

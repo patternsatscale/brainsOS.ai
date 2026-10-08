@@ -13,7 +13,7 @@ entries:
     attrs:
       username: "admin"
       name: "Appliance Administrator"
-      email: "admin@osx.local.brainsos.ai"
+      email: "admin@brainsos.local"
       is_active: true
       groups:
         - !Find [authentik_core.group, [name, "authentik Admins"]]
@@ -38,15 +38,13 @@ entries:
     attrs:
       name: "brainsOS Portal Ingress"
       authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
-      external_host: "https://osx.local.brainsos.ai"
+      external_host: !Format ["https://%s", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
       internal_host: "http://brainsos-caddy:80"
       mode: "forward_domain"
-      cookie_domain: "local.brainsos.ai"
+      cookie_domain: !Env [AUTHENTIK_COOKIE_DOMAIN, "local.brainsos.ai"]
       redirect_uris: |
-        https://osx.local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
-        https://osx.local.brainsos.ai?X-authentik-auth-callback=true
-        https://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
-        https://local.brainsos.ai?X-authentik-auth-callback=true
+        https://.*
+        http://.*
         .*
 
   # 3. BrainsOS Appliance Application
@@ -58,7 +56,7 @@ entries:
       name: "brainsOS Appliance"
       slug: "brainsos-portal"
       provider: !KeyOf brainsos_proxy_provider
-      meta_launch_url: "https://osx.local.brainsos.ai/"
+      meta_launch_url: !Format ["https://%s/", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
 
   # 4. Bind Proxy Provider to Embedded Outpost
   - identifiers:
@@ -68,7 +66,8 @@ entries:
       name: "authentik Embedded Outpost"
       type: "proxy"
       _config:
-        authentik_host: "https://osx.local.brainsos.ai"
+        authentik_host: !Format ["https://%s", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
+        authentik_host_browser: !Format ["https://%s", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
       providers:
         - !KeyOf brainsos_proxy_provider
 
@@ -138,7 +137,7 @@ entries:
       name: "LiteLLM Gateway"
       slug: "litellm"
       provider: !KeyOf litellm_oidc_provider
-      meta_launch_url: "https://local.brainsos.ai/proxy/ui/"
+      meta_launch_url: !Format ["https://%s/ui/", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
 
   # 9. Langfuse Observability OIDC Provider
   - identifiers:
@@ -151,9 +150,10 @@ entries:
       client_id: "langfuse-trace"
       client_secret: "brainsos_langfuse_secret"
       redirect_uris: |
-        https://langfuse.osx.local.brainsos.ai/api/auth/callback/custom
-        https://langfuse.local.brainsos.ai/api/auth/callback/custom
+        https://langfuse\..*/api/auth/callback/custom
+        https://.*\.brainsos\.ai/api/auth/callback/custom
         http://localhost:3001/api/auth/callback/custom
+        .*
       authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
       include_claims_in_id_token: true
       issuer_mode: "per_provider"
@@ -173,5 +173,5 @@ entries:
       name: "Langfuse Observability"
       slug: "langfuse"
       provider: !KeyOf langfuse_oidc_provider
-      meta_launch_url: "https://langfuse.osx.local.brainsos.ai/"
+      meta_launch_url: !Format ["https://langfuse.%s/", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
 

@@ -27,7 +27,7 @@ services:
       - "${LANGFUSE_PORT:-3001}:3000"
     environment:
       - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://langfuse.osx.local.brainsos.ai}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://langfuse.${BRAINSOS_DOMAIN:-local.brainsos.ai}}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-brainsos_langfuse_nextauth_secret_must_be_set_32_chars}
       - SALT=${SALT:-brainsos_langfuse_salt_secret_must_be_set}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
@@ -39,7 +39,7 @@ services:
       # Native Authentik OIDC Single Sign-On
       - AUTH_CUSTOM_CLIENT_ID=${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}
       - AUTH_CUSTOM_CLIENT_SECRET=${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
-      - AUTH_CUSTOM_ISSUER=${AUTH_LANGFUSE_ISSUER:-https://osx.local.brainsos.ai/application/o/langfuse}
+      - AUTH_CUSTOM_ISSUER=${AUTH_LANGFUSE_ISSUER:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/langfuse}
       - AUTH_CUSTOM_NAME=brainsOS SSO
       - AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=true
       - AUTH_CUSTOM_FETCH_USERINFO=true
@@ -87,7 +87,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "litellm:host-gateway"
-      - "osx.local.brainsos.ai:host-gateway"
+      - "${BRAINSOS_DOMAIN:-local.brainsos.ai}:host-gateway"
       - "local.brainsos.ai:host-gateway"
       - "proxy.brainsos.local:host-gateway"
       - "api.terrastella.brainsos.local:host-gateway"
@@ -97,7 +97,7 @@ services:
     networks:
       - langfuse-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health || exit 1"]
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -192,7 +192,7 @@ services:
     networks:
       - langfuse-net
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -214,7 +214,7 @@ services:
     networks:
       - langfuse-net
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${REDIS_AUTH:-myredissecret} ping | grep -q PONG || exit 1"]
+      test: [ "CMD-SHELL", "redis-cli -a ${REDIS_AUTH:-myredissecret} ping | grep -q PONG || exit 1" ]
       interval: 3s
       timeout: 5s
       retries: 10
@@ -240,7 +240,7 @@ services:
     networks:
       - langfuse-net
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '(echo > /dev/tcp/127.0.0.1/9000)' || exit 1"]
+      test: [ "CMD-SHELL", "bash -c '(echo > /dev/tcp/127.0.0.1/9000)' || exit 1" ]
       interval: 2s
       timeout: 5s
       retries: 10
@@ -265,7 +265,7 @@ services:
     networks:
       - langfuse-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_DB_USER:-langfuse} -d ${LANGFUSE_DB_NAME:-langfuse}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${LANGFUSE_DB_USER:-langfuse} -d ${LANGFUSE_DB_NAME:-langfuse}" ]
       interval: 5s
       timeout: 5s
       retries: 5

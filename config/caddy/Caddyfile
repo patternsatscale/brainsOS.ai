@@ -58,8 +58,7 @@ import tls_policy.caddy
 
 	# --------------------------------------------------------------------------
 	# PLANE 2: Programmatic LiteLLM API Gateway (Direct Token Auth, No SSO)
-	# Matches any host starting with proxy. (e.g. proxy.local.brainsos.ai,
-	# proxy.osx.local.brainsos.ai) OR direct API paths (/v1/*, /proxy/v1/*).
+	# Matches any host starting with proxy. (e.g. proxy.local.brainsos.ai) OR direct API paths (/v1/*, /proxy/v1/*).
 	# Preserves caller's Authorization header (Rule 9 tenant virtual keys).
 	# --------------------------------------------------------------------------
 	@proxy_host header_regexp Host (?i)^proxy\.
@@ -106,8 +105,7 @@ import tls_policy.caddy
 
 	# --------------------------------------------------------------------------
 	# Observability Platform (Host: langfuse.*)
-	# Matches any host starting with langfuse. (e.g. langfuse.local.brainsos.ai,
-	# langfuse.osx.local.brainsos.ai). Direct reverse proxy with framing enabled
+	# Matches any host starting with langfuse. (e.g. langfuse.local.brainsos.ai). Direct reverse proxy with framing enabled
 	# for portal embedding and unblocked trace ingestion.
 	# --------------------------------------------------------------------------
 	@langfuse_host header_regexp Host (?i)^langfuse\.
@@ -276,7 +274,7 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	@litellm_api path /key* /model* /models* /user* /team* /customer* /organization* /project* /provider* /tag* /spend* /global* /health* /routes* /config* /service_account* /public* /settings* /update* /utils* /get_favicon /get_logo_url /get_image /v2/* /v3/*
+	@litellm_api path /key/* /model/* /models* /model_group/* /user/* /team/* /customer/* /spend/* /global/* /health/* /routes* /config/* /service_account/* /public/* /settings/* /get_favicon
 	handle @litellm_api {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
@@ -284,7 +282,7 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	@proxy_litellm_api path /proxy/key* /proxy/model* /proxy/models* /proxy/user* /proxy/team* /proxy/customer* /proxy/organization* /proxy/project* /proxy/provider* /proxy/tag* /proxy/spend* /proxy/global* /proxy/health* /proxy/routes* /proxy/config* /proxy/service_account* /proxy/public* /proxy/settings* /proxy/update* /proxy/utils* /proxy/get_favicon /proxy/get_logo_url /proxy/get_image /proxy/v2/* /proxy/v3/*
+	@proxy_litellm_api path /proxy/key/* /proxy/model/* /proxy/models* /proxy/model_group/* /proxy/user/* /proxy/team/* /proxy/customer/* /proxy/spend/* /proxy/global/* /proxy/health/* /proxy/routes* /proxy/config/* /proxy/service_account/* /proxy/public/* /proxy/settings/*
 	handle @proxy_litellm_api {
 		uri strip_prefix /proxy
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {

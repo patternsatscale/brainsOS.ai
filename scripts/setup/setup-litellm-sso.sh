@@ -97,8 +97,6 @@ log_info "Step 2: Provisioning administrator identities with full proxy_admin pr
 ADMIN_USERS=(
   "${PRIMARY_ADMIN_EMAIL}"
   "admin@${TARGET_DOMAIN}"
-  "admin@dgx"
-  "admin@osx.local.brainsos.ai"
   "admin"
 )
 
@@ -136,7 +134,7 @@ provision_user() {
       log_warn "Update response for '${uid}': ${update_res}"
     fi
   else
-    log_info "User '${uid}' does not exist. Creating new proxy_admin user..."
+    log_info "User '${uid}' does not exist. Creating new proxy_admin user with individual password..."
     local create_res
     create_res=$(curl -s -X POST "${LITELLM_API_BASE}/user/new" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
@@ -144,17 +142,11 @@ provision_user() {
       -d "{
         \"user_id\": \"${uid}\",
         \"user_role\": \"proxy_admin\",
-        \"models\": [\"all-proxy-models\"]
+        \"models\": [\"all-proxy-models\"],
+        \"password\": \"${ADMIN_COMPLIANT_PASS}\"
       }")
     if echo "${create_res}" | grep -q "\"proxy_admin\""; then
-      log_success "Successfully created '${uid}' as proxy_admin (all-proxy-models)."
-      curl -s -X POST "${LITELLM_API_BASE}/user/update" \
-        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-        -H "Content-Type: application/json" \
-        -d "{
-          \"user_id\": \"${uid}\",
-          \"password\": \"${ADMIN_COMPLIANT_PASS}\"
-        }" >/dev/null 2>&1 || true
+      log_success "Successfully created '${uid}' as proxy_admin (all-proxy-models) with individual password."
     else
       log_warn "Create response for '${uid}': ${create_res}"
     fi
@@ -186,6 +178,7 @@ SSO_PAYLOAD=$(cat <<EOF
   "role_mappings": {
     "provider": "generic",
     "group_claim": "groups",
+    "default_role": "internal_user",
     "roles": {
       "proxy_admin": ["authentik Admins", "admins", "admin", "appliance-admins"]
     }
