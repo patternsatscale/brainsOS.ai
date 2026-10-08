@@ -257,7 +257,7 @@ if command -v uv >/dev/null 2>&1; then
   fi
 
   log_info "Installing dev tooling and brainsOS packages in editable mode..."
-  uv pip install --python "${REPO_ROOT}/.venv/bin/python" pytest pytest-asyncio ruff mypy tiktoken "litellm[proxy]" "prisma" "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
+  uv pip install --python "${REPO_ROOT}/.venv/bin/python" pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
   pkg_args=()
   for pkg in "${REPO_ROOT}/packages/"*/; do
     if [ -f "${pkg}/pyproject.toml" ]; then
@@ -275,7 +275,7 @@ elif command -v python3 >/dev/null 2>&1; then
   fi
 
   log_info "Installing dev tooling and brainsOS packages in editable mode..."
-  "${REPO_ROOT}/.venv/bin/pip" install --quiet pytest pytest-asyncio ruff mypy tiktoken "litellm[proxy]" "prisma" "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
+  "${REPO_ROOT}/.venv/bin/pip" install --quiet pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
   pkg_args=()
   for pkg in "${REPO_ROOT}/packages/"*/; do
     if [ -f "${pkg}/pyproject.toml" ]; then
@@ -287,14 +287,6 @@ elif command -v python3 >/dev/null 2>&1; then
   fi
 else
   log_warn "Neither 'uv' nor 'python3' detected on host. Skipping local Python package bootstrap."
-fi
-
-# Pre-generate Prisma client Python bindings for LiteLLM database operations
-LITELLM_SCHEMA=$(find "${REPO_ROOT}/.venv" -name "schema.prisma" 2>/dev/null | head -n 1)
-if [ -n "${LITELLM_SCHEMA}" ] && [ -f "${LITELLM_SCHEMA}" ] && [ -x "${REPO_ROOT}/.venv/bin/prisma" ]; then
-  log_info "Pre-generating Prisma client bindings from ${LITELLM_SCHEMA}..."
-  PATH="${REPO_ROOT}/.venv/bin:${PATH}" "${REPO_ROOT}/.venv/bin/prisma" generate --schema "${LITELLM_SCHEMA}" >/dev/null 2>&1 || true
-  log_success "Prisma client bindings pre-generated."
 fi
 
 # 4. Synchronize Active Skills to Workspace for Antigravity IDE
