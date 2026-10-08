@@ -9,13 +9,19 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync
+.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
-	@echo "  make setup          - Bootstrap environment (.env, data dirs, venv, packages)"
+	@echo "  make setup          - Turnkey bootstrap (.env, data dirs, venv, packages, portal & images)"
+	@echo "  make models-pull    - Seed and pull required LLM weights into local Ollama"
+	@echo "  make models-check   - Check presence of required LLM weights in local Ollama"
+	@echo "  make build          - Build base runner and all platform container images"
+	@echo "  make ssl-wildcard   - Configure public wildcard SSL via Route 53 & SST Ion (*.local.<zone>)"
+	@echo "  make deploy-infra   - Deploy platform cloud infrastructure via SST Ion (Route 53, ACME IAM, SES)"
+	@echo "  make trust-ca       - Export & install Caddy internal root CA into host trust store"
 	@echo "  make skills         - Synchronize default and data plane skills to .agents/skills and bundled package"
 	@echo "  make env            - Generate .env with secure passwords, configure URLs, and rebuild"
 	@echo "  make reload_env     - Reload .env, synchronize passwords across DBs/containers, and show URLs"
@@ -36,6 +42,18 @@ help:
 	@echo "  make runners        - Build all runner images (hermes, openai, claude)"
 	@echo "  make emergency-stop - Instantly terminate agent runner container"
 
+models-pull:
+	@scripts/setup/setup-models.sh $(ARGS)
+
+models-check:
+	@scripts/setup/setup-models.sh --check
+
+ssl-wildcard:
+	@scripts/setup/setup-wildcard-ssl.sh $(ARGS)
+
+deploy-infra:
+	@scripts/setup/deploy-infra.sh $(ARGS)
+
 runner-base:
 	docker build -t brainsos-runner-base:latest -f docker/runners/base/Dockerfile .
 
@@ -54,8 +72,16 @@ runner-claude: runner-base
 
 runners: runner-base runner-hermes runner-openai runner-claude
 
+build: runner-base
+	docker compose build
+
+images: build
+
 portal-build:
 	@cd packages/brainsOS-portal && npm run build
+
+trust-ca:
+	@scripts/setup/trust-caddy-ca.sh $(ARGS)
 
 portal-setup:
 	@scripts/setup/setup-portal.sh
@@ -81,7 +107,7 @@ langfuse-sync:
 	@scripts/setup/setup-langfuse.sh sync
 
 setup:
-	@scripts/control/bootstrap-env.sh
+	@scripts/control/bootstrap-env.sh $(ARGS)
 
 env:
 	@scripts/control/generate-env.sh $(ARGS)
@@ -97,7 +123,7 @@ refresh_env: reload-env
 urls:
 	@scripts/control/show-urls.sh $(ARGS)
 
-up:
+up: runner-base
 	@docker compose up -d
 
 down:

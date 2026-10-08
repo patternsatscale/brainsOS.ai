@@ -53,7 +53,9 @@ RUN code-server --extensions-dir /opt/code-server/extensions --install-extension
 # makes code-server pass the apiKey value from chatLanguageModels.json directly into the extension.
 USER root
 RUN LITELLM_PKG=$(find /opt/code-server/extensions -path "*/gethnet.litellm-connector-copilot-*/package.json" | head -1) && \
-    python3 -c "import json, sys; f_path = sys.argv[1]; c = open(f_path).read().replace('\"secret\": true,', '').replace('\"secret\": true', ''); open(f_path, 'w').write(c); print('Patched:', f_path)" "${LITELLM_PKG}"
+    python3 -c "import json, sys; f_path = sys.argv[1]; c = open(f_path).read().replace('\"secret\": true,', '').replace('\"secret\": true', ''); open(f_path, 'w').write(c); print('Patched:', f_path)" "${LITELLM_PKG}" && \
+    FOAM_PKG=$(find /opt/code-server/extensions -path "*/foam.foam-vscode-*/package.json" | head -1) && \
+    python3 -c "import json, sys; p = sys.argv[1]; d = json.load(open(p)); [v.update({'when': 'false'}) for v in d.get('contributes', {}).get('views', {}).get('explorer', [])]; json.dump(d, open(p, 'w'), indent=2); print('Patched foam views:', p)" "${FOAM_PKG}"
 
 # Copy entrypoint wrapper
 USER root

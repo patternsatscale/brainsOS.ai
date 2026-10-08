@@ -8,14 +8,58 @@
     "workbench.colorTheme": "Default Dark Modern",
     "window.autoDetectColorScheme": false,
     "terminal.integrated.cwd": "/data",
+    "terminal.integrated.defaultLocation": "editor",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "chat.commandCenter.enabled": true,
+    "chat.defaultModel": "brainsos-core",
+    "chat.byokUtilityModelDefault": "mainAgent",
+    "chat.promptFiles": true,
+    "chat.agentFilesLocations": {
+      ".github/agents": true,
+      ".claude/agents": true,
+      ".agents/souls": true,
+      "souls": true
+    },
+    "chat.useAgentSkills": true,
+    "chat.agentSkillsLocations": {
+      ".agents/skills": true,
+      ".github/skills": true,
+      ".claude/skills": true
+    },
+    "litellm-connector.discoveryTimeoutMs": 5000,
+    "litellm-connector.enableModelOverrides": false,
+    "litellm-connector.displayPricingInPicker": false,
+    "litellm-connector.modelCapabilitiesOverrides": {
+      "qwen3.8:latest": "toolCalling",
+      "brainsos-core": "toolCalling",
+      "qwen2.5:latest": "toolCalling"
+    },
     "security.workspace.trust.enabled": false,
     "security.workspace.trust.startupPrompt": "never",
     "security.workspace.trust.emptyWindow": true,
     "http.proxyStrictSSL": false,
     "telemetry.telemetryLevel": "off",
     "workbench.startupEditor": "none",
+    "workbench.editor.restoreViewState": true,
+    "explorer.autoReveal": true,
+    "explorer.openEditors.visible": 0,
+    "outline.collapseItems": "alwaysCollapse",
+    "outline.showProblems": false,
+    "timeline.excludeSources": [
+      "*"
+    ],
+    "npm.exclude": [
+      "**"
+    ],
+    "foam.orphans.exclude": [
+      "**/*"
+    ],
+    "foam.placeholders.exclude": [
+      "**/*"
+    ],
+    "workbench.tree.renderIndentGuides": "always",
+    "workbench.tree.indent": 14,
     "files.autoSave": "afterDelay",
-    "terminal.integrated.defaultProfile.linux": "bash",
     "files.exclude": {
       "**/.git": false,
       "**/.svn": true,

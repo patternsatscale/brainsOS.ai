@@ -393,38 +393,12 @@ log_success "Storage layout (agent_memories, agent_workspaces, comms, control_pl
 # 6. Native Model Seeding
 # ------------------------------------------------------------------------------
 if [ "${PULL_MODEL}" = true ]; then
-  MODEL_NAME=$(grep -E '^INFERENCE_MODEL=' .env 2>/dev/null | cut -d '=' -f2- || echo "gemma2:2b")
-  MODEL_NAME="${MODEL_NAME:-gemma2:2b}"
-  log_info "Checking native Ollama daemon status for model seeding..."
-
-  # Ensure Ollama daemon is running on 127.0.0.1:11434
-  if ! curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
-    log_info "Starting host Ollama daemon in background..."
-    OLLAMA_HOST="127.0.0.1:11434" ollama serve >"${REPO_ROOT}/data/control_plane/ollama.log" 2>&1 &
-    OLLAMA_PID=$!
-    echo "${OLLAMA_PID}" > "${REPO_ROOT}/data/control_plane/ollama.pid"
-    
-    # Wait for Ollama daemon to respond
-    READY=false
-    for i in {1..30}; do
-      if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
-        READY=true
-        break
-      fi
-      sleep 1
-    done
-
-    if [ "$READY" != true ]; then
-      log_error "Timed out waiting for host Ollama service to become ready on 127.0.0.1:11434."
-      exit 1
-    fi
+  if [ -f "${REPO_ROOT}/scripts/setup/setup-models.sh" ]; then
+    log_info "Invoking setup-models.sh for host Ollama model seeding..."
+    "${REPO_ROOT}/scripts/setup/setup-models.sh"
+  else
+    log_warn "scripts/setup/setup-models.sh not found; skipping model seeding."
   fi
-
-  log_info "Pulling initial model '${MODEL_NAME}' natively into host Ollama..."
-  ollama pull "${MODEL_NAME}"
-  log_success "Successfully seeded model: ${MODEL_NAME}"
-  log_info "Current local models:"
-  ollama list
 fi
 
 # ------------------------------------------------------------------------------

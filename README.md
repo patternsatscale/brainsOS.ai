@@ -357,6 +357,8 @@ Once running, the following local services are accessible in your browser:
 ```bash
 # Standardized lifecycle commands via root Makefile
 make setup          # Bootstrap .env, data dirs, venv, and editable packages
+make ssl-wildcard   # Configure public wildcard SSL via Route 53 & SST Ion (*.local.<zone>)
+make deploy-infra   # Deploy platform cloud infrastructure via SST Ion (Route 53, ACME IAM, SES)
 make env            # Generate .env with secure passwords, configure URLs, and rebuild
 make reload_env     # Reload .env, synchronize passwords across DBs/containers, and show URLs
 make urls           # Display all service URLs & credentials, and synchronize /etc/hosts

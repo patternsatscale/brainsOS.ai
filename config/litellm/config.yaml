@@ -22,6 +22,18 @@ model_list:
       max_parallel_requests: 1
       timeout: 300
       num_ctx: 4096
+    model_info:
+      supports_function_calling: true
+      supports_tool_choice: true
+      mode: chat
+      supported_openai_params:
+        - tools
+        - tool_choice
+        - functions
+        - max_tokens
+        - stream
+        - temperature
+        - top_p
 
   - model_name: llama3.2:3b
     litellm_params:

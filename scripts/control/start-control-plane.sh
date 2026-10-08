@@ -64,6 +64,10 @@ DGX_BRIDGE_BIND="${DGX_BRIDGE_BIND:-}"
 BRAINSOS_INGRESS_PORT="${BRAINSOS_INGRESS_PORT:-8000}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 HERMES_LITELLM_KEY="${HERMES_LITELLM_KEY:-}"
+OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-}"
+TERRASTELLA_LITELLM_KEY="${TERRASTELLA_LITELLM_KEY:-}"
+MARVIN_LITELLM_KEY="${MARVIN_LITELLM_KEY:-}"
+BAWTFORD_LITELLM_KEY="${BAWTFORD_LITELLM_KEY:-}"
 DATABASE_URL="${DATABASE_URL:-}"
 INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX:-4096}"
 
@@ -283,10 +287,10 @@ status_services() {
   fi
 
   # Shared Stateless Hermes Runner status
-  if docker compose ps hermes-runner 2>/dev/null | grep -qE "(Up|running)"; then
-    log_success "Hermes Runner: RUNNING (brainsos-agent-hermes-runner:8642)"
+  if docker compose ps runner-hermes 2>/dev/null | grep -qE "(Up|running)"; then
+    log_success "Hermes Runner: RUNNING (runner-hermes:8642)"
   else
-    log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d hermes-runner)"
+    log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d runner-hermes)"
   fi
 }
 
@@ -321,6 +325,12 @@ start_services() {
       exit 1
     fi
     log_success "Host Ollama started (PID: ${OLLAMA_PID})."
+  fi
+
+  # 1.5. Ensure required LLM weights are seeded in Ollama
+  if [ -f "${REPO_ROOT}/scripts/setup/setup-models.sh" ]; then
+    log_info "Verifying required LLM model weights in Ollama..."
+    "${REPO_ROOT}/scripts/setup/setup-models.sh" || log_warn "Model seeding encountered a warning."
   fi
 
   # 2. Verify or start dedicated LiteLLM PostgreSQL database container
@@ -427,6 +437,26 @@ for root, _, files in os.walk(out_dir):
 ' 2>/dev/null || true
     fi
 
+    # Combine local Caddy CA with system certifi CA if custom Caddy root certificate exists,
+    # ensuring internal Authentik SSO calls pass while preserving access to external APIs & pricing maps.
+    if [ -s "${CADDY_CA_FILE}" ]; then
+      SYSTEM_CA="$("${REPO_ROOT}/.venv/bin/python" -m certifi 2>/dev/null || true)"
+      if [ -z "${SYSTEM_CA}" ] && [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+        SYSTEM_CA="/etc/ssl/certs/ca-certificates.crt"
+      fi
+      if [ -n "${SYSTEM_CA}" ] && [ -f "${SYSTEM_CA}" ]; then
+        COMBINED_CA="${PID_DIR}/combined_ca.pem"
+        cat "${SYSTEM_CA}" "${CADDY_CA_FILE}" > "${COMBINED_CA}" 2>/dev/null || cp "${CADDY_CA_FILE}" "${COMBINED_CA}"
+        export SSL_CERT_FILE="${COMBINED_CA}"
+        export REQUESTS_CA_BUNDLE="${COMBINED_CA}"
+      else
+        export SSL_CERT_FILE="${CADDY_CA_FILE}"
+        export REQUESTS_CA_BUNDLE="${CADDY_CA_FILE}"
+      fi
+    else
+      unset SSL_CERT_FILE REQUESTS_CA_BUNDLE 2>/dev/null || true
+    fi
+
     DATABASE_URL="${DATABASE_URL}" \
     LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
     LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
@@ -436,8 +466,6 @@ for root, _, files in os.walk(out_dir):
     LITELLM_FAILURE_CALLBACKS="${LITELLM_FAILURE_CALLBACKS}" \
     OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT}" \
     OTEL_EXPORTER_OTLP_HEADERS="${OTEL_EXPORTER_OTLP_HEADERS}" \
-    SSL_CERT_FILE="${CADDY_CA_FILE}" \
-    REQUESTS_CA_BUNDLE="${CADDY_CA_FILE}" \
     GENERIC_CLIENT_ID="${GENERIC_CLIENT_ID:-litellm-proxy}" \
     GENERIC_CLIENT_SECRET="${GENERIC_CLIENT_SECRET:-brainsos_litellm_secret}" \
     GENERIC_AUTHORIZATION_ENDPOINT="${GENERIC_AUTHORIZATION_ENDPOINT:-https://${BRAINSOS_DOMAIN:-osx.local.brainsos.ai}/application/o/authorize/}" \
@@ -479,25 +507,45 @@ for root, _, files in os.walk(out_dir):
   fi
 
   # 4. Provision fleet virtual keys in LiteLLM control plane database
-  if [ -n "${HERMES_LITELLM_KEY}" ] && [ -n "${LITELLM_MASTER_KEY}" ]; then
-    KEY_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
-      -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${HERMES_LITELLM_KEY}" \
-      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
+  if [ -n "${LITELLM_MASTER_KEY}" ]; then
+    provision_vkey() {
+      local key="$1"
+      local alias="$2"
+      local budget="${3:-}"
+      [ -z "${key}" ] && return 0
 
-    if [ "${KEY_CHECK}" != "200" ]; then
-      log_info "Registering Hermes virtual key in database..."
-      curl -s -o /dev/null \
-        -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
-        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-        -H "Content-Type: application/json" \
-        -d "{\"key\": \"${HERMES_LITELLM_KEY}\", \"key_alias\": \"hermes-agent\", \"models\": []}" || true
-      log_success "Hermes virtual key initialized in database."
-    fi
+      local key_check
+      key_check=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${key}" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
+
+      if [ "${key_check}" != "200" ]; then
+        log_info "Registering LiteLLM virtual key '${alias}' in database..."
+        local payload
+        if [ -n "${budget}" ]; then
+          payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"max_budget\": ${budget}, \"models\": []}"
+        else
+          payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"models\": []}"
+        fi
+        curl -s -o /dev/null \
+          -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
+          -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+          -H "Content-Type: application/json" \
+          -d "${payload}" || true
+        log_success "LiteLLM virtual key '${alias}' initialized in database."
+      fi
+    }
+
+    provision_vkey "${OPERATOR_LITELLM_KEY}" "brainsos-operator" 100.0
+    provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella"
+    provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin"
+    provision_vkey "${BAWTFORD_LITELLM_KEY}" "brainsos-bawtford"
+    provision_vkey "${HERMES_LITELLM_KEY}" "hermes-agent"
   fi
 
   # 5. Start Shared Stateless Hermes Agent Runner container
-  log_info "Ensuring shared stateless Hermes runner (hermes-runner) is running..."
-  docker compose up -d hermes-runner 2>/dev/null || log_warn "Could not start hermes-runner container (Docker may be inactive)."
+  log_info "Ensuring shared stateless Hermes runner (runner-hermes) is running..."
+  docker compose up -d runner-hermes 2>/dev/null || log_warn "Could not start runner-hermes container (Docker may be inactive)."
 
   # 6. Start Unified Asynchronous Queue Worker & Mail Ingress
   if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then

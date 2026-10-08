@@ -6,6 +6,8 @@
   "terminal.integrated.defaultProfile.linux": "bash",
   "chat.commandCenter.enabled": true,
   "chat.defaultModel": "brainsos-core",
+  "chat.byokUtilityModelDefault": "mainAgent",
+  "chat.promptFiles": true,
   "chat.agentFilesLocations": {
     ".github/agents": true,
     ".claude/agents": true,
@@ -18,23 +20,13 @@
     ".github/skills": true,
     ".claude/skills": true
   },
-  "github.copilot.chat.customOAIModels": {
-    "brainsos-core": {
-      "name": "brainsOS Core (Default)",
-      "url": "http://litellm:4000/v1",
-      "maxInputTokens": 32768,
-      "maxOutputTokens": 4096,
-      "toolCalling": true,
-      "vision": false
-    },
-    "qwen2.5:latest": {
-      "name": "Qwen 2.5",
-      "url": "http://litellm:4000/v1",
-      "maxInputTokens": 32768,
-      "maxOutputTokens": 4096,
-      "toolCalling": true,
-      "vision": false
-    }
+  "litellm-connector.discoveryTimeoutMs": 5000,
+  "litellm-connector.enableModelOverrides": false,
+  "litellm-connector.displayPricingInPicker": false,
+  "litellm-connector.modelCapabilitiesOverrides": {
+    "qwen3.8:latest": "toolCalling",
+    "brainsos-core": "toolCalling",
+    "qwen2.5:latest": "toolCalling"
   },
   "security.workspace.trust.enabled": false,
   "security.workspace.trust.startupPrompt": "never",
@@ -44,6 +36,21 @@
   "workbench.startupEditor": "none",
   "workbench.editor.restoreViewState": true,
   "explorer.autoReveal": true,
+  "explorer.openEditors.visible": 0,
+  "outline.collapseItems": "alwaysCollapse",
+  "outline.showProblems": false,
+  "timeline.excludeSources": [
+    "*"
+  ],
+  "npm.exclude": [
+    "**"
+  ],
+  "foam.orphans.exclude": [
+    "**/*"
+  ],
+  "foam.placeholders.exclude": [
+    "**/*"
+  ],
   "workbench.tree.renderIndentGuides": "always",
   "workbench.tree.indent": 14,
   "files.autoSave": "afterDelay",

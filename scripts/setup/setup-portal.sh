@@ -119,7 +119,36 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-auth-server";
   log_info "Step 4: Applying Authentik blueprint in running auth-server..."
   docker exec -i brainsos-auth-server ak apply_blueprint /blueprints/brainsos/brainsos-portal.yaml || log_warn "Blueprint apply will complete on container initialization."
   docker exec -i brainsos-auth-server ak shell -c "from authentik.core.models import User; u = User.objects.filter(username='operator').first(); (u.set_password('${AUTHENTIK_OPERATOR_PASSWORD:-brainsos}'), u.save()) if u else None" 2>/dev/null || true
-  log_success "Authentik blueprint applied and operator credentials configured."
+
+  EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
+  docker exec -i brainsos-auth-server ak shell -c "
+from authentik.outposts.models import Outpost
+from authentik.providers.proxy.models import ProxyProvider
+from authentik.core.models import Application
+
+domain = '${EFFECTIVE_DOMAIN}'
+cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else domain
+
+for o in Outpost.objects.all():
+    o._config['authentik_host'] = f'https://{domain}'
+    o._config['authentik_host_browser'] = f'https://{domain}'
+    o.save()
+
+for p in ProxyProvider.objects.all():
+    p.external_host = f'https://{domain}'
+    p.cookie_domain = cookie_dom
+    p.redirect_uris = f'https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://{domain}?X-authentik-auth-callback=true\nhttps://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://local.brainsos.ai?X-authentik-auth-callback=true\n.*'
+    p.save()
+
+for a in Application.objects.all():
+    if a.slug == 'brainsos-portal':
+        a.meta_launch_url = f'https://{domain}/'
+        a.save()
+    elif a.slug == 'litellm':
+        a.meta_launch_url = f'https://{domain}/proxy/ui/'
+        a.save()
+" 2>/dev/null || true
+  log_success "Authentik blueprint applied and domain synchronized with '${EFFECTIVE_DOMAIN}'."
 fi
 
 # ------------------------------------------------------------------------------
