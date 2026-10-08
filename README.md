@@ -366,6 +366,8 @@ make up             # Synchronize fleet manifest and start Docker fleet
 make down           # Gracefully stop all Docker services
 make test           # Run pytest suite across all packages
 make lint           # Run ruff check and mypy across all packages
+make langfuse       # Start Langfuse v4 distributed observability stack
+make langfuse-status# Check Langfuse health, container status, and OTel ingestion
 make emergency-stop # Instantly terminate all agent containers
 
 # Fleet snapshots & backups
