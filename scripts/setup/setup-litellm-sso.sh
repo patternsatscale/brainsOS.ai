@@ -136,7 +136,7 @@ provision_user() {
       log_warn "Update response for '${uid}': ${update_res}"
     fi
   else
-    log_info "User '${uid}' does not exist. Creating new proxy_admin user with individual password..."
+    log_info "User '${uid}' does not exist. Creating new proxy_admin user..."
     local create_res
     create_res=$(curl -s -X POST "${LITELLM_API_BASE}/user/new" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
@@ -144,11 +144,17 @@ provision_user() {
       -d "{
         \"user_id\": \"${uid}\",
         \"user_role\": \"proxy_admin\",
-        \"models\": [\"all-proxy-models\"],
-        \"password\": \"${ADMIN_COMPLIANT_PASS}\"
+        \"models\": [\"all-proxy-models\"]
       }")
     if echo "${create_res}" | grep -q "\"proxy_admin\""; then
-      log_success "Successfully created '${uid}' as proxy_admin (all-proxy-models) with individual password."
+      log_success "Successfully created '${uid}' as proxy_admin (all-proxy-models)."
+      curl -s -X POST "${LITELLM_API_BASE}/user/update" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"user_id\": \"${uid}\",
+          \"password\": \"${ADMIN_COMPLIANT_PASS}\"
+        }" >/dev/null 2>&1 || true
     else
       log_warn "Create response for '${uid}': ${create_res}"
     fi
@@ -164,9 +170,19 @@ done
 # 3. Configure SSO Settings & Role Mappings in LiteLLM DB
 # ------------------------------------------------------------------------------
 log_info "Step 3: Configuring LiteLLM SSO role mappings via REST API..."
+AUTH_CLIENT_ID="${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}"
+AUTH_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}"
+AUTH_BASE_URL="https://${TARGET_DOMAIN}"
+
 SSO_PAYLOAD=$(cat <<EOF
 {
   "user_email": "${PRIMARY_ADMIN_EMAIL}",
+  "proxy_base_url": "${AUTH_BASE_URL}",
+  "generic_client_id": "${AUTH_CLIENT_ID}",
+  "generic_client_secret": "${AUTH_CLIENT_SECRET}",
+  "generic_authorization_endpoint": "${AUTH_BASE_URL}/application/o/authorize/",
+  "generic_token_endpoint": "http://authentik-server:9000/application/o/token/",
+  "generic_userinfo_endpoint": "http://authentik-server:9000/application/o/userinfo/",
   "role_mappings": {
     "provider": "generic",
     "group_claim": "groups",
