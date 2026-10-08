@@ -130,8 +130,8 @@ docker compose build code-server
 log_info "Starting brainsos-code-server service..."
 docker compose up -d code-server
 
-# Ensure Caddy is recreated or updated with the new brainsos-operator-net
-log_info "Ensuring Caddy gateway is connected to operator network..."
+# Ensure Caddy is recreated or updated with the new brainsos-ide-net
+log_info "Ensuring Caddy gateway is connected to operator IDE network..."
 docker compose up -d caddy
 
 log_success "======================================================================"

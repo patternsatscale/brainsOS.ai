@@ -1,0 +1,98 @@
+# ==============================================================================
+# brainsOS: Control Plane (L4 Routing, Security & Dynamic Model Registry)
+# LiteLLM proxy gateway and dedicated isolated persistence store
+# ==============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Dedicated PostgreSQL Database for LiteLLM Control Plane
+  # Rule 6 Hardening: Host port binding removed; accessible exclusively over brainsos-control-net
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: brainsos-control-litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LITELLM_DB_NAME:-litellm}
+      POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}
+    volumes:
+      - ${LITELLM_DB_DATA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/litellm_db}:/var/lib/postgresql/data
+    networks:
+      brainsos-control-net:
+        aliases:
+          - litellm-db
+          - brainsos-infra-litellm-db
+          - brainsos-control-litellm-db
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Control Plane Gateway: Containerized LiteLLM Proxy
+  # Rule 2: Routes completions to host Ollama (http://host.docker.internal:11434)
+  # Rule 6: Strictly isolated database access over brainsos-control-net
+  litellm:
+    image: ghcr.io/berriai/litellm-database:v1.104.2
+    container_name: brainsos-control-litellm
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_HOST_GATEWAY:-host-gateway}"
+    volumes:
+      - ${LITELLM_CONFIG:-../../config/litellm/config.yaml}:/app/config.yaml:ro
+      - ${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
+    environment:
+      - PORT=4000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - DATABASE_URL=postgresql://${LITELLM_DB_USER:-litellm}:${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}@litellm-db:5432/${LITELLM_DB_NAME:-litellm}
+      - STORE_MODEL_IN_DB=True
+      - BRAINSOS_CORE_MODEL=${BRAINSOS_CORE_MODEL:-ollama_chat/llama3.2:3b}
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      # Authentik OIDC Single Sign-On
+      - AUTO_REDIRECT_UI_LOGIN_TO_SSO=true
+      - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}
+      - PROXY_ADMIN_ID=${BRAINSOS_ADMIN_USERNAME:-admin}
+      - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
+      - PROXY_ADMIN_EMAILS=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}},operator@brainsos.ai,admin
+      - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
+      - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
+      - GENERIC_AUTHORIZATION_ENDPOINT=https://${BRAINSOS_DOMAIN:-brainsos.local}/application/o/authorize/
+      - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
+      - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
+      - GENERIC_USER_ID_ATTRIBUTE=preferred_username
+      # Langfuse Observability Tracing
+      - LANGFUSE_HOST=${LITELLM_LANGFUSE_HOST:-http://host.docker.internal:3001}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+    networks:
+      brainsos-control-net:
+      brainsos-internal-net:
+        aliases:
+          - litellm
+          - brainsos-litellm
+          - brainsos-infra-litellm
+          - brainsos-control-litellm
+      brainsos-ingress-net:
+    logging: *default-logging
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    command: [ "--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0", "--num_workers", "1" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:4000/health/liveness\")'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

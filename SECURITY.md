@@ -14,7 +14,7 @@ brainsOS assumes a zero-trust execution model where autonomous agents and extern
 | **Container Escape & Host Compromise** | Agent attempting Linux kernel exploits, container breakout, or host daemon takeover. | Complete capability dropping (`cap_drop: [ALL]`), `no-new-privileges:true`, non-root execution (`PUID/PGID=1000`), zero access to host Docker socket (`/var/run/docker.sock`). |
 | **Credential Harvesting & Exfiltration** | Rogue code attempting to inspect environment variables, read disk secrets, or exfiltrate tokens. | **Zero ambient secrets** in containers. Outbound traffic routes via Tool Egress Gateway (`mitmproxy`); credentials are dynamically injected in transit based on client IP. |
 | **Hardware Starvation & Thermal Thrashing** | Runaway inference loops exhausting unified LPDDR5x memory bandwidth or overheating bare-metal silicon. | Cgroups CPU (`cpus: 2.0`), memory (`memory: 4096M`), and PID limits (`pids: 200`); LiteLLM hardware request serialization (`max_parallel_requests: 1`). |
-| **Lateral Network Movement** | Agent probing local network, databases, or neighboring agent containers. | Network segmentation (`brainsos-ingress`, `brainsos-internal`, `brainsos-litellm-net`). Database port bound strictly to host loopback (`127.0.0.1:5432`). |
+| **Lateral Network Movement** | Agent probing local network, databases, or neighboring agent containers. | Network segmentation (`brainsos-ingress-net`, `brainsos-internal-net`, `brainsos-control-net`, `brainsos-ide-net`, `brainsos-telemetry-net`). Database has zero host port bindings and communicates strictly over `brainsos-control-net`. |
 | **Memory Poisoning & Binary Drops** | Agent writing persistent backdoors, SQLite databases, or compiled binaries into long-term storage. | Strict Open Knowledge Format (OKF) memory purity validation. `/memories` mount accepts only human-auditable Markdown files. |
 
 ---
@@ -29,8 +29,8 @@ brainsOS assumes a zero-trust execution model where autonomous agents and extern
 
 ### B. Tool Egress Credential Injection via Proxy
 - **Zero Ambient Secrets**: Agent containers hold no raw GitHub tokens (`GH_TOKEN`, `GITHUB_TOKEN`), personal access tokens (PATs), or third-party API keys in environment variables or on disk.
-- **In-Transit Injection**: Outbound traffic is proxied through the dedicated Tool Egress Gateway (`brainsos-net-egress-proxy:8082` via `HTTPS_PROXY`).
-- **IP-Based Tenant Isolation**: The proxy's custom addon (`config/egress/addons/github_auth.py`) verifies caller container IP on `brainsos-internal`. Authorized tenants have authentication headers injected dynamically in transit (`Authorization: Bearer` or `Basic`); unauthorized requests are rejected (`403 Forbidden`).
+- **In-Transit Injection**: Outbound traffic is proxied through the dedicated Tool Egress Gateway (`brainsos-agent-egress-proxy:8082` via `HTTPS_PROXY`).
+- **IP-Based Tenant Isolation**: The proxy's custom addon (`config/egress/addons/github_auth.py`) verifies caller container IP on `brainsos-internal-net`. Authorized tenants have authentication headers injected dynamically in transit (`Authorization: Bearer` or `Basic`); unauthorized requests are rejected (`403 Forbidden`).
 - **Flow Display Redaction**: Inspection consoles (`mitmweb`) automatically redact injected tokens as `[INJECTED_CINDY_TOKEN]`, preventing credential leakage in operational logs.
 
 ### C. Inference Boundary & Hardware Serialization
@@ -39,9 +39,9 @@ brainsOS assumes a zero-trust execution model where autonomous agents and extern
 - **Hardware Serialization**: LiteLLM enforces serialized execution (`max_parallel_requests: 1` or `2`) to protect the unified LPDDR5x memory bus on the ASUS Ascent GX10 (and Apple Silicon) from bandwidth saturation.
 
 ### D. Control Plane Database Isolation
-- **Isolated Persistence**: The PostgreSQL database (`brainsos-infra-litellm-db`) stores LiteLLM virtual keys, spend tracking, and audit tables.
-- **Network Demarcation**: The database resides exclusively on `brainsos-litellm-net`. It is strictly forbidden from attaching to `brainsos-ingress` or `brainsos-internal`.
-- **Host Loopback**: Database ports are bound strictly to `127.0.0.1:${LITELLM_DB_PORT:-5432}` on the host for LiteLLM daemon use only.
+- **Isolated Persistence**: The PostgreSQL database (`brainsos-control-litellm-db`) stores LiteLLM virtual keys, spend tracking, and audit tables.
+- **Network Demarcation**: The database resides exclusively on `brainsos-control-net`. It is strictly forbidden from attaching to `brainsos-ingress-net` or `brainsos-internal-net`.
+- **Zero Host Ports**: Database ports have zero host port bindings; access is strictly internal to `brainsos-control-net`.
 
 ### E. Memory Plane Purity (Open Knowledge Format)
 - **Flat-File Markdown Only**: The `/memories` directory contains exclusively pure Markdown (`.md`) notes structured in Open Knowledge Format (OKF).

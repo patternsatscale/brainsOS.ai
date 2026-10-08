@@ -40,8 +40,8 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-MAIL_SERVER_CONTAINER="brainsos-net-mail-server"
-CADDY_CONTAINER="brainsos-net-caddy"
+MAIL_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || echo 'brainsos-app-mail-server')"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || echo 'brainsos-ingress-caddy')"
 
 SMTP_PORT="${MAIL_SMTP_PORT:-10025}"
 IMAP_PORT="${MAIL_IMAP_PORT:-10143}"
@@ -57,12 +57,12 @@ fi
 # Detect Webmail Client (SOGo per Ticket #166, with SnappyMail fallback)
 if docker compose ps --services | grep -q "^sogo$"; then
     WEBMAIL_SVC="sogo"
-    WEBMAIL_CONTAINER="brainsos-net-sogo"
+    WEBMAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?sogo$' | head -n 1 || echo 'brainsos-app-sogo')"
     WEBMAIL_PORT="${SOGO_PORT:-20000}"
     WEBMAIL_PATH="/SOGo"
 else
     WEBMAIL_SVC="snappymail"
-    WEBMAIL_CONTAINER="brainsos-net-snappymail"
+    WEBMAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?snappymail$' | head -n 1 || echo 'brainsos-net-snappymail')"
     WEBMAIL_PORT="${SNAPPYMAIL_PORT:-8888}"
     WEBMAIL_PATH="/"
 fi

@@ -22,14 +22,14 @@ class EphemeralDockerRunnerClient(RunnerClient):
         default_timeout_sec: int = 120,
         memory_limit: Optional[str] = "2g",
         cpu_limit: Optional[str] = "2.0",
-        network: Optional[str] = "brainsos-internal",
+        network: Optional[str] = "brainsos-internal-net",
         docker_cmd: str = "docker",
     ) -> None:
         self.image = image
         self.default_timeout_sec = default_timeout_sec
         self.memory_limit = memory_limit or "2g"
         self.cpu_limit = cpu_limit or "2.0"
-        self.network = network or "brainsos-internal"
+        self.network = network or "brainsos-internal-net"
         self.docker_cmd = docker_cmd
 
     def _validate_workspace(self, workspace_dir: str) -> Path:

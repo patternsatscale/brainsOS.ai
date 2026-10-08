@@ -36,7 +36,7 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-SIGNAL_CONTAINER="brainsos-net-signal-cli"
+SIGNAL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?signal-cli$' | head -n 1 || echo 'brainsos-app-signal-cli')"
 HERMES_CONTAINER="brainsos-agent-terrastella"
 COMMS_DIR="${BRAINSOS_COMMS_DIR:-${REPO_ROOT}/data/comms}"
 SIGNAL_STORAGE="${COMMS_DIR}/signal"

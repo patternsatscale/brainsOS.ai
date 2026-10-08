@@ -1,0 +1,70 @@
+# ==============================================================================
+# brainsOS: Ingress Plane (L7 Edge & TLS Termination)
+# Manages Caddy reverse proxy, TLS certificates, and path-based routing
+# ==============================================================================
+
+services:
+  caddy:
+    build:
+      context: ../../docker/caddy
+      dockerfile: Dockerfile
+    image: brainsos-caddy:latest
+    container_name: brainsos-ingress-caddy
+    restart: unless-stopped
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../../config/caddy:/etc/caddy:ro
+      - ../../packages/brainsOS-portal/dist:/srv/portal:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ${HOME}/.aws:/root/.aws:ro
+    networks:
+      brainsos-ingress-net:
+        aliases:
+          - caddy
+          - brainsos-caddy
+          - brainsos-net-caddy
+          - brainsos-ingress-caddy
+      brainsos-internal-net:
+        aliases:
+          - caddy
+          - brainsos-caddy
+          - brainsos-net-caddy
+          - brainsos-ingress-caddy
+      brainsos-ide-net:
+        aliases:
+          - caddy
+    environment:
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
+      - BRAINSOS_MAIL_HOST=${BRAINSOS_MAIL_HOST:-}
+      - OPERATOR_USER=${OPERATOR_USER:-operator}
+      - OPERATOR_PASSWORD_HASH=${OPERATOR_PASSWORD_HASH:-}
+      - CODE_SERVER_PASSWORD=${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}
+      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
+      - ACME_EMAIL=${ACME_EMAIL:-}
+    command: >
+      sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
+        export OPERATOR_PASSWORD_HASH="$$(caddy hash-password --plaintext "$${CODE_SERVER_PASSWORD}")";
+      fi; if [ -z "$${BRAINSOS_MAIL_HOST}" ]; then
+        if [ "$${BRAINSOS_MAIL_DOMAIN}" = "$${BRAINSOS_DOMAIN}" ] || [ -z "$${BRAINSOS_MAIL_DOMAIN}" ]; then
+          export BRAINSOS_MAIL_HOST="mail.$${BRAINSOS_DOMAIN}";
+        else
+          export BRAINSOS_MAIL_HOST="$${BRAINSOS_MAIL_DOMAIN}";
+        fi;
+      fi; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+
+volumes:
+  caddy_data:
+    name: brainsos_caddy_data
+  caddy_config:
+    name: brainsos_caddy_config

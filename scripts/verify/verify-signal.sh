@@ -39,7 +39,7 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-SIGNAL_CONTAINER="brainsos-net-signal-cli"
+SIGNAL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?signal-cli$' | head -n 1 || echo 'brainsos-app-signal-cli')"
 HERMES_CONTAINER="brainsos-agent-terrastella"
 HERMES_SERVICE="agent-terrastella"
 SIGNAL_SERVICE="signal-cli"
@@ -86,9 +86,9 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Hermes Reachability on brainsos-internal
+# 3. Hermes Reachability on brainsos-internal-net
 # ------------------------------------------------------------------------------
-log_info "Step 3: Verifying Hermes reachability to Signal daemon on brainsos-internal..."
+log_info "Step 3: Verifying Hermes reachability to Signal daemon on brainsos-internal-net..."
 if ! docker compose ps --services --filter "status=running" | grep -q "^${HERMES_SERVICE}$"; then
     log_warn "Hermes container (${HERMES_SERVICE}) is not running. Starting..."
     docker compose up -d "${HERMES_SERVICE}"
@@ -97,9 +97,9 @@ fi
 
 HERMES_TO_SIGNAL=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about 2>/dev/null || echo "failed")
 if echo "${HERMES_TO_SIGNAL}" | grep -q "json-rpc"; then
-    log_success "Hermes container successfully reaches signal-cli:8080 over brainsos-internal."
+    log_success "Hermes container successfully reaches signal-cli:8080 over brainsos-internal-net."
 else
-    log_error "Hermes failed to reach Signal daemon over brainsos-internal: ${HERMES_TO_SIGNAL}"
+    log_error "Hermes failed to reach Signal daemon over brainsos-internal-net: ${HERMES_TO_SIGNAL}"
     exit 1
 fi
 

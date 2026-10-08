@@ -63,13 +63,15 @@ if [ "$READY" = "true" ]; then
     echo "[SUCCESS] SOGo daemon is online and responding on http://127.0.0.1:20000/SOGo"
 else
     echo "[WARN] SOGo did not respond within $MAX_RETRIES seconds. Checking docker logs..."
-    docker logs --tail 30 brainsos-net-sogo || true
+    SOGO_C="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?sogo$' | head -n 1 || echo 'brainsos-app-sogo')"
+    docker logs --tail 30 "${SOGO_C}" || true
 fi
 
 # 4. Reload Caddy Ingress if running
-if docker ps --format '{{.Names}}' | grep -q "brainsos-net-caddy"; then
+CADDY_C="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || true)"
+if [ -n "${CADDY_C}" ]; then
     echo "[INFO] Reloading Caddy Ingress configuration..."
-    docker exec brainsos-net-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+    docker exec "${CADDY_C}" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
 fi
 
 echo "[SUCCESS] SOGo Groupware subsystem setup complete!"

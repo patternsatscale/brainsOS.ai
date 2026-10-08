@@ -1,0 +1,194 @@
+# ==============================================================================
+# brainsOS: Agent Plane (L2 Cognitive Compute & L4 Tool Egress)
+# Universal agent runners, warm execution environments, and tool egress proxy
+# ==============================================================================
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Hermes Warm Runner (Port 8642)
+  runner-hermes:
+    build:
+      context: ../..
+      dockerfile: docker/runners/hermes/Dockerfile
+    image: brainsos-runner-hermes:latest
+    container_name: brainsos-agent-runner-hermes
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${HERMES_RUNNER_PORT:-8642}:8642"
+      - "127.0.0.1:${HERMES_RUNNER_WEB_PORT:-8787}:8787"
+    environment:
+      - API_SERVER_ENABLED=true
+      - PORT=8642
+      - OPENAI_BASE_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server
+    volumes:
+      - ${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_memories}}:/data/agent_memories
+      - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes:/config/hermes:ro
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes:/root/.hermes:rw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      brainsos-ingress-net: {}
+      brainsos-internal-net:
+        aliases:
+          - runner-hermes
+          - hermes-runner
+          - brainsos-runner-hermes
+          - brainsos-agent-runner-hermes
+          - brainsos-agent-hermes-runner
+
+  # OpenAI SDK Warm Runner (Port 8002)
+  runner-openai:
+    build:
+      context: ../..
+      dockerfile: docker/runners/openai-sdk/Dockerfile
+    image: brainsos-runner-openai:latest
+    container_name: brainsos-agent-runner-openai
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${OPENAI_RUNNER_PORT:-8002}:8002"
+    environment:
+      - OPENAI_BASE_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
+    volumes:
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}:/data/runners:ro
+      - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces:rw
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - runner-openai
+          - brainsos-runner-openai
+          - brainsos-agent-runner-openai
+
+  # Claude SDK Warm Runner (Port 8001)
+  runner-claude:
+    build:
+      context: ../..
+      dockerfile: docker/runners/claude-sdk/Dockerfile
+    image: brainsos-runner-claude:latest
+    container_name: brainsos-agent-runner-claude
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${CLAUDE_RUNNER_PORT:-8001}:8001"
+    environment:
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-${LITELLM_URL:-http://host.docker.internal:4000}}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
+      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
+      - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
+    volumes:
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}:/data/runners:ro
+      - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces:rw
+      - ${HOME}/.aws:/root/.aws:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - runner-claude
+          - brainsos-runner-claude
+          - brainsos-agent-runner-claude
+
+  # Tool Egress Gateway & Inspection Proxy (mitmproxy / mitmweb)
+  tool-egress-proxy:
+    build:
+      context: ../..
+      dockerfile: docker/egress/Dockerfile
+    image: brainsos-net-egress-proxy:latest
+    container_name: brainsos-agent-egress-proxy
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${TOOL_EGRESS_WEB_PORT:-8081}:8081"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
+      - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
+      - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
+    command: >
+      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 --set block_global=false --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}} --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
+    volumes:
+      - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
+      - ../../config/egress/addons:/addons:ro
+      - ../../config/egress/theme:/theme:ro
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - brainsos-net-egress-proxy
+          - brainsos-tool-egress-proxy
+          - brainsos-agent-egress-proxy
+          - tool-egress-proxy
+          - efw
+          - firewall
+
+  # Inbound Email Ingress Daemon (AWS SQS/S3 -> Postfix)
+  mail-ingress:
+    profiles:
+      - mail-ingress
+    build:
+      context: ../..
+      dockerfile: docker/mail/Dockerfile.ingress
+    image: brainsos-mail-ingress:latest
+    container_name: brainsos-agent-mail-ingress
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - "no-new-privileges:true"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    depends_on:
+      mail-server:
+        condition: service_healthy
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - brainsos-net-mail-ingress
+          - brainsos-mail-ingress
+          - brainsos-agent-mail-ingress
+          - mail-ingress
+    environment:
+      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
+      - AWS_ACCESS_KEY_ID=${INGRESS_AWS_ACCESS_KEY_ID:-${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}}
+      - AWS_SECRET_ACCESS_KEY=${INGRESS_AWS_SECRET_ACCESS_KEY:-${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}}
+      - INGRESS_AWS_ACCESS_KEY_ID=${INGRESS_AWS_ACCESS_KEY_ID:-}
+      - INGRESS_AWS_SECRET_ACCESS_KEY=${INGRESS_AWS_SECRET_ACCESS_KEY:-}
+      - INGRESS_QUEUE_URL=${INGRESS_QUEUE_URL:-}
+      - INGRESS_S3_BUCKET=${INGRESS_S3_BUCKET:-${INGRESS_BUCKET_NAME:-}}
+      - INGRESS_BUCKET_NAME=${INGRESS_BUCKET_NAME:-${INGRESS_S3_BUCKET:-}}
+      - LOCAL_SMTP_HOST=mail
+      - LOCAL_SMTP_PORT=25
+      - INGRESS_POLL_WAIT_SECONDS=${INGRESS_POLL_WAIT_SECONDS:-20}
+      - INGRESS_MAX_MESSAGES=${INGRESS_MAX_MESSAGES:-5}
+    logging: *default-logging
+
+volumes:
+  tool_egress_proxy_data:
+    name: brainsos_tool_egress_proxy_data

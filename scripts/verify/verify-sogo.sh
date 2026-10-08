@@ -46,10 +46,10 @@ set -a
 source "${REPO_ROOT}/.env"
 set +a
 
-SOGO_CONTAINER="brainsos-net-sogo"
-SOGO_DB_CONTAINER="brainsos-sogo-db"
-LITELLM_DB_CONTAINER="brainsos-infra-litellm-db"
-CADDY_CONTAINER="brainsos-net-caddy"
+SOGO_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?sogo$' | head -n 1 || echo 'brainsos-app-sogo')"
+SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?sogo-db$' | head -n 1 || echo 'brainsos-app-sogo-db')"
+LITELLM_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(control-|infra-)?litellm-db$' | head -n 1 || echo 'brainsos-control-litellm-db')"
+CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || echo 'brainsos-ingress-caddy')"
 SOGO_PORT="${SOGO_PORT:-20000}"
 BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 
@@ -97,22 +97,22 @@ log_success "Security profile verified: unprivileged containers, zero Docker soc
 # ------------------------------------------------------------------------------
 log_info "Step 3: Asserting Rule 6 Database Isolation..."
 
-# Check network isolation: sogo-db must NOT be on brainsos-litellm-net
+# Check network isolation: sogo-db must NOT be on control plane database network
 SOGO_NETWORKS=$(docker inspect "${SOGO_DB_CONTAINER}" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}')
-if echo "${SOGO_NETWORKS}" | grep -q "brainsos-litellm-net"; then
-    log_error "Security violation (Rule 6): brainsos-sogo-db is attached to brainsos-litellm-net!"
+if echo "${SOGO_NETWORKS}" | grep -qE "brainsos-(control|litellm)-net"; then
+    log_error "Security violation (Rule 6): brainsos-sogo-db is attached to control plane database network!"
     exit 1
 fi
-log_success "brainsos-sogo-db network isolation verified: not attached to brainsos-litellm-net."
+log_success "brainsos-sogo-db network isolation verified: not attached to brainsos-control-net."
 
-# Check table isolation: brainsos-infra-litellm-db must NOT contain SOGo tables
+# Check table isolation: LiteLLM DB must NOT contain SOGo tables
 if docker ps --format '{{.Names}}' | grep -q "^${LITELLM_DB_CONTAINER}$"; then
     LITELLM_SOGO_TABLES=$(docker exec "${LITELLM_DB_CONTAINER}" psql -U "${LITELLM_DB_USER:-litellm}" -d "${LITELLM_DB_NAME:-litellm}" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_name LIKE 'sogo_%';" 2>/dev/null || echo "0")
     if [ "${LITELLM_SOGO_TABLES}" != "0" ]; then
-        log_error "Rule 6 Violation: SOGo tables found in brainsos-infra-litellm-db!"
+        log_error "Rule 6 Violation: SOGo tables found in ${LITELLM_DB_CONTAINER}!"
         exit 1
     fi
-    log_success "Rule 6 strictly honored: zero SOGo tables in control plane database (brainsos-infra-litellm-db)."
+    log_success "Rule 6 strictly honored: zero SOGo tables in control plane database (${LITELLM_DB_CONTAINER})."
 fi
 
 # ------------------------------------------------------------------------------

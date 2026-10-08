@@ -1,0 +1,334 @@
+# ==============================================================================
+# brainsOS: Application & Identity Plane (L7 Built-In Apps & Identity Provider)
+# Web IDE (Code-Server), SOGo Webmail, Communications, and Authentik SSO
+# ==============================================================================
+
+services:
+  # Operator IDE: Containerized VS Code (Code-Server) with Aider & Goose
+  code-server:
+    build:
+      context: ../..
+      dockerfile: docker/editor/Dockerfile
+    image: brainsos-code-server:latest
+    container_name: brainsos-app-code-server
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${CODE_SERVER_PORT:-8443}:8443"
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_HOST_GATEWAY:-host-gateway}"
+    volumes:
+      - ${BRAINSOS_CODE_SERVER_CONFIG:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/vscode_config}:/home/coder/.config
+      - ${BRAINSOS_CODE_SERVER_DATA:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/vscode_data}:/home/coder/.local/share/code-server
+      - ${BRAINSOS_DATA_DIR:-../../data}:/data
+      - ${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_memories}:/memories
+      - ../../config/editor:/etc/brainsos/editor:ro
+      - ../../docker/editor/entrypoint.sh:/usr/local/bin/brainsos-editor-entrypoint.sh:ro
+      - ../../config/editor/extensions/brainsos-system-terminal:/opt/code-server/extensions/brainsos.system-terminal-1.0.0:ro
+      - ${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-none}
+      - PASSWORD=${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
+      - CADDY_HTTP_PORT=${CADDY_HTTP_PORT:-80}
+      - CADDY_HTTPS_PORT=${CADDY_HTTPS_PORT:-443}
+      - CODE_SERVER_PORT=${CODE_SERVER_PORT:-8443}
+      - OPERATOR_USER=${OPERATOR_USER:-operator}
+      - CODE_SERVER_PASSWORD=${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}
+      - LITELLM_PORT=${LITELLM_PORT:-4000}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
+      - SOGO_PORT=${SOGO_PORT:-20000}
+      - LANGFUSE_PORT=${LANGFUSE_PORT:-3001}
+      - LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
+      - TOOL_EGRESS_WEB_PORT=${TOOL_EGRESS_WEB_PORT:-8081}
+      - HERMES_RUNNER_PORT=${HERMES_RUNNER_PORT:-8642}
+      - OPENAI_RUNNER_PORT=${OPENAI_RUNNER_PORT:-8002}
+      - AGENT_QUEUE_PORT=${AGENT_QUEUE_PORT:-8000}
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
+      - OPENAI_API_BASE=http://litellm:4000/v1
+      - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}
+      - OPERATOR_LITELLM_KEY=${OPERATOR_LITELLM_KEY:-}
+      - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
+      - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
+      - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/caddy/root.crt
+      - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
+    networks:
+      - brainsos-ide-net
+      - brainsos-internal-net
+
+  # Communications & Mail Plane: SOGo Database (PostgreSQL 16)
+  sogo-db:
+    image: postgres:16-alpine
+    container_name: brainsos-app-sogo-db
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    environment:
+      POSTGRES_USER: ${SOGO_DB_USER:-sogo}
+      POSTGRES_PASSWORD: ${SOGO_DB_PASSWORD:-sogo_secret_pass}
+      POSTGRES_DB: ${SOGO_DB_NAME:-sogo}
+    volumes:
+      - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/sogo/db:/var/lib/postgresql/data
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - sogo-db
+          - brainsos-sogo-db
+          - brainsos-app-sogo-db
+    ports:
+      - "127.0.0.1:${SOGO_DB_PORT:-5434}:5432"
+
+  # Communications & UX Plane: SOGo Groupware & Webmail/CalDAV Client
+  sogo:
+    build:
+      context: ../../docker/sogo
+      dockerfile: Dockerfile
+    image: brainsos-sogo:latest
+    container_name: brainsos-app-sogo
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${SOGO_PORT:-20000}:20000"
+    volumes:
+      - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/sogo/spool:/var/spool/sogo
+      - ../../docker/sogo/entrypoint.sh:/entrypoint.sh:ro
+      - ../../docker/sogo/sogo.conf:/etc/sogo/sogo.conf.template:ro
+      - ../../docker/sogo/theme-brainsos.css:/usr/lib/GNUstep/SOGo/WebServerResources/css/theme-brainsos.css:ro
+      - ../../docker/sogo/theme-brainsos.js:/usr/lib/GNUstep/SOGo/WebServerResources/js/theme-brainsos.js:ro
+      - ../../docker/sogo/nginx.conf:/etc/nginx/sites-enabled/default:ro
+    networks:
+      brainsos-ingress-net:
+      brainsos-internal-net:
+        ipv4_address: 172.20.0.50
+        aliases:
+          - sogo
+          - brainsos-net-sogo
+          - brainsos-app-sogo
+    depends_on:
+      - sogo-db
+      - mail-server
+    environment:
+      - SOGO_DB_HOST=sogo-db
+      - SOGO_DB_PORT=5432
+      - SOGO_DB_USER=${SOGO_DB_USER:-sogo}
+      - SOGO_DB_PASSWORD=${SOGO_DB_PASSWORD:-sogo_secret_pass}
+      - SOGO_DB_NAME=${SOGO_DB_NAME:-sogo}
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
+      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
+      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
+      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
+      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
+
+  # Communications & Mail Plane: Postfix + Dovecot Mail Engine
+  mail-server:
+    build:
+      context: ../../docker/mail
+      dockerfile: Dockerfile
+    image: brainsos-mail-server:latest
+    container_name: brainsos-app-mail-server
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    ports:
+      - "127.0.0.1:${MAIL_SMTP_PORT:-10025}:25"
+      - "127.0.0.1:${MAIL_IMAP_PORT:-10143}:143"
+    volumes:
+      - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/email/vmail:/var/mail/vmail
+      - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/email/config:/etc/mail-brainsos
+      - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/spool:/var/spool/brainsos/inbound
+      - ../../docker/mail/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro
+      - ../../docker/mail/agent-webhook.sh:/usr/lib/dovecot/sieve-pipe/agent-webhook.sh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "control-plane:host-gateway"
+    environment:
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
+      - BRAINSOS_EMAIL_DOMAIN=${BRAINSOS_EMAIL_DOMAIN:-}
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
+      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
+      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
+      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
+      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
+      - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
+      - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
+      - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
+    healthcheck:
+      test: [ "CMD-SHELL", "/usr/sbin/postfix status >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - mail-server
+          - brainsos-net-mail-server
+          - brainsos-app-mail-server
+          - mail
+
+  # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: brainsos-app-signal-cli
+    restart: unless-stopped
+    entrypoint: [ "/entrypoint-brainsos.sh" ]
+    security_opt:
+      - "no-new-privileges:true"
+    environment:
+      - MODE=json-rpc
+      - PORT=8080
+      - SIGNAL_NATIVE_HTTP_PORT=8082
+      - SIGNAL_REST_API_PORT=8084
+    volumes:
+      - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/signal:/home/.local/share/signal-cli
+      - ../../docker/signal/entrypoint.sh:/entrypoint-brainsos.sh:ro
+      - ../../docker/signal/gateway_proxy.py:/usr/local/bin/gateway_proxy.py:ro
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - signal-cli
+          - brainsos-net-signal-cli
+          - brainsos-signal-cli
+          - brainsos-app-signal-cli
+
+  # Authentik Identity Provider: Dedicated PostgreSQL Database
+  authentik-db:
+    image: postgres:16-alpine
+    container_name: brainsos-app-auth-db
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    environment:
+      POSTGRES_DB: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
+      POSTGRES_USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}
+    volumes:
+      - ${BRAINSOS_AUTHENTIK_DB_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_db}:/var/lib/postgresql/data
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - authentik-db
+          - brainsos-auth-db
+          - brainsos-app-auth-db
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${AUTHENTIK_POSTGRESQL__USER:-authentik} -d ${AUTHENTIK_POSTGRESQL__NAME:-authentik}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Authentik Identity Provider: Dedicated Redis Cache
+  authentik-redis:
+    image: redis:7-alpine
+    container_name: brainsos-app-auth-redis
+    restart: unless-stopped
+    security_opt:
+      - "no-new-privileges:true"
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - authentik-redis
+          - brainsos-auth-redis
+          - brainsos-app-auth-redis
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Authentik Identity Provider: Server
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.8.3
+    container_name: brainsos-app-auth-server
+    restart: unless-stopped
+    command: server
+    security_opt:
+      - "no-new-privileges:true"
+    environment:
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-brainsos_authentik_secret_change_me}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.local}}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-brainsos_authentik_api_token}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+      AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN:-local.brainsos.ai}
+      BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
+    volumes:
+      - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
+      - ../../config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
+      - ../../config/authentik/themes/brainsos:/templates/custom-themes/brainsos:ro
+      - ../../config/authentik/blueprints:/blueprints/brainsos:ro
+      - ${BRAINSOS_AUTHENTIK_MEDIA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_media}:/media
+    ports:
+      - "127.0.0.1:${AUTHENTIK_PORT:-9002}:9000"
+    networks:
+      brainsos-ingress-net:
+      brainsos-internal-net:
+        aliases:
+          - authentik-server
+          - brainsos-auth-server
+          - brainsos-app-auth-server
+    depends_on:
+      authentik-db:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+
+  # Authentik Identity Provider: Background Worker
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.8.3
+    container_name: brainsos-app-auth-worker
+    restart: unless-stopped
+    command: worker
+    security_opt:
+      - "no-new-privileges:true"
+    environment:
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_POSTGRESQL__HOST: authentik-db
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-brainsos_authentik_secret_change_me}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}
+      AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.local}}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-brainsos_authentik_api_token}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+      AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN:-local.brainsos.ai}
+      BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
+    volumes:
+      - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
+      - ../../config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
+      - ../../config/authentik/themes/brainsos:/templates/custom-themes/brainsos:ro
+      - ../../config/authentik/blueprints:/blueprints/brainsos:ro
+      - ${BRAINSOS_AUTHENTIK_MEDIA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_media}:/media
+    networks:
+      brainsos-internal-net:
+        aliases:
+          - authentik-worker
+          - brainsos-auth-worker
+          - brainsos-app-auth-worker
+    depends_on:
+      - authentik-server

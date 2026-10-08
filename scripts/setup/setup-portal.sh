@@ -57,9 +57,10 @@ mkdir -p "${DATA_DIR}/control_plane/authentik_db"
 mkdir -p "${DATA_DIR}/control_plane/authentik_media"
 
 # Ensure authentik database exists if auth-db container is active
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-auth-db"; then
-  if ! docker exec brainsos-auth-db psql -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${AUTHENTIK_POSTGRESQL__NAME:-authentik}'" 2>/dev/null | grep -q 1; then
-    docker exec brainsos-auth-db createdb -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" "${AUTHENTIK_POSTGRESQL__NAME:-authentik}" 2>/dev/null || true
+AUTH_DB_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-db$' | head -n 1 || true)"
+if [ -n "${AUTH_DB_C}" ]; then
+  if ! docker exec "${AUTH_DB_C}" psql -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${AUTHENTIK_POSTGRESQL__NAME:-authentik}'" 2>/dev/null | grep -q 1; then
+    docker exec "${AUTH_DB_C}" createdb -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" "${AUTHENTIK_POSTGRESQL__NAME:-authentik}" 2>/dev/null || true
   fi
 fi
 log_success "Authentik control plane directories initialized."
@@ -115,13 +116,14 @@ log_success "Authentik blueprint validated."
 # ------------------------------------------------------------------------------
 # 4. Bootstrap Authentik Blueprint & Operator Account (if server is running)
 # ------------------------------------------------------------------------------
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "brainsos-auth-server"; then
+AUTH_SERVER_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
+if [ -n "${AUTH_SERVER_C}" ]; then
   log_info "Step 4: Applying Authentik blueprint in running auth-server..."
-  docker exec -i brainsos-auth-server ak apply_blueprint /blueprints/brainsos/brainsos-portal.yaml || log_warn "Blueprint apply will complete on container initialization."
-  docker exec -i brainsos-auth-server ak shell -c "from authentik.core.models import User; u = User.objects.filter(username='operator').first(); (u.set_password('${AUTHENTIK_OPERATOR_PASSWORD:-brainsos}'), u.save()) if u else None" 2>/dev/null || true
+  docker exec -i "${AUTH_SERVER_C}" ak apply_blueprint /blueprints/brainsos/brainsos-portal.yaml || log_warn "Blueprint apply will complete on container initialization."
+  docker exec -i "${AUTH_SERVER_C}" ak shell -c "from authentik.core.models import User; u = User.objects.filter(username='operator').first(); (u.set_password('${AUTHENTIK_OPERATOR_PASSWORD:-brainsos}'), u.save()) if u else None" 2>/dev/null || true
 
   EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
-  docker exec -i brainsos-auth-server ak shell -c "
+  docker exec -i "${AUTH_SERVER_C}" ak shell -c "
 from authentik.outposts.models import Outpost
 from authentik.providers.proxy.models import ProxyProvider
 from authentik.core.models import Application
