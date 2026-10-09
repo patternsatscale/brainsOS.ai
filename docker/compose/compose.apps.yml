@@ -110,7 +110,6 @@ services:
     networks:
       brainsos-ingress-net:
       brainsos-internal-net:
-        ipv4_address: 172.20.0.50
         aliases:
           - sogo
           - brainsos-net-sogo

@@ -274,7 +274,77 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	@litellm_api path /key/* /model/* /models* /model_group/* /user/* /team/* /customer/* /spend/* /global/* /health/* /routes* /config/* /service_account/* /public/* /settings/* /get_favicon
+	@litellm_api path \
+		/key /key/* \
+		/model /model/* /models /models* /model_group /model_group/* /model_hub /model_hub/* \
+		/user /user/* \
+		/team /team/* \
+		/customer /customer/* \
+		/spend /spend/* \
+		/global /global/* \
+		/health /health/* \
+		/routes /routes* \
+		/config /config/* \
+		/service_account /service_account/* \
+		/public /public/* \
+		/settings /settings/* \
+		/get /get/* \
+		/update /update/* \
+		/add /add/* \
+		/delete /delete/* \
+		/tag /tag/* \
+		/gateway /gateway/* \
+		/audit /audit/* \
+		/router /router/* \
+		/cache /cache/* \
+		/coordination_redis /coordination_redis/* \
+		/cost /cost/* /cost_optimization /cost_optimization/* \
+		/email /email/* \
+		/project /project/* \
+		/budget /budget/* \
+		/invitation /invitation/* \
+		/alerting /alerting/* \
+		/organization /organization/* \
+		/auto_router /auto_router/* \
+		/access_group /access_group/* \
+		/guardrails /guardrails/* \
+		/policies /policies/* /policy /policy/* \
+		/prompts /prompts/* \
+		/search_tools /search_tools/* \
+		/mcp-rest /mcp-rest/* \
+		/vector_store /vector_store/* \
+		/rag /rag/* \
+		/callbacks /callbacks/* \
+		/credentials /credentials/* \
+		/fallback /fallback/* \
+		/activity /activity/* \
+		/agent /agent/* \
+		/onboarding /onboarding/* \
+		/session /session/* \
+		/utils /utils/* \
+		/compliance /compliance/* \
+		/claude-code /claude-code/* \
+		/reload /reload/* \
+		/schedule /schedule/* \
+		/v1 /v1/* \
+		/v2 /v2/* \
+		/v3 /v3/* \
+		/v1beta /v1beta/* \
+		/openai /openai/* /openai_passthrough /openai_passthrough/* \
+		/chat /chat/* \
+		/completions /completions/* \
+		/embeddings /embeddings/* \
+		/batches /batches/* \
+		/files /files/* \
+		/threads /threads/* \
+		/assistants /assistants/* \
+		/audio /audio/* \
+		/images /images/* \
+		/responses /responses/* \
+		/realtime /realtime/* \
+		/a2a /a2a/* \
+		/scim /scim/* \
+		/openapi.json /get_favicon /get_image /get_logo_url /get_cache_settings
 	handle @litellm_api {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
@@ -282,7 +352,77 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	@proxy_litellm_api path /proxy/key/* /proxy/model/* /proxy/models* /proxy/model_group/* /proxy/user/* /proxy/team/* /proxy/customer/* /proxy/spend/* /proxy/global/* /proxy/health/* /proxy/routes* /proxy/config/* /proxy/service_account/* /proxy/public/* /proxy/settings/*
+	@proxy_litellm_api path \
+		/proxy/key /proxy/key/* \
+		/proxy/model /proxy/model/* /proxy/models /proxy/models* /proxy/model_group /proxy/model_group/* /proxy/model_hub /proxy/model_hub/* \
+		/proxy/user /proxy/user/* \
+		/proxy/team /proxy/team/* \
+		/proxy/customer /proxy/customer/* \
+		/proxy/spend /proxy/spend/* \
+		/proxy/global /proxy/global/* \
+		/proxy/health /proxy/health/* \
+		/proxy/routes /proxy/routes* \
+		/proxy/config /proxy/config/* \
+		/proxy/service_account /proxy/service_account/* \
+		/proxy/public /proxy/public/* \
+		/proxy/settings /proxy/settings/* \
+		/proxy/get /proxy/get/* \
+		/proxy/update /proxy/update/* \
+		/proxy/add /proxy/add/* \
+		/proxy/delete /proxy/delete/* \
+		/proxy/tag /proxy/tag/* \
+		/proxy/gateway /proxy/gateway/* \
+		/proxy/audit /proxy/audit/* \
+		/proxy/router /proxy/router/* \
+		/proxy/cache /proxy/cache/* \
+		/proxy/coordination_redis /proxy/coordination_redis/* \
+		/proxy/cost /proxy/cost/* /proxy/cost_optimization /proxy/cost_optimization/* \
+		/proxy/email /proxy/email/* \
+		/proxy/project /proxy/project/* \
+		/proxy/budget /proxy/budget/* \
+		/proxy/invitation /proxy/invitation/* \
+		/proxy/alerting /proxy/alerting/* \
+		/proxy/organization /proxy/organization/* \
+		/proxy/auto_router /proxy/auto_router/* \
+		/proxy/access_group /proxy/access_group/* \
+		/proxy/guardrails /proxy/guardrails/* \
+		/proxy/policies /proxy/policies/* /proxy/policy /proxy/policy/* \
+		/proxy/prompts /proxy/prompts/* \
+		/proxy/search_tools /proxy/search_tools/* \
+		/proxy/mcp-rest /proxy/mcp-rest/* \
+		/proxy/vector_store /proxy/vector_store/* \
+		/proxy/rag /proxy/rag/* \
+		/proxy/callbacks /proxy/callbacks/* \
+		/proxy/credentials /proxy/credentials/* \
+		/proxy/fallback /proxy/fallback/* \
+		/proxy/activity /proxy/activity/* \
+		/proxy/agent /proxy/agent/* \
+		/proxy/onboarding /proxy/onboarding/* \
+		/proxy/session /proxy/session/* \
+		/proxy/utils /proxy/utils/* \
+		/proxy/compliance /proxy/compliance/* \
+		/proxy/claude-code /proxy/claude-code/* \
+		/proxy/reload /proxy/reload/* \
+		/proxy/schedule /proxy/schedule/* \
+		/proxy/v1 /proxy/v1/* \
+		/proxy/v2 /proxy/v2/* \
+		/proxy/v3 /proxy/v3/* \
+		/proxy/v1beta /proxy/v1beta/* \
+		/proxy/openai /proxy/openai/* /proxy/openai_passthrough /proxy/openai_passthrough/* \
+		/proxy/chat /proxy/chat/* \
+		/proxy/completions /proxy/completions/* \
+		/proxy/embeddings /proxy/embeddings/* \
+		/proxy/batches /proxy/batches/* \
+		/proxy/files /proxy/files/* \
+		/proxy/threads /proxy/threads/* \
+		/proxy/assistants /proxy/assistants/* \
+		/proxy/audio /proxy/audio/* \
+		/proxy/images /proxy/images/* \
+		/proxy/responses /proxy/responses/* \
+		/proxy/realtime /proxy/realtime/* \
+		/proxy/a2a /proxy/a2a/* \
+		/proxy/scim /proxy/scim/* \
+		/proxy/openapi.json /proxy/get_favicon /proxy/get_image /proxy/get_logo_url /proxy/get_cache_settings
 	handle @proxy_litellm_api {
 		uri strip_prefix /proxy
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
