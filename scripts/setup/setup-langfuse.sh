@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# brainsOS: Observability Plane Manager (Langfuse v4.38.0)
+# brainsOS: Observability Plane Manager (Langfuse v4.56.0)
 # Automates provisioning, key generation, startup, and lifecycle management
 # for Langfuse distributed stack (Web, Worker, ClickHouse, Redis, MinIO, Postgres).
 # ==============================================================================
@@ -79,7 +79,7 @@ compose_cmd() {
 # Action: Setup
 # ------------------------------------------------------------------------------
 setup_langfuse() {
-  log_info "Configuring Langfuse v4.38.0 distributed observability environment..."
+  log_info "Configuring Langfuse v4.56.0 distributed observability environment..."
 
   mkdir -p "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}"
   chmod 777 "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" 2>/dev/null || true
@@ -209,7 +209,7 @@ with open(file_path, 'w') as f:
   export LANGFUSE_SECRET_KEY="${SEC_SECRET_KEY}"
   export LANGFUSE_OTEL_AUTH="${SEC_OTEL_AUTH}"
 
-  log_success "Langfuse v4.38.0 configuration synchronized."
+  log_success "Langfuse v4.56.0 configuration synchronized."
   sync_user_password
 }
 
@@ -499,7 +499,7 @@ try:
                     'metadata': {
                         'plane': 'observability',
                         'platform': 'brainsOS',
-                        'version': 'v4.38.0'
+                        'version': 'v4.56.0'
                     }
                 }
             },
@@ -518,8 +518,12 @@ try:
                 }
             }
         ]
+    headers = {
+        'X-Langfuse-Sdk-Name': 'python',
+        'X-Langfuse-Sdk-Version': '4.17.0',
+        'X-Langfuse-Public-Key': pub,
     }
-    r = requests.post(f'{host}/api/public/ingestion', auth=(pub, sec), json=payload, timeout=5)
+    r = requests.post(f'{host}/api/public/ingestion', auth=(pub, sec), json=payload, headers=headers, timeout=5)
     if r.status_code in (200, 201, 207):
         print('SEEDED')
     else:
@@ -541,7 +545,7 @@ except Exception as e:
 start_langfuse() {
   setup_langfuse
 
-  log_info "Starting Langfuse v4.38.0 stack (Web on :${LANGFUSE_PORT}, Worker, ClickHouse, Redis, MinIO, Postgres)..."
+  log_info "Starting Langfuse v4.56.0 stack (Web on :${LANGFUSE_PORT}, Worker, ClickHouse, Redis, MinIO, Postgres)..."
   compose_cmd up -d
 
   log_info "Waiting for Langfuse web service to report healthy on http://localhost:${LANGFUSE_PORT}..."
@@ -558,10 +562,10 @@ start_langfuse() {
   if [ "${READY}" = true ]; then
     sync_user_password
 
-    log_success "Langfuse v4.38.0 is running and healthy!"
+    log_success "Langfuse v4.56.0 is running and healthy!"
     echo ""
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
-    echo -e "${GREEN}${BOLD}Langfuse v4.38.0 Observability Platform Ready${NC}"
+    echo -e "${GREEN}${BOLD}Langfuse v4.56.0 Observability Platform Ready${NC}"
     echo -e "${GREEN}${BOLD}==============================================================================${NC}"
     echo -e "  - Web Dashboard:     ${BOLD}http://localhost:${LANGFUSE_PORT}${NC} (or http://langfuse.brainsos.local)"
     echo -e "  - OTel Ingestion:    ${BOLD}http://localhost:${LANGFUSE_PORT}/api/public/otel${NC}"

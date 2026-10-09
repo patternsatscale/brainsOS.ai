@@ -1,0 +1,5 @@
+name: brainsos-litellm-session
+kind: model-provider
+version: 1.0.0
+description: brainsOS - custom provider that forwards the Hermes session id to LiteLLM (Langfuse session grouping)
+author: brainsOS

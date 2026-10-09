@@ -23,5 +23,8 @@ class ParsedInboundEmail(BaseModel):
     recipient: str
     subject: str
     clean_body: str
+    body: str = ""
+    html_body: str | None = None
+    date: str = ""
     raw_mime: bytes
     attachments: list[Attachment] = Field(default_factory=list)

@@ -92,6 +92,12 @@ class MemoryQueueBackend(QueueBackend):
                 event.set()
         return task
 
+    async def heartbeat(self, task_id: str) -> None:
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if task is not None and task.status == TaskStatus.PROCESSING:
+                task.locked_at = time.time()
+
     async def get_task(self, task_id: str) -> Task | None:
         async with self._lock:
             return self._tasks.get(task_id)

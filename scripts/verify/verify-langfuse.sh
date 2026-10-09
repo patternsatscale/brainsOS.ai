@@ -119,15 +119,15 @@ for cand in "data/runners/hermes/config.yaml" "config/default_runners/hermes/con
 done
 
 if [ -n "$HERMES_CONFIG_CANDIDATE" ]; then
-  if grep -q "otlp:" "$HERMES_CONFIG_CANDIDATE" && grep -q "endpoint:" "$HERMES_CONFIG_CANDIDATE"; then
-    pass_check "Hermes configuration: OTLP monitoring export configured in $HERMES_CONFIG_CANDIDATE."
+  if (grep -q "otlp:" "$HERMES_CONFIG_CANDIDATE" && grep -q "endpoint:" "$HERMES_CONFIG_CANDIDATE") || grep -q "observability/langfuse" "$HERMES_CONFIG_CANDIDATE"; then
+    pass_check "Hermes configuration: Observability/Langfuse export configured in $HERMES_CONFIG_CANDIDATE."
   else
-    fail_check "Hermes configuration: missing OTLP export in $HERMES_CONFIG_CANDIDATE."
+    fail_check "Hermes configuration: missing OTLP/Langfuse export in $HERMES_CONFIG_CANDIDATE."
   fi
 fi
 
 # Docker Compose extra_hosts
-if grep -q "host.docker.internal:host-gateway" docker-compose.yml 2>/dev/null; then
+if grep -q "host.docker.internal:host-gateway" docker-compose.yml 2>/dev/null || grep -rq "host.docker.internal:host-gateway" docker/compose/ 2>/dev/null; then
   pass_check "Docker Compose: host gateway mapped in extra_hosts."
 else
   fail_check "Docker Compose: missing host gateway in extra_hosts."

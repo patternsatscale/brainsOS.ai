@@ -204,13 +204,27 @@ class FIFOQueueWorker:
         except Exception as e:
             logger.debug("Failed to emit telemetry: %s", e)
 
+    async def _heartbeat_loop(self, task: Task) -> None:
+        """Keep the task lease alive while its handler runs (supports multi-hour handlers)."""
+        interval = max(1.0, self.lease_timeout_sec / 3.0)
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.queue.heartbeat(task.id)
+            except Exception as e:  # pragma: no cover - best effort
+                logger.debug("Heartbeat failed for task %s: %s", task.id, e)
+
     async def _process_task(self, task: Task) -> None:
         """Execute task handler with retries and status tracking."""
         start_perf = time.perf_counter()
         await self._emit_telemetry("task_started", task)
+        heartbeat = asyncio.create_task(self._heartbeat_loop(task))
         try:
             logger.debug("Executing task %s on queue '%s'", task.id, task.queue)
-            result = await self.handler(task)
+            try:
+                result = await self.handler(task)
+            finally:
+                heartbeat.cancel()
             duration_ms = (time.perf_counter() - start_perf) * 1000.0
             task.mark_completed(result=result)
             await self.queue.update_task(task)

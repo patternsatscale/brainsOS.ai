@@ -59,7 +59,7 @@ class TestThreadResolution:
 
 
 class TestQuoteAndSignatureStripping:
-    def test_clean_single_line_attribution_and_quotes(self) -> None:
+    def test_clean_preserves_email_chain_by_default(self) -> None:
         body = """Sounds great, let's schedule the deployment for tomorrow morning.
 
 On Mon, Sep 29, 2026 at 9:30 AM Alice Smith <alice@brainsos.local> wrote:
@@ -67,16 +67,28 @@ On Mon, Sep 29, 2026 at 9:30 AM Alice Smith <alice@brainsos.local> wrote:
 > We have completed all regression tests.
 """
         cleaned = clean_email_body(body)
+        assert "Sounds great, let's schedule the deployment for tomorrow morning." in cleaned
+        assert "On Mon, Sep 29, 2026 at 9:30 AM Alice Smith <alice@brainsos.local> wrote:" in cleaned
+        assert "> Can we deploy the new agent runtime tomorrow?" in cleaned
+
+    def test_clean_single_line_attribution_and_quotes_when_strip_chain_requested(self) -> None:
+        body = """Sounds great, let's schedule the deployment for tomorrow morning.
+
+On Mon, Sep 29, 2026 at 9:30 AM Alice Smith <alice@brainsos.local> wrote:
+> Can we deploy the new agent runtime tomorrow?
+> We have completed all regression tests.
+"""
+        cleaned = clean_email_body(body, strip_chain=True)
         assert cleaned == "Sounds great, let's schedule the deployment for tomorrow morning."
 
-    def test_clean_two_line_attribution(self) -> None:
+    def test_clean_two_line_attribution_when_strip_chain_requested(self) -> None:
         body = """Approved.
 
 On Monday, September 29, 2026,
 Operator wrote:
 > Do you approve this change?
 """
-        cleaned = clean_email_body(body)
+        cleaned = clean_email_body(body, strip_chain=True)
         assert cleaned == "Approved."
 
     def test_clean_standard_signature_block(self) -> None:
@@ -91,7 +103,7 @@ Operator wrote:
         cleaned = clean_email_body(body)
         assert cleaned == "Please find the updated metrics below.\n\nEverything looks healthy."
 
-    def test_clean_outlook_style_original_message(self) -> None:
+    def test_clean_outlook_style_original_message_when_strip_chain_requested(self) -> None:
         body = """Confirmed.
 
 -----Original Message-----
@@ -100,17 +112,17 @@ Sent: Monday, September 29, 2026 8:00 AM
 To: operator@brainsos.local
 Subject: System Check
 """
-        cleaned = clean_email_body(body)
+        cleaned = clean_email_body(body, strip_chain=True)
         assert cleaned == "Confirmed."
 
-    def test_clean_inline_responses_between_quotes(self) -> None:
+    def test_clean_inline_responses_between_quotes_when_strip_chain_requested(self) -> None:
         body = """> Will the shared runner handle concurrent requests?
 Yes, LiteLLM serializes completions.
 
 > Does it preserve memory plane purity?
 Absolutely, memory stays in Markdown.
 """
-        cleaned = clean_email_body(body)
+        cleaned = clean_email_body(body, strip_chain=True)
         assert "Yes, LiteLLM serializes completions." in cleaned
         assert "Absolutely, memory stays in Markdown." in cleaned
         assert "> Will the shared runner handle" not in cleaned

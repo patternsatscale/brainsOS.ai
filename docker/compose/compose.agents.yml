@@ -50,6 +50,10 @@ services:
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      # Safe roots & verifier suppression (Ticket #295)
+      - HERMES_WRITE_SAFE_ROOT=/opt/data:/tmp:/data
+      - HERMES_FILE_MUTATION_VERIFIER=false
+      - HERMES_TURN_COMPLETION_EXPLAINER=false
     volumes:
       - ${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_memories}}:/data/agent_memories
       - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces
@@ -58,6 +62,8 @@ services:
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/config.json:/opt/data/config.json:ro
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/model_pool.json:/opt/data/model_pool.json:ro
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/mcp.json:/opt/data/mcp.json:ro
+      # brainsOS Hermes provider plugins (#295: forwards session_id to LiteLLM Langfuse traces)
+      - ../hermes/plugins/model-providers:/opt/data/plugins/model-providers:ro
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     command: ["gateway", "run"]
     extra_hosts:

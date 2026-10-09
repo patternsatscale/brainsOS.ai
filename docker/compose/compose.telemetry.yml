@@ -7,7 +7,7 @@ services:
   # Langfuse Web & API Server
   # Ingests OpenTelemetry traces (/api/public/otel) and LiteLLM completions
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4.38.0
+    image: docker.langfuse.com/langfuse/langfuse:4.56.0
     container_name: brainsos-telemetry-langfuse-web
     restart: unless-stopped
     depends_on:
@@ -106,7 +106,7 @@ services:
 
   # Langfuse Background Asynchronous Worker
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4.38.0
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.56.0
     container_name: brainsos-telemetry-langfuse-worker
     restart: unless-stopped
     depends_on:

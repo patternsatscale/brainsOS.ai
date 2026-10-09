@@ -191,6 +191,7 @@ class BrainsOSMailClient:
         from_addr: str | None = None,
         in_reply_to: str | None = None,
         references: str | None = None,
+        html_body: str | None = None,
         extra_headers: dict[str, str] | None = None,
         sync_imap: bool = True,
         sent_folder: str = "Sent",
@@ -238,6 +239,8 @@ class BrainsOSMailClient:
                 msg[k] = v
 
         msg.set_content(body)
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
 
         # Step 1: Outbound Dispatch
         # Route external destinations (e.g. @gmail.com) through Amazon SES.

@@ -252,6 +252,37 @@ class TestBrainsOSMailClientThreadingAndSync(unittest.TestCase):
         self.assertTrue(success)
         mock_imap.append.assert_called_once()
 
+    @patch("smtplib.SMTP")
+    @patch("imaplib.IMAP4")
+    def test_send_mail_with_html_body_creates_multipart_alternative(self, mock_imap_cls, mock_smtp_cls):
+        """Verify that providing html_body produces a multipart/alternative email with text and HTML."""
+        mock_smtp = MagicMock()
+        mock_smtp_cls.return_value.__enter__.return_value = mock_smtp
+        mock_imap = MagicMock()
+        mock_imap.append.return_value = ("OK", [b"Append completed"])
+        mock_imap_cls.return_value.__enter__.return_value = mock_imap
+
+        self.client.send_mail(
+            to="user@brainsos.local",
+            subject="HTML Report",
+            body="Plain text report.",
+            html_body="<p><strong>HTML</strong> report.</p>",
+        )
+
+        sent_msg = mock_smtp.send_message.call_args[0][0]
+        self.assertEqual(sent_msg.get_content_type(), "multipart/alternative")
+        parts = [p.get_content_type() for p in sent_msg.walk() if not p.is_multipart()]
+        self.assertIn("text/plain", parts)
+        self.assertIn("text/html", parts)
+
+        # Verify text part content
+        plain_part = [p for p in sent_msg.walk() if p.get_content_type() == "text/plain"][0]
+        self.assertIn("Plain text report.", plain_part.get_content())
+
+        # Verify html part content
+        html_part = [p for p in sent_msg.walk() if p.get_content_type() == "text/html"][0]
+        self.assertIn("<strong>HTML</strong>", html_part.get_content())
+
 
 if __name__ == "__main__":
     unittest.main()

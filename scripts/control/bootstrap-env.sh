@@ -257,7 +257,7 @@ if command -v uv >/dev/null 2>&1; then
   fi
 
   log_info "Installing dev tooling and brainsOS packages in editable mode..."
-  uv pip install --python "${REPO_ROOT}/.venv/bin/python" pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
+  uv pip install --python "${REPO_ROOT}/.venv/bin/python" pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=4.7.0,<5.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
   pkg_args=()
   for pkg in "${REPO_ROOT}/packages/"*/; do
     if [ -f "${pkg}/pyproject.toml" ]; then
@@ -275,7 +275,7 @@ elif command -v python3 >/dev/null 2>&1; then
   fi
 
   log_info "Installing dev tooling and brainsOS packages in editable mode..."
-  "${REPO_ROOT}/.venv/bin/pip" install --quiet pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
+  "${REPO_ROOT}/.venv/bin/pip" install --quiet pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=4.7.0,<5.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp"
   pkg_args=()
   for pkg in "${REPO_ROOT}/packages/"*/; do
     if [ -f "${pkg}/pyproject.toml" ]; then

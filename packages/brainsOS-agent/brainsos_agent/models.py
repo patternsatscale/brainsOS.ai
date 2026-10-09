@@ -242,5 +242,6 @@ class OutboundEmail(BaseModel):
     thread_id: str
     in_reply_to: str | None = None
     references: str | None = None
+    html_body: str | None = None
     attachments: list[Any] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
