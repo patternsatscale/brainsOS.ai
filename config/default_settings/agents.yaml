@@ -142,8 +142,9 @@ agents:
     soul: "bawtford"
     persona: "config/default_souls/bawtford.md"
     models:
-      default: "brainsos-core"
+      default: "qwen3.8:latest"
       available:
+        - "qwen3.8:latest"
         - "brainsos-core"
         - "cindy-active-coding-model"
         - "llama3.2:3b"

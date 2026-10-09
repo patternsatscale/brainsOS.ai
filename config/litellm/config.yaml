@@ -12,7 +12,7 @@ model_list:
       # Hardware serialization: Protects unified LPDDR5x memory bus on GB10 / Apple Silicon
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: 4096
+      num_ctx: 131072
 
   # Direct Model Name Aliases
   - model_name: qwen3.8:latest
@@ -21,7 +21,7 @@ model_list:
       api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: 4096
+      num_ctx: 131072
     model_info:
       supports_function_calling: true
       supports_tool_choice: true
@@ -49,7 +49,7 @@ model_list:
       api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
-      num_ctx: 4096
+      num_ctx: 131072
 
   # Cindy Pawford Rotated Coding Model Alias
   - model_name: cindy-active-coding-model

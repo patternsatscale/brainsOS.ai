@@ -30,11 +30,11 @@ class HermesMailAdapter(AgentRuntime):
     def __init__(
         self,
         runner_url: str | None = None,
-        timeout: float = 60.0,
+        timeout: float = 180.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.runner_url = runner_url or os.getenv("HERMES_RUNNER_URL", "http://127.0.0.1:8642/v1")
-        self.timeout = timeout
+        self.timeout = float(os.getenv("HERMES_TIMEOUT_SEC", str(timeout)))
         self._client = http_client
 
     def validate_workspace_path(self, target_path: str | Path, profile: AgentProfile) -> Path:
@@ -147,9 +147,16 @@ class HermesMailAdapter(AgentRuntime):
             },
         }
 
+        api_key = (
+            os.getenv("API_SERVER_KEY")
+            or os.getenv("HERMES_API_KEY")
+            or os.getenv("LITELLM_MASTER_KEY", "sk-brainsos-master-key")
+        )
         headers = {
             "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
             "X-BrainsOS-Agent": profile.id or profile.name,
+            "X-Hermes-Session-Id": session_id,
             "x-litellm-session-id": session_id,
         }
 

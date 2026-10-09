@@ -16,9 +16,8 @@ def get_runtime_adapter(runtime: str | None = None) -> AgentRuntime:
     if key in ("autoresponder", "echo", "ping", "dummy"):
         return AutoResponderAdapter()
     elif key in ("hermes", "nous-hermes", "default", "runner-hermes", "hermes-warm"):
-        return RunnerMailAdapter(
-            runner_id="hermes-warm",
-            endpoint=os.getenv("HERMES_RUNNER_URL", "http://127.0.0.1:8642"),
+        return HermesMailAdapter(
+            runner_url=os.getenv("HERMES_RUNNER_URL", "http://127.0.0.1:8642/v1"),
         )
     elif key in ("openai", "openai-sdk", "openai-warm", "gpt"):
         return RunnerMailAdapter(

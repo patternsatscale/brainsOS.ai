@@ -26,9 +26,16 @@ RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/pack
 COPY packages/brainsOS-mcp /opt/hermes/packages/brainsOS-mcp
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-mcp
 
+# Install standalone brainsOS-runner package (Compute Plane)
+COPY packages/brainsOS-runner /opt/hermes/packages/brainsOS-runner
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-runner
+
 # Install standalone brainsOS-agent package (Agent Runtime & Dynamic Profile SPI)
 COPY packages/brainsOS-agent /opt/hermes/packages/brainsOS-agent
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-agent
+
+# Install Langfuse SDK for native observability plugin
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv langfuse
 
 # Install GitHub CLI (gh), Git tooling, and configure safe container defaults
 RUN apt-get update -qq && \

@@ -14,29 +14,48 @@ services:
   runner-hermes:
     build:
       context: ../..
-      dockerfile: docker/runners/hermes/Dockerfile
-    image: brainsos-runner-hermes:latest
+      dockerfile: docker/hermes/Dockerfile
+    image: brainsos-hermes-runner:latest
     container_name: brainsos-agent-runner-hermes
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${HERMES_RUNNER_PORT:-8642}:8642"
-      - "127.0.0.1:${HERMES_RUNNER_WEB_PORT:-8787}:8787"
+      - "127.0.0.1:${HERMES_RUNNER_WEB_PORT:-8787}:9119"
     environment:
-      - API_SERVER_ENABLED=true
-      - PORT=8642
-      - OPENAI_BASE_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - HERMES_DASHBOARD=true
+      - HERMES_DASHBOARD_HOST=127.0.0.1
+      - HERMES_DASHBOARD_PORT=9119
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
       - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
-      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,langfuse
+      # Langfuse observability plugin config
+      - HERMES_LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - HERMES_LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:3001
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=http://host.docker.internal:3001
+      - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH}
+      # Tool Egress Proxy CA bundle trust
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      - CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
     volumes:
       - ${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_memories}}:/data/agent_memories
       - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces
-      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes:/config/hermes:ro
-      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes:/root/.hermes:rw
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes:/opt/data:rw
+      - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
+    command: ["gateway", "run"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -62,8 +81,9 @@ services:
     ports:
       - "127.0.0.1:${OPENAI_RUNNER_PORT:-8002}:8002"
     environment:
-      - OPENAI_BASE_URL=${LITELLM_URL:-http://host.docker.internal:4000/v1}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
       - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
       - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
@@ -92,9 +112,9 @@ services:
     ports:
       - "127.0.0.1:${CLAUDE_RUNNER_PORT:-8001}:8001"
     environment:
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-${LITELLM_URL:-http://host.docker.internal:4000}}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-http://litellm:4000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
-      - LITELLM_URL=${LITELLM_URL:-http://host.docker.internal:4000}
+      - LITELLM_URL=${LITELLM_URL:-http://litellm:4000}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
       - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
       - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
