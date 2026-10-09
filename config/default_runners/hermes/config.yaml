@@ -21,7 +21,9 @@ providers:
 agent:
   name: "brainsos"
 
-# Memory is managed externally by brainsOS in human-auditable OKF Markdown files (Rule 1)
+# Long-term memory is owned by brainsOS (OKF Markdown in /memories), so Hermes' internal
+# memory store and skill/memory nudges are disabled. Nudges also spawn background LLM
+# review calls that would compete with the main run for the single GPU slot (Rule 3).
 skills:
   creation_nudge_interval: 0
 
