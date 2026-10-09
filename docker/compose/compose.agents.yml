@@ -53,7 +53,11 @@ services:
     volumes:
       - ${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_memories}}:/data/agent_memories
       - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces
-      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes:/opt/data:rw
+      - hermes_runner_data:/opt/data
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/config.yaml:/opt/data/config.yaml:rw
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/config.json:/opt/data/config.json:ro
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/model_pool.json:/opt/data/model_pool.json:ro
+      - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/mcp.json:/opt/data/mcp.json:ro
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     command: ["gateway", "run"]
     extra_hosts:
@@ -212,3 +216,6 @@ services:
 volumes:
   tool_egress_proxy_data:
     name: brainsos_tool_egress_proxy_data
+  hermes_runner_data:
+    name: brainsos_hermes_runner_data
+

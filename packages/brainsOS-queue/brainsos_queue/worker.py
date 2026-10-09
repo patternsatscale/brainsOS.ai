@@ -218,7 +218,7 @@ class FIFOQueueWorker:
             logger.info("Task %s completed successfully", task.id)
         except Exception as e:
             duration_ms = (time.perf_counter() - start_perf) * 1000.0
-            logger.warning("Task %s failed: %s", task.id, e)
+            logger.warning("Task %s failed: %s", task.id, e, exc_info=True)
             task.mark_failed(str(e))
             await self.queue.update_task(task)
             await self._emit_telemetry(
