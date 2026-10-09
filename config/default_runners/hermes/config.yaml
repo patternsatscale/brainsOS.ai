@@ -67,6 +67,13 @@ platforms:
   email:
     enabled: false
 
+# Rule 3 (hardware serialization): one agent run at a time on the shared GPU. Hermes defaults
+# to 10 concurrent runs; a second POST /v1/runs gets HTTP 429 and the brainsOS worker backs off
+# and resubmits (#295). Enforced on live configs by scripts/setup/apply-hermes-guards.sh.
+gateway:
+  api_server:
+    max_concurrent_runs: 1
+
 monitoring:
   install_id: "brainsos-hermes"
   gateway_health_export:

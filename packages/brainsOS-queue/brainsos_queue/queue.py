@@ -56,8 +56,12 @@ class WorkQueue:
         return await self.backend.peek(self.name)
 
     async def update_task(self, task: Task) -> Task:
-        """Persist updated task state."""
+        """Persist updated task state (including payload checkpoints)."""
         return await self.backend.update_task(task)
+
+    async def heartbeat(self, task_id: str) -> None:
+        """Refresh the lease of a PROCESSING task."""
+        await self.backend.heartbeat(task_id)
 
     async def get_task(self, task_id: str) -> Task | None:
         """Retrieve task by ID."""

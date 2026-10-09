@@ -24,6 +24,7 @@ from typing import Any
 
 from aiohttp import web
 from brainsos_mail.client import BrainsOSMailClient
+from brainsos_mail.models import ParsedInboundEmail
 from brainsos_mail.parser import parse_inbound_mime
 from brainsos_queue import FIFOQueueWorker, Task, WorkQueue
 
@@ -35,8 +36,16 @@ except ImportError:
     pass
 
 from brainsos_agent.adapters import get_runtime_adapter
+from brainsos_agent.adapters.hermes import HermesMailAdapter, RunContext
 from brainsos_agent.config import get_comms_dir, get_control_plane_dir, get_data_dir
-from brainsos_agent.models import AgentProfile
+from brainsos_agent.langfuse_trace import record_mail_run_trace
+from brainsos_agent.mail_runs import (
+    RUN_UNREACHABLE,
+    canonical_session_id,
+    compose_reply_body,
+    failure_email_body,
+)
+from brainsos_agent.models import AgentProfile, OutboundEmail
 
 logger = logging.getLogger("brainsos_agent.worker")
 
@@ -336,17 +345,17 @@ class AgentQueueWorkerDaemon:
                 pass
 
     async def handle_task(self, task: Task) -> None:
-        """Processes a single dequeued email task."""
+        """Processes a single dequeued email task: one email -> one agent run -> one reply."""
         payload: dict[str, Any] = task.payload if isinstance(task.payload, dict) else {}
         raw_mime: bytes = b""
-        spool_file: Path | None = None
+        spool_file: Path | None = Path(payload["spool_path"]) if payload.get("spool_path") else None
 
         # 1. Extract raw MIME bytes from payload or spool file path
         if "raw_mime" in payload:
             raw = payload["raw_mime"]
             raw_mime = raw.encode("utf-8") if isinstance(raw, str) else bytes(raw)
         elif "spool_path" in payload:
-            spool_file = Path(payload["spool_path"])
+            assert spool_file is not None
             if spool_file.exists():
                 raw_mime = spool_file.read_bytes()
             else:
@@ -373,12 +382,7 @@ class AgentQueueWorkerDaemon:
         profile = self.find_profile_for_recipient(inbound_email.recipient, profiles)
         if not profile:
             logger.info("Ignoring task for non-agent recipient '%s'", inbound_email.recipient)
-            if spool_file and spool_file.exists():
-                try:
-                    spool_file.with_suffix(".done").touch()
-                    self._processed_spool_files.add(spool_file.name)
-                except Exception:
-                    pass
+            self._mark_spool_done(spool_file)
             return
 
         logger.info(
@@ -388,11 +392,140 @@ class AgentQueueWorkerDaemon:
             profile.email,
         )
 
-        # 4. Dispatch through matched runtime adapter (Hermes, AutoResponder, etc.)
-        adapter = get_runtime_adapter(profile.runtime)
-        outbound = await adapter.process_message(inbound_email, profile)
+        # 4. Resend a reply that was produced before a crash/SMTP failure (never re-run the agent).
+        pending = payload.get("pending_reply")
+        if isinstance(pending, dict):
+            outbound = OutboundEmail(**pending)
+            logger.info("Resending checkpointed reply for thread '%s'", inbound_email.thread_id)
+        else:
+            outbound = await self._run_agent(task, payload, inbound_email, profile)
+            payload["pending_reply"] = outbound.model_dump(mode="json")
+            await self.queue.update_task(task)
 
-        # 5. Dual-dispatch reply via SMTP & IMAP Sent folder
+        # 5. Exactly one reply (result or failure email) via SMTP & IMAP Sent folder
+        self._send_reply(profile, inbound_email, outbound)
+        logger.info(
+            "Completed email run for thread '%s' (status=%s) - replied to '%s'",
+            inbound_email.thread_id,
+            outbound.metadata.get("run_status", "completed"),
+            outbound.to,
+        )
+        if not payload.get("trace_recorded"):
+            await self._record_trace(profile, inbound_email, outbound)
+            payload["trace_recorded"] = True
+
+        self._mark_spool_done(spool_file)
+        if payload.get("message_id"):
+            self._processed_message_ids.add(payload["message_id"])
+
+    async def _run_agent(
+        self,
+        task: Task,
+        payload: dict[str, Any],
+        inbound_email: ParsedInboundEmail,
+        profile: AgentProfile,
+    ) -> OutboundEmail:
+        """Dispatches through the runtime adapter.
+
+        Infrastructure exceptions propagate so the queue retries; on the final attempt a plain
+        failure email is sent and the spool file is marked done before the task dead-letters.
+        """
+        adapter = get_runtime_adapter(profile.runtime)
+        try:
+            if isinstance(adapter, HermesMailAdapter):
+
+                async def _checkpoint(run_id: str, submitted_at: float) -> None:
+                    payload["hermes_run_id"] = run_id
+                    payload["hermes_run_submitted_at"] = submitted_at
+                    await self.queue.update_task(task)
+
+                ctx = RunContext(
+                    run_id=payload.get("hermes_run_id"),
+                    submitted_at=payload.get("hermes_run_submitted_at"),
+                    on_run_submitted=_checkpoint,
+                )
+                return await adapter.process_message(inbound_email, profile, run_context=ctx)
+            return await adapter.process_message(inbound_email, profile)
+        except Exception as e:
+            final_attempt = task.retries + 1 >= task.max_retries
+            if not final_attempt:
+                raise
+            logger.error("Email run for thread '%s' failed on final attempt: %s", inbound_email.thread_id, e)
+            clean_subj = (
+                inbound_email.subject
+                if inbound_email.subject.lower().startswith("re:")
+                else f"Re: {inbound_email.subject}"
+            )
+            fail_text = failure_email_body(RUN_UNREACHABLE, agent_name=profile.name, reference=task.id)
+            plain_body, html_body = compose_reply_body(fail_text, inbound_email)
+            failure = OutboundEmail(
+                to=inbound_email.sender,
+                subject=clean_subj,
+                body=plain_body,
+                html_body=html_body,
+                thread_id=inbound_email.thread_id,
+                in_reply_to=inbound_email.message_id,
+                references=inbound_email.message_id,
+                metadata={
+                    "agent_id": profile.id,
+                    "session_id": canonical_session_id(profile.id or profile.name, inbound_email.thread_id),
+                    "run_id": payload.get("hermes_run_id"),
+                    "run_status": RUN_UNREACHABLE,
+                    "run_error": str(e),
+                    "input": inbound_email.clean_body,
+                },
+            )
+            try:
+                self._send_reply(profile, inbound_email, failure)
+                await self._record_trace(profile, inbound_email, failure)
+            except Exception as send_err:  # pragma: no cover - best effort
+                logger.error("Could not send failure email for thread '%s': %s", inbound_email.thread_id, send_err)
+            spool = Path(payload["spool_path"]) if payload.get("spool_path") else None
+            self._mark_spool_done(spool)
+            raise
+
+    def _mark_spool_done(self, spool_file: Path | None) -> None:
+        """Marks an email as finished so the spool scanner never replays it.
+
+        The queue DB is the authoritative replay ledger (``_load_known_tasks`` seeds the dedup
+        sets from it on startup). The ``.done`` marker is best-effort: the spool directory is
+        owned by the mail container and is usually not writable by the host worker.
+        """
+        if not spool_file:
+            return
+        self._processed_spool_files.add(spool_file.name)
+        try:
+            if spool_file.exists():
+                spool_file.with_suffix(".done").touch()
+        except PermissionError:
+            logger.debug("Spool dir not writable for %s; relying on queue DB as replay ledger", spool_file)
+        except Exception as e:
+            logger.warning("Could not write .done marker for %s: %s", spool_file, e)
+
+    async def _record_trace(
+        self, profile: AgentProfile, inbound_email: ParsedInboundEmail, outbound: OutboundEmail
+    ) -> None:
+        meta = outbound.metadata or {}
+        status = meta.get("run_status", "completed")
+        await record_mail_run_trace(
+            session_id=meta.get("session_id")
+            or canonical_session_id(profile.id or profile.name, inbound_email.thread_id),
+            agent_id=profile.id or profile.name,
+            agent_name=profile.name,
+            sender=inbound_email.sender,
+            subject=inbound_email.subject,
+            run_id=meta.get("run_id"),
+            status=status,
+            input_text=meta.get("input") or inbound_email.clean_body,
+            output_text=outbound.body,
+            error=meta.get("run_error"),
+            usage=meta.get("usage"),
+            started_at=meta.get("started_at"),
+            ended_at=meta.get("ended_at"),
+        )
+
+    def _send_reply(self, profile: AgentProfile, inbound_email: ParsedInboundEmail, outbound: OutboundEmail) -> None:
+        """Dual-dispatches a reply via SMTP & IMAP Sent folder from the agent's identity."""
         client = BrainsOSMailClient.from_env()
         # Set agent identity for sender
         client.username = profile.email
@@ -438,36 +571,38 @@ class AgentQueueWorkerDaemon:
             to=outbound.to,
             subject=outbound.subject,
             body=outbound.body,
+            html_body=outbound.html_body,
             from_addr=sender_email,
             in_reply_to=outbound.in_reply_to,
             references=outbound.references,
             sync_imap=True,
         )
-        logger.info(
-            "Completed turn for thread '%s' - replied to '%s'",
-            inbound_email.thread_id,
-            outbound.to,
-        )
 
-        # Mark spool file as completed if present
-        if spool_file and spool_file.exists():
-            try:
-                done_marker = spool_file.with_suffix(".done")
-                done_marker.touch()
-                self._processed_spool_files.add(spool_file.name)
-            except Exception:
-                pass
-
-        if "message_id" in payload and payload["message_id"]:
-            self._processed_message_ids.add(payload["message_id"])
+    async def _load_known_tasks(self) -> None:
+        """Seeds dedup sets from the queue DB so a restart never re-enqueues known emails."""
+        try:
+            tasks = await self.queue.list_tasks()
+        except Exception as e:
+            logger.warning("Could not load existing tasks for spool dedup: %s", e)
+            return
+        for t in tasks:
+            p = t.payload if isinstance(t.payload, dict) else {}
+            if p.get("message_id"):
+                self._processed_message_ids.add(p["message_id"])
+            if p.get("spool_path"):
+                self._processed_spool_files.add(Path(p["spool_path"]).name)
+        if tasks:
+            logger.info("Loaded %d known tasks from queue DB for spool dedup", len(tasks))
 
     async def run(self) -> None:
         """Starts the queue worker loop and HTTP ingress server."""
+        await self._load_known_tasks()
         self.worker = FIFOQueueWorker(
             queue=self.queue,
             handler=self.handle_task,
             concurrency=self.concurrency,
             poll_interval=0.5,
+            backoff_base=float(os.getenv("BRAINSOS_QUEUE_RETRY_BACKOFF_SEC", "20")),
         )
         self.worker.start()
         logger.info("AgentQueueWorkerDaemon started on queue '%s'", self.queue.name)

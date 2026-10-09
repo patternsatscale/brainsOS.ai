@@ -164,7 +164,7 @@ graph TD
 │     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)│
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Execution Plane (Warm Stateless Hermes Runner & Dynamic Profiles) │
-│     - Shared Hermes Runner (:8642 API /v1/chat/completions)                 │
+│     - Shared Hermes Runner (:8642 async API /v1/runs, max_concurrent_runs:1)│
 │     - Dynamic Manifest Registry: config/agents.yaml (Zero Container Drift)  │
 │     - Asynchronous Agent Core SPI: packages/brainsOS-agent                  │
 │     - Isolated Tenancies: data/agent_workspaces/<tenant>/ & memories/       │
@@ -383,7 +383,22 @@ make emergency-stop # Instantly terminate all agent containers
 docker compose ps
 docker compose logs -f caddy
 docker compose logs -f hermes-runner
+
+# Email -> run -> reply pipeline (#295)
+./scripts/setup/apply-hermes-guards.sh          # Enforce Hermes max_concurrent_runs: 1 + session plugin; recreate runner
+./scripts/setup/apply-hermes-guards.sh --check  # Verify only
+./scripts/control/purge-agent-mail.sh --yes     # Clean slate: empty agent mailboxes, spool & queue (worker must be stopped)
 ```
+
+### Email → Agent Run → Reply
+
+Every inbound email to an agent triggers **one** asynchronous Hermes run and produces **one** reply:
+
+1. The queue worker submits `POST /v1/runs` (persona + OKF rules as `instructions`, OKF thread turns as `conversation_history`, canonical `session_id = mail-<agent>-<thread>`, `Idempotency-Key = Message-ID`) and checkpoints the `run_id` on the queue task.
+2. It polls `GET /v1/runs/{run_id}` with no socket held open, so runs may last hours. A wall-clock budget (`HERMES_RUN_MAX_SEC`, default 4h) calls `/stop`. A worker restart resumes polling the same run instead of resubmitting.
+3. `completed` → the result is emailed and the turn is recorded in OKF. `failed` / `cancelled` / `interrupted` / timeout → the sender gets a plain failure email with recommendations; raw errors go to logs and Langfuse only.
+4. Concurrency is 1 at both layers: Hermes `max_concurrent_runs: 1` (the worker backs off on 429) and LiteLLM `max_parallel_requests: 1`.
+5. Langfuse: Hermes turn traces, LiteLLM generations (session forwarded by `docker/hermes/plugins/model-providers/brainsos-litellm-session`) and a worker `email-run` trace (sender as `user_id`, ERROR level on failure) all share the thread's session.
 
 ---
 

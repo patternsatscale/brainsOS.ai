@@ -256,6 +256,7 @@ class SQLiteQueueBackend(QueueBackend):
                 conn.execute(
                     """
                     UPDATE tasks SET
+                        payload = ?,
                         status = ?,
                         started_at = ?,
                         completed_at = ?,
@@ -267,6 +268,7 @@ class SQLiteQueueBackend(QueueBackend):
                     WHERE id = ?
                     """,
                     (
+                        json.dumps(task.payload),
                         task.status.value,
                         task.started_at,
                         task.completed_at,
@@ -283,6 +285,16 @@ class SQLiteQueueBackend(QueueBackend):
             event = self._get_event(task.queue)
             event.set()
         return task
+
+    async def heartbeat(self, task_id: str) -> None:
+        """Refresh locked_at for a PROCESSING task so its lease is not reclaimed mid-run."""
+        async with self._lock:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "UPDATE tasks SET locked_at = ? WHERE id = ? AND status = 'processing'",
+                    (time.time(), task_id),
+                )
+                conn.commit()
 
     async def get_task(self, task_id: str) -> Task | None:
         async with self._lock:

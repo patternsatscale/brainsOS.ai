@@ -40,7 +40,13 @@ class QueueBackend(ABC):
 
     @abstractmethod
     async def update_task(self, task: Task) -> Task:
-        """Persist updated state of an existing task."""
+        """Persist updated state of an existing task (including its payload)."""
+
+    async def heartbeat(self, task_id: str) -> None:  # noqa: B027 - optional hook
+        """Refresh the lease of a PROCESSING task so long-running handlers are not reclaimed.
+
+        Default implementation is a no-op for backends without lease semantics.
+        """
 
     @abstractmethod
     async def get_task(self, task_id: str) -> Task | None:

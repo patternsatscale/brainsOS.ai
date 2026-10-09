@@ -116,10 +116,12 @@ def resolve_thread_id(headers: dict[str, Any]) -> str:
     return f"<unthreaded-{uuid.uuid4().hex[:12]}@brainsos.local>"
 
 
-def clean_email_body(raw_body: str) -> str:
-    """Strips reply blockquotes, attribution lines, and signatures.
+def clean_email_body(raw_body: str, strip_chain: bool = False) -> str:
+    """Cleans email body while preserving useful conversational context and email chains.
 
-    Returns only the newly authored conversational text to save LLM tokens.
+    By default (strip_chain=False), preserves reply blockquotes, attributions, and forwarded
+    email chains, only stripping standard trailing signature blocks ('-- ', '--', '__').
+    When strip_chain=True, strips reply blockquotes and attribution lines.
     """
     if not raw_body:
         return ""
@@ -139,36 +141,37 @@ def clean_email_body(raw_body: str) -> str:
         if stripped in ("--", "-- ", "__"):
             break
 
-        # 2. Outlook/Exchange separator lines: "-----Original Message-----" or long underlines
-        if re.match(r"^-{3,}\s*original message\s*-{3,}$", stripped, re.IGNORECASE) or re.match(r"^_{5,}$", stripped):
-            break
-
-        # 3. Header blocks: "From: ... \n Sent: ... "
-        if re_from_header.match(stripped):
-            next_idx = i + 1
-            while next_idx < len(lines) and not lines[next_idx].strip():
-                next_idx += 1
-            if next_idx < len(lines) and re_sent_date_header.match(lines[next_idx].strip()):
+        if strip_chain:
+            # 2. Outlook/Exchange separator lines: "-----Original Message-----" or long underlines
+            if re.match(r"^-{3,}\s*original message\s*-{3,}$", stripped, re.IGNORECASE) or re.match(r"^_{5,}$", stripped):
                 break
 
-        # 4. Single-line attribution: "On <date>, <sender> wrote:" or "At <time>, <sender> wrote:"
-        if re.match(r"^on\s+.+wrote\s*:?$", stripped, re.IGNORECASE) or re.match(
-            r"^at\s+.+wrote\s*:?$", stripped, re.IGNORECASE
-        ):
-            break
+            # 3. Header blocks: "From: ... \n Sent: ... "
+            if re_from_header.match(stripped):
+                next_idx = i + 1
+                while next_idx < len(lines) and not lines[next_idx].strip():
+                    next_idx += 1
+                if next_idx < len(lines) and re_sent_date_header.match(lines[next_idx].strip()):
+                    break
 
-        # 5. Two-line attribution: "On <date>,\n<sender> wrote:"
-        if re.match(r"^on\s+.*,\s*$", stripped, re.IGNORECASE):
-            next_idx = i + 1
-            while next_idx < len(lines) and not lines[next_idx].strip():
-                next_idx += 1
-            if next_idx < len(lines) and re.match(r"^.+wrote\s*:?$", lines[next_idx].strip(), re.IGNORECASE):
+            # 4. Single-line attribution: "On <date>, <sender> wrote:" or "At <time>, <sender> wrote:"
+            if re.match(r"^on\s+.+wrote\s*:?$", stripped, re.IGNORECASE) or re.match(
+                r"^at\s+.+wrote\s*:?$", stripped, re.IGNORECASE
+            ):
                 break
 
-        # 6. Nested quote lines starting with '>' or '|'
-        if stripped.startswith(">") or stripped.startswith("|"):
-            i += 1
-            continue
+            # 5. Two-line attribution: "On <date>,\n<sender> wrote:"
+            if re.match(r"^on\s+.*,\s*$", stripped, re.IGNORECASE):
+                next_idx = i + 1
+                while next_idx < len(lines) and not lines[next_idx].strip():
+                    next_idx += 1
+                if next_idx < len(lines) and re.match(r"^.+wrote\s*:?$", lines[next_idx].strip(), re.IGNORECASE):
+                    break
+
+            # 6. Nested quote lines starting with '>' or '|'
+            if stripped.startswith(">") or stripped.startswith("|"):
+                i += 1
+                continue
 
         cleaned_lines.append(line)
         i += 1
@@ -263,6 +266,8 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
                 charset = msg.get_content_charset() or "utf-8"
                 html_parts.append(payload_bytes.decode(charset, errors="replace"))
 
+    raw_html = "\n\n".join(html_parts) if html_parts else None
+
     # Resolve raw conversational body
     if plain_text_parts:
         raw_body = "\n\n".join(plain_text_parts)
@@ -274,7 +279,7 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
     else:
         raw_body = ""
 
-    clean_body = clean_email_body(raw_body)
+    clean_body = clean_email_body(raw_body, strip_chain=False)
 
     return ParsedInboundEmail(
         message_id=msg_id,
@@ -283,6 +288,9 @@ def parse_inbound_mime(raw_mime: bytes | str) -> ParsedInboundEmail:
         recipient=recipient,
         subject=subject,
         clean_body=clean_body,
+        body=raw_body,
+        html_body=raw_html,
+        date=headers.get("Date", ""),
         raw_mime=raw_bytes,
         attachments=attachments,
     )
