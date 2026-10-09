@@ -162,6 +162,7 @@ class AgentQueueWorkerDaemon:
             task = await self.queue.enqueue(
                 payload={
                     "spool_path": str(spool_file),
+                    "raw_mime": raw_mime.decode("utf-8", errors="replace"),
                     "recipient": recipient,
                     "message_id": msg_id,
                 },
@@ -325,20 +326,30 @@ class AgentQueueWorkerDaemon:
             client.password = agent_pass
 
         # Determine appropriate From address:
-        # When dispatching to an external recipient via SES, use the verified public domain
-        # so SPF, DKIM, and SES identity verification align.
+        # Internal emails on dgx use @dgx.local.brainsos.ai; external destinations use configured public domain
         sender_email = profile.email
         to_domain = outbound.to.split("@")[-1].lower() if "@" in outbound.to else ""
-        is_external_dest = bool(to_domain and not to_domain.endswith(".local") and to_domain != "localhost")
-
-        configured_public_domain = (
-            os.getenv("BRAINSOS_EMAIL_DOMAIN", "").split(",")[0].strip()
-            or os.getenv("BRAINSOS_EXTERNAL_EMAIL_DOMAIN", "").split(",")[0].strip()
-            or (f"{os.getenv('BRAINSOS_STAGE')}.public.brainsos.ai" if os.getenv("BRAINSOS_STAGE") else None)
+        is_internal_dest = (
+            to_domain.endswith(".local")
+            or to_domain == "localhost"
+            or "local.brainsos.ai" in to_domain
+            or to_domain == "brainsos.local"
+            or to_domain == os.getenv("BRAINSOS_DOMAIN", "").lower()
+            or to_domain == os.getenv("BRAINSOS_MAIL_DOMAIN", "").lower()
         )
+        is_external_dest = not is_internal_dest
 
-        if is_external_dest:
-            if configured_public_domain:
+        if "dgx.local.brainsos.ai" in to_domain or (
+            os.getenv("BRAINSOS_DOMAIN") and "dgx.local.brainsos.ai" in os.getenv("BRAINSOS_DOMAIN", "")
+        ):
+            sender_email = f"{profile.id}@dgx.local.brainsos.ai"
+        elif is_external_dest:
+            configured_public_domain = (
+                os.getenv("BRAINSOS_EMAIL_DOMAIN", "").split(",")[0].strip()
+                or os.getenv("BRAINSOS_EXTERNAL_EMAIL_DOMAIN", "").split(",")[0].strip()
+                or (f"{os.getenv('BRAINSOS_STAGE')}.public.brainsos.ai" if os.getenv("BRAINSOS_STAGE") else None)
+            )
+            if configured_public_domain and not configured_public_domain.endswith(".example.com"):
                 sender_email = f"{profile.id}@{configured_public_domain}"
             elif inbound_email and "@" in inbound_email.recipient:
                 inbound_dom = inbound_email.recipient.split("@")[-1].strip().lower()

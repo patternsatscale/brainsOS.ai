@@ -8,6 +8,11 @@ set -euo pipefail
 
 echo "[BRAINSOS-SOGO] Initializing SOGo Groupware Stack..."
 
+# Ensure spool, log, and run directories exist and are owned by sogo user
+mkdir -p /var/spool/sogo /var/log/sogo /var/run/sogo /etc/sogo
+chown -R sogo:sogo /var/spool/sogo /var/log/sogo /var/run/sogo /etc/sogo 2>/dev/null || true
+chmod 775 /var/spool/sogo 2>/dev/null || true
+
 DB_HOST="${SOGO_DB_HOST:-brainsos-sogo-db}"
 DB_PORT="${SOGO_DB_PORT:-5432}"
 DB_USER="${SOGO_DB_USER:-sogo}"

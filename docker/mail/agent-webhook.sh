@@ -25,6 +25,7 @@ SPOOL_FILE="${SPOOL_DIR}/${TIMESTAMP}.eml"
 
 # 1. Zero-Loss Spooler: Write raw RFC 822 stream from stdin to disk
 cat > "${SPOOL_FILE}"
+chmod 664 "${SPOOL_FILE}" 2>/dev/null || chmod 644 "${SPOOL_FILE}" 2>/dev/null || true
 
 # 2. HTTP Streaming: Forward stream to control plane ingress endpoint
 INGRESS_URL="${BRAINSOS_INGRESS_URL:-http://control-plane:8000/api/v1/mail/inbound}"
