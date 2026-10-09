@@ -29,17 +29,15 @@ else:
     _BaseCls = type(_base)
 
     class BrainsOSLiteLLMSessionProfile(_BaseCls):  # type: ignore[misc, valid-type]
-        """``custom`` provider + LiteLLM Langfuse session metadata."""
+        """``custom`` provider + LiteLLM tags (session_id omitted to prevent LiteLLM root trace fragmentation)."""
 
         def build_extra_body(self, *, session_id: str | None = None, **context: Any) -> dict[str, Any]:
             body = dict(super().build_extra_body(session_id=session_id, **context) or {})
-            if session_id:
-                metadata = dict(body.get("metadata") or {})
-                metadata.setdefault("session_id", str(session_id))
-                metadata.setdefault("tags", ["hermes"])
-                body["metadata"] = metadata
+            metadata = dict(body.get("metadata") or {})
+            metadata.setdefault("tags", ["hermes", "brainsos"])
+            body["metadata"] = metadata
             return body
 
     _fields = {f.name: getattr(_base, f.name) for f in dataclasses.fields(_base) if f.init}
     register_provider(BrainsOSLiteLLMSessionProfile(**_fields))
-    logger.info("brainsOS litellm-session plugin: 'custom' provider now forwards session_id to LiteLLM")
+    logger.info("brainsOS litellm-session plugin: 'custom' provider configured with hermes tags")

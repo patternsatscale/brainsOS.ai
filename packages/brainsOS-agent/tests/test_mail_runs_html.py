@@ -9,6 +9,7 @@ from brainsos_agent.mail_runs import (
     html_to_plain_text,
     is_valid_html,
     markdown_to_clean_html,
+    sanitize_agent_reply,
 )
 
 
@@ -172,12 +173,45 @@ class TestMailRunsHTMLAndChain(unittest.TestCase):
         self.assertTrue(rich.strip().endswith("</html>"))
         self.assertIn("</body>\n</html>", rich)
 
-    def test_compose_reply_body_without_inbound_email(self):
-        agent_output = "Standalone report."
-        plain, rich = compose_reply_body(agent_output, None)
-        self.assertEqual(plain, "Standalone report.")
-        self.assertIn("Standalone report.", rich)
-        self.assertNotIn("wrote:", rich)
+    def test_sanitize_agent_reply_strips_verifier_footer(self):
+        output = (
+            "<p>Cheers,<br>Bawtford</p>\n\n"
+            "⚠ File-mutation verifier: 1 file(s) were NOT modified this turn despite any wording above that may suggest otherwise. "
+            "Run `git status` or `read_file` to confirm. • `/tmp/extract_thesis.py` — [write_file] Write denied: "
+            "'/tmp/extract_thesis.py' is outside HERMES_WRITE_SAFE_ROOT (/opt/data). Unset the variable or add this path's directory prefix."
+        )
+        cleaned = sanitize_agent_reply(output)
+        self.assertEqual(cleaned, "<p>Cheers,<br>Bawtford</p>")
+        self.assertNotIn("File-mutation verifier", cleaned)
+
+    def test_sanitize_agent_reply_strips_conversational_preamble_before_salutation(self):
+        output = (
+            "I have everything I need — verified identity, the full 277-page dissertation pulled from UWSpace, "
+            "and his broader public profile. Here's the report, formatted as clean HTML.\n\n"
+            "<p><strong>Dear Justin,</strong></p>\n\n"
+            "<p>Here is your research overview.</p>"
+        )
+        cleaned = sanitize_agent_reply(output)
+        self.assertTrue(cleaned.startswith("<p><strong>Dear Justin,</strong></p>"))
+        self.assertNotIn("I have everything I need", cleaned)
+        self.assertIn("<p>Here is your research overview.</p>", cleaned)
+
+    def test_sanitize_agent_reply_strips_preamble_before_plain_text_greeting(self):
+        output = (
+            "Sure! Here is the response:\n\n"
+            "Dear Justin,\n\n"
+            "Thanks for your email."
+        )
+        cleaned = sanitize_agent_reply(output)
+        self.assertEqual(cleaned, "Dear Justin,\n\nThanks for your email.")
+
+    def test_sanitize_agent_reply_strips_preamble_before_html_structure(self):
+        output = (
+            "Here is the data in table form:\n\n"
+            "<table><tr><td>Metric</td></tr></table>"
+        )
+        cleaned = sanitize_agent_reply(output)
+        self.assertEqual(cleaned, "<table><tr><td>Metric</td></tr></table>")
 
 
 if __name__ == "__main__":

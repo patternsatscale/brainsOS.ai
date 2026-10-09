@@ -183,7 +183,10 @@ class HermesMailAdapter(AgentRuntime):
         # 4. Email communication & formatting guidelines (HTML vs Markdown)
         parts.append(
             "\n### Email Communication & Formatting Guidelines\n"
-            "- You are communicating directly via email. Always format your responses in clean, modern HTML rather than Markdown.\n"
+            "- You are communicating directly via email with the recipient.\n"
+            "- Start your email IMMEDIATELY with the opening salutation (e.g. `<p><strong>Dear <Name>,</strong></p>` or `<p>Hello <Name>,</p>`).\n"
+            "- NEVER include meta-commentary, preamble, status updates, or thoughts before the salutation (e.g. do NOT say 'I have everything I need', 'Here is the report', or 'Sure, here is your email:'). Output ONLY the exact email body starting with the greeting.\n"
+            "- Always format your responses in clean, modern HTML rather than Markdown.\n"
             "- Use standard HTML tags for structure and styling: `<p>`, `<strong>`, `<em>`, `<ul>`, `<li>`, `<ol>`, `<code>`, `<pre>`, `<blockquote>`, `<h3>`, `<a>`, `<table>`, `<tr>`, `<td>`.\n"
             "- Do NOT wrap your output in markdown code blocks like ```html ... ```; output clean HTML directly as your message body.\n"
             "- Do NOT use Markdown formatting syntax like `**bold**`, `*italic*`, `# heading`, or `- bullet`.\n"

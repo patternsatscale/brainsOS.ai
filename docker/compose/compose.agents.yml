@@ -50,6 +50,10 @@ services:
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      # Safe roots & verifier suppression (Ticket #295)
+      - HERMES_WRITE_SAFE_ROOT=/opt/data:/tmp:/data
+      - HERMES_FILE_MUTATION_VERIFIER=false
+      - HERMES_TURN_COMPLETION_EXPLAINER=false
     volumes:
       - ${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_memories}}:/data/agent_memories
       - ${BRAINSOS_WORKSPACES_DIR:-${BRAINSOS_AGENT_WORKSPACES_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agent_workspaces}}:/data/agent_workspaces

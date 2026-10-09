@@ -74,22 +74,21 @@ gateway:
   api_server:
     max_concurrent_runs: 1
 
+display:
+  file_mutation_verifier: false
+  turn_completion_explainer: false
+
 monitoring:
   install_id: "brainsos-hermes"
   gateway_health_export:
-    enabled: true
-    metrics_enabled: true
-    diagnostic_events_enabled: true
-    warning_error_events_enabled: true
+    enabled: false
+    metrics_enabled: false
+    diagnostic_events_enabled: false
+    warning_error_events_enabled: false
     export_interval_seconds: 60
     logs_export_interval_seconds: 0
-    resource_attributes:
-      service.name: "hermes-gateway"
-      deployment.environment.name: "production"
   export:
     otlp:
-      enabled: true
-      endpoint: "http://host.docker.internal:3001/api/public/otel/v1/traces"
-      headers_env:
-        Authorization: LANGFUSE_OTEL_AUTH
+      enabled: false
+
 

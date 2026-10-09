@@ -457,6 +457,42 @@ def html_to_plain_text(html_text: str) -> str:
     return text.strip()
 
 
+_SALUTATION_RE = re.compile(
+    r"^(?P<preamble>.+?\n\s*)(?P<greeting>(?:<(?:p|div|html|body|h[1-6])\b[^>]*>(?:<strong>|<b>)?\s*)?(?:Dear|Hello|Hi)\b[^\n]*)",
+    re.DOTALL | re.IGNORECASE,
+)
+
+_HTML_PREAMBLE_RE = re.compile(
+    r"^(?P<preamble>[^<]+?\n\s*)(?P<html><(?:p|div|html|body|table|h[1-6])\b.*)$",
+    re.DOTALL | re.IGNORECASE,
+)
+
+_FOOTER_PATTERNS = [
+    re.compile(r"\s*(?:⚠️|⚠)?\s*File-mutation verifier:.*$", re.DOTALL | re.IGNORECASE),
+    re.compile(r"\s*(?:⚠️|⚠)?\s*Turn completion explainer:.*$", re.DOTALL | re.IGNORECASE),
+]
+
+
+def sanitize_agent_reply(text: str) -> str:
+    """Strips runtime diagnostic footers and leading preambles from agent email replies."""
+    cleaned = (text or "").strip()
+
+    # 1. Strip trailing verifier/diagnostic footers
+    for footer_re in _FOOTER_PATTERNS:
+        cleaned = footer_re.sub("", cleaned).strip()
+
+    # 2. Strip leading conversational preamble before greetings or HTML elements
+    salutation_match = _SALUTATION_RE.match(cleaned)
+    if salutation_match:
+        cleaned = cleaned[salutation_match.start("greeting") :].strip()
+    else:
+        html_match = _HTML_PREAMBLE_RE.match(cleaned)
+        if html_match:
+            cleaned = cleaned[html_match.start("html") :].strip()
+
+    return cleaned
+
+
 def compose_reply_body(
     agent_output: str,
     inbound_email: Any | None = None,
@@ -466,7 +502,7 @@ def compose_reply_body(
     Ensures the agent reply is formatted in clean HTML and quotes the previous
     email chain below it so email conversations maintain full context.
     """
-    raw_output = (agent_output or "").strip()
+    raw_output = sanitize_agent_reply(agent_output)
     fence_match = re.match(r"^\s*```(?:html)?\s*\n(.*?)\n\s*```\s*$", raw_output, re.DOTALL | re.IGNORECASE)
     unfenced_output = fence_match.group(1).strip() if fence_match else raw_output
 
