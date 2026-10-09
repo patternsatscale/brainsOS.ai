@@ -21,6 +21,17 @@ providers:
 agent:
   name: "brainsos"
 
+# Long-term memory is owned by brainsOS (OKF Markdown in /memories), so Hermes' internal
+# memory store and skill/memory nudges are disabled. Nudges also spawn background LLM
+# review calls that would compete with the main run for the single GPU slot (Rule 3).
+skills:
+  creation_nudge_interval: 0
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  nudge_interval: 0
+
 database:
   journal_mode: "wal"
 
@@ -64,7 +75,7 @@ monitoring:
     diagnostic_events_enabled: true
     warning_error_events_enabled: true
     export_interval_seconds: 60
-    logs_export_interval_seconds: 5
+    logs_export_interval_seconds: 0
     resource_attributes:
       service.name: "hermes-gateway"
       deployment.environment.name: "production"

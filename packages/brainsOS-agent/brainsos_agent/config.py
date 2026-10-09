@@ -56,6 +56,11 @@ def get_comms_dir() -> Path:
     return Path(os.getenv("BRAINSOS_COMMS_DIR", get_data_dir() / "comms")).resolve()
 
 
+def get_control_plane_dir() -> Path:
+    """Return active control plane directory from BRAINSOS_CONTROL_PLANE_DIR or data_dir / control_plane."""
+    return Path(os.getenv("BRAINSOS_CONTROL_PLANE_DIR", get_data_dir() / "control_plane")).resolve()
+
+
 def resolve_manifest_path(explicit_path: str | Path | None = None) -> Path:
     """Resolves the canonical path to agents.yaml manifest across core and decoupled setups."""
     if explicit_path:

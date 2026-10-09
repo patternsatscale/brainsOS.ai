@@ -10,6 +10,10 @@ Also hosts the high-performance non-blocking HTTP ingress receiver on port 8000
 from __future__ import annotations
 
 import asyncio
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None  # type: ignore
 import logging
 import os
 import signal
@@ -31,10 +35,84 @@ except ImportError:
     pass
 
 from brainsos_agent.adapters import get_runtime_adapter
-from brainsos_agent.config import get_comms_dir, get_data_dir
+from brainsos_agent.config import get_comms_dir, get_control_plane_dir, get_data_dir
 from brainsos_agent.models import AgentProfile
 
 logger = logging.getLogger("brainsos_agent.worker")
+
+
+class SingleInstanceLock:
+    """Kernel-level file lock (fcntl.flock) ensuring a singleton daemon process.
+
+    If another process holds the flock on lock_path, acquire() fails immediately
+    with non-blocking semantics and identifies the active PID holding the lock.
+    """
+
+    def __init__(self, lock_path: str | Path) -> None:
+        self.lock_path = Path(lock_path).resolve()
+        self.file_handle: Any = None
+        self._acquired = False
+
+    def acquire(self) -> bool:
+        """Attempts non-blocking exclusive lock acquisition. Returns True if acquired, False otherwise."""
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.file_handle = open(self.lock_path, "a+")
+            if fcntl:
+                fcntl.flock(self.file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.file_handle.seek(0)
+            self.file_handle.truncate()
+            self.file_handle.write(f"{os.getpid()}\n")
+            self.file_handle.flush()
+            self._acquired = True
+            return True
+        except (BlockingIOError, OSError):
+            existing_pid = "unknown"
+            try:
+                if self.lock_path.exists():
+                    existing_pid = self.lock_path.read_text(encoding="utf-8").strip() or "unknown"
+            except Exception:
+                pass
+            logger.error(
+                "CRITICAL: Another instance of AgentQueueWorkerDaemon is already running (PID: %s, lockfile: %s). Exiting.",
+                existing_pid,
+                self.lock_path,
+            )
+            if self.file_handle:
+                try:
+                    self.file_handle.close()
+                except Exception:
+                    pass
+                self.file_handle = None
+            return False
+
+    def release(self) -> None:
+        """Releases the lock and removes the lockfile."""
+        if not self._acquired:
+            return
+        if self.file_handle:
+            try:
+                if fcntl:
+                    fcntl.flock(self.file_handle.fileno(), fcntl.LOCK_UN)
+                self.file_handle.close()
+            except Exception:
+                pass
+            self.file_handle = None
+        try:
+            if self.lock_path.exists():
+                self.lock_path.unlink()
+        except Exception:
+            pass
+        self._acquired = False
+
+    def __enter__(self) -> SingleInstanceLock:
+        if not self.acquire():
+            sys.exit(1)
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.release()
+
 
 
 class AgentQueueWorkerDaemon:
@@ -441,6 +519,11 @@ async def main() -> None:
     ingress_host = os.getenv("BRAINSOS_INGRESS_HOST", "0.0.0.0")
     ingress_port = int(os.getenv("BRAINSOS_INGRESS_PORT", "8000"))
     spool_dir = os.getenv("BRAINSOS_SPOOL_DIR", str(get_comms_dir() / "spool"))
+    lock_path = os.getenv("BRAINSOS_QUEUE_LOCK_FILE", str(get_control_plane_dir() / "queue_worker.lock"))
+
+    lock = SingleInstanceLock(lock_path)
+    if not lock.acquire():
+        sys.exit(1)
 
     daemon = AgentQueueWorkerDaemon(
         manifest_path=manifest,
@@ -458,11 +541,17 @@ async def main() -> None:
         except NotImplementedError:
             pass
 
-    await daemon.run()
+    try:
+        await daemon.run()
+    finally:
+        lock.release()
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt:
         sys.exit(0)
+    except SystemExit as exc:
+        sys.exit(exc.code)
+

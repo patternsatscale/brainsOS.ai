@@ -52,3 +52,5 @@ volumes:
     name: brainsos_caddy_config
   tool_egress_proxy_data:
     name: brainsos_tool_egress_proxy_data
+  hermes_runner_data:
+    name: brainsos_hermes_runner_data

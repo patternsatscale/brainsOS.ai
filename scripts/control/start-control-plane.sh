@@ -57,6 +57,7 @@ OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"
 LITELLM_PID_FILE="${PID_DIR}/litellm.pid"
 DGX_BRIDGE_PID_FILE="${PID_DIR}/dgx_bridge.pid"
 QUEUE_WORKER_PID_FILE="${PID_DIR}/queue_worker.pid"
+QUEUE_WORKER_LOCK_FILE="${PID_DIR}/queue_worker.lock"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_DB_PORT="${LITELLM_DB_PORT:-5432}"
 DGX_BRIDGE_PORT="${DGX_BRIDGE_PORT:-11001}"
@@ -175,20 +176,36 @@ stop_services() {
   fi
 
   # Stop Unified Queue Worker if running
+  WORKER_PIDS=$(pgrep -f "brainsos_agent.worker" 2>/dev/null || true)
   if [ -f "${QUEUE_WORKER_PID_FILE}" ]; then
-    PID=$(cat "${QUEUE_WORKER_PID_FILE}")
-    if kill -0 "${PID}" 2>/dev/null; then
-      log_info "Stopping Unified Queue Worker (PID: ${PID})..."
-      kill "${PID}" 2>/dev/null || true
+    PID=$(cat "${QUEUE_WORKER_PID_FILE}" 2>/dev/null || true)
+    if [ -n "${PID}" ]; then
+      WORKER_PIDS="${WORKER_PIDS} ${PID}"
     fi
     rm -f "${QUEUE_WORKER_PID_FILE}"
+  fi
+  rm -f "${QUEUE_WORKER_LOCK_FILE}"
+
+  if [ -n "${WORKER_PIDS}" ]; then
+    log_info "Stopping Unified Queue Worker process(es)..."
+    for p in ${WORKER_PIDS}; do
+      kill "${p}" 2>/dev/null || true
+    done
+    for i in {1..10}; do
+      STILL_RUNNING=$(pgrep -f "brainsos_agent.worker" 2>/dev/null || true)
+      [ -z "${STILL_RUNNING}" ] && break
+      sleep 0.2
+    done
+    for p in $(pgrep -f "brainsos_agent.worker" 2>/dev/null || true); do
+      kill -9 "${p}" 2>/dev/null || true
+    done
     log_success "Unified Queue Worker stopped."
   fi
 
   if command -v lsof >/dev/null 2>&1; then
     INGRESS_PIDS=$(lsof -ti :"${BRAINSOS_INGRESS_PORT}" 2>/dev/null || true)
     if [ -n "${INGRESS_PIDS}" ]; then
-      for p in ${INGRESS_PIDS}; do kill "${p}" 2>/dev/null || true; done
+      for p in ${INGRESS_PIDS}; do kill -9 "${p}" 2>/dev/null || true; done
     fi
   fi
 
@@ -286,11 +303,21 @@ status_services() {
   fi
 
   # Unified Queue Worker & Ingress status
+  WORKER_PID=""
   if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
+    WORKER_PID="$(cat "${QUEUE_WORKER_PID_FILE}")"
+  else
+    WORKER_PID="$(pgrep -f "brainsos_agent.worker" | head -n 1 || true)"
+    if [ -n "${WORKER_PID}" ]; then
+      echo "${WORKER_PID}" > "${QUEUE_WORKER_PID_FILE}"
+    fi
+  fi
+
+  if [ -n "${WORKER_PID}" ] && kill -0 "${WORKER_PID}" 2>/dev/null; then
     if curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
-      log_success "Queue Worker & Ingress: RUNNING (PID: $(cat "${QUEUE_WORKER_PID_FILE}"), http://127.0.0.1:${BRAINSOS_INGRESS_PORT})"
+      log_success "Queue Worker & Ingress: RUNNING (PID: ${WORKER_PID}, http://127.0.0.1:${BRAINSOS_INGRESS_PORT})"
     else
-      log_success "Queue Worker: RUNNING (PID: $(cat "${QUEUE_WORKER_PID_FILE}"))"
+      log_success "Queue Worker: RUNNING (PID: ${WORKER_PID})"
     fi
   else
     log_info "Queue Worker: NOT RUNNING"
@@ -443,11 +470,41 @@ start_services() {
   docker compose up -d runner-hermes 2>/dev/null || log_warn "Could not start runner-hermes container (Docker may be inactive)."
 
   # 6. Start Unified Asynchronous Queue Worker & Mail Ingress
+  CURRENT_WORKER_PID=""
   if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
-    log_info "Unified Queue Worker is already running (PID: $(cat "${QUEUE_WORKER_PID_FILE}"))."
+    CURRENT_WORKER_PID="$(cat "${QUEUE_WORKER_PID_FILE}")"
+  fi
+
+  ALL_WORKER_PIDS="$(pgrep -f "brainsos_agent.worker" 2>/dev/null || true)"
+
+  if [ -n "${CURRENT_WORKER_PID}" ] && [ "${ALL_WORKER_PIDS}" = "${CURRENT_WORKER_PID}" ] && curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
+    log_info "Unified Queue Worker is already running and healthy (PID: ${CURRENT_WORKER_PID})."
   else
+    if [ -n "${ALL_WORKER_PIDS}" ]; then
+      log_warn "Sweeping stale or duplicate queue worker process(es): ${ALL_WORKER_PIDS}..."
+      for p in ${ALL_WORKER_PIDS}; do
+        kill "${p}" 2>/dev/null || true
+      done
+      sleep 1
+      for p in ${ALL_WORKER_PIDS}; do
+        if kill -0 "${p}" 2>/dev/null; then
+          kill -9 "${p}" 2>/dev/null || true
+        fi
+      done
+    fi
+    rm -f "${QUEUE_WORKER_PID_FILE}"
+    rm -f "${QUEUE_WORKER_LOCK_FILE}"
+
+    if command -v lsof >/dev/null 2>&1; then
+      INGRESS_PIDS=$(lsof -ti :"${BRAINSOS_INGRESS_PORT}" 2>/dev/null || true)
+      if [ -n "${INGRESS_PIDS}" ]; then
+        for p in ${INGRESS_PIDS}; do kill -9 "${p}" 2>/dev/null || true; done
+      fi
+    fi
+
     log_info "Starting Unified Asynchronous Queue Worker & Mail Ingress (port ${BRAINSOS_INGRESS_PORT})..."
     BRAINSOS_INGRESS_PORT="${BRAINSOS_INGRESS_PORT}" \
+    BRAINSOS_QUEUE_LOCK_FILE="${QUEUE_WORKER_LOCK_FILE}" \
     PYTHONPATH="${REPO_ROOT}/packages/brainsOS-mail:${REPO_ROOT}/packages/brainsOS-queue:${REPO_ROOT}/packages/brainsOS-agent:${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" \
     nohup ${SETSID_CMD} .venv/bin/python -m brainsos_agent.worker </dev/null >"${PID_DIR}/queue_worker.log" 2>&1 &
     QUEUE_WORKER_PID=$!
@@ -469,6 +526,7 @@ start_services() {
       log_warn "Queue Worker started (PID: ${QUEUE_WORKER_PID}), ingress endpoint still pending."
     fi
   fi
+
 
   # 5. Start DGX Telemetry Reverse Proxy Bridge (ASUS GX10 appliance profile only)
   if is_gx10_hardware && curl -s "http://127.0.0.1:11000" >/dev/null 2>&1; then
