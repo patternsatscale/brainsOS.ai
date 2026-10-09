@@ -2,7 +2,7 @@
 # ==============================================================================
 # brainsOS: End-to-End Multi-Agent & LiteLLM Telemetry Verification
 # Validates trace ingestion, model latency, token counts, and agent identity
-# across the LiteLLM control plane and Langfuse v4.38.0 observability stack.
+# across the LiteLLM control plane and Langfuse v4.56.0 observability stack.
 # ==============================================================================
 
 set -euo pipefail
@@ -176,15 +176,11 @@ USER_MATCHED=false
 
 # Allow up to 25 seconds for the asynchronous Langfuse worker to process and flush queue
 log_info "Awaiting asynchronous trace & session ingestion in Langfuse v4..."
-TMP_TRACES="/tmp/brainsos_lf_traces_$$.json"
 TMP_OBS="/tmp/brainsos_lf_obs_$$.json"
 TMP_SESSIONS="/tmp/brainsos_lf_sessions_$$.json"
-trap 'rm -f "${TMP_TRACES}" "${TMP_OBS}" "${TMP_SESSIONS}"' EXIT
+trap 'rm -f "${TMP_OBS}" "${TMP_SESSIONS}"' EXIT
 
 for i in {1..25}; do
-  curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/traces?limit=25" \
-    -H "Authorization: ${AUTH_HEADER}" \
-    -H "Content-Type: application/json" > "${TMP_TRACES}" 2>/dev/null || true
   curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/v2/observations?limit=25" \
     -H "Authorization: ${AUTH_HEADER}" \
     -H "Content-Type: application/json" > "${TMP_OBS}" 2>/dev/null || true
@@ -201,14 +197,14 @@ for i in {1..25}; do
   MATCH_COUNT=$(python3 -c "
 import json
 try:
-    with open('${TMP_TRACES}', 'r') as f:
-        data_t = json.load(f)
-    traces = data_t.get('data', [])
-    t_matches = [t for t in traces if t.get('userId') == '${TEST_AGENT}' or t.get('sessionId') == '${TEST_SESSION_ID}']
+    with open('${TMP_OBS}', 'r') as f:
+        data_o = json.load(f)
+    obs = data_o.get('data', [])
+    o_matches = [o for o in obs if o.get('userId') == '${TEST_AGENT}' or o.get('sessionId') == '${TEST_SESSION_ID}']
 except Exception:
-    t_matches = []
+    o_matches = []
 
-print(len(t_matches) + int(${CH_COUNT:-0}))
+print(len(o_matches) + int(${CH_COUNT:-0}))
 " 2>/dev/null || echo "0")
 
   if [ "${MATCH_COUNT}" -gt 0 ]; then
@@ -243,12 +239,12 @@ if [ "${SESSION_CHECK}" = "FOUND" ]; then
 elif [[ "${SESSION_CHECK}" =~ ^[0-9]+$ ]] && [ "${SESSION_CHECK}" -gt 0 ]; then
   pass_check "Langfuse Sessions API active and populated (${SESSION_CHECK} active sessions)."
 else
-  # Also query traces with sessionId filter
-  SESS_TRACES=$(curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/traces?sessionId=${TEST_SESSION_ID}" \
+  # Query v2 observations with sessionId filter
+  SESS_OBS=$(curl -s -X GET "http://localhost:${LANGFUSE_PORT}/api/public/v2/observations?sessionId=${TEST_SESSION_ID}" \
     -H "Authorization: ${AUTH_HEADER}" \
     -H "Content-Type: application/json" 2>/dev/null || true)
-  if echo "${SESS_TRACES}" | grep -q "${TEST_SESSION_ID}"; then
-    pass_check "Session '${TEST_SESSION_ID}' verified via traces filter (sessionId=${TEST_SESSION_ID})."
+  if echo "${SESS_OBS}" | grep -q "${TEST_SESSION_ID}"; then
+    pass_check "Session '${TEST_SESSION_ID}' verified via observations filter (sessionId=${TEST_SESSION_ID})."
   else
     warn_check "Session '${TEST_SESSION_ID}' not yet indexed in sessions list."
   fi

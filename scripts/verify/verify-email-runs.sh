@@ -153,7 +153,7 @@ if pk and sk:
     names: list[str] = []
     for _ in range(6):
         try:
-            r = httpx.get(f"{base}/api/public/traces", params={"sessionId": session_id, "limit": 100},
+            r = httpx.get(f"{base}/api/public/v2/observations", params={"sessionId": session_id, "limit": 100},
                           auth=(pk, sk), timeout=10)
             names = [t.get("name") or "" for t in r.json().get("data", [])]
         except Exception as e:  # pragma: no cover

@@ -98,10 +98,19 @@ def build_mail_run_batch(
                 "endTime": now,
                 "level": "ERROR" if failed else "DEFAULT",
                 "statusMessage": _truncate(error) if failed else None,
+                "input": _truncate(input_text),
+                "output": _truncate(output_text),
                 "metadata": {"run_id": run_id, "status": status, "usage": usage or {}},
             },
         },
     ]
+
+
+try:
+    import importlib.metadata
+    _SDK_VERSION = importlib.metadata.version("langfuse")
+except Exception:
+    _SDK_VERSION = "4.17.0"
 
 
 async def record_mail_run_trace(http_client: httpx.AsyncClient | None = None, **kwargs: Any) -> bool:
@@ -112,11 +121,17 @@ async def record_mail_run_trace(http_client: httpx.AsyncClient | None = None, **
     base_url, public_key, secret_key = settings
     try:
         batch = build_mail_run_batch(**kwargs)
+        headers = {
+            "X-Langfuse-Sdk-Name": "python",
+            "X-Langfuse-Sdk-Version": _SDK_VERSION,
+            "X-Langfuse-Public-Key": public_key,
+        }
         client = http_client or httpx.AsyncClient()
         try:
             resp = await client.post(
                 f"{base_url}/api/public/ingestion",
                 json={"batch": batch},
+                headers=headers,
                 auth=(public_key, secret_key),
                 timeout=10.0,
             )

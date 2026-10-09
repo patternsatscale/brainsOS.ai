@@ -1,5 +1,5 @@
 # ==============================================================================
-# brainsOS: Observability Plane (Langfuse v4.38.0 Distributed Stack)
+# brainsOS: Observability Plane (Langfuse v4.56.0 Distributed Stack)
 # High-performance distributed tracing with ClickHouse, Redis, MinIO & Postgres
 # ==============================================================================
 
@@ -11,7 +11,7 @@ services:
   # Ingests OpenTelemetry traces (/api/public/otel) and LiteLLM completions
   # ----------------------------------------------------------------------------
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4.38.0
+    image: docker.langfuse.com/langfuse/langfuse:4.56.0
     container_name: brainsos-langfuse-web
     restart: unless-stopped
     depends_on:
@@ -109,7 +109,7 @@ services:
   # Processes trace ingestion queues from Redis and flushes to ClickHouse
   # ----------------------------------------------------------------------------
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4.38.0
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.56.0
     container_name: brainsos-langfuse-worker
     restart: unless-stopped
     depends_on:

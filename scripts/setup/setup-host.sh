@@ -224,14 +224,14 @@ if [ -n "${UV_BIN}" ] && [ -x "${UV_BIN}" ]; then
     "${UV_BIN}" venv .venv
   fi
   log_info "Ensuring dev tooling and observability packages are installed in .venv..."
-  "${UV_BIN}" pip install --python .venv/bin/python pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
+  "${UV_BIN}" pip install --python .venv/bin/python pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=4.7.0,<5.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
 else
   log_info "Using system python3 to manage host dev virtualenv..."
   if [ ! -d ".venv" ]; then
     python3 -m venv .venv
   fi
   .venv/bin/pip install --upgrade pip >/dev/null 2>&1 || true
-  .venv/bin/pip install pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=2.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
+  .venv/bin/pip install pytest pytest-asyncio ruff mypy tiktoken "mcp<2" "langfuse>=4.7.0,<5.0.0" "opentelemetry-api" "opentelemetry-sdk" "opentelemetry-exporter-otlp" >/dev/null 2>&1
 fi
 
 log_success "Host Python environment initialized in .venv."
