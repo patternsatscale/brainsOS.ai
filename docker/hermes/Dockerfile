@@ -6,6 +6,15 @@
 
 FROM nousresearch/hermes-agent:latest
 
+# Ensure Astral uv is available in system PATH (/usr/local/bin and /bin)
+RUN if [ ! -x /usr/local/bin/uv ]; then \
+        find /opt/hermes/tools -type f -name uv -exec ln -sf {} /usr/local/bin/uv \; 2>/dev/null || true; \
+    fi && \
+    if [ ! -x /usr/local/bin/uv ]; then \
+        curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh; \
+    fi && \
+    ln -sf /usr/local/bin/uv /bin/uv
+
 # Install standalone brainsOS-memory package (L5: Memory & Tools)
 COPY packages/brainsOS-memory /opt/hermes/packages/brainsOS-memory
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-memory

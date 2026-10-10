@@ -82,7 +82,7 @@ if [ ! -d "${GENESIS_DIR}" ] || [ ! -f "${GENESIS_DIR}/index.html" ]; then
     if [ "${DRY_RUN}" -eq 0 ]; then
       mkdir -p "${GENESIS_DIR}"
       cp -r "${GENESIS_SRC}/"* "${GENESIS_DIR}/"
-      sed -i '' -e 's|src="/assets/|src="./assets/|g' -e 's|href="/assets/|href="./assets/|g' -e 's|href="/vite.svg"|href="./vite.svg"|g' "${GENESIS_DIR}/index.html" 2>/dev/null || true
+      sed -i.bak -e 's|src="/assets/|src="./assets/|g' -e 's|href="/assets/|href="./assets/|g' -e 's|href="/vite.svg"|href="./vite.svg"|g' "${GENESIS_DIR}/index.html" 2>/dev/null && rm -f "${GENESIS_DIR}/index.html.bak" || true
       cat << 'EOF' > "${GENESIS_DIR}/recap.json"
 {
   "era": 1,

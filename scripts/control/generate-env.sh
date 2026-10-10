@@ -351,6 +351,9 @@ with open(example_file, "r", encoding="utf-8") as f:
                 output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
             elif k == "BRAINSOS_DATA_DIR":
                 output_lines.append(f"BRAINSOS_DATA_DIR={target_data_dir}")
+            elif k == "BRAINSOS_STAGE":
+                stage_val = current_vars.get("BRAINSOS_STAGE", "osx" if sys.platform == "darwin" else "dgx")
+                output_lines.append(f"BRAINSOS_STAGE={stage_val}")
             elif k in generated_secrets:
                 output_lines.append(f"{k}={generated_secrets[k]}")
             elif k in current_vars:

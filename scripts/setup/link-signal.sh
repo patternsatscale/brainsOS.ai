@@ -270,14 +270,14 @@ update_env_prompt() {
     log_info "Active Signal Account: ${account}"
 
     if grep -q "^SIGNAL_ACCOUNT=" "${REPO_ROOT}/.env"; then
-        sed -i "s|^SIGNAL_ACCOUNT=.*|SIGNAL_ACCOUNT=${account}|" "${REPO_ROOT}/.env"
+        sed -i.bak "s|^SIGNAL_ACCOUNT=.*|SIGNAL_ACCOUNT=${account}|" "${REPO_ROOT}/.env" && rm -f "${REPO_ROOT}/.env.bak"
         log_success "Updated SIGNAL_ACCOUNT=${account} in .env"
     fi
 
     if grep -q "^SIGNAL_ALLOWED_USERS=" "${REPO_ROOT}/.env"; then
         CURRENT_ALLOWED=$(grep "^SIGNAL_ALLOWED_USERS=" "${REPO_ROOT}/.env" | cut -d '=' -f 2-)
         if [ -z "${CURRENT_ALLOWED}" ]; then
-            sed -i "s|^SIGNAL_ALLOWED_USERS=.*|SIGNAL_ALLOWED_USERS=${account}|" "${REPO_ROOT}/.env"
+            sed -i.bak "s|^SIGNAL_ALLOWED_USERS=.*|SIGNAL_ALLOWED_USERS=${account}|" "${REPO_ROOT}/.env" && rm -f "${REPO_ROOT}/.env.bak"
             log_success "Configured strict operator whitelisting in .env: SIGNAL_ALLOWED_USERS=${account}"
         fi
     fi

@@ -34,6 +34,13 @@ fi
 
 cd "${REPO_ROOT}"
 
+# Ensure standard local binary directories are in PATH across macOS and Linux
+for p in "${HOME}/.local/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
+  if [ -d "$p" ] && [[ ":$PATH:" != *":$p:"* ]]; then
+    export PATH="$p:$PATH"
+  fi
+done
+
 echo -e "${BOLD}brainsOS Environment Bootstrap${NC}"
 echo -e "Target Root: ${REPO_ROOT}"
 
