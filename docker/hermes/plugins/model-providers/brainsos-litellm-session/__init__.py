@@ -1,14 +1,19 @@
-"""brainsOS: propagate the Hermes session id to LiteLLM Langfuse traces (Ticket #295).
+"""brainsOS: Hermes -> LiteLLM request shaping for unified Langfuse tracing (Tickets #295, #299).
 
-Hermes' bundled ``custom`` provider (used to reach the LiteLLM gateway) does not forward the
-agent session to the upstream request, so LiteLLM's Langfuse callback records every generation
-with ``session_id = NULL``. LiteLLM reads ``metadata.session_id`` / ``metadata.tags`` from the
-request body, so this user provider plugin re-registers ``custom`` with an identical wire policy
-plus that metadata. Hermes loads ``$HERMES_HOME/plugins/model-providers/*`` after bundled
-providers, and ``register_provider`` is last-writer-wins.
+Hermes' ``observability/langfuse`` plugin already records every LLM call as a ``LLM call N``
+generation on the per-thread Hermes trace. If LiteLLM's Langfuse callback also logged those
+requests, every call would appear twice (once as a disconnected root trace). This user provider
+plugin re-registers Hermes' bundled ``custom`` provider (used to reach the LiteLLM gateway) with
+an identical wire policy plus:
 
-Main-loop LLM calls pass ``session_id`` (the canonical ``mail-<agent>-<thread>`` key sent by the
-brainsOS worker via ``POST /v1/runs``); auxiliary calls without a session are left untouched.
+* ``"no-log": true`` — LiteLLM skips non-proxy logging callbacks (``langfuse_otel``) for this
+  request while proxy cost/spend tracking callbacks still run. Callers that do not set it (IDE
+  clients, direct API users) remain fully traced by LiteLLM.
+* ``metadata.tags`` — ``["hermes", "brainsos"]`` for LiteLLM spend-log attribution.
+
+``metadata.session_id`` is intentionally not forwarded. Hermes loads
+``$HERMES_HOME/plugins/model-providers/*`` after bundled providers, and ``register_provider`` is
+last-writer-wins.
 """
 
 from __future__ import annotations
@@ -21,6 +26,9 @@ from providers import _REGISTRY, register_provider  # type: ignore[attr-defined]
 
 logger = logging.getLogger("brainsos.hermes.litellm_session")
 
+# LiteLLM per-request flag (litellm_params["no-log"]): skips logging callbacks except proxy spend tracking.
+NO_LOG_FIELD = "no-log"
+
 _base = _REGISTRY.get("custom")
 
 if _base is None:  # pragma: no cover - bundled provider missing
@@ -29,15 +37,16 @@ else:
     _BaseCls = type(_base)
 
     class BrainsOSLiteLLMSessionProfile(_BaseCls):  # type: ignore[misc, valid-type]
-        """``custom`` provider + LiteLLM tags (session_id omitted to prevent LiteLLM root trace fragmentation)."""
+        """``custom`` provider + LiteLLM tags + ``no-log`` (Hermes owns the Langfuse trace)."""
 
         def build_extra_body(self, *, session_id: str | None = None, **context: Any) -> dict[str, Any]:
             body = dict(super().build_extra_body(session_id=session_id, **context) or {})
             metadata = dict(body.get("metadata") or {})
             metadata.setdefault("tags", ["hermes", "brainsos"])
             body["metadata"] = metadata
+            body[NO_LOG_FIELD] = True
             return body
 
     _fields = {f.name: getattr(_base, f.name) for f in dataclasses.fields(_base) if f.init}
     register_provider(BrainsOSLiteLLMSessionProfile(**_fields))
-    logger.info("brainsOS litellm-session plugin: 'custom' provider configured with hermes tags")
+    logger.info("brainsOS litellm-session plugin: 'custom' provider configured (tags + no-log)")

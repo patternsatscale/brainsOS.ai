@@ -73,12 +73,13 @@ litellm_settings:
   drop_params: true
   set_verbose: false
   request_timeout: 300
+  # Langfuse v4 native OTLP ingestion (#299). Reads LANGFUSE_HOST / LANGFUSE_PUBLIC_KEY /
+  # LANGFUSE_SECRET_KEY. Hermes-originated requests send `no-log: true` (Hermes already traces
+  # them on the thread trace), so this only traces direct callers such as IDE clients.
   success_callback:
-    - langfuse
-    - otel
+    - langfuse_otel
   failure_callback:
-    - langfuse
-    - otel
+    - langfuse_otel
 
 general_settings:
   # Master key for administrative control, dynamic model addition, and virtual key provisioning

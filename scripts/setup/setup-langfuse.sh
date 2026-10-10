@@ -480,51 +480,50 @@ except Exception:
     pass
 
 try:
-    trace_id = str(uuid.uuid4())
-    obs_id = str(uuid.uuid4())
-    now = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+    import base64, secrets
+    trace_id = secrets.token_hex(16)
+    now_ns = time.time_ns()
 
-    payload = {
-        'batch': [
-            {
-                'id': str(uuid.uuid4()),
-                'type': 'trace-create',
-                'timestamp': now,
-                'body': {
-                    'id': trace_id,
-                    'name': 'brainsOS System Bootstrap & Fleet Telemetry Initialization',
-                    'sessionId': 'brainsos-system-bootstrap',
-                    'userId': '${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}',
-                    'tags': ['bootstrap', 'system', 'fleet'],
-                    'metadata': {
-                        'plane': 'observability',
-                        'platform': 'brainsOS',
-                        'version': 'v4.56.0'
-                    }
-                }
-            },
-            {
-                'id': str(uuid.uuid4()),
-                'type': 'generation-create',
-                'timestamp': now,
-                'body': {
-                    'id': obs_id,
-                    'traceId': trace_id,
-                    'name': 'telemetry-handshake',
-                    'model': 'brainsos-core',
-                    'input': {'event': 'system_startup', 'status': 'initialized'},
-                    'output': {'status': 'ready', 'message': 'Langfuse v4 distributed observability plane online and healthy.'},
-                    'usage': {'input': 12, 'output': 18, 'total': 30, 'unit': 'TOKENS'}
-                }
-            }
-        ]
+    def kv(k, v):
+        if isinstance(v, list):
+            return {'key': k, 'value': {'arrayValue': {'values': [{'stringValue': s} for s in v]}}}
+        return {'key': k, 'value': {'stringValue': v if isinstance(v, str) else json.dumps(v)}}
+
+    def span(span_id, name, obs_type, extra, start_ns, end_ns):
+        return {
+            'traceId': trace_id, 'spanId': span_id, 'name': name, 'kind': 1,
+            'startTimeUnixNano': str(start_ns), 'endTimeUnixNano': str(end_ns),
+            'attributes': [kv('langfuse.observation.type', obs_type)] + extra,
+        }
+
+    root_id = secrets.token_hex(8)
+    root = span(root_id, 'brainsOS System Bootstrap & Fleet Telemetry Initialization', 'span', [
+        kv('session.id', 'brainsos-system-bootstrap'),
+        kv('user.id', '${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}'),
+        kv('langfuse.trace.tags', ['bootstrap', 'system', 'fleet']),
+        kv('langfuse.trace.metadata.plane', 'observability'),
+        kv('langfuse.trace.metadata.platform', 'brainsOS'),
+    ], now_ns - 2_000_000, now_ns)
+    child = span(secrets.token_hex(8), 'telemetry-handshake', 'generation', [
+        kv('langfuse.observation.model.name', 'brainsos-core'),
+        kv('langfuse.observation.input', {'event': 'system_startup', 'status': 'initialized'}),
+        kv('langfuse.observation.output', {'status': 'ready', 'message': 'Langfuse v4 observability plane online and healthy.'}),
+        kv('langfuse.observation.usage_details', {'input': 12, 'output': 18}),
+    ], now_ns - 1_000_000, now_ns - 500_000)
+    child['parentSpanId'] = root_id
+
+    payload = {'resourceSpans': [{
+        'resource': {'attributes': [kv('service.name', 'brainsos-bootstrap')]},
+        'scopeSpans': [{'scope': {'name': 'brainsos-setup'}, 'spans': [root, child]}],
+    }]}
+    token = base64.b64encode(f'{pub}:{sec}'.encode()).decode()
     headers = {
-        'X-Langfuse-Sdk-Name': 'python',
-        'X-Langfuse-Sdk-Version': '4.17.0',
-        'X-Langfuse-Public-Key': pub,
+        'Authorization': f'Basic {token}',
+        'Content-Type': 'application/json',
+        'x-langfuse-ingestion-version': '4',
     }
-    r = requests.post(f'{host}/api/public/ingestion', auth=(pub, sec), json=payload, headers=headers, timeout=5)
-    if r.status_code in (200, 201, 207):
+    r = requests.post(f'{host}/api/public/otel/v1/traces', json=payload, headers=headers, timeout=5)
+    if 200 <= r.status_code < 300:
         print('SEEDED')
     else:
         print('FAILED')

@@ -102,10 +102,12 @@ log_info "Verifying configuration files..."
 
 # LiteLLM config
 if [ -f "config/litellm/config.yaml" ]; then
-  if grep -q "success_callback: os.environ/LITELLM_SUCCESS_CALLBACKS" config/litellm/config.yaml || (grep -q "success_callback:" config/litellm/config.yaml && grep -q -- "- langfuse" config/litellm/config.yaml); then
-    pass_check "LiteLLM configuration: Callbacks configured in config/litellm/config.yaml."
+  if grep -Eq -- "^\s*-\s*langfuse\s*$" config/litellm/config.yaml; then
+    fail_check "LiteLLM configuration: legacy 'langfuse' callback found (uses /api/public/ingestion); use 'langfuse_otel' (#299)."
+  elif grep -q -- "- langfuse_otel" config/litellm/config.yaml; then
+    pass_check "LiteLLM configuration: v4-native 'langfuse_otel' callback configured in config/litellm/config.yaml."
   else
-    fail_check "LiteLLM configuration: missing success_callback in config/litellm/config.yaml."
+    fail_check "LiteLLM configuration: missing 'langfuse_otel' callback in config/litellm/config.yaml."
   fi
 fi
 
