@@ -44,7 +44,7 @@ ZONE_NAME=""
 AWS_PROFILE_CHOICE=""
 DEPLOY_METHOD=""
 NON_INTERACTIVE=false
-APPLIANCE_PREFIX="dgx"
+APPLIANCE_PREFIX="${BRAINSOS_STAGE:-$([ "$(uname -s)" = "Darwin" ] && echo "osx" || echo "dgx")}"
 
 usage() {
   cat << USAGE
