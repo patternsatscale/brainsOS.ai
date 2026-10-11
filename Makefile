@@ -9,12 +9,13 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help setup env urls reload_env reload-env up down stop-all nuke test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync
+.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
 help:
 	@echo "brainsOS Developer Lifecycle Commands:"
+	@echo "  make install        - Turnkey interactive appliance installer (env, setup, portal & credentials)"
 	@echo "  make setup          - Turnkey bootstrap (.env, data dirs, venv, packages, portal & images)"
 	@echo "  make models-pull    - Seed and pull required LLM weights into local Ollama"
 	@echo "  make models-check   - Check presence of required LLM weights in local Ollama"
@@ -32,6 +33,7 @@ help:
 	@echo "  make langfuse       - Start Langfuse v4 distributed observability stack"
 	@echo "  make langfuse-status- Check Langfuse health, containers, and OTel ingestion"
 	@echo "  make nuke           - Forcefully terminate all brainsOS containers and background processes (battery saver)"
+	@echo "  make destroy        - Reset OS (containers, volumes, daemons, .env; runtime data preserved unless --include-data)"
 	@echo "  make backup         - Create a full data plane backup archive"
 	@echo "  make restore        - Restore data planes from latest archive (or ARCHIVE=<file>)"
 	@echo "  make test           - Run full pytest test suite across packages"
@@ -106,6 +108,9 @@ langfuse-stop:
 langfuse-sync:
 	@scripts/setup/setup-langfuse.sh sync
 
+install:
+	@scripts/control/install.sh $(ARGS)
+
 setup:
 	@scripts/control/bootstrap-env.sh $(ARGS)
 
@@ -124,7 +129,20 @@ urls:
 	@scripts/control/show-urls.sh $(ARGS)
 
 up: runner-base
-	@docker compose up -d
+	@if [ ! -f .env ]; then \
+		echo "[ERROR] No .env file found in repository root."; \
+		echo "Please run 'make setup' (recommended) or 'make env' to initialize your environment first."; \
+		exit 1; \
+	fi
+	@if [ ! -f packages/brainsOS-portal/dist/index.html ]; then \
+		echo "[INFO] Portal static bundle missing. Building packages/brainsOS-portal..."; \
+		if [ -f scripts/setup/setup-portal.sh ]; then \
+			scripts/setup/setup-portal.sh || (cd packages/brainsOS-portal && npm run build); \
+		else \
+			(cd packages/brainsOS-portal && npm run build); \
+		fi; \
+	fi
+	@scripts/control/reload-env.sh --no-urls $(ARGS)
 
 down:
 	@echo "[INFO] Stopping host control plane daemons..."
@@ -143,6 +161,9 @@ nuke: stop-all
 	@echo "[INFO] Ensuring all brainsOS containers are stopped..."
 	@docker stop $$(docker ps -q --filter "name=brainsos" 2>/dev/null) 2>/dev/null || true
 	@echo "[SUCCESS] Complete shutdown finished. System is idle and battery is preserved!"
+
+destroy:
+	@scripts/control/destroy.sh $(ARGS)
 
 test:
 	@$(PYTEST) packages/*/tests

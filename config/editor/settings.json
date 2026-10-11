@@ -1,5 +1,5 @@
 {
-  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Dark Modern",
   "window.autoDetectColorScheme": false,
   "terminal.integrated.cwd": "/data",
   "terminal.integrated.defaultLocation": "editor",

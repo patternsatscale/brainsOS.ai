@@ -29,6 +29,7 @@ services:
           - brainsos-caddy
           - brainsos-net-caddy
           - brainsos-ingress-caddy
+          - ${BRAINSOS_DOMAIN:-local.brainsos.ai}
       brainsos-internal-net:
         aliases:
           - caddy

@@ -29,7 +29,12 @@ services:
           - brainsos-infra-litellm-db
           - brainsos-control-litellm-db
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER:-litellm} -d ${LITELLM_DB_NAME:-litellm}" ]
+      test:
+        - "CMD-SHELL"
+        - >
+          pg_isready -U "$${POSTGRES_USER:-litellm}" || exit 1;
+          psql -U "$${POSTGRES_USER:-litellm}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$${POSTGRES_DB:-litellm}'" | grep -q 1 || createdb -U "$${POSTGRES_USER:-litellm}" "$${POSTGRES_DB:-litellm}";
+          psql -U "$${POSTGRES_USER:-litellm}" -d postgres -c "ALTER USER \"$${POSTGRES_USER:-litellm}\" WITH PASSWORD '$${POSTGRES_PASSWORD}';"
       interval: 5s
       timeout: 5s
       retries: 5
@@ -49,7 +54,6 @@ services:
       - "host.docker.internal:${DOCKER_HOST_GATEWAY:-host-gateway}"
     volumes:
       - ${LITELLM_CONFIG:-../../config/litellm/config.yaml}:/app/config.yaml:ro
-      - ${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
     environment:
       - PORT=4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
@@ -57,9 +61,6 @@ services:
       - STORE_MODEL_IN_DB=True
       - BRAINSOS_CORE_MODEL=${BRAINSOS_CORE_MODEL:-ollama_chat/llama3.2:3b}
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
-      - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
-      - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
-      - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
       # Authentik OIDC Single Sign-On
       - AUTO_REDIRECT_UI_LOGIN_TO_SSO=true
       - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}

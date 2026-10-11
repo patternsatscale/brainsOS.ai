@@ -7,8 +7,9 @@
 #      no duplicate within a grace window.
 #   2. The reply is a result or a failure email, as expected (--expect).
 #   3. The reply never contains raw infrastructure errors (429 / litellm / tracebacks).
-#   4. Langfuse has the thread's session with the worker "email-run" trace, Hermes
-#      "Hermes turn" traces and LiteLLM generation traces (warn-only if absent).
+#   4. Langfuse has ONE thread trace (#299) holding the worker "email-run" span and
+#      the Hermes "Hermes turn" timeline, with no duplicate LiteLLM generations
+#      (warn-only if absent: ingestion is asynchronous).
 #
 # Usage:
 #   ./scripts/verify/verify-email-runs.sh [--agent bawtford] [--to addr]
@@ -76,6 +77,7 @@ import time
 from email import message_from_bytes, policy
 
 import httpx
+from brainsos_agent.langfuse_trace import thread_trace_id
 from brainsos_agent.mail_runs import canonical_session_id
 from brainsos_mail.client import BrainsOSMailClient
 
@@ -145,30 +147,34 @@ if expect == "failure" and not is_failure:
     print("[ERROR] Expected a failure email, got a result")
     failed = True
 
-# Langfuse session check (warn-only: ingestion is asynchronous)
+# Langfuse thread-trace check (warn-only: ingestion is asynchronous)
 session_id = canonical_session_id(agent, msg_id)
+trace_id = thread_trace_id(session_id)
 pk, sk = os.getenv("LANGFUSE_PUBLIC_KEY"), os.getenv("LANGFUSE_SECRET_KEY")
 if pk and sk:
     base = os.getenv("BRAINSOS_LANGFUSE_URL") or f"http://127.0.0.1:{os.getenv('LANGFUSE_PORT', '3001')}"
     names: list[str] = []
     for _ in range(6):
         try:
-            r = httpx.get(f"{base}/api/public/v2/observations", params={"sessionId": session_id, "limit": 100},
+            r = httpx.get(f"{base}/api/public/v2/observations", params={"traceId": trace_id, "limit": 100},
                           auth=(pk, sk), timeout=10)
             names = [t.get("name") or "" for t in r.json().get("data", [])]
         except Exception as e:  # pragma: no cover
             print(f"[WARN] Langfuse query failed: {e}")
-        if any(n.startswith("email-run") for n in names):
+        if any(n.startswith("email-run") for n in names) and "Hermes turn" in names:
             break
         time.sleep(10)
-    print(f"[INFO] Langfuse session {session_id}: {len(names)} traces")
+    print(f"[INFO] Langfuse thread trace {trace_id} (session {session_id}): {len(names)} observations")
     for label, pred in (("email-run", lambda n: n.startswith("email-run")),
                         ("Hermes turn", lambda n: n == "Hermes turn"),
-                        ("LiteLLM generation", lambda n: n.startswith("litellm"))):
+                        ("Hermes LLM call", lambda n: n.startswith("LLM call"))):
         count = sum(1 for n in names if pred(n))
         print(f"[{'INFO' if count else 'WARN'}]   {label}: {count}")
+    dupes = sum(1 for n in names if n.startswith("litellm"))
+    if dupes:
+        print(f"[WARN]   LiteLLM duplicate generations on thread trace: {dupes} (expected 0; check no-log plugin)")
 else:
-    print("[WARN] Langfuse keys not set; skipping session check")
+    print("[WARN] Langfuse keys not set; skipping thread-trace check")
 
 sys.exit(1 if failed else 0)
 PY

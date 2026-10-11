@@ -320,6 +320,17 @@ else
   log_warn "LiteLLM control plane at http://litellm:4000 returned HTTP ${LITELLM_STATUS} (may be standby)."
 fi
 
+log_info "Verifying LiteLLM model catalog discovery using operator key in code-server..."
+MODELS_STATUS=$(docker compose exec -T code-server curl -s -m 5 -o /dev/null -w "%{http_code}" \
+  -H "Authorization: Bearer ${OPERATOR_LITELLM_KEY}" \
+  "http://litellm:4000/v1/models" 2>/dev/null || echo "000")
+
+if [ "${MODELS_STATUS}" = "200" ]; then
+  log_success "LiteLLM model catalog discovery verified via operator key (HTTP 200)."
+else
+  fail_check "LiteLLM model catalog query failed with HTTP ${MODELS_STATUS} using OPERATOR_LITELLM_KEY."
+fi
+
 # Terminal in editor area verification
 log_info "Verifying terminal front-and-center in editor area..."
 if docker compose exec -T code-server grep -q '"terminal.integrated.defaultLocation": *"editor"' /home/coder/.local/share/code-server/User/settings.json; then

@@ -3,7 +3,7 @@
 # Pre-configured for local-first zero-trust inference via LiteLLM control plane
 # ==============================================================================
 
-_config_version: 12
+_config_version: 50
 
 model:
   default: "qwen3.8:latest"

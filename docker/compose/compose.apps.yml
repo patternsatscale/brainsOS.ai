@@ -87,6 +87,16 @@ services:
           - brainsos-app-sogo-db
     ports:
       - "127.0.0.1:${SOGO_DB_PORT:-5434}:5432"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >
+          pg_isready -U "$${POSTGRES_USER:-sogo}" || exit 1;
+          psql -U "$${POSTGRES_USER:-sogo}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$${POSTGRES_DB:-sogo}'" | grep -q 1 || createdb -U "$${POSTGRES_USER:-sogo}" "$${POSTGRES_DB:-sogo}";
+          psql -U "$${POSTGRES_USER:-sogo}" -d postgres -c "ALTER USER \"$${POSTGRES_USER:-sogo}\" WITH PASSWORD '$${POSTGRES_PASSWORD}';"
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # Communications & UX Plane: SOGo Groupware & Webmail/CalDAV Client
   sogo:
@@ -115,8 +125,10 @@ services:
           - brainsos-net-sogo
           - brainsos-app-sogo
     depends_on:
-      - sogo-db
-      - mail-server
+      sogo-db:
+        condition: service_healthy
+      mail-server:
+        condition: service_started
     environment:
       - SOGO_DB_HOST=sogo-db
       - SOGO_DB_PORT=5432
@@ -226,7 +238,12 @@ services:
           - brainsos-auth-db
           - brainsos-app-auth-db
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${AUTHENTIK_POSTGRESQL__USER:-authentik} -d ${AUTHENTIK_POSTGRESQL__NAME:-authentik}" ]
+      test:
+        - "CMD-SHELL"
+        - >
+          pg_isready -U "$${POSTGRES_USER:-authentik}" || exit 1;
+          psql -U "$${POSTGRES_USER:-authentik}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$${POSTGRES_DB:-authentik}'" | grep -q 1 || createdb -U "$${POSTGRES_USER:-authentik}" "$${POSTGRES_DB:-authentik}";
+          psql -U "$${POSTGRES_USER:-authentik}" -d postgres -c "ALTER USER \"$${POSTGRES_USER:-authentik}\" WITH PASSWORD '$${POSTGRES_PASSWORD}';"
       interval: 5s
       timeout: 5s
       retries: 5

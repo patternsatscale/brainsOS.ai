@@ -15,46 +15,9 @@ model_list:
       num_ctx: 131072
 
   # Direct Model Name Aliases
-  - model_name: qwen3.8:latest
-    litellm_params:
-      model: ollama_chat/qwen3.8:latest
-      api_base: os.environ/OLLAMA_API_BASE
-      max_parallel_requests: 1
-      timeout: 300
-      num_ctx: 131072
-    model_info:
-      supports_function_calling: true
-      supports_tool_choice: true
-      mode: chat
-      supported_openai_params:
-        - tools
-        - tool_choice
-        - functions
-        - max_tokens
-        - stream
-        - temperature
-        - top_p
-
   - model_name: llama3.2:3b
     litellm_params:
       model: ollama_chat/llama3.2:3b
-      api_base: os.environ/OLLAMA_API_BASE
-      max_parallel_requests: 1
-      timeout: 300
-      num_ctx: 4096
-
-  - model_name: qwen2.5:latest
-    litellm_params:
-      model: ollama_chat/qwen2.5:latest
-      api_base: os.environ/OLLAMA_API_BASE
-      max_parallel_requests: 1
-      timeout: 300
-      num_ctx: 131072
-
-  # Cindy Pawford Rotated Coding Model Alias
-  - model_name: cindy-active-coding-model
-    litellm_params:
-      model: ollama_chat/qwen2.5:latest
       api_base: os.environ/OLLAMA_API_BASE
       max_parallel_requests: 1
       timeout: 300
@@ -73,12 +36,13 @@ litellm_settings:
   drop_params: true
   set_verbose: false
   request_timeout: 300
+  # Langfuse v4 native OTLP ingestion (#299). Reads LANGFUSE_HOST / LANGFUSE_PUBLIC_KEY /
+  # LANGFUSE_SECRET_KEY. Hermes-originated requests send `no-log: true` (Hermes already traces
+  # them on the thread trace), so this only traces direct callers such as IDE clients.
   success_callback:
-    - langfuse
-    - otel
+    - langfuse_otel
   failure_callback:
-    - langfuse
-    - otel
+    - langfuse_otel
 
 general_settings:
   # Master key for administrative control, dynamic model addition, and virtual key provisioning

@@ -102,6 +102,7 @@ cert: false
 disable-telemetry: true
 disable-update-check: true
 disable-workspace-trust: true
+enable-remote-storage: true
 EOF
 
 # 3. Dynamic Configuration of VS Code User settings.json and chatLanguageModels.json
@@ -228,9 +229,12 @@ with open(settings_path, "w", encoding="utf-8") as f:
     json.dump(d, f, indent=2)
 
 # 3b. Dynamic chatLanguageModels.json with LiteLLM Connector (Zero hardcoded models)
+domain = os.environ.get("BRAINSOS_DOMAIN", "local.brainsos.ai")
+key_alias = f"{domain}/editor/"
+
 chat_lm = [
     {
-        "name": "LiteLLM",
+        "name": f"LiteLLM ({key_alias})",
         "vendor": "litellm-connector",
         "baseUrl": "http://litellm:4000",
         "apiKey": op_key
@@ -240,7 +244,13 @@ with open(lm_json_path, "w", encoding="utf-8") as f:
     json.dump(chat_lm, f, indent=2)
 PYEOF
 
-# 3c. Ensure /etc/brainsos/system.mk exists for the make wrapper
+# 3c. Seed workspace settings to /data/.vscode/settings.json if missing
+mkdir -p /data/.vscode 2>/dev/null || true
+if [ -d /data/.vscode ] && [ ! -f /data/.vscode/settings.json ]; then
+  cp /home/coder/.local/share/code-server/User/settings.json /data/.vscode/settings.json 2>/dev/null || true
+fi
+
+# 3d. Ensure /etc/brainsos/system.mk exists for the make wrapper
 if [ ! -f /etc/brainsos/system.mk ] && [ -f /etc/brainsos/editor/system.mk ]; then
   mkdir -p /etc/brainsos
   cp /etc/brainsos/editor/system.mk /etc/brainsos/system.mk 2>/dev/null || true
@@ -257,7 +267,7 @@ fi
 
 # 6. Export CA environment variables into user shell
 CADDY_ROOT_CA="/etc/ssl/caddy/root.crt"
-if [ -f "${CADDY_ROOT_CA}" ]; then
+if [ -s "${CADDY_ROOT_CA}" ]; then
   grep -q "NODE_EXTRA_CA_CERTS" /home/coder/.bashrc 2>/dev/null || cat << EOF >> /home/coder/.bashrc
 export NODE_EXTRA_CA_CERTS="${CADDY_ROOT_CA}"
 export NODE_TLS_REJECT_UNAUTHORIZED=0
@@ -304,4 +314,4 @@ if [ $# -gt 0 ] && [ -n "${1:-}" ] && [[ "${1}" != -* ]]; then
   shift
 fi
 
-exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust "${TARGET_DIR}" "$@"
+exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust --enable-remote-storage "${TARGET_DIR}" "$@"

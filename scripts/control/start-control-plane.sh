@@ -412,7 +412,7 @@ start_services() {
     docker compose up -d litellm
 
     READY=false
-    for i in {1..45}; do
+    for i in $(seq 1 90); do
       if check_litellm_ready; then
         READY=true
         break
@@ -441,24 +441,43 @@ start_services() {
         -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${key}" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
 
-      if [ "${key_check}" != "200" ]; then
-        log_info "Registering LiteLLM virtual key '${alias}' in database..."
-        local payload
-        if [ -n "${budget}" ]; then
-          payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"max_budget\": ${budget}, \"models\": []}"
-        else
-          payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"models\": []}"
-        fi
-        curl -s -o /dev/null \
-          -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
-          -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-          -H "Content-Type: application/json" \
-          -d "${payload}" || true
+      if [ "${key_check}" = "200" ]; then
+        log_info "LiteLLM virtual key '${alias}' is already active and verified."
+        return 0
+      fi
+
+      # If an older key exists under this alias (or legacy brainsos-operator), delete it first to satisfy unique key alias constraint
+      local del_aliases="[\"${alias}\"]"
+      if [[ "${alias}" == *"/editor/"* ]]; then
+        del_aliases="[\"${alias}\", \"brainsos-operator\"]"
+      fi
+      curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"key_aliases\": ${del_aliases}}" || true
+
+      log_info "Registering LiteLLM virtual key '${alias}' in database..."
+      local payload
+      if [ -n "${budget}" ]; then
+        payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"max_budget\": ${budget}, \"models\": []}"
+      else
+        payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"models\": []}"
+      fi
+      local res
+      res=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+        -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "${payload}")
+      if echo "${res}" | grep -q "HTTP_STATUS:200"; then
         log_success "LiteLLM virtual key '${alias}' initialized in database."
+      else
+        log_warn "Failed to register LiteLLM virtual key '${alias}': $(echo "${res}" | head -n 1)"
       fi
     }
 
-    provision_vkey "${OPERATOR_LITELLM_KEY}" "brainsos-operator" 100.0
+    OPERATOR_KEY_ALIAS="${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/"
+    provision_vkey "${OPERATOR_LITELLM_KEY}" "${OPERATOR_KEY_ALIAS}" 100.0
     provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella"
     provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin"
     provision_vkey "${BAWTFORD_LITELLM_KEY}" "brainsos-bawtford"

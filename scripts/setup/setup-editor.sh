@@ -70,6 +70,13 @@ fi
 
 mkdir -p "${CONFIG_DIR}" "${DATA_DIR}"
 chmod -R 775 "${CONFIG_DIR}" "${DATA_DIR}" 2>/dev/null || true
+
+# Seed workspace settings to .vscode/settings.json in data root if missing
+mkdir -p "${DATA_ROOT}/.vscode"
+if [ ! -f "${DATA_ROOT}/.vscode/settings.json" ] && [ -f "${REPO_ROOT}/config/editor/settings.json" ]; then
+  cp "${REPO_ROOT}/config/editor/settings.json" "${DATA_ROOT}/.vscode/settings.json"
+fi
+
 log_success "Scaffolded operator configuration and data directories:"
 log_info "  - Config: ${CONFIG_DIR}"
 log_info "  - Data:   ${DATA_DIR}"
@@ -99,23 +106,32 @@ fi
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
+OPERATOR_KEY_ALIAS="${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/"
 
 if [ -n "${LITELLM_MASTER_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
-  log_info "Checking operator virtual key in LiteLLM DB..."
+  log_info "Checking operator virtual key '${OPERATOR_KEY_ALIAS}' in LiteLLM DB..."
   KEY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${OPERATOR_LITELLM_KEY}" \
     -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
 
   if [ "${KEY_STATUS}" != "200" ]; then
-    log_info "Provisioning dedicated operator virtual key in LiteLLM DB..."
-    curl -s -o /dev/null \
+    log_info "Provisioning dedicated operator virtual key '${OPERATOR_KEY_ALIAS}' in LiteLLM DB..."
+    curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
+      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+      -H "Content-Type: application/json" \
+      -d "{\"key_aliases\": [\"${OPERATOR_KEY_ALIAS}\", \"brainsos-operator\"]}" || true
+    local_res=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
       -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"brainsos-operator\", \"max_budget\": 100.0, \"models\": []}" || true
-    log_success "Operator virtual key provisioned in LiteLLM control plane."
+      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"${OPERATOR_KEY_ALIAS}\", \"max_budget\": 100.0, \"models\": []}")
+    if echo "${local_res}" | grep -q "HTTP_STATUS:200"; then
+      log_success "Operator virtual key '${OPERATOR_KEY_ALIAS}' provisioned in LiteLLM control plane."
+    else
+      log_warn "Failed to register operator virtual key: $(echo "${local_res}" | head -n 1)"
+    fi
   else
-    log_info "Operator virtual key is already registered in LiteLLM control plane."
+    log_info "Operator virtual key '${OPERATOR_KEY_ALIAS}' is already registered in LiteLLM control plane."
   fi
 else
   log_info "LiteLLM control plane standby or master key unset; skipping live key provisioning."
