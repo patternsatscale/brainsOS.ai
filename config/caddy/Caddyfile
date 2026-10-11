@@ -83,6 +83,17 @@ import tls_policy.caddy
 	# PLANE 3: Mail Ingress & Groupware Sync (MX, CalDAV, CardDAV, ActiveSync)
 	# Matches any host starting with mail. (e.g. mail.local.brainsos.ai)
 	# --------------------------------------------------------------------------
+	@mail_static {
+		header_regexp Host (?i)^mail\.
+		path /SOGo.woa/WebServerResources/* /SOGo/WebServerResources/* /WebServerResources/*
+	}
+	handle @mail_static {
+		reverse_proxy sogo:20000 {
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
 	@mail_host header_regexp Host (?i)^mail\.
 	handle @mail_host {
 		import authentik_forward_auth

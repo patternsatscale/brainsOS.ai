@@ -98,10 +98,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       return;
     }
 
-    const isLive = typeof window !== 'undefined' && (
-      window.location.hostname.includes('brainsos') ||
-      window.location.search.includes('live=true')
-    );
+    const isMock = typeof window !== 'undefined' && window.location.search.includes('mock=true');
+    const isLive = !isMock;
 
     setTimeout(() => {
       if (isLive) {

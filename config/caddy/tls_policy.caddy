@@ -4,7 +4,7 @@
 # DO NOT EDIT DIRECTLY. Make changes in .env and re-run make reload-env.
 # ==============================================================================
 (brainsos_tls) {
-	tls admin@dgx.local.brainsos.ai {
+	tls admin@osx.local.brainsos.ai {
 		dns route53
 		propagation_delay 30s
 		propagation_timeout 3m
@@ -13,7 +13,7 @@
 }
 
 (route53_tls) {
-	tls admin@dgx.local.brainsos.ai {
+	tls admin@osx.local.brainsos.ai {
 		dns route53
 		propagation_delay 30s
 		propagation_timeout 3m

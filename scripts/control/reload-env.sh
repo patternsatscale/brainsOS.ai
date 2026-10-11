@@ -106,12 +106,32 @@ set -a
 set +a
 
 
+# Ensure current working directory is REPO_ROOT for compose operations
+cd "${REPO_ROOT}"
+
+# ------------------------------------------------------------------------------
+# 0. Ensure Persistence Stores & Databases Are Running
+# ------------------------------------------------------------------------------
+log_info "Ensuring persistence stores and database engines are running..."
+docker compose up -d litellm-db sogo-db authentik-db langfuse-db clickhouse redis authentik-redis minio >/dev/null 2>&1 || true
+
+for db in brainsos-control-litellm-db brainsos-app-sogo-db brainsos-app-auth-db brainsos-telemetry-langfuse-db; do
+  if docker ps -q -f name="^${db}$" | grep -q .; then
+    for i in $(seq 1 15); do
+      if docker exec "${db}" pg_isready >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+  fi
+done
+
 # ------------------------------------------------------------------------------
 # 1. Synchronize LiteLLM PostgreSQL Database Password (Zero Data Loss)
 # ------------------------------------------------------------------------------
 log_info "Step 1/6: Checking LiteLLM database credentials..."
 
-DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(infra-)?litellm-db$' | head -n 1 || true)"
+DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(control-|infra-)?litellm-db$' | head -n 1 || true)"
 if [ -n "${DB_CONTAINER}" ]; then
   LITELLM_DB_USER="${LITELLM_DB_USER:-litellm}"
   LITELLM_DB_NAME="${LITELLM_DB_NAME:-litellm}"
@@ -140,7 +160,7 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 2/6: Checking SOGo database credentials..."
 
-SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-sogo-db$' | head -n 1 || true)"
+SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?sogo-db$' | head -n 1 || true)"
 if [ -n "${SOGO_DB_CONTAINER}" ]; then
   SOGO_DB_USER="${SOGO_DB_USER:-sogo}"
   SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
@@ -205,23 +225,28 @@ if [ -n "${AUTH_DB_CONTAINER}" ]; then
   fi
 fi
 
+
 # ------------------------------------------------------------------------------
 # 3. Synchronize Langfuse Database Password (if local container is running)
 # ------------------------------------------------------------------------------
-LF_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
-LF_WEB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-|langfuse-)?web$' | head -n 1 || true)"
+LF_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?db$' | head -n 1 || true)"
+LF_WEB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?web$' | head -n 1 || true)"
 if [ -n "${LF_DB_CONTAINER}" ]; then
   log_info "Step 3/6: Synchronizing local Langfuse database credentials..."
   LANGFUSE_ENV_FILE="${REPO_ROOT}/docker/langfuse/.env"
+  LF_DB_PASS="${LANGFUSE_DB_PASSWORD:-}"
+  LF_DB_USER="${LANGFUSE_DB_USER:-langfuse}"
+  LF_DB_NAME="${LANGFUSE_DB_NAME:-langfuse}"
   if [ -f "${LANGFUSE_ENV_FILE}" ]; then
-    LF_DB_PASS=$(grep "^LANGFUSE_DB_PASSWORD=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || true)
-    LF_DB_USER=$(grep "^LANGFUSE_DB_USER=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "langfuse")
-    LF_DB_NAME=$(grep "^LANGFUSE_DB_NAME=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "langfuse")
-    if [ -n "${LF_DB_PASS}" ]; then
-      docker exec "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
-        -c "ALTER USER \"${LF_DB_USER}\" WITH PASSWORD '${LF_DB_PASS}';" >/dev/null 2>&1 || true
-      log_success "Langfuse database password synchronized."
-    fi
+    LF_DB_PASS=$(grep "^LANGFUSE_DB_PASSWORD=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "${LF_DB_PASS}")
+    LF_DB_USER=$(grep "^LANGFUSE_DB_USER=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "${LF_DB_USER}")
+    LF_DB_NAME=$(grep "^LANGFUSE_DB_NAME=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "${LF_DB_NAME}")
+  fi
+  if [ -n "${LF_DB_PASS}" ]; then
+    docker exec "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
+      -c "ALTER USER \"${LF_DB_USER}\" WITH PASSWORD '${LF_DB_PASS}';" >/dev/null 2>&1 || true
+    log_success "Langfuse database password synchronized."
+  fi
 
     # Synchronize Langfuse Web admin user password if updated
     LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
@@ -249,7 +274,6 @@ if [ -n "${LF_DB_CONTAINER}" ]; then
         log_success "Langfuse admin user password synchronized."
       fi
     fi
-  fi
 else
   log_info "Step 3/6: Langfuse database is not running locally (skipping)."
 fi
@@ -284,6 +308,17 @@ if ! docker image inspect brainsos-runner-base:latest >/dev/null 2>&1; then
   log_info "Base runner image not found. Building brainsos-runner-base:latest..."
   docker build -t brainsos-runner-base:latest -f "${REPO_ROOT}/docker/runners/base/Dockerfile" "${REPO_ROOT}"
 fi
+
+# Ensure caddy_root.crt exists as a regular file before docker compose bind-mounts it
+EFFECTIVE_DATA_DIR="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/../data}"
+if [[ "${EFFECTIVE_DATA_DIR}" != /* ]]; then
+  EFFECTIVE_DATA_DIR="${REPO_ROOT}/${EFFECTIVE_DATA_DIR#./}"
+fi
+mkdir -p "${EFFECTIVE_DATA_DIR}/control_plane"
+if [ ! -f "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt" ]; then
+  touch "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt" 2>/dev/null || true
+fi
+
 docker compose up -d
 log_success "Docker services updated with current .env configurations."
 
@@ -354,6 +389,12 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue)..."
 "${SCRIPT_DIR}/start-control-plane.sh" restart
+
+# Synchronize Operator IDE (code-server) with active LiteLLM virtual key
+if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(app-)?code-server$'; then
+  docker compose restart code-server >/dev/null 2>&1 || true
+  log_success "Operator IDE (code-server) synchronized with LiteLLM virtual key."
+fi
 
 # ------------------------------------------------------------------------------
 # 6. Reload Caddy Ingress Gateway

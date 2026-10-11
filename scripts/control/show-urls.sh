@@ -51,6 +51,7 @@ fi
 APPLY_HOSTS=false
 NO_HOSTS=false
 MASK_SECRETS=false
+PORTAL_ONLY=false
 
 show_help() {
   echo -e "${BOLD}brainsOS Service URL & Credential Directory${NC}"
@@ -59,6 +60,7 @@ show_help() {
   echo "  $0 [options]"
   echo ""
   echo "Options:"
+  echo "  --portal          Show only the unified portal URL and single sign-on credentials"
   echo "  --apply-hosts     Automatically apply missing /etc/hosts mappings (requires sudo)"
   echo "  --no-hosts        Skip checking or updating /etc/hosts"
   echo "  --mask-secrets    Mask passwords and API tokens in output"
@@ -68,6 +70,10 @@ show_help() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --portal|--portal-only)
+      PORTAL_ONLY=true
+      shift
+      ;;
     --apply-hosts)
       APPLY_HOSTS=true
       shift
@@ -102,6 +108,7 @@ env_file = "${ENV_FILE}"
 mask_secrets = ("${MASK_SECRETS}".lower() == "true")
 no_hosts = ("${NO_HOSTS}".lower() == "true")
 apply_hosts = ("${APPLY_HOSTS}".lower() == "true")
+portal_only = ("${PORTAL_ONLY}".lower() == "true")
 
 env = {}
 with open(env_file, "r", encoding="utf-8") as f:
@@ -183,68 +190,87 @@ NC = "\033[0m"
 sep_line = f"{CYAN}{'═' * 115}{NC}"
 sub_line = f"{DIM}{'─' * 115}{NC}"
 
-print(sep_line)
-print(f"{CYAN}{BOLD}  brainsOS Platform Service Directory & Ingress Gateway{NC}")
-print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | Email Host: {BOLD}{mail_domain}{DIM} | Config: {env_file}{NC}")
-print(sep_line)
-print(f"{BOLD}{'SERVICE':<28} {'PUBLIC / LAN URL':<34} {'LOCALHOST FALLBACK':<24} {'CREDENTIALS / AUTH'}{NC}")
-print(sub_line)
-
 def print_row(name, pub_url, local_url, auth_info=""):
     print(f"{BOLD}{name:<28}{NC} {CYAN}{pub_url:<34}{NC} {DIM}{local_url:<24}{NC} {YELLOW}{auth_info}{NC}")
 
-# Section 1: Ingress & UX (L7 Web Interfaces - Unified Single-Origin Path Topology)
-print_row("BrainsOS Thin-Spine Portal", f"https://{domain}/ (or local.brainsos.ai/)", f"http://localhost:{caddy_http}", "(public portal)")
-authentik_port = os.getenv("AUTHENTIK_PORT", "9002")
-print_row("Authentik SSO Ingress", f"https://{domain}/auth/", f"http://localhost:{authentik_port}", "user: operator (Authentik IdP)")
-print_row("Operator IDE (VS Code)", f"https://{domain}/editor/", f"http://localhost:{code_port}", "SSO Authentik (AUTH: none)")
-print_row("Webmail & SOGo Groupware", f"https://{domain}/mail/", f"http://localhost:{sogo_port}", f"SSO Authentik (Trusted Proxy)")
-print_row("LiteLLM Proxy Admin UI", f"https://{domain}/proxy/ui", f"http://localhost:{litellm_port}/ui", f"SSO Authentik (Injected Key)")
-print_row("Langfuse Observability", f"https://langfuse.{domain}/", f"http://localhost:{langfuse_port}", "SSO Authentik (forward-auth)")
-print_row("Tool Egress Proxy (mitm)", f"https://{domain}/efw/", f"http://localhost:{egress_port}", "SSO Authentik (forward-auth)")
-print_row("Hermes Runner WebUI", f"https://{domain}/runner/", "http://localhost:8787", "SSO Authentik (forward-auth)")
-print_row("NVIDIA DGX Telemetry", f"https://{domain}/dgx/", "http://localhost:11001", "(system metrics)")
+if portal_only:
+    print(sep_line)
+    print(f"{CYAN}{BOLD}  brainsOS Appliance Portal Gateway{NC}")
+    print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | Config: {env_file}{NC}")
+    print(sep_line)
+    print(f"  {BOLD}Portal URL:{NC}              {CYAN}https://{domain}/{NC}  {DIM}(or http://localhost:{caddy_http}/){NC}")
+    print(f"  {BOLD}Username:{NC}                {GREEN}admin{NC} {DIM}(or akadmin / operator){NC}")
+    print(f"  {BOLD}Password:{NC}                {YELLOW}{admin_pass if not mask_secrets else mask(admin_pass)}{NC}")
+    print(sep_line)
+    print(f"{DIM}  Authentik SSO provides seamless single sign-on across all platform subsystems:{NC}")
+    print(f"{DIM}  - Operator IDE (VS Code)       https://{domain}/editor/{NC}")
+    print(f"{DIM}  - Webmail (SOGo Groupware)     https://{domain}/mail/{NC}")
+    print(f"{DIM}  - LiteLLM Admin UI             https://{domain}/proxy/ui{NC}")
+    print(f"{DIM}  - Langfuse Distributed Traces  https://langfuse.{domain}/{NC}")
+    print(sep_line)
+    print("")
 
-print(sub_line)
-# Section 2: Cognitive Compute & Agent Runners (L2 Internal IPC & Worker)
-print_row("Shared Hermes Runner (IPC)", "-", f"http://127.0.0.1:{hermes_runner_port}/v1", "(stateless runner)")
-print_row("OpenAI SDK Runner (IPC)", "-", f"http://127.0.0.1:{openai_runner_port}/v1", "(stateless runner)")
-print_row("Agent Queue & Webhook", "-", f"http://127.0.0.1:{agent_queue_port}/api/v1", "(async mail daemon)")
+    required_hosts = [domain]
+else:
+    print(sep_line)
+    print(f"{CYAN}{BOLD}  brainsOS Platform Service Directory & Ingress Gateway{NC}")
+    print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | Email Host: {BOLD}{mail_domain}{DIM} | Config: {env_file}{NC}")
+    print(sep_line)
+    print(f"{BOLD}{'SERVICE':<28} {'PUBLIC / LAN URL':<34} {'LOCALHOST FALLBACK':<24} {'CREDENTIALS / AUTH'}{NC}")
+    print(sub_line)
 
-print(sub_line)
-# Section 3: Multi-Agent Fleet & Communications (Tenant Personas & Mailboxes)
-print_row("Terrastella (Primary Ops)", f"terrastella@{email_account_domain}", "-", f"pass: {mask(terra_mail_pass)}")
-print_row("Marvin (Sports Analytics)", f"marvin@{email_account_domain}", "-", f"pass: {mask(marvin_mail_pass)}")
-print_row("Bawtford (Creative Director)", f"bawtford@{email_account_domain}", "-", f"pass: {mask(bawt_mail_pass)}")
-print_row("Ping (Auto-Responder)", f"ping@{email_account_domain}", "-", f"pass: {mask(ping_mail_pass)}")
-print_row("Operator Mailbox", f"operator@{email_account_domain}", "-", f"pass: {mask(op_mail_pass)}")
-print_row("Admin Mailbox", f"admin@{email_account_domain}", "-", f"pass: {mask(admin_mail_pass)}")
+    # Section 1: Ingress & UX (L7 Web Interfaces - Unified Single-Origin Path Topology)
+    print_row("BrainsOS Thin-Spine Portal", f"https://{domain}/ (or local.brainsos.ai/)", f"http://localhost:{caddy_http}", "(public portal)")
+    authentik_port = os.getenv("AUTHENTIK_PORT", "9002")
+    print_row("Authentik SSO Ingress", f"https://{domain}/auth/", f"http://localhost:{authentik_port}", "user: operator (Authentik IdP)")
+    print_row("Operator IDE (VS Code)", f"https://{domain}/editor/", f"http://localhost:{code_port}", "SSO Authentik (AUTH: none)")
+    print_row("Webmail & SOGo Groupware", f"https://{domain}/mail/", f"http://localhost:{sogo_port}", f"SSO Authentik (Trusted Proxy)")
+    print_row("LiteLLM Proxy Admin UI", f"https://{domain}/proxy/ui", f"http://localhost:{litellm_port}/ui", f"SSO Authentik (Injected Key)")
+    print_row("Langfuse Observability", f"https://langfuse.{domain}/", f"http://localhost:{langfuse_port}", "SSO Authentik (forward-auth)")
+    print_row("Tool Egress Proxy (mitm)", f"https://{domain}/efw/", f"http://localhost:{egress_port}", "SSO Authentik (forward-auth)")
+    print_row("Hermes Runner WebUI", f"https://{domain}/runner/", "http://localhost:8787", "SSO Authentik (forward-auth)")
+    print_row("NVIDIA DGX Telemetry", f"https://{domain}/dgx/", "http://localhost:11001", "(system metrics)")
 
-print(sub_line)
-# Section 4: Mail & Persistence Protocols (L4 Storage)
-print_row("Postfix SMTP Relay", f"smtp://{domain}:{mail_smtp_port}", f"127.0.0.1:{mail_smtp_port}", "STARTTLS optional")
-print_row("Dovecot IMAP Server", f"imap://{domain}:{mail_imap_port}", f"127.0.0.1:{mail_imap_port}", "Plain / LOGIN auth")
-print_row("LiteLLM PostgreSQL DB", "-", f"127.0.0.1:{litellm_db_port}", f"user: {litellm_db_user} | pass: {mask(litellm_db_pass)}")
+    print(sub_line)
+    # Section 2: Cognitive Compute & Agent Runners (L2 Internal IPC & Worker)
+    print_row("Shared Hermes Runner (IPC)", "-", f"http://127.0.0.1:{hermes_runner_port}/v1", "(stateless runner)")
+    print_row("OpenAI SDK Runner (IPC)", "-", f"http://127.0.0.1:{openai_runner_port}/v1", "(stateless runner)")
+    print_row("Agent Queue & Webhook", "-", f"http://127.0.0.1:{agent_queue_port}/api/v1", "(async mail daemon)")
 
-print(sep_line)
-print("")
+    print(sub_line)
+    # Section 3: Multi-Agent Fleet & Communications (Tenant Personas & Mailboxes)
+    print_row("Terrastella (Primary Ops)", f"terrastella@{email_account_domain}", "-", f"pass: {mask(terra_mail_pass)}")
+    print_row("Marvin (Sports Analytics)", f"marvin@{email_account_domain}", "-", f"pass: {mask(marvin_mail_pass)}")
+    print_row("Bawtford (Creative Director)", f"bawtford@{email_account_domain}", "-", f"pass: {mask(bawt_mail_pass)}")
+    print_row("Ping (Auto-Responder)", f"ping@{email_account_domain}", "-", f"pass: {mask(ping_mail_pass)}")
+    print_row("Operator Mailbox", f"operator@{email_account_domain}", "-", f"pass: {mask(op_mail_pass)}")
+    print_row("Admin Mailbox", f"admin@{email_account_domain}", "-", f"pass: {mask(admin_mail_pass)}")
 
-# ------------------------------------------------------------------------------
-# Check /etc/hosts
-# ------------------------------------------------------------------------------
-required_hosts = [
-    domain,
-    f"editor.{domain}",
-    f"code.{domain}",
-    f"mail.{domain}",
-    f"proxy.{domain}",
-    f"dgx.{domain}",
-    f"langfuse.{domain}",
-    f"efw.{domain}",
-    f"firewall.{domain}"
-]
-if mail_domain and mail_domain not in required_hosts:
-    required_hosts.append(mail_domain)
+    print(sub_line)
+    # Section 4: Mail & Persistence Protocols (L4 Storage)
+    print_row("Postfix SMTP Relay", f"smtp://{domain}:{mail_smtp_port}", f"127.0.0.1:{mail_smtp_port}", "STARTTLS optional")
+    print_row("Dovecot IMAP Server", f"imap://{domain}:{mail_imap_port}", f"127.0.0.1:{mail_imap_port}", "Plain / LOGIN auth")
+    print_row("LiteLLM PostgreSQL DB", "-", f"127.0.0.1:{litellm_db_port}", f"user: {litellm_db_user} | pass: {mask(litellm_db_pass)}")
+
+    print(sep_line)
+    print("")
+
+    # ------------------------------------------------------------------------------
+    # Check /etc/hosts
+    # ------------------------------------------------------------------------------
+    required_hosts = [
+        domain,
+        f"editor.{domain}",
+        f"code.{domain}",
+        f"mail.{domain}",
+        f"proxy.{domain}",
+        f"dgx.{domain}",
+        f"langfuse.{domain}",
+        f"efw.{domain}",
+        f"firewall.{domain}"
+    ]
+    if mail_domain and mail_domain not in required_hosts:
+        required_hosts.append(mail_domain)
 
 # Read /etc/hosts
 existing_resolved = set()

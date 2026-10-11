@@ -50,6 +50,7 @@ fi
 # Options & defaults
 NON_INTERACTIVE=false
 REBUILD=true
+EXPLICIT_NO_REBUILD=false
 FORCE_PASSWORDS=false
 CUSTOM_DOMAIN=""
 CUSTOM_MAIL_DOMAIN=""
@@ -98,10 +99,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --rebuild)
       REBUILD=true
+      EXPLICIT_NO_REBUILD=false
       shift
       ;;
     --no-rebuild)
       REBUILD=false
+      EXPLICIT_NO_REBUILD=true
       shift
       ;;
     -h|--help)
@@ -130,11 +133,14 @@ echo ""
 EXISTING_DOMAIN="brainsos.local"
 EXISTING_MAIL_DOMAIN=""
 EXISTING_DATA_DIR="./data"
+if [ -d "${REPO_ROOT}/../data" ]; then
+  EXISTING_DATA_DIR="../data"
+fi
 
 if [ -f "${ENV_FILE}" ]; then
   EXISTING_DOMAIN=$(grep -E "^BRAINSOS_DOMAIN=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "brainsos.local")
   EXISTING_MAIL_DOMAIN=$(grep -E "^BRAINSOS_MAIL_DOMAIN=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
-  EXISTING_DATA_DIR=$(grep -E "^BRAINSOS_DATA_DIR=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "./data")
+  EXISTING_DATA_DIR=$(grep -E "^BRAINSOS_DATA_DIR=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "${EXISTING_DATA_DIR}")
 fi
 
 TARGET_DOMAIN="${CUSTOM_DOMAIN:-${EXISTING_DOMAIN:-brainsos.local}}"
@@ -185,10 +191,12 @@ if [ "${NON_INTERACTIVE}" = false ]; then
     TARGET_DATA_DIR="${input_data_dir}"
   fi
 
-  # 5. Rebuild containers
-  read -r -p "Rebuild & reload platform containers with new configuration? [Y/n]: " input_rebuild
-  if [[ "${input_rebuild}" =~ ^[Nn]$ ]]; then
-    REBUILD=false
+  # 5. Rebuild containers (skip if explicitly disabled via --no-rebuild)
+  if [ "${EXPLICIT_NO_REBUILD}" = false ]; then
+    read -r -p "Rebuild & reload platform containers with new configuration? [Y/n]: " input_rebuild
+    if [[ "${input_rebuild}" =~ ^[Nn]$ ]]; then
+      REBUILD=false
+    fi
   fi
   echo ""
 else
@@ -223,6 +231,8 @@ temp_file = "${ENV_FILE}.tmp"
 target_domain = "${TARGET_DOMAIN}"
 target_mail_domain = "${TARGET_MAIL_DOMAIN}"
 target_data_dir = "${TARGET_DATA_DIR}"
+if not os.path.isabs(target_data_dir):
+    target_data_dir = os.path.abspath(os.path.join("${REPO_ROOT}", target_data_dir))
 force_passwords = ("${FORCE_PASSWORDS}".lower() == "true")
 
 # Parse existing .env if present

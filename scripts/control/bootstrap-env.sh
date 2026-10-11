@@ -140,12 +140,19 @@ if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
   BRAINSOS_DATA_DIR="${_EXPLICIT_DATA_DIR}"
 fi
 
-DATA_ROOT="${BRAINSOS_DATA_DIR:-./data}"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-}"
+if [ -z "${DATA_ROOT}" ]; then
+  if [ -d "${REPO_ROOT}/../data" ]; then
+    DATA_ROOT="../data"
+  else
+    DATA_ROOT="./data"
+  fi
+fi
 if [[ "${DATA_ROOT}" == ~* ]]; then
   DATA_ROOT="${DATA_ROOT/#\~/$HOME}"
 fi
 if [[ "$DATA_ROOT" != /* ]]; then
-  DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
+  DATA_ROOT="$(cd "${REPO_ROOT}" && cd "${DATA_ROOT}" 2>/dev/null && pwd || echo "${REPO_ROOT}/${DATA_ROOT#./}")"
 fi
 
 log_info "Resolved target runtime data directory: ${DATA_ROOT}"
@@ -205,48 +212,99 @@ touch "${DATA_ROOT}/comms/maildir/.gitkeep" 2>/dev/null || true
 touch "${DATA_ROOT}/backups/.gitkeep" 2>/dev/null || true
 touch "${DATA_ROOT}/skills/.gitkeep" 2>/dev/null || true
 
+# Check if data directory already has state from a previous install
+DATA_HAS_PREVIOUS_INSTALL=false
+if [ -d "${DATA_ROOT}" ]; then
+  for chk in "settings" "souls" "agent_memories" "control_plane" "comms"; do
+    if [ -d "${DATA_ROOT}/${chk}" ] && [ -n "$(ls -A "${DATA_ROOT}/${chk}" 2>/dev/null)" ]; then
+      DATA_HAS_PREVIOUS_INSTALL=true
+      break
+    fi
+  done
+fi
+
+if [ "${DATA_HAS_PREVIOUS_INSTALL}" = true ]; then
+  log_info "Detected existing runtime data in ${DATA_ROOT}. Preserving all existing user data, personas, and configurations."
+fi
+
 # Seed default settings into settings if not already present
 if [ -d "${REPO_ROOT}/config/default_settings" ]; then
-  log_info "Seeding default configuration manifests from config/default_settings into ${DATA_ROOT}/settings..."
-  cp -n -R "${REPO_ROOT}/config/default_settings/"* "${DATA_ROOT}/settings/" 2>/dev/null || true
+  if [ ! -d "${DATA_ROOT}/settings" ] || [ -z "$(ls -A "${DATA_ROOT}/settings" 2>/dev/null)" ]; then
+    log_info "Seeding default configuration manifests into ${DATA_ROOT}/settings..."
+    mkdir -p "${DATA_ROOT}/settings"
+    cp -R "${REPO_ROOT}/config/default_settings/"* "${DATA_ROOT}/settings/" 2>/dev/null || true
+  else
+    log_info "Preserving existing fleet configurations in ${DATA_ROOT}/settings."
+  fi
 fi
 
 # Seed default runner templates into runners if not already present
 if [ -d "${REPO_ROOT}/config/default_runners" ]; then
-  log_info "Seeding default runner templates from config/default_runners into ${DATA_ROOT}/runners..."
-  cp -n -R "${REPO_ROOT}/config/default_runners/"* "${DATA_ROOT}/runners/" 2>/dev/null || true
+  if [ ! -d "${DATA_ROOT}/runners" ] || [ -z "$(ls -A "${DATA_ROOT}/runners" 2>/dev/null)" ]; then
+    log_info "Seeding default runner templates into ${DATA_ROOT}/runners..."
+    mkdir -p "${DATA_ROOT}/runners"
+    cp -R "${REPO_ROOT}/config/default_runners/"* "${DATA_ROOT}/runners/" 2>/dev/null || true
+  else
+    log_info "Preserving existing runner templates in ${DATA_ROOT}/runners."
+  fi
 fi
 
 # Seed default souls into souls if not already present
 if [ -d "${REPO_ROOT}/config/default_souls" ]; then
-  log_info "Seeding default souls from config/default_souls into ${DATA_ROOT}/souls..."
-  cp -n -R "${REPO_ROOT}/config/default_souls/"* "${DATA_ROOT}/souls/" 2>/dev/null || true
+  if [ ! -d "${DATA_ROOT}/souls" ] || [ -z "$(ls -A "${DATA_ROOT}/souls" 2>/dev/null)" ]; then
+    log_info "Seeding default souls into ${DATA_ROOT}/souls..."
+    mkdir -p "${DATA_ROOT}/souls"
+    cp -R "${REPO_ROOT}/config/default_souls/"* "${DATA_ROOT}/souls/" 2>/dev/null || true
+  else
+    log_info "Preserving existing agent personas in ${DATA_ROOT}/souls."
+  fi
 fi
 
 # Seed default agent skills into skills if not already present
 if [ -d "${REPO_ROOT}/config/default_skills" ]; then
-  log_info "Seeding default agent skills from config/default_skills into ${DATA_ROOT}/skills..."
-  cp -n -R "${REPO_ROOT}/config/default_skills/"* "${DATA_ROOT}/skills/" 2>/dev/null || true
+  if [ ! -d "${DATA_ROOT}/skills" ] || [ -z "$(ls -A "${DATA_ROOT}/skills" 2>/dev/null)" ]; then
+    log_info "Seeding default agent skills into ${DATA_ROOT}/skills..."
+    mkdir -p "${DATA_ROOT}/skills"
+    cp -R "${REPO_ROOT}/config/default_skills/"* "${DATA_ROOT}/skills/" 2>/dev/null || true
+  else
+    log_info "Preserving existing agent skills in ${DATA_ROOT}/skills."
+  fi
 fi
 
 # Seed sample agent app templates into agent_apps if not already present
 if [ -d "${REPO_ROOT}/config/sample_agent_app" ]; then
-  log_info "Seeding sample agent app from config/sample_agent_app into ${DATA_ROOT}/agent_apps..."
-  cp -n -R "${REPO_ROOT}/config/sample_agent_app/"* "${DATA_ROOT}/agent_apps/" 2>/dev/null || true
+  if [ ! -d "${DATA_ROOT}/agent_apps" ] || [ -z "$(ls -A "${DATA_ROOT}/agent_apps" 2>/dev/null)" ]; then
+    log_info "Seeding sample agent app into ${DATA_ROOT}/agent_apps..."
+    mkdir -p "${DATA_ROOT}/agent_apps"
+    cp -R "${REPO_ROOT}/config/sample_agent_app/"* "${DATA_ROOT}/agent_apps/" 2>/dev/null || true
+  else
+    log_info "Preserving existing agent applications in ${DATA_ROOT}/agent_apps."
+  fi
 fi
 
 # Seed backup and restore harness into backups if not already present
 if [ -d "${REPO_ROOT}/config/templates/backups" ]; then
-  log_info "Seeding standalone backup harness from config/templates/backups into ${DATA_ROOT}/backups..."
-  cp -n -R "${REPO_ROOT}/config/templates/backups/"* "${DATA_ROOT}/backups/" 2>/dev/null || true
-  chmod +x "${DATA_ROOT}/backups/"*.sh 2>/dev/null || true
+  if [ ! -d "${DATA_ROOT}/backups" ] || [ -z "$(ls -A "${DATA_ROOT}/backups" 2>/dev/null)" ]; then
+    log_info "Seeding standalone backup harness into ${DATA_ROOT}/backups..."
+    mkdir -p "${DATA_ROOT}/backups"
+    cp -R "${REPO_ROOT}/config/templates/backups/"* "${DATA_ROOT}/backups/" 2>/dev/null || true
+    chmod +x "${DATA_ROOT}/backups/"*.sh 2>/dev/null || true
+  fi
 fi
 
 # Touch caddy_root.crt dummy file if not present so Docker doesn't mount it as a directory
 if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
+  mkdir -p "${DATA_ROOT}/control_plane"
   touch "${DATA_ROOT}/control_plane/caddy_root.crt"
   chmod 664 "${DATA_ROOT}/control_plane/caddy_root.crt" 2>/dev/null || true
   log_info "Initialized ${DATA_ROOT}/control_plane/caddy_root.crt placeholder"
+fi
+
+# Seed .vscode workspace settings if not already present
+mkdir -p "${DATA_ROOT}/.vscode"
+if [ ! -f "${DATA_ROOT}/.vscode/settings.json" ] && [ -f "${REPO_ROOT}/config/editor/settings.json" ]; then
+  cp "${REPO_ROOT}/config/editor/settings.json" "${DATA_ROOT}/.vscode/settings.json"
+  log_info "Seeded workspace settings into ${DATA_ROOT}/.vscode/settings.json"
 fi
 
 # 2.5 Initialize Langfuse Distributed Observability Configuration

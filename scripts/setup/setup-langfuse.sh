@@ -57,11 +57,21 @@ if [ -f .env ]; then
   set +a
 fi
 
+# Resolve effective telemetry data directory from BRAINSOS_TELEMETRY_DIR or BRAINSOS_DATA_DIR
+EFFECTIVE_TELEMETRY_DIR="${BRAINSOS_TELEMETRY_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/telemetry}"
+if [[ "${EFFECTIVE_TELEMETRY_DIR}" != /* ]]; then
+  if [ -d "${REPO_ROOT}/${EFFECTIVE_TELEMETRY_DIR}" ]; then
+    EFFECTIVE_TELEMETRY_DIR="$(cd "${REPO_ROOT}/${EFFECTIVE_TELEMETRY_DIR}" && pwd)"
+  else
+    EFFECTIVE_TELEMETRY_DIR="${REPO_ROOT}/${EFFECTIVE_TELEMETRY_DIR}"
+  fi
+fi
+
 LANGFUSE_PORT="${LANGFUSE_PORT:-3001}"
-LANGFUSE_DB_DATA_DIR="${LANGFUSE_DB_DATA_DIR:-${REPO_ROOT}/data/telemetry/postgres}"
-LANGFUSE_CLICKHOUSE_DATA_DIR="${LANGFUSE_CLICKHOUSE_DATA_DIR:-${REPO_ROOT}/data/telemetry/clickhouse}"
-LANGFUSE_REDIS_DATA_DIR="${LANGFUSE_REDIS_DATA_DIR:-${REPO_ROOT}/data/telemetry/redis}"
-LANGFUSE_MINIO_DATA_DIR="${LANGFUSE_MINIO_DATA_DIR:-${REPO_ROOT}/data/telemetry/minio}"
+LANGFUSE_DB_DATA_DIR="${LANGFUSE_DB_DATA_DIR:-${EFFECTIVE_TELEMETRY_DIR}/postgres}"
+LANGFUSE_CLICKHOUSE_DATA_DIR="${LANGFUSE_CLICKHOUSE_DATA_DIR:-${EFFECTIVE_TELEMETRY_DIR}/clickhouse}"
+LANGFUSE_REDIS_DATA_DIR="${LANGFUSE_REDIS_DATA_DIR:-${EFFECTIVE_TELEMETRY_DIR}/redis}"
+LANGFUSE_MINIO_DATA_DIR="${LANGFUSE_MINIO_DATA_DIR:-${EFFECTIVE_TELEMETRY_DIR}/minio}"
 
 # Helper to run compose commands
 compose_cmd() {
@@ -185,7 +195,7 @@ with open(file_path, 'w') as f:
   if [ -z "${NEXTAUTH_URL:-}" ] || [[ "${NEXTAUTH_URL}" == *"localhost"* ]]; then
     NEXTAUTH_URL="https://langfuse.${DOMAIN}"
   fi
-  AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse/}"
+  AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse}"
   update_env_var "NEXTAUTH_URL" "${NEXTAUTH_URL}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_CLIENT_ID" "${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}" "${LANGFUSE_ENV_FILE}"

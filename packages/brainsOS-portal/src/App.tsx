@@ -31,11 +31,10 @@ export function App() {
   const [user, setUser] = useState<AuthenticatedUser>(DEFAULT_USER);
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
 
-  // Auto-detect live mode if hostname is a brainsos domain or live=true query param
-  const isLiveHost = typeof window !== 'undefined' && (
-    window.location.search.includes('live=true') ||
-    window.location.hostname.includes('brainsos')
-  );
+  // Live mode is enabled by default across all hosts (localhost, LAN IPs, custom domains)
+  // Mock mode is only active when explicitly requested via ?mock=true
+  const isMockMode = typeof window !== 'undefined' && window.location.search.includes('mock=true');
+  const isLiveHost = !isMockMode;
 
   // Enforce obsidian dark theme across appliance and same-origin frames
   useEffect(() => {
