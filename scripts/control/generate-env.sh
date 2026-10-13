@@ -137,10 +137,15 @@ if [ -d "${REPO_ROOT}/../data" ]; then
   EXISTING_DATA_DIR="../data"
 fi
 
-if [ -f "${ENV_FILE}" ]; then
-  EXISTING_DOMAIN=$(grep -E "^BRAINSOS_DOMAIN=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "brainsos.local")
-  EXISTING_MAIL_DOMAIN=$(grep -E "^BRAINSOS_MAIL_DOMAIN=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
-  EXISTING_DATA_DIR=$(grep -E "^BRAINSOS_DATA_DIR=" "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "${EXISTING_DATA_DIR}")
+LOOKUP_ENV="${ENV_FILE}"
+if [ ! -f "${LOOKUP_ENV}" ] && [ -f "${ENV_FILE}.bak" ]; then
+  LOOKUP_ENV="${ENV_FILE}.bak"
+fi
+
+if [ -f "${LOOKUP_ENV}" ]; then
+  EXISTING_DOMAIN=$(grep -E "^BRAINSOS_DOMAIN=" "${LOOKUP_ENV}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "brainsos.local")
+  EXISTING_MAIL_DOMAIN=$(grep -E "^BRAINSOS_MAIL_DOMAIN=" "${LOOKUP_ENV}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
+  EXISTING_DATA_DIR=$(grep -E "^BRAINSOS_DATA_DIR=" "${LOOKUP_ENV}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "${EXISTING_DATA_DIR}")
 fi
 
 TARGET_DOMAIN="${CUSTOM_DOMAIN:-${EXISTING_DOMAIN:-brainsos.local}}"
@@ -235,10 +240,11 @@ if not os.path.isabs(target_data_dir):
     target_data_dir = os.path.abspath(os.path.join("${REPO_ROOT}", target_data_dir))
 force_passwords = ("${FORCE_PASSWORDS}".lower() == "true")
 
-# Parse existing .env if present
+# Parse existing .env or .env.bak if present
 current_vars = {}
-if os.path.exists(env_file):
-    with open(env_file, "r", encoding="utf-8") as f:
+lookup_file = env_file if os.path.exists(env_file) else (f"{env_file}.bak" if os.path.exists(f"{env_file}.bak") else None)
+if lookup_file and os.path.exists(lookup_file):
+    with open(lookup_file, "r", encoding="utf-8") as f:
         for line in f:
             line_s = line.strip()
             if not line_s or line_s.startswith("#") or "=" not in line:
