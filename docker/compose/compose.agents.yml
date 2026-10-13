@@ -64,6 +64,8 @@ services:
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/mcp.json:/opt/data/mcp.json:ro
       # brainsOS Hermes provider plugins (#295: forwards session_id to LiteLLM Langfuse traces)
       - ../hermes/plugins/model-providers:/opt/data/plugins/model-providers:ro
+      # brainsOS Hermes Langfuse plugin override (#299: sets trace_name to brainsOS event instead of 'Hermes turn')
+      - ../hermes/plugins/observability/langfuse/__init__.py:/opt/hermes/plugins/observability/langfuse/__init__.py:ro
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     command: ["gateway", "run"]
     extra_hosts:

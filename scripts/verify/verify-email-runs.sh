@@ -161,12 +161,12 @@ if pk and sk:
             names = [t.get("name") or "" for t in r.json().get("data", [])]
         except Exception as e:  # pragma: no cover
             print(f"[WARN] Langfuse query failed: {e}")
-        if any(n.startswith("email-run") for n in names) and "Hermes turn" in names:
+        if any(n.startswith("email-run") for n in names) and any(n == "Hermes turn" or n.startswith("brainsos: email:") for n in names):
             break
         time.sleep(10)
     print(f"[INFO] Langfuse thread trace {trace_id} (session {session_id}): {len(names)} observations")
     for label, pred in (("email-run", lambda n: n.startswith("email-run")),
-                        ("Hermes turn", lambda n: n == "Hermes turn"),
+                        ("Hermes turn", lambda n: n == "Hermes turn" or n.startswith("brainsos: email:")),
                         ("Hermes LLM call", lambda n: n.startswith("LLM call"))):
         count = sum(1 for n in names if pred(n))
         print(f"[{'INFO' if count else 'WARN'}]   {label}: {count}")

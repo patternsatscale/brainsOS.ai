@@ -102,7 +102,6 @@ cert: false
 disable-telemetry: true
 disable-update-check: true
 disable-workspace-trust: true
-enable-remote-storage: true
 EOF
 
 # 3. Dynamic Configuration of VS Code User settings.json and chatLanguageModels.json
@@ -314,4 +313,4 @@ if [ $# -gt 0 ] && [ -n "${1:-}" ] && [[ "${1}" != -* ]]; then
   shift
 fi
 
-exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust --enable-remote-storage "${TARGET_DIR}" "$@"
+exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust "${TARGET_DIR}" "$@"

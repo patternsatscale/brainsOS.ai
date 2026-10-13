@@ -251,8 +251,9 @@ fi
 # Remove .env if requested
 if [ "${KEEP_ENV}" != true ]; then
   if [ -f "${REPO_ROOT}/.env" ]; then
+    cp -f "${REPO_ROOT}/.env" "${REPO_ROOT}/.env.bak" 2>/dev/null || true
     rm -f "${REPO_ROOT}/.env"
-    log_success "Removed .env configuration file."
+    log_success "Removed .env configuration file (backed up to .env.bak)."
   fi
 else
   log_info "Preserving .env configuration file (--keep-env)."

@@ -2,7 +2,7 @@
 # ==============================================================================
 # brainsOS: End-to-End Multi-Agent & LiteLLM Telemetry Verification
 # Validates trace ingestion, model latency, token counts, and agent identity
-# across the LiteLLM control plane and Langfuse v4.56.0 observability stack.
+# across the LiteLLM control plane and Langfuse v4.58.0 observability stack.
 # ==============================================================================
 
 set -euo pipefail

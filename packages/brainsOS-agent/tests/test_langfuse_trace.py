@@ -84,10 +84,11 @@ def test_completed_span_shape() -> None:
     assert span["traceId"] == thread_trace_id(SESSION)
     assert len(span["spanId"]) == 16
     assert "parentSpanId" not in span
-    assert span["name"] == "email-run Bawtford"
+    assert span["name"] == "email-run bawtford"
     assert span["startTimeUnixNano"] == str(1_700_000_000 * 10**9)
     assert span["endTimeUnixNano"] == str(1_700_000_042_500_000_000)
     assert span["status"] == {"code": 0}
+    assert attrs["langfuse.trace.name"] == "brainsos: email: Hello"
     assert attrs["session.id"] == SESSION
     assert attrs["user.id"] == "admin@example.test"
     assert attrs["langfuse.trace.tags"] == ["brainsos-mail", "agent:bawtford", "status:completed"]
@@ -102,7 +103,12 @@ def test_io_recorded_once_not_at_trace_level() -> None:
     attrs = _attrs(_span(build_email_run_otlp(**_kwargs())))
     assert "langfuse.trace.input" not in attrs
     assert "langfuse.trace.output" not in attrs
-    assert "langfuse.trace.name" not in attrs  # never rename the Hermes thread trace
+    assert attrs["langfuse.trace.name"] == "brainsos: email: Hello"
+
+
+def test_trace_name_fallback_to_agent_id_when_subject_empty() -> None:
+    attrs = _attrs(_span(build_email_run_otlp(**_kwargs(subject=""))))
+    assert attrs["langfuse.trace.name"] == "brainsos: email: bawtford"
 
 
 def test_failed_span_is_error_level() -> None:
@@ -128,12 +134,14 @@ def test_record_posts_otlp_with_v4_header(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     monkeypatch.setenv("BRAINSOS_LANGFUSE_URL", "http://langfuse.test")
-    seen: dict[str, Any] = {}
+    calls: list[dict[str, Any]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"] = str(request.url)
-        seen["headers"] = request.headers
-        seen["body"] = request.content
+        calls.append({
+            "url": str(request.url),
+            "headers": request.headers,
+            "body": request.content,
+        })
         return httpx.Response(200, json={})
 
     async def run() -> bool:
@@ -141,11 +149,13 @@ def test_record_posts_otlp_with_v4_header(monkeypatch: pytest.MonkeyPatch) -> No
             return await record_mail_run_trace(http_client=client, **_kwargs())
 
     assert asyncio.run(run()) is True
-    assert seen["url"] == "http://langfuse.test/api/public/otel/v1/traces"
-    assert seen["headers"]["x-langfuse-ingestion-version"] == "4"
-    assert seen["headers"]["authorization"] == "Basic " + base64.b64encode(b"pk-lf-test:sk-lf-test").decode()
-    assert b"resourceSpans" in seen["body"]
-    assert "x-langfuse-sdk-name" not in seen["headers"]
+    # Exactly one request sent strictly to native OTel endpoint (zero legacy API calls).
+    assert len(calls) == 1
+    assert calls[0]["url"] == "http://langfuse.test/api/public/otel/v1/traces"
+    assert calls[0]["headers"]["x-langfuse-ingestion-version"] == "4"
+    assert calls[0]["headers"]["authorization"] == "Basic " + base64.b64encode(b"pk-lf-test:sk-lf-test").decode()
+    assert b"resourceSpans" in calls[0]["body"]
+    assert "x-langfuse-sdk-name" not in calls[0]["headers"]
 
 
 def test_record_never_raises_and_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
