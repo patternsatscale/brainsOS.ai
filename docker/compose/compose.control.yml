@@ -73,10 +73,12 @@ services:
       - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
       - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
       - GENERIC_USER_ID_ATTRIBUTE=preferred_username
-      # Langfuse Observability Tracing
+      # Langfuse Observability Tracing (#299: native OTel v4 header for real-time ingestion)
       - LANGFUSE_HOST=${LITELLM_LANGFUSE_HOST:-http://host.docker.internal:3001}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - OTEL_EXPORTER_OTLP_HEADERS=x-langfuse-ingestion-version=4
+      - OTEL_EXPORTER_OTLP_TRACES_HEADERS=x-langfuse-ingestion-version=4
     networks:
       brainsos-control-net:
       brainsos-internal-net:

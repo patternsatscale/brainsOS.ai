@@ -112,8 +112,11 @@ def build_email_run_otlp(
     failed = status != "completed"
     end_ts = ended_at if ended_at is not None else time.time()
     start_ts = started_at if started_at is not None else end_ts
+    clean_subj = (subject or "").strip()
+    trace_name = f"brainsos: email: {clean_subj[:120]}" if clean_subj else f"brainsos: email: {agent_id}"
     candidates = [
-        # Trace-level attributes (merged onto the Hermes thread trace).
+        # Trace-level attributes (names the root trace after the brainsOS event).
+        _attr("langfuse.trace.name", trace_name),
         _attr("session.id", session_id),
         _attr("user.id", sender),
         _attr("langfuse.trace.tags", ["brainsos-mail", f"agent:{agent_id}", f"status:{status}"]),
@@ -134,7 +137,7 @@ def build_email_run_otlp(
     span = {
         "traceId": thread_trace_id(session_id),
         "spanId": secrets.token_hex(8),
-        "name": f"email-run {agent_name}",
+        "name": f"email-run {agent_id}",
         "kind": _SPAN_KIND_INTERNAL,
         "startTimeUnixNano": _to_unix_nano(start_ts),
         "endTimeUnixNano": _to_unix_nano(end_ts),
@@ -154,7 +157,7 @@ def build_email_run_otlp(
 
 
 async def record_mail_run_trace(http_client: httpx.AsyncClient | None = None, **kwargs: Any) -> bool:
-    """Best-effort OTLP export of the ``email-run`` span. Returns True on 2xx, never raises."""
+    """Best-effort export of the ``email-run`` span to Langfuse via native OTel v4. Returns True on 2xx, never raises."""
     settings = langfuse_settings()
     if settings is None:
         return False

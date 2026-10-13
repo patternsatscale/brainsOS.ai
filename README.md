@@ -398,7 +398,7 @@ Every inbound email to an agent triggers **one** asynchronous Hermes run and pro
 2. It polls `GET /v1/runs/{run_id}` with no socket held open, so runs may last hours. A wall-clock budget (`HERMES_RUN_MAX_SEC`, default 4h) calls `/stop`. A worker restart resumes polling the same run instead of resubmitting.
 3. `completed` → the result is emailed and the turn is recorded in OKF. `failed` / `cancelled` / `interrupted` / timeout → the sender gets a plain failure email with recommendations; raw errors go to logs and Langfuse only.
 4. Concurrency is 1 at both layers: Hermes `max_concurrent_runs: 1` (the worker backs off on 429) and LiteLLM `max_parallel_requests: 1`.
-5. Langfuse: Hermes turn traces, LiteLLM generations (session forwarded by `docker/hermes/plugins/model-providers/brainsos-litellm-session`) and a worker `email-run` trace (sender as `user_id`, ERROR level on failure) all share the thread's session.
+5. **Unified Langfuse Tracing**: Each email thread produces a single cohesive thread trace in Langfuse (`thread_trace_id(session_id) = sha256(f"{sid}::{sid}")[:16]`) named after the brainsOS event (`brainsos: email: <subject>`). The queue worker records an `email-run <agent_id>` span via OTLP (`/api/public/otel/v1/traces`, `x-langfuse-ingestion-version: 4`) with the sender as `user.id`, timing, and status directly onto the thread trace. Hermes' `observability/langfuse` plugin records the `Hermes turn` (LLM generations, tool calls) under this event trace. Hermes requests to LiteLLM send `no-log: true` via the `brainsos-litellm-session` plugin so LiteLLM avoids duplicating Hermes LLM calls, while LiteLLM's `langfuse_otel` callback directly traces non-Hermes callers (IDE / operator).
 
 ---
 

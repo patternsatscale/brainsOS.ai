@@ -219,18 +219,19 @@ if command -v docker >/dev/null 2>&1 && [ -n "${ACTIVE_ENDPOINT}" ]; then
   done
 fi
 
-# If active, test telemetry ingestion endpoint reachability
+# If active, test telemetry native OTel endpoint reachability
 if [ -n "${ACTIVE_ENDPOINT}" ]; then
-  log_info "Testing telemetry ingestion endpoint reachability at ${ACTIVE_ENDPOINT}/api/public/ingestion..."
-  INGEST_PROBE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${ACTIVE_ENDPOINT}/api/public/ingestion" \
+  log_info "Testing telemetry OTLP ingestion reachability at ${ACTIVE_ENDPOINT}/api/public/otel/v1/traces..."
+  INGEST_PROBE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${ACTIVE_ENDPOINT}/api/public/otel/v1/traces" \
     -H "Content-Type: application/json" \
+    -H "x-langfuse-ingestion-version: 4" \
     -d "{}" 2>/dev/null || echo "000")
 
-  # Langfuse ingestion endpoint returns 401 (Unauthorized without headers) or 200/400
+  # Langfuse OTLP endpoint returns 401 (Unauthorized without credentials) or 200/400
   if [[ "${INGEST_PROBE}" =~ ^(200|400|401|405)$ ]]; then
-    pass_check "Langfuse ingestion endpoint: ACTIVE & AUTH-PROTECTED on ${ACTIVE_ENDPOINT}/api/public/ingestion (HTTP ${INGEST_PROBE})."
+    pass_check "Langfuse OTLP endpoint: ACTIVE & AUTH-PROTECTED on ${ACTIVE_ENDPOINT}/api/public/otel/v1/traces (HTTP ${INGEST_PROBE})."
   else
-    warn_check "Langfuse ingestion endpoint returned unexpected status: HTTP ${INGEST_PROBE}."
+    warn_check "Langfuse OTLP endpoint returned unexpected status: HTTP ${INGEST_PROBE}."
   fi
 
   # Check sessions REST endpoint (enabled in dual mode)
