@@ -577,9 +577,9 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
     # session_id must be in trace_context for Langfuse session grouping.
     trace_ctx: Dict[str, Any] = {"trace_id": trace_id, **({"session_id": session_id} if session_id else {})}
 
-    # brainsOS integration: Derive trace and root observation name from brainsOS event session if applicable
+    # brainsOS integration: Derive trace name and tags from brainsOS event session if applicable
     effective_trace_name = "Hermes turn"
-    effective_tags = ["hermes", "langfuse"]
+    effective_tags = ["hermes", "langfuse", "runner:hermes"]
     if session_id and session_id.startswith("mail-"):
         parts = session_id.split("-", 2)
         agent_id = parts[1] if len(parts) >= 2 else "agent"
@@ -587,7 +587,7 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
         effective_tags.extend(["brainsos", "brainsos-mail", f"agent:{agent_id}"])
 
     def open_root():
-        ctx = client.start_as_current_observation(trace_context=trace_ctx, name=effective_trace_name, as_type="chain",
+        ctx = client.start_as_current_observation(trace_context=trace_ctx, name="Hermes turn", as_type="chain",
                                                   input=trace_input, metadata=metadata, end_on_exit=False)
         return ctx, ctx.__enter__()
 
