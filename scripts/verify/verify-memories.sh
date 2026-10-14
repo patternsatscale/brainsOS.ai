@@ -60,15 +60,29 @@ if [ -f "${REPO_ROOT}/config/agents.local.yaml" ]; then
   MANIFEST_FILE="${REPO_ROOT}/config/agents.local.yaml"
 elif [ -f "${REPO_ROOT}/config/agents.override.yaml" ]; then
   MANIFEST_FILE="${REPO_ROOT}/config/agents.override.yaml"
+elif [ -f "${REPO_ROOT}/../data/settings/agents.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/../data/settings/agents.yaml"
+elif [ -f "${REPO_ROOT}/data/settings/agents.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/data/settings/agents.yaml"
+elif [ -f "${REPO_ROOT}/config/default_settings/agents.yaml" ]; then
+  MANIFEST_FILE="${REPO_ROOT}/config/default_settings/agents.yaml"
 else
   MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
 fi
 PRIMARY_AGENT_ID=$(python3 -c "import yaml; m = yaml.safe_load(open('${MANIFEST_FILE}')); print(m.get('agents', [{}])[0].get('id', 'primary'))" 2>/dev/null || echo "primary")
 
 # Multi-tenant directory alignment & service detection
+AGENTS_DIR="${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-./data}/agents}"
+if [[ "$AGENTS_DIR" != /* ]]; then
+  AGENTS_DIR="${REPO_ROOT}/${AGENTS_DIR#./}"
+fi
+
 AGENT_MEMORIES_DIR="${MEMORIES_DIR}"
 SB_PREFIX=""
-if [ -d "${MEMORIES_DIR}/${PRIMARY_AGENT_ID}" ]; then
+if [ -d "${AGENTS_DIR}/${PRIMARY_AGENT_ID}/memories" ]; then
+  AGENT_MEMORIES_DIR="${AGENTS_DIR}/${PRIMARY_AGENT_ID}/memories"
+  SB_PREFIX="${PRIMARY_AGENT_ID}/"
+elif [ -d "${MEMORIES_DIR}/${PRIMARY_AGENT_ID}" ]; then
   AGENT_MEMORIES_DIR="${MEMORIES_DIR}/${PRIMARY_AGENT_ID}"
   SB_PREFIX="${PRIMARY_AGENT_ID}/"
 elif [ -d "${MEMORIES_DIR}/primary" ]; then
@@ -82,17 +96,20 @@ elif [ -d "${MEMORIES_DIR}/tenants/primary" ]; then
   SB_PREFIX="tenants/primary/"
 fi
 
-HERMES_SERVICE="agent-${PRIMARY_AGENT_ID}"
-if ! docker compose ps --services | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
-  if docker compose ps --services | grep -q "^agent-primary$"; then
-    HERMES_SERVICE="agent-primary"
-  elif docker compose ps --services | grep -q "^hermes$"; then
-    HERMES_SERVICE="hermes"
-  fi
+HERMES_SERVICE="runner-hermes"
+if docker compose ps --services 2>/dev/null | grep -q "^runner-hermes$"; then
+  HERMES_SERVICE="runner-hermes"
+elif docker compose ps --services 2>/dev/null | grep -q "^agent-${PRIMARY_AGENT_ID}$"; then
+  HERMES_SERVICE="agent-${PRIMARY_AGENT_ID}"
+elif docker compose ps --services 2>/dev/null | grep -q "^agent-primary$"; then
+  HERMES_SERVICE="agent-primary"
+elif docker compose ps --services 2>/dev/null | grep -q "^hermes$"; then
+  HERMES_SERVICE="hermes"
 fi
 
 log_info "Running brainsOS Memory Plane automated verification..."
 log_info "Target memories root:       ${MEMORIES_DIR}"
+log_info "Target agents root:         ${AGENTS_DIR}"
 log_info "Target agent memories path: ${AGENT_MEMORIES_DIR}"
 log_info "Target Hermes service:      ${HERMES_SERVICE}"
 
@@ -150,28 +167,48 @@ Verified live sync between host filesystem, SilverBullet PKM, and Hermes runtime
 EOF
 
 log_info "Validating Hermes container can read live host memory mount..."
-HERMES_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "/memories/${SYNC_FILE}" 2>/dev/null || true)
+HERMES_READ=""
+for cand in "/memories/${SYNC_FILE}" "/memories/${PRIMARY_AGENT_ID}/memories/${SYNC_FILE}" "/data/agents/${PRIMARY_AGENT_ID}/memories/${SYNC_FILE}" "/data/agent_memories/${PRIMARY_AGENT_ID}/${SYNC_FILE}"; do
+  CAND_READ=$(docker compose exec -T "${HERMES_SERVICE}" cat "${cand}" 2>/dev/null || true)
+  if echo "${CAND_READ}" | grep -q "brainsOS Memory Plane Synchronization Test"; then
+    HERMES_READ="${CAND_READ}"
+    break
+  fi
+done
+
 if echo "${HERMES_READ}" | grep -q "brainsOS Memory Plane Synchronization Test"; then
-  log_success "Hermes container read verified directly from /memories mount."
+  log_success "Hermes container read verified directly from host memory mount."
 else
-  log_error "Hermes failed to read note from /memories."
+  log_error "Hermes failed to read note from host memory mount."
   rm -f "${SYNC_FULL_PATH}"
   exit 1
 fi
 
-log_info "Validating native hermes-okf read_okf_note tool dispatch..."
+log_info "Validating memory tool dispatch (brainsos_mcp / read_okf_note)..."
 HERMES_API_READ=$(docker compose exec -T "${HERMES_SERVICE}" python3 -c '
-from hermes_cli.plugins import discover_plugins
-discover_plugins()
-from tools.registry import registry
-import json, sys
-res = registry.dispatch("read_okf_note", {"rel_path": sys.argv[1]})
-print(res if isinstance(res, str) else json.dumps(res))
-' "${SYNC_FILE}" 2>/dev/null || echo "{}")
+import asyncio, sys, json
+try:
+    from brainsos_mcp.server import create_server
+    server = create_server()
+    async def run():
+        res = await server.call_tool("read_memory", {"rel_path": sys.argv[1], "agent_id": sys.argv[2]})
+        print(res[0][0].text if res else "{}")
+    asyncio.run(run())
+except Exception as e:
+    try:
+        from hermes_cli.plugins import discover_plugins
+        discover_plugins()
+        from tools.registry import registry
+        res = registry.dispatch("read_okf_note", {"rel_path": sys.argv[1]})
+        print(res if isinstance(res, str) else json.dumps(res))
+    except Exception as e2:
+        print(json.dumps({"error": f"{e}; {e2}"}))
+' "${SYNC_FILE}" "${PRIMARY_AGENT_ID}" 2>/dev/null || echo "{}")
+
 if echo "${HERMES_API_READ}" | grep -q "Bi-directional Sync Test Note"; then
-  log_success "Native read_okf_note tool successfully returned parsed note."
+  log_success "Memory tool successfully returned parsed note."
 else
-  log_error "Native read_okf_note tool failed to parse note: ${HERMES_API_READ}"
+  log_error "Memory tool failed to parse note: ${HERMES_API_READ}"
   rm -f "${SYNC_FULL_PATH}"
   exit 1
 fi

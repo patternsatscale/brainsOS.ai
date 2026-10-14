@@ -82,10 +82,7 @@ log_info "  - Config: ${CONFIG_DIR}"
 log_info "  - Data:   ${DATA_DIR}"
 
 # Ensure canvas site directory exists
-APPS_DIR="${BRAINSOS_AGENT_APPS_DIR:-${DATA_ROOT}/agent_apps}"
-if [[ "$APPS_DIR" != /* ]]; then
-  APPS_DIR="${REPO_ROOT}/${APPS_DIR#./}"
-fi
+APPS_DIR="${DATA_ROOT}/agents/bawtford/apps"
 mkdir -p "${APPS_DIR}/cindypawford/site"
 
 # Ensure Caddy root CA certificate is exported for in-container SSL trust

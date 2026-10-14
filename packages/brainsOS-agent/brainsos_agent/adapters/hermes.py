@@ -107,7 +107,7 @@ class HermesMailAdapter(AgentRuntime):
         sleep: Callable[[float], Awaitable[Any]] | None = None,
         clock: Callable[[], float] | None = None,
     ) -> None:
-        self.runner_url = (runner_url or os.getenv("HERMES_RUNNER_URL", "http://127.0.0.1:8642/v1")).rstrip("/")
+        self.runner_url = (runner_url or os.getenv("HERMES_RUNNER_URL") or "http://127.0.0.1:8642/v1").rstrip("/")
         self.poll_interval = poll_interval if poll_interval is not None else _env_float("HERMES_RUN_POLL_SEC", 5.0)
         self.max_run_sec = max_run_sec if max_run_sec is not None else _env_float("HERMES_RUN_MAX_SEC", 14400.0)
         self.http_timeout = http_timeout if http_timeout is not None else _env_float("HERMES_HTTP_TIMEOUT_SEC", 30.0)
@@ -172,12 +172,14 @@ class HermesMailAdapter(AgentRuntime):
                 except Exception as e:
                     logger.debug("Could not read rule file %s: %s", rule_file, e)
 
+        agent_id = profile.id or profile.name
         # 3. Add workspace path guideline to keep tools isolated (Rule 7 compliant)
         parts.append(
-            f"\n### Runtime Environment\n"
+            f"\n### Runtime Environment & Memory Guidelines\n"
             f"- Assigned Identity: {profile.name} <{profile.email}>\n"
-            f"- Workspace Root: /workspace (isolated filesystem root)\n"
-            f"- Memory Root: /memories (human-auditable Markdown storage)\n"
+            f"- Workspace Root: /workspace (or /data/agents/{agent_id}/workspace)\n"
+            f"- Memory Partition: /data/agents/{agent_id}/memories\n"
+            f"- Memory Tools: To store long-term notes, research summaries, facts, and rules, invoke `write_memory(rel_path, content)` (e.g. `write_memory('research/topic.md', content='...')`). Your memory operations are automatically and transparently scoped to your assigned memory partition.\n"
         )
 
         # 4. Email communication & formatting guidelines (HTML vs Markdown)
@@ -258,6 +260,17 @@ class HermesMailAdapter(AgentRuntime):
             await client.post(f"{self.runner_url}/runs/{run_id}/stop", headers=headers, timeout=self.http_timeout)
         except httpx.HTTPError as e:
             logger.warning("Failed to stop Hermes run %s: %s", run_id, e)
+
+    async def _purge_session(self, client: httpx.AsyncClient, session_id: str, headers: dict[str, str]) -> None:
+        """Purge ephemeral session state from Hermes to maintain zero cross-tenant residual leakage."""
+        try:
+            base_url = re.sub(r"/v1/?$", "", self.runner_url.rstrip("/"))
+            delete_url = f"{base_url}/api/sessions/{session_id}"
+            resp = await client.delete(delete_url, headers=headers, timeout=self.http_timeout)
+            if resp.status_code in (200, 204, 404):
+                logger.debug("Successfully purged ephemeral Hermes session %s", session_id)
+        except Exception as e:
+            logger.warning("Failed to purge ephemeral Hermes session %s: %s", session_id, e)
 
     async def _poll_run(
         self, client: httpx.AsyncClient, run_id: str, headers: dict[str, str], deadline: float
@@ -346,6 +359,8 @@ class HermesMailAdapter(AgentRuntime):
                     if ctx.on_run_submitted:
                         await ctx.on_run_submitted(run_id, started_at)
                     result = await self._poll_run(client, run_id, headers, started_at + self.max_run_sec)
+                    # Clean up ephemeral runner session from Hermes to guarantee stateless execution
+                    await self._purge_session(client, session_id, headers)
         finally:
             if self._client is None:
                 await client.aclose()

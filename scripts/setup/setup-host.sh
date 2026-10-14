@@ -301,8 +301,8 @@ if [[ "$DATA_ROOT" != /* ]]; then
   DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
 fi
 
-DATA_DIR=$(grep -E '^BRAINSOS_AGENT_MEMORIES_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "${DATA_ROOT}/agent_memories")
-DATA_DIR="${DATA_DIR:-${DATA_ROOT}/agent_memories}"
+DATA_DIR=$(grep -E '^BRAINSOS_AGENTS_DIR=' .env 2>/dev/null | head -n1 | cut -d '=' -f2- || echo "${DATA_ROOT}/agents")
+DATA_DIR="${DATA_DIR:-${DATA_ROOT}/agents}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -310,6 +310,7 @@ else
   TARGET_MEMORIES_DIR="${DATA_DIR}"
 fi
 
+mkdir -p "${DATA_ROOT}/agents"
 mkdir -p "${DATA_ROOT}/backups"
 mkdir -p "${DATA_ROOT}/control_plane"
 mkdir -p "${DATA_ROOT}/comms"
@@ -359,12 +360,11 @@ else
   chmod 775 "${TARGET_WORKSPACE_DIR}" || true
 fi
 
-touch "${REPO_ROOT}/data/agent_memories/.gitkeep" 2>/dev/null || true
-touch "${REPO_ROOT}/data/agent_workspaces/.gitkeep" 2>/dev/null || true
-touch "${REPO_ROOT}/data/comms/.gitkeep" 2>/dev/null || true
-touch "${REPO_ROOT}/data/telemetry/.gitkeep" 2>/dev/null || true
+touch "${DATA_ROOT}/agents/.gitkeep" 2>/dev/null || true
+touch "${DATA_ROOT}/comms/.gitkeep" 2>/dev/null || true
+touch "${DATA_ROOT}/telemetry/.gitkeep" 2>/dev/null || true
 
-log_success "Storage layout (agent_memories, agent_workspaces, comms, control_plane, telemetry) initialized."
+log_success "Storage layout (agents, comms, control_plane, telemetry) initialized."
 
 # ------------------------------------------------------------------------------
 # 6. Native Model Seeding

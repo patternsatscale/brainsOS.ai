@@ -39,10 +39,14 @@ async def test_heartbeat_refreshes_processing_lease(tmp_path: Path, backend_kind
     await queue.enqueue({"n": 1})
     task = await queue.acquire_task(worker_id="w1")
     assert task is not None
-    first_lock = (await queue.get_task(task.id)).locked_at
+    t1 = await queue.get_task(task.id)
+    assert t1 is not None and t1.locked_at is not None
+    first_lock = t1.locked_at
     await asyncio.sleep(0.02)
     await queue.heartbeat(task.id)
-    assert (await queue.get_task(task.id)).locked_at > first_lock
+    t2 = await queue.get_task(task.id)
+    assert t2 is not None and t2.locked_at is not None
+    assert t2.locked_at > first_lock
 
 
 @pytest.mark.asyncio

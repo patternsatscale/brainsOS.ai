@@ -64,6 +64,7 @@ resolve_path() {
 }
 
 DATA_ROOT=$(resolve_path "${BRAINSOS_DATA_DIR:-}" "./data")
+AGENTS_DIR=$(resolve_path "${BRAINSOS_AGENTS_DIR:-}" "${DATA_ROOT}/agents")
 MEMORIES_DIR=$(resolve_path "${BRAINSOS_AGENT_MEMORIES_DIR:-}" "${DATA_ROOT}/agent_memories")
 WORKSPACE_DIR=$(resolve_path "${BRAINSOS_AGENT_WORKSPACES_DIR:-}" "${DATA_ROOT}/agent_workspaces")
 COMMS_DIR=$(resolve_path "${BRAINSOS_COMMS_DIR:-}" "${DATA_ROOT}/comms")
@@ -154,15 +155,22 @@ create_backup() {
 
   log_info "Initializing brainsOS full data plane backup..."
   log_info "Packaging planes:"
+  log_info "  - Agents:    ${AGENTS_DIR}"
   log_info "  - Memories:  ${MEMORIES_DIR}"
   log_info "  - Workspace: ${WORKSPACE_DIR}"
   log_info "  - Comms:     ${COMMS_DIR}"
   log_info "  - Database:  ${DB_DIR}"
 
+  mkdir -p "${staging_dir}/agents"
   mkdir -p "${staging_dir}/memories"
   mkdir -p "${staging_dir}/workspace"
   mkdir -p "${staging_dir}/comms"
   mkdir -p "${staging_dir}/litellm_db"
+
+  # 0. Copy agents if present
+  if [ -d "${AGENTS_DIR}" ]; then
+    cp -a "${AGENTS_DIR}/." "${staging_dir}/agents/" 2>/dev/null || true
+  fi
 
   # 1. Copy memories if present
   if [ -d "${MEMORIES_DIR}" ]; then
@@ -195,6 +203,7 @@ create_backup() {
   "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "version": "1.0.0",
   "planes": {
+    "agents": "${AGENTS_DIR}",
     "memories": "${MEMORIES_DIR}",
     "workspace": "${WORKSPACE_DIR}",
     "comms": "${COMMS_DIR}",
@@ -260,6 +269,7 @@ restore_backup() {
   log_success "Archive integrity verified."
 
   echo -e "${YELLOW}${BOLD}WARNING: Restoring data will overwrite existing files in:${NC}"
+  echo "  - ${AGENTS_DIR}"
   echo "  - ${MEMORIES_DIR}"
   echo "  - ${WORKSPACE_DIR}"
   echo "  - ${COMMS_DIR}"
@@ -278,6 +288,12 @@ restore_backup() {
   local extract_dir
   extract_dir=$(mktemp -d "${TMPDIR:-/tmp}/brainsos_restore_XXXXXX")
   tar -xzf "${archive_file}" -C "${extract_dir}"
+
+  if [ -d "${extract_dir}/agents" ]; then
+    mkdir -p "${AGENTS_DIR}"
+    cp -a "${extract_dir}/agents/." "${AGENTS_DIR}/" 2>/dev/null || true
+    log_success "Restored agents plane."
+  fi
 
   if [ -d "${extract_dir}/memories" ]; then
     mkdir -p "${MEMORIES_DIR}"

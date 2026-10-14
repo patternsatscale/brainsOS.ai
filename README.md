@@ -167,13 +167,13 @@ graph TD
 │     - Shared Hermes Runner (:8642 async API /v1/runs, max_concurrent_runs:1)│
 │     - Dynamic Manifest Registry: config/agents.yaml (Zero Container Drift)  │
 │     - Asynchronous Agent Core SPI: packages/brainsOS-agent                  │
-│     - Isolated Tenancies: data/agent_workspaces/<tenant>/ & memories/       │
+│     - Agent-Centric Storage: data/agents/<tenant>/ (SOUL, memories, work)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L5: Memory Plane & Tool Sandbox                                             │
 │     - Standalone Packages: packages/brainsOS-memory/, brainsOS-queue/, etc. │
 │     - Telemetry & Energy Accounting: packages/brainsOS-telemetry/           │
-│     - Partitioned Memories: ./data/agent_memories/<id> (Pure Markdown)      │
-│     - Tenant Workspaces:   ./data/agent_workspaces/<id> (Tools, Caches, DBs)│
+│     - Agent-Centric Partitions: ./data/agents/<id>/ (SOUL, memories, ws)    │
+│     - Backward-Compatible Fallbacks: ./data/agent_memories/, agent_workspaces│
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing, Security & ACSG Control Plane                                  │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │

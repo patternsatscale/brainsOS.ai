@@ -55,6 +55,7 @@ def get_soul_path(soul_name: str | Path, base_dir: Path | str | None = None) -> 
     - BRAINSOS_DEFAULT_SOULS_DIR (default: base_dir/config/default_souls)
     """
     base = Path(base_dir).resolve() if base_dir else _find_repo_root()
+    data_dir_env = os.environ.get("BRAINSOS_DATA_DIR")
 
     # Determine runtime data souls directory
     souls_dir_env = os.environ.get("BRAINSOS_SOULS_DIR")
@@ -63,7 +64,6 @@ def get_soul_path(soul_name: str | Path, base_dir: Path | str | None = None) -> 
         if not souls_dir.is_absolute():
             souls_dir = (base / souls_dir).resolve()
     else:
-        data_dir_env = os.environ.get("BRAINSOS_DATA_DIR")
         if data_dir_env:
             data_dir = Path(data_dir_env)
             if not data_dir.is_absolute():
@@ -81,6 +81,17 @@ def get_soul_path(soul_name: str | Path, base_dir: Path | str | None = None) -> 
     else:
         default_souls_dir = (base / "config" / "default_souls").resolve()
 
+    # Determine runtime data agents directory
+    agents_dir_env = os.environ.get("BRAINSOS_AGENTS_DIR")
+    if agents_dir_env:
+        agents_dir = Path(agents_dir_env)
+        if not agents_dir.is_absolute():
+            agents_dir = (base / agents_dir).resolve()
+    elif data_dir_env:
+        agents_dir = (Path(data_dir_env) if Path(data_dir_env).is_absolute() else (base / data_dir_env)).resolve() / "agents"
+    else:
+        agents_dir = (base / "data" / "agents").resolve()
+
     # Check if soul_name is already a direct existing file path
     p = Path(soul_name)
     if p.is_file() and p.stat().st_size > 0:
@@ -91,20 +102,39 @@ def get_soul_path(soul_name: str | Path, base_dir: Path | str | None = None) -> 
     normalized = normalize_soul_name(soul_name)
     filename = f"{normalized}.md"
 
-    # 1. Check live custom soul override in data/souls/
+    # 1. Check agent-centric SOUL.md or subagent in data/agents/
+    if "." in normalized:
+        agent_id, sub_id = normalized.split(".", 1)
+        sub_soul = agents_dir / agent_id / "subagents" / f"{sub_id}.md"
+        if sub_soul.is_file() and sub_soul.stat().st_size > 0:
+            return sub_soul.resolve()
+        default_sub_soul = base / "config" / "default_agents" / agent_id / "subagents" / f"{sub_id}.md"
+        if default_sub_soul.is_file() and default_sub_soul.stat().st_size > 0:
+            return default_sub_soul.resolve()
+    else:
+        agent_soul = agents_dir / normalized / "SOUL.md"
+        if agent_soul.is_file() and agent_soul.stat().st_size > 0:
+            return agent_soul.resolve()
+
+        # 2. Check baseline default soul in config/default_agents/{normalized}/SOUL.md
+        default_agent_soul = base / "config" / "default_agents" / normalized / "SOUL.md"
+        if default_agent_soul.is_file() and default_agent_soul.stat().st_size > 0:
+            return default_agent_soul.resolve()
+
+    # 3. Check live custom soul override in data/souls/
     live_path = souls_dir / filename
     if live_path.is_file() and live_path.stat().st_size > 0:
         return live_path.resolve()
 
-    # 2. Check baseline default soul in config/default_souls/
+    # 4. Check baseline default soul in config/default_souls/
     default_path = default_souls_dir / filename
     if default_path.is_file() and default_path.stat().st_size > 0:
         return default_path.resolve()
 
-    # 3. Not found in either location
+    # 5. Not found in either location
     raise SoulNotFoundError(
         f"Soul '{soul_name}' could not be resolved in /data/souls/ or config/default_souls/ "
-        f"(checked '{live_path}' and '{default_path}')"
+        f"(checked '{agent_soul}', '{live_path}', and '{default_path}')"
     )
 
 

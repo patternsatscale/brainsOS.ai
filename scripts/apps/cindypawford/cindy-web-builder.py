@@ -62,9 +62,14 @@ def resolve_canvas_dir(explicit: Optional[str] = None) -> Path:
         return container_canvas
     # On host:
     repo_root = find_repo_root()
-    host_site = repo_root / "data" / "agent_apps" / "cindypawford" / "site"
-    if host_site.exists():
-        return host_site
+    data_dir = Path(os.environ.get("BRAINSOS_DATA_DIR", repo_root / "data"))
+    for cand in [
+        data_dir / "agents" / "bawtford" / "apps" / "cindypawford" / "site",
+        data_dir / "agent_apps" / "cindypawford" / "site",
+        repo_root / "config" / "default_agents" / "bawtford" / "apps" / "cindypawford" / "site",
+    ]:
+        if cand.exists():
+            return cand
     return container_canvas
 
 
@@ -76,13 +81,17 @@ def resolve_memory_dir(explicit: Optional[str] = None) -> Path:
     if container_mem.exists():
         return container_mem
     repo_root = find_repo_root()
-    host_mem = repo_root / "data" / "agent_memories" / "bawtford"
+    data_dir = Path(os.environ.get("BRAINSOS_DATA_DIR", repo_root / "data"))
+    agent_mem = data_dir / "agents" / "bawtford" / "memories"
+    if agent_mem.exists():
+        return agent_mem
+    host_mem = data_dir / "agent_memories" / "bawtford"
     if not host_mem.exists():
-        legacy_mem = repo_root / "data" / "memories" / "bawtford"
+        legacy_mem = data_dir / "memories" / "bawtford"
         if legacy_mem.exists():
             return legacy_mem
-    host_mem.mkdir(parents=True, exist_ok=True)
-    return host_mem
+    agent_mem.mkdir(parents=True, exist_ok=True)
+    return agent_mem
 
 
 def resolve_persona_path(explicit: Optional[str] = None) -> Path:
@@ -94,19 +103,17 @@ def resolve_persona_path(explicit: Optional[str] = None) -> Path:
     if container_soul.exists():
         return container_soul
     repo_root = find_repo_root()
-    # Check live override in data/souls/
-    live_soul = repo_root / "data" / "souls" / "bawtford.web-developer.md"
-    if live_soul.exists() and live_soul.stat().st_size > 0:
-        return live_soul
-    # Check baseline in config/default_souls/
-    default_soul = repo_root / "config" / "default_souls" / "bawtford.web-developer.md"
-    if default_soul.exists():
-        return default_soul
-    # Legacy path fallback
-    repo_soul = repo_root / "config" / "hermes" / "bawtford" / "web-developer" / "SOUL.md"
-    if repo_soul.exists():
-        return repo_soul
-    return default_soul
+    data_dir = Path(os.environ.get("BRAINSOS_DATA_DIR", repo_root / "data"))
+    for cand in [
+        data_dir / "agents" / "bawtford" / "subagents" / "web-developer.md",
+        data_dir / "souls" / "bawtford.web-developer.md",
+        repo_root / "config" / "default_agents" / "bawtford" / "subagents" / "web-developer.md",
+        repo_root / "config" / "default_souls" / "bawtford.web-developer.md",
+        repo_root / "config" / "hermes" / "bawtford" / "web-developer" / "SOUL.md",
+    ]:
+        if cand.exists() and cand.stat().st_size > 0:
+            return cand
+    return repo_root / "config" / "default_agents" / "bawtford" / "subagents" / "web-developer.md"
 
 
 def sanitize_code_content(raw_code: str, file_name: str) -> Tuple[str, List[str]]:

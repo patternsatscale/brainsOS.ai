@@ -18,7 +18,22 @@ def find_repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 REPO_ROOT = find_repo_root()
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "archive")
+DATA_DIR = os.environ.get("BRAINSOS_DATA_DIR", os.path.join(REPO_ROOT, "data"))
+
+def resolve_archive_dir():
+    candidates = [
+        os.path.join(DATA_DIR, "agents", "bawtford", "apps", "cindypawford", "archive"),
+        os.path.join(REPO_ROOT, "data", "agents", "bawtford", "apps", "cindypawford", "archive"),
+        os.path.join(DATA_DIR, "agent_apps", "cindypawford", "archive"),
+        os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "archive"),
+        os.path.join(REPO_ROOT, "config", "default_agents", "bawtford", "apps", "cindypawford", "archive"),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+ARCHIVE_DIR = resolve_archive_dir()
 LOGBOOK_JSON_PATH = os.path.join(ARCHIVE_DIR, "logbook.json")
 ERAS_JSON_PATH = os.path.join(ARCHIVE_DIR, "eras.json")
 OUTPUT_HTML_PATH = os.path.join(ARCHIVE_DIR, "index.html")

@@ -138,7 +138,11 @@ EOF
 sleep 2
 
 # Verify that terrastella's inbound log received the notification
-LOG_FILE="${REPO_ROOT}/data/agent_memories/terrastella/logs/email_inbound.md"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+LOG_FILE="${DATA_ROOT}/agents/terrastella/memories/logs/email_inbound.md"
+if [ ! -f "${LOG_FILE}" ]; then
+    LOG_FILE="${DATA_ROOT}/agent_memories/terrastella/logs/email_inbound.md"
+fi
 if [ ! -f "${LOG_FILE}" ]; then
     log_error "Expected inbound memory log '${LOG_FILE}' was not created!"
     exit 1
@@ -215,7 +219,10 @@ log_success "brainsOS Mail IMAP search and read capabilities functioning cleanly
 log_info "Step 6: Auditing agent memory plane purity (Rule 1)..."
 
 for agent_id in terrastella marvin bawtford; do
-    MEM_DIR="${REPO_ROOT}/data/agent_memories/${agent_id}"
+    MEM_DIR="${DATA_ROOT}/agents/${agent_id}/memories"
+    if [ ! -d "${MEM_DIR}" ]; then
+        MEM_DIR="${DATA_ROOT}/agent_memories/${agent_id}"
+    fi
     if [ ! -d "${MEM_DIR}" ]; then
         log_error "Memory partition '${MEM_DIR}' does not exist!"
         exit 1

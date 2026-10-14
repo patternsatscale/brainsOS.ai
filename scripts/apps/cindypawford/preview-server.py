@@ -14,10 +14,25 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+DATA_DIR = os.environ.get("BRAINSOS_DATA_DIR", os.path.join(REPO_ROOT, "data"))
 
-SITE_DIR = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "site")
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "archive")
-INFO_DIR = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "info")
+def resolve_app_dir():
+    candidates = [
+        os.path.join(DATA_DIR, "agents", "bawtford", "apps", "cindypawford"),
+        os.path.join(REPO_ROOT, "data", "agents", "bawtford", "apps", "cindypawford"),
+        os.path.join(DATA_DIR, "agent_apps", "cindypawford"),
+        os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford"),
+        os.path.join(REPO_ROOT, "config", "default_agents", "bawtford", "apps", "cindypawford"),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+APP_DIR = resolve_app_dir()
+SITE_DIR = os.path.join(APP_DIR, "site")
+ARCHIVE_DIR = os.path.join(APP_DIR, "archive")
+INFO_DIR = os.path.join(APP_DIR, "info")
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8088
 

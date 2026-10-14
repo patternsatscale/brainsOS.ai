@@ -19,6 +19,15 @@ control_plane/vscode_config/**
 control_plane/vscode_data/**
 litellm_db/**
 
+# --- Agent Centric Workspaces & Ephemeral State ---
+agents/*/workspace/**
+!agents/*/workspace/.gitkeep
+agents/*/logs/**
+!agents/*/logs/.gitkeep
+agents/*/apps/*/pipeline/.sst/**
+agents/*/apps/*/pipeline/.build/**
+agents/*/apps/*/pipeline/node_modules/**
+
 # --- Mail Spool & Transients ---
 comms/spool/*
 !comms/spool/.gitkeep

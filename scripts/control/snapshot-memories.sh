@@ -48,7 +48,7 @@ if [[ "$DATA_ROOT" != /* ]]; then
   DATA_ROOT="${REPO_ROOT}/${DATA_ROOT#./}"
 fi
 
-DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${DATA_ROOT}/agent_memories}"
+DATA_DIR="${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENTS_DIR:-${DATA_ROOT}/agents}}"
 if [[ "$DATA_DIR" != /* ]]; then
   MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
 else
@@ -65,7 +65,7 @@ if [ -d "${DATA_ROOT}/.git" ]; then
   log_info "Detected Git repository in ${DATA_ROOT}. Creating automated Git snapshot..."
   (
     cd "${DATA_ROOT}"
-    git add souls/ agent_memories/ settings/ agent_workspaces/ agent_apps/ 2>/dev/null || git add .
+    git add agents/ settings/ skills/ runners/ 2>/dev/null || git add .
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
       TIMESTAMP_UTC="$(date -u +'%Y-%m-%d %H:%M:%SZ')"
       git commit -m "chore(snapshot): automated fleet memory & soul snapshot [${TIMESTAMP_UTC}]"

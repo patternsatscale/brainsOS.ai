@@ -39,7 +39,20 @@ cd "${REPO_ROOT}"
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+AGENT_DIR="${DATA_ROOT}/agents/${AGENT_ID}"
+if [ ! -d "${AGENT_DIR}" ] && [ -d "${REPO_ROOT}/data/agents/${AGENT_ID}" ]; then
+  AGENT_DIR="${REPO_ROOT}/data/agents/${AGENT_ID}"
+fi
+
+SITE_DIR="${AGENT_DIR}/apps/cindypawford/site"
+if [ ! -d "${SITE_DIR}" ]; then
+  if [ -d "${DATA_ROOT}/agent_apps/cindypawford/site" ]; then
+    SITE_DIR="${DATA_ROOT}/agent_apps/cindypawford/site"
+  elif [ -d "${REPO_ROOT}/config/default_agents/bawtford/apps/cindypawford/site" ]; then
+    SITE_DIR="${REPO_ROOT}/config/default_agents/bawtford/apps/cindypawford/site"
+  fi
+fi
 
 log_info "================================================================="
 log_info "  Running Cindy Pawford Protected CI/CD Verification Suite (#98) "

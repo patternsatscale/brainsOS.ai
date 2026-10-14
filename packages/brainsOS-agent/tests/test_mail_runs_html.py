@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from brainsos_mail.models import ParsedInboundEmail
+
 from brainsos_agent.mail_runs import (
     compose_reply_body,
     html_to_plain_text,
@@ -11,6 +11,7 @@ from brainsos_agent.mail_runs import (
     markdown_to_clean_html,
     sanitize_agent_reply,
 )
+from brainsos_mail.models import ParsedInboundEmail
 
 
 class TestMailRunsHTMLAndChain(unittest.TestCase):
