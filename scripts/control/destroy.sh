@@ -217,6 +217,8 @@ if [ "${INCLUDE_DATA}" = true ]; then
              "${DATA_DIR}/comms" \
              "${DATA_DIR}/queue" \
              "${DATA_DIR}/telemetry" \
+             "${DATA_DIR}/agents"/*/workspace \
+             "${DATA_DIR}/agents/bawtford/apps/cindypawford/site" \
              "${DATA_DIR}/agent_workspaces" \
              "${DATA_DIR}/agent_apps/cindypawford/site" \
              "${DATA_DIR}/.vscode" 2>/dev/null || true

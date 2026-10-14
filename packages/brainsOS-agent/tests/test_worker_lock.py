@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import pytest
 from brainsos_agent.worker import SingleInstanceLock
 
 
@@ -30,7 +29,7 @@ def test_single_instance_lock_lifecycle(tmp_path: Path):
 def test_single_instance_lock_context_manager(tmp_path: Path):
     lock_file = tmp_path / "test_ctx.lock"
 
-    with SingleInstanceLock(lock_file) as lock:
+    with SingleInstanceLock(lock_file):
         assert lock_file.exists()
         # Nested attempt fails
         nested = SingleInstanceLock(lock_file)

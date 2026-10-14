@@ -48,9 +48,30 @@ fi
 
 AGENT_ID="${AGENT_ID:-bawtford}"
 CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
-MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/${AGENT_ID}"
-WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}/${AGENT_ID}"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+AGENT_DIR="${DATA_ROOT}/agents/${AGENT_ID}"
+if [ ! -d "${AGENT_DIR}" ] && [ -d "${REPO_ROOT}/data/agents/${AGENT_ID}" ]; then
+  AGENT_DIR="${REPO_ROOT}/data/agents/${AGENT_ID}"
+fi
+
+SITE_DIR="${AGENT_DIR}/apps/cindypawford/site"
+if [ ! -d "${SITE_DIR}" ]; then
+  if [ -d "${DATA_ROOT}/agent_apps/cindypawford/site" ]; then
+    SITE_DIR="${DATA_ROOT}/agent_apps/cindypawford/site"
+  elif [ -d "${REPO_ROOT}/config/default_agents/bawtford/apps/cindypawford/site" ]; then
+    SITE_DIR="${REPO_ROOT}/config/default_agents/bawtford/apps/cindypawford/site"
+  fi
+fi
+
+MEM_DIR="${AGENT_DIR}/memories"
+if [ ! -d "${MEM_DIR}" ]; then
+  MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${DATA_ROOT}/agent_memories}/${AGENT_ID}"
+fi
+
+WORK_DIR="${AGENT_DIR}/workspace"
+if [ ! -d "${WORK_DIR}" ]; then
+  WORK_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${DATA_ROOT}/agent_workspaces}/${AGENT_ID}"
+fi
 REMOTE_REPO="patternsatscale/CindyPawford-Online"
 
 log_info "================================================================="
@@ -114,7 +135,7 @@ else
   exit 1
 fi
 
-# 3c. Verify /app/html mount maps to data/agent_apps/cindypawford/site
+# 3c. Verify /app/html mount maps to SITE_DIR
 HTML_MOUNT=$(docker inspect "${CONTAINER}" --format '{{range .Mounts}}{{if eq .Destination "/app/html"}}{{.Source}}{{end}}{{end}}')
 if [ "${HTML_MOUNT}" = "${SITE_DIR}" ]; then
   log_success "Verified container '/app/html' bind-mount maps to '${SITE_DIR}'."

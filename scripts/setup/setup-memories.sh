@@ -53,7 +53,8 @@ log_info "Initializing brainsOS Memory Plane from ${REPO_ROOT}..."
 # ------------------------------------------------------------------------------
 # 1. Resolve Target Memories Directory
 # ------------------------------------------------------------------------------
-DATA_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${BRAINSOS_DATA_DIR:-./data}/agent_memories}"
+DATA_DIR="${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-./data}/agents}}"
+AGENTS_ENV="${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-./data}/agents}"
 
 if [[ "$DATA_DIR" != /* ]]; then
   TARGET_MEMORIES_DIR="${REPO_ROOT}/${DATA_DIR#./}"
@@ -61,27 +62,38 @@ else
   TARGET_MEMORIES_DIR="${DATA_DIR}"
 fi
 
+if [[ "$AGENTS_ENV" != /* ]]; then
+  TARGET_AGENTS_DIR="${REPO_ROOT}/${AGENTS_ENV#./}"
+else
+  TARGET_AGENTS_DIR="${AGENTS_ENV}"
+fi
+
 log_info "Target OKF storage directory: ${TARGET_MEMORIES_DIR}"
+log_info "Target Agents storage directory: ${TARGET_AGENTS_DIR}"
 
 # ------------------------------------------------------------------------------
 # 2. Directory Scaffolding & Permissions Alignment
 # ------------------------------------------------------------------------------
-if [[ "$TARGET_MEMORIES_DIR" == /data/brainsos/* ]]; then
-  log_info "Configuring production appliance directory with sudo: ${TARGET_MEMORIES_DIR}..."
-  sudo mkdir -p "${TARGET_MEMORIES_DIR}"
-  sudo chown -R 1000:1000 "${TARGET_MEMORIES_DIR}"
-  sudo chmod -R 775 "${TARGET_MEMORIES_DIR}"
-else
-  mkdir -p "${TARGET_MEMORIES_DIR}"
-  chmod -R 775 "${TARGET_MEMORIES_DIR}" || true
-fi
+for sdir in "${TARGET_MEMORIES_DIR}" "${TARGET_AGENTS_DIR}"; do
+  if [[ "$sdir" == /data/brainsos/* ]]; then
+    log_info "Configuring production appliance directory with sudo: ${sdir}..."
+    sudo mkdir -p "${sdir}"
+    sudo chown -R 1000:1000 "${sdir}"
+    sudo chmod -R 775 "${sdir}"
+  else
+    mkdir -p "${sdir}"
+    chmod -R 775 "${sdir}" || true
+  fi
+done
 
 log_success "Memory plane storage directory initialized."
 
 # ------------------------------------------------------------------------------
 # 3. Seed Starter OKF Templates & Fleet Index
 # ------------------------------------------------------------------------------
-if [ -d "${REPO_ROOT}/config/default_memories" ]; then
+if [ -d "${REPO_ROOT}/config/default_agents" ]; then
+  TEMPLATE_DIR="${REPO_ROOT}/config/default_agents"
+elif [ -d "${REPO_ROOT}/config/default_memories" ]; then
   TEMPLATE_DIR="${REPO_ROOT}/config/default_memories"
 else
   TEMPLATE_DIR="${REPO_ROOT}/config/memories"
@@ -91,7 +103,11 @@ if [ -d "${TEMPLATE_DIR}" ]; then
   log_info "Seeding starter OKF templates from ${TEMPLATE_DIR}..."
 
   # Copy fleet index.md if not already customized
-  if [ ! -f "${TARGET_MEMORIES_DIR}/index.md" ]; then
+  if [ ! -f "${TARGET_AGENTS_DIR}/index.md" ] && [ -f "${TEMPLATE_DIR}/index.md" ]; then
+    cp "${TEMPLATE_DIR}/index.md" "${TARGET_AGENTS_DIR}/index.md"
+    log_success "Created ${TARGET_AGENTS_DIR}/index.md"
+  fi
+  if [ ! -f "${TARGET_MEMORIES_DIR}/index.md" ] && [ -f "${TEMPLATE_DIR}/index.md" ]; then
     cp "${TEMPLATE_DIR}/index.md" "${TARGET_MEMORIES_DIR}/index.md"
     log_success "Created ${TARGET_MEMORIES_DIR}/index.md"
   fi

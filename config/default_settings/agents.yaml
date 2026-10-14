@@ -31,7 +31,7 @@ agents:
     # L2: Agent Core Runtime
     runtime: "hermes"
     soul: "terrastella"
-    persona: "config/default_souls/terrastella.md"
+    persona: "agents/terrastella/SOUL.md"
     models:
       default: "brainsos-core"
       available:
@@ -40,9 +40,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "agent_memories/terrastella"
+      path: "agents/terrastella/memories"
     workspace:
-      path: "agent_workspaces/terrastella"
+      path: "agents/terrastella/workspace"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -84,7 +84,7 @@ agents:
     # L2: Agent Core Runtime
     runtime: "hermes"
     soul: "marvin"
-    persona: "config/default_souls/marvin.md"
+    persona: "agents/marvin/SOUL.md"
     models:
       default: "brainsos-core"
       available:
@@ -93,9 +93,9 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "agent_memories/marvin"
+      path: "agents/marvin/memories"
     workspace:
-      path: "agent_workspaces/marvin"
+      path: "agents/marvin/workspace"
 
     # L4: Routing & Security (LiteLLM Control Plane)
     routing:
@@ -140,7 +140,7 @@ agents:
     # L2: Agent Core Runtime
     runtime: "hermes"
     soul: "bawtford"
-    persona: "config/default_souls/bawtford.md"
+    persona: "agents/bawtford/SOUL.md"
     models:
       default: "brainsos-core"
       available:
@@ -157,7 +157,7 @@ agents:
         tool_name: "build_website_feature"
         description: "Builds or updates HTML5, CSS, and JavaScript features on the public canvas (/app/html) under a clean software engineering persona without conversational artifacts."
         soul: "bawtford.web-developer"
-        persona: "config/default_souls/bawtford.web-developer.md"
+        persona: "agents/bawtford/subagents/web-developer.md"
         model: "cindy-active-coding-model"
         target_dir: "/app/html"
         parameters:
@@ -193,10 +193,10 @@ agents:
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "agent_memories/bawtford"
+      path: "agents/bawtford/memories"
     workspace:
-      path: "agent_workspaces/bawtford"
-      site_path: "agent_apps/cindypawford/site"
+      path: "agents/bawtford/workspace"
+      site_path: "agents/bawtford/apps/cindypawford/site"
       canvas_mount: "/app/html"
       repo_url: "https://github.com/patternsatscale/CindyPawford-Online.git"
       protected_paths:
@@ -238,13 +238,13 @@ agents:
     # L2: Agent Core Runtime (Zero LLM / GPU overhead)
     runtime: "autoresponder"
     soul: "ping"
-    persona: "config/default_souls/ping.md"
+    persona: "agents/ping/SOUL.md"
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "agent_memories/ping"
+      path: "agents/ping/memories"
     workspace:
-      path: "agent_workspaces/ping"
+      path: "agents/ping/workspace"
 
   # ----------------------------------------------------------------------------
   # Agent Unit: Claude Demo Agent - Tells jokes about Claude
@@ -263,15 +263,15 @@ agents:
     # L2: Agent Core Runtime (Claude SDK Runner)
     runtime: "claude"
     soul: "claude"
-    persona: "config/default_souls/claude.md"
+    persona: "agents/claude/SOUL.md"
     models:
       default: "gemma2:2b"
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "agent_memories/claude"
+      path: "agents/claude/memories"
     workspace:
-      path: "agent_workspaces/claude"
+      path: "agents/claude/workspace"
 
   # ----------------------------------------------------------------------------
   # Agent Unit: GPT Demo Agent - Tells jokes about Sam Altman
@@ -290,14 +290,14 @@ agents:
     # L2: Agent Core Runtime (OpenAI SDK Runner)
     runtime: "openai"
     soul: "gpt"
-    persona: "config/default_souls/gpt.md"
+    persona: "agents/gpt/SOUL.md"
     models:
       default: "gemma2:2b"
 
     # L3: Memory Plane & Tool Sandbox
     memory:
-      path: "agent_memories/gpt"
+      path: "agents/gpt/memories"
     workspace:
-      path: "agent_workspaces/gpt"
+      path: "agents/gpt/workspace"
 
 

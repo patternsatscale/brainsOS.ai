@@ -75,12 +75,11 @@ log_success "Docker daemon verified."
 # ------------------------------------------------------------------------------
 # 2. Scaffold Host Storage
 # ------------------------------------------------------------------------------
-MEMORIES_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}"
-mkdir -p "${MEMORIES_DIR}/knowledge" "${MEMORIES_DIR}/rules" "${MEMORIES_DIR}/logs"
-WORKSPACE_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}"
-COMMS_DIR="${BRAINSOS_COMMS_DIR:-${REPO_ROOT}/data/comms}"
-mkdir -p "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins"
-chmod 775 "${WORKSPACE_DIR}" "${COMMS_DIR}/signal" "${WORKSPACE_DIR}/skills" "${WORKSPACE_DIR}/plugins" || true
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+AGENTS_DIR="${BRAINSOS_AGENTS_DIR:-${DATA_ROOT}/agents}"
+COMMS_DIR="${BRAINSOS_COMMS_DIR:-${DATA_ROOT}/comms}"
+mkdir -p "${AGENTS_DIR}" "${COMMS_DIR}/signal"
+chmod -R 775 "${AGENTS_DIR}" "${COMMS_DIR}/signal" || true
 
 # Clean up any legacy hermes_okf.py skill copies to maintain zero technical debt
 WORKSPACE_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}"

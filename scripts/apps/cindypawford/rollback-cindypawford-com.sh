@@ -19,7 +19,19 @@ if [ -z "${REPO_ROOT}" ]; then
   [ -z "${REPO_ROOT}" ] && REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 fi
 ROOT_DIR="${REPO_ROOT}"
-SITE_DIR="${ROOT_DIR}/data/agent_apps/cindypawford/site"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${ROOT_DIR}/data}"
+
+CINDY_ROOT="${DATA_ROOT}/agents/bawtford/apps/cindypawford"
+if [ ! -d "${CINDY_ROOT}" ]; then
+  if [ -d "${ROOT_DIR}/data/agents/bawtford/apps/cindypawford" ]; then
+    CINDY_ROOT="${ROOT_DIR}/data/agents/bawtford/apps/cindypawford"
+  elif [ -d "${DATA_ROOT}/agent_apps/cindypawford" ]; then
+    CINDY_ROOT="${DATA_ROOT}/agent_apps/cindypawford"
+  elif [ -d "${ROOT_DIR}/config/default_agents/bawtford/apps/cindypawford" ]; then
+    CINDY_ROOT="${ROOT_DIR}/config/default_agents/bawtford/apps/cindypawford"
+  fi
+fi
+SITE_DIR="${CINDY_ROOT}/site"
 
 COMMIT_OR_TAG="${1:-HEAD~1}"
 DRY_RUN=false

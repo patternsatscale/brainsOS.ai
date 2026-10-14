@@ -54,6 +54,7 @@ services:
       - "host.docker.internal:${DOCKER_HOST_GATEWAY:-host-gateway}"
     volumes:
       - ${LITELLM_CONFIG:-../../config/litellm/config.yaml}:/app/config.yaml:ro
+      - ../../docker/litellm/patches/langfuse_otel.py:/app/.venv/lib/python3.13/site-packages/litellm/integrations/langfuse/langfuse_otel.py:ro
     environment:
       - PORT=4000
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}

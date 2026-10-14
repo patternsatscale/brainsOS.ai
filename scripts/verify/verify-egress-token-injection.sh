@@ -234,9 +234,10 @@ for c in "${CINDY_CONTAINER}" "${UNAUTH_CONTAINER}"; do
 done
 
 # Rule 1: Memory plane purity
-CINDY_MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${REPO_ROOT}/data/agent_memories}/bawtford"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+CINDY_MEM_DIR="${DATA_ROOT}/agents/bawtford/memories"
 if [ ! -d "${CINDY_MEM_DIR}" ]; then
-  CINDY_MEM_DIR="${REPO_ROOT}/data/memories/bawtford"
+  CINDY_MEM_DIR="${BRAINSOS_AGENT_MEMORIES_DIR:-${DATA_ROOT}/agent_memories}/bawtford"
 fi
 MEM_FILES=$(find "${CINDY_MEM_DIR}" -type f ! -name "*.md" ! -name ".gitkeep" ! -name ".*" ! -name "subagents.json" 2>/dev/null || true)
 if [ -z "${MEM_FILES}" ]; then

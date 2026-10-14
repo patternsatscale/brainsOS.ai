@@ -11,26 +11,32 @@ ProjectTitan/
 ├── .github/
 │   └── workflows/              # GitHub Actions CI matrix, pre-commit, and SST deployment
 ├── config/                     # Declarative appliance configurations & default templates
+│   ├── default_agents/         # Canonical agent-centric starter templates (SOUL.md, memories, workspace, apps)
 │   ├── default_settings/       # Canonical default manifests (agents.yaml, runners.yaml, README.md)
 │   ├── default_runners/        # Default runner starter templates (hermes, claude-sdk, openai-sdk)
-│   ├── default_souls/          # Centralized baseline agent personas (bawtford, marvin, terrastella, ping)
-│   ├── default_memories/       # Default OKF memory structure & templates (knowledge, rules, logs)
-│   ├── sample_agent_app/       # Template seeds for agent application canvases (cindypawford)
+│   ├── default_skills/         # Baseline agent skills
 │   ├── templates/              # Repository seed templates (data-repo.gitignore)
 │   ├── caddy/                  # L7 reverse proxy configuration (Caddyfile)
 │   ├── egress/                 # Tool Egress Gateway mitmproxy configuration & addons
 │   └── litellm/                # LiteLLM routing, virtual keys, and spend control
 ├── data/                       # Host runtime persistence / private fleet repository (via BRAINSOS_DATA_DIR)
+│   ├── agents/                 # Agent-centric fleet partitions (<tenant_id>/SOUL.md, memories, workspace, apps)
+│   │   └── bawtford/           # Bawtford agent unit
+│   │       ├── SOUL.md         # Primary persona definition
+│   │       ├── memories/       # Pure OKF Markdown partition (knowledge, rules, logs, threads)
+│   │       ├── workspace/      # Isolated execution sandbox (tools, local DBs, caches)
+│   │       ├── subagents/      # Specialized sub-agent personas (web-developer.md)
+│   │       └── apps/           # Agent application workspaces
+│   │           └── cindypawford/
+│   │               ├── site/   # Agent web application canvas (HTML/CSS/JS)
+│   │               └── pipeline/ # Deployment infrastructure (SST Ion, AWS SDKs)
 │   ├── settings/               # Live fleet and runner manifest overrides (seeded on bootstrap)
 │   ├── runners/                # Live runner execution scripts and configurations
-│   ├── souls/                  # Live agent persona overrides (seeded on bootstrap)
-│   ├── agent_apps/             # Isolated application tenants and agent deployment workspaces
-│   │   └── cindypawford/       # Active Cindy Pawford tenant workspace
-│   │       ├── site/           # Untrusted agent-authored web application (HTML/CSS/JS)
-│   │       └── pipeline/       # Host-executed deployment infrastructure (SST Ion, AWS SDKs)
-│   ├── agent_memories/         # Pure OKF Markdown partitions (<tenant_id>/knowledge, rules)
-│   ├── agent_workspaces/       # Isolated execution sandboxes (<tenant_id>/scratch, tools)
-│   └── agent_logs/             # Execution and telemetry logbooks
+│   ├── comms/                  # Mail spools, vmail, signal, and SOGo database state
+│   ├── queue/                  # Asynchronous agent task queue persistence
+│   ├── control_plane/          # LiteLLM database and Authentik state
+│   ├── telemetry/              # Metrics, trace logs, and energy accounting
+│   └── backups/                # Local snapshot archives
 ├── docker/                     # Container images and runtime sandboxes
 │   └── hermes/                 # Sandboxed agent runtime image (PUID/PGID 1000)
 ├── docs/                       # Project documentation, architecture specs, and walkthroughs

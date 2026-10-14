@@ -4,6 +4,7 @@
 .env.*
 .env.bak*
 !.env.example
+.agents/
 
 # Explicitly ensure config templates are tracked
 !config/default_memories/**

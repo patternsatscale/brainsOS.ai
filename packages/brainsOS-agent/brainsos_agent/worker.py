@@ -10,6 +10,7 @@ Also hosts the high-performance non-blocking HTTP ingress receiver on port 8000
 from __future__ import annotations
 
 import asyncio
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover

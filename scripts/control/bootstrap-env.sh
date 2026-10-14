@@ -169,9 +169,7 @@ fi
 # 2. Host Storage Directories
 log_info "Scaffolding runtime data directories in ${DATA_ROOT}..."
 DATA_DIRS=(
-  "${DATA_ROOT}/agent_memories"
-  "${DATA_ROOT}/agent_workspaces"
-  "${DATA_ROOT}/agent_logs"
+  "${DATA_ROOT}/agents"
   "${DATA_ROOT}/comms"
   "${DATA_ROOT}/comms/spool"
   "${DATA_ROOT}/comms/maildir"
@@ -189,9 +187,7 @@ DATA_DIRS=(
   "${DATA_ROOT}/control_plane/authentik_media"
   "${DATA_ROOT}/control_plane/vscode_config"
   "${DATA_ROOT}/control_plane/vscode_data"
-  "${DATA_ROOT}/souls"
   "${DATA_ROOT}/skills"
-  "${DATA_ROOT}/agent_apps"
   "${DATA_ROOT}/telemetry"
   "${DATA_ROOT}/backups"
 )
@@ -215,7 +211,7 @@ touch "${DATA_ROOT}/skills/.gitkeep" 2>/dev/null || true
 # Check if data directory already has state from a previous install
 DATA_HAS_PREVIOUS_INSTALL=false
 if [ -d "${DATA_ROOT}" ]; then
-  for chk in "settings" "souls" "agent_memories" "control_plane" "comms"; do
+  for chk in "agents" "settings" "control_plane" "comms"; do
     if [ -d "${DATA_ROOT}/${chk}" ] && [ -n "$(ls -A "${DATA_ROOT}/${chk}" 2>/dev/null)" ]; then
       DATA_HAS_PREVIOUS_INSTALL=true
       break
@@ -225,6 +221,17 @@ fi
 
 if [ "${DATA_HAS_PREVIOUS_INSTALL}" = true ]; then
   log_info "Detected existing runtime data in ${DATA_ROOT}. Preserving all existing user data, personas, and configurations."
+fi
+
+# Seed default agents into agents if not already present
+if [ -d "${REPO_ROOT}/config/default_agents" ]; then
+  if [ ! -d "${DATA_ROOT}/agents" ] || [ -z "$(ls -A "${DATA_ROOT}/agents" 2>/dev/null)" ]; then
+    log_info "Seeding default agent partitions into ${DATA_ROOT}/agents..."
+    mkdir -p "${DATA_ROOT}/agents"
+    cp -R "${REPO_ROOT}/config/default_agents/"* "${DATA_ROOT}/agents/" 2>/dev/null || true
+  else
+    log_info "Preserving existing agent partitions in ${DATA_ROOT}/agents."
+  fi
 fi
 
 # Seed default settings into settings if not already present
@@ -249,17 +256,6 @@ if [ -d "${REPO_ROOT}/config/default_runners" ]; then
   fi
 fi
 
-# Seed default souls into souls if not already present
-if [ -d "${REPO_ROOT}/config/default_souls" ]; then
-  if [ ! -d "${DATA_ROOT}/souls" ] || [ -z "$(ls -A "${DATA_ROOT}/souls" 2>/dev/null)" ]; then
-    log_info "Seeding default souls into ${DATA_ROOT}/souls..."
-    mkdir -p "${DATA_ROOT}/souls"
-    cp -R "${REPO_ROOT}/config/default_souls/"* "${DATA_ROOT}/souls/" 2>/dev/null || true
-  else
-    log_info "Preserving existing agent personas in ${DATA_ROOT}/souls."
-  fi
-fi
-
 # Seed default agent skills into skills if not already present
 if [ -d "${REPO_ROOT}/config/default_skills" ]; then
   if [ ! -d "${DATA_ROOT}/skills" ] || [ -z "$(ls -A "${DATA_ROOT}/skills" 2>/dev/null)" ]; then
@@ -268,17 +264,6 @@ if [ -d "${REPO_ROOT}/config/default_skills" ]; then
     cp -R "${REPO_ROOT}/config/default_skills/"* "${DATA_ROOT}/skills/" 2>/dev/null || true
   else
     log_info "Preserving existing agent skills in ${DATA_ROOT}/skills."
-  fi
-fi
-
-# Seed sample agent app templates into agent_apps if not already present
-if [ -d "${REPO_ROOT}/config/sample_agent_app" ]; then
-  if [ ! -d "${DATA_ROOT}/agent_apps" ] || [ -z "$(ls -A "${DATA_ROOT}/agent_apps" 2>/dev/null)" ]; then
-    log_info "Seeding sample agent app into ${DATA_ROOT}/agent_apps..."
-    mkdir -p "${DATA_ROOT}/agent_apps"
-    cp -R "${REPO_ROOT}/config/sample_agent_app/"* "${DATA_ROOT}/agent_apps/" 2>/dev/null || true
-  else
-    log_info "Preserving existing agent applications in ${DATA_ROOT}/agent_apps."
   fi
 fi
 

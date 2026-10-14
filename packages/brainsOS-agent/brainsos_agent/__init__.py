@@ -2,6 +2,7 @@
 
 from .config import (
     get_agent_apps_dir,
+    get_agents_dir,
     get_comms_dir,
     get_control_plane_dir,
     get_data_dir,
@@ -25,6 +26,7 @@ __all__ = [
     "SingleInstanceLock",
     "SoulNotFoundError",
     "get_agent_apps_dir",
+    "get_agents_dir",
     "get_comms_dir",
     "get_control_plane_dir",
     "get_data_dir",

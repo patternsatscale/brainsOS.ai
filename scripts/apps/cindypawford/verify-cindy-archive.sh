@@ -47,9 +47,21 @@ elif [ -f .env.example ]; then
 fi
 
 AGENT_ID="${AGENT_ID:-bawtford}"
-CONTAINER="brainsos-agent-${AGENT_ID}"
-SITE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/site"
-ARCHIVE_DIR="${REPO_ROOT}/data/agent_apps/cindypawford/archive"
+DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+
+CINDY_ROOT="${DATA_ROOT}/agents/bawtford/apps/cindypawford"
+if [ ! -d "${CINDY_ROOT}" ]; then
+  if [ -d "${REPO_ROOT}/data/agents/bawtford/apps/cindypawford" ]; then
+    CINDY_ROOT="${REPO_ROOT}/data/agents/bawtford/apps/cindypawford"
+  elif [ -d "${DATA_ROOT}/agent_apps/cindypawford" ]; then
+    CINDY_ROOT="${DATA_ROOT}/agent_apps/cindypawford"
+  elif [ -d "${REPO_ROOT}/config/default_agents/bawtford/apps/cindypawford" ]; then
+    CINDY_ROOT="${REPO_ROOT}/config/default_agents/bawtford/apps/cindypawford"
+  fi
+fi
+
+SITE_DIR="${CINDY_ROOT}/site"
+ARCHIVE_DIR="${CINDY_ROOT}/archive"
 GENESIS_DIR="${ARCHIVE_DIR}/2024-genesis"
 ERAS_FILE="${ARCHIVE_DIR}/eras.json"
 LITELLM_CONFIG="${REPO_ROOT}/config/litellm/config.yaml"

@@ -22,7 +22,23 @@ def find_repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 REPO_ROOT = find_repo_root()
-ARCHIVE_DIR = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "archive")
+DATA_DIR = os.environ.get("BRAINSOS_DATA_DIR", os.path.join(REPO_ROOT, "data"))
+
+def resolve_app_dir():
+    candidates = [
+        os.path.join(DATA_DIR, "agents", "bawtford", "apps", "cindypawford"),
+        os.path.join(REPO_ROOT, "data", "agents", "bawtford", "apps", "cindypawford"),
+        os.path.join(DATA_DIR, "agent_apps", "cindypawford"),
+        os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford"),
+        os.path.join(REPO_ROOT, "config", "default_agents", "bawtford", "apps", "cindypawford"),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+APP_DIR = resolve_app_dir()
+ARCHIVE_DIR = os.path.join(APP_DIR, "archive")
 LOGBOOK_JSON = os.path.join(ARCHIVE_DIR, "logbook.json")
 BUILD_SCRIPT = os.path.join(REPO_ROOT, "scripts", "apps", "cindypawford", "build-archive-portal.py")
 
@@ -293,7 +309,7 @@ def auto_scan_and_ingest(dry_run=False):
     }
 
     target_repo = "patternsatscale/CindyPawford-Online"
-    site_dir = os.path.join(REPO_ROOT, "data", "agent_apps", "cindypawford", "site")
+    site_dir = os.path.join(APP_DIR, "site")
     discovered_prs = []
 
     # 1. Primary: Query GitHub API via gh CLI for CindyPawford-Online

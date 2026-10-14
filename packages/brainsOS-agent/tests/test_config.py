@@ -4,6 +4,7 @@ from pathlib import Path
 
 from brainsos_agent.config import (
     get_agent_apps_dir,
+    get_agents_dir,
     get_comms_dir,
     get_data_dir,
     get_memories_dir,
@@ -19,6 +20,7 @@ from brainsos_agent.souls import get_soul_path, resolve_soul
 def test_default_path_resolvers(monkeypatch):
     """Verify default paths resolve against ./data when no env vars are set."""
     monkeypatch.delenv("BRAINSOS_DATA_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENTS_DIR", raising=False)
     monkeypatch.delenv("BRAINSOS_SOULS_DIR", raising=False)
     monkeypatch.delenv("BRAINSOS_MEMORIES_DIR", raising=False)
     monkeypatch.delenv("BRAINSOS_AGENT_MEMORIES_DIR", raising=False)
@@ -31,11 +33,13 @@ def test_default_path_resolvers(monkeypatch):
 
     data_dir = get_data_dir()
     assert data_dir == Path("./data").resolve()
-    assert get_souls_dir() == data_dir / "souls"
-    assert get_memories_dir() == data_dir / "agent_memories"
-    assert get_workspaces_dir() == data_dir / "agent_workspaces"
+    assert get_agents_dir() == data_dir / "agents"
+    expected_agent_centric = (data_dir / "agents") if (data_dir / "agents").is_dir() else None
+    assert get_souls_dir() == (expected_agent_centric or data_dir / "souls")
+    assert get_memories_dir() == (expected_agent_centric or data_dir / "agent_memories")
+    assert get_workspaces_dir() == (expected_agent_centric or data_dir / "agent_workspaces")
     assert get_settings_dir() == data_dir / "settings"
-    assert get_agent_apps_dir() == data_dir / "agent_apps"
+    assert get_agent_apps_dir() == (expected_agent_centric or data_dir / "agent_apps")
     assert get_runners_dir() == data_dir / "runners"
     assert get_comms_dir() == data_dir / "comms"
 
@@ -46,6 +50,7 @@ def test_external_data_dir_override(monkeypatch, tmp_path):
     ext_data.mkdir()
 
     monkeypatch.setenv("BRAINSOS_DATA_DIR", str(ext_data))
+    monkeypatch.delenv("BRAINSOS_AGENTS_DIR", raising=False)
     monkeypatch.delenv("BRAINSOS_SOULS_DIR", raising=False)
     monkeypatch.delenv("BRAINSOS_MEMORIES_DIR", raising=False)
     monkeypatch.delenv("BRAINSOS_AGENT_MEMORIES_DIR", raising=False)
@@ -57,6 +62,7 @@ def test_external_data_dir_override(monkeypatch, tmp_path):
     monkeypatch.delenv("BRAINSOS_COMMS_DIR", raising=False)
 
     assert get_data_dir() == ext_data.resolve()
+    assert get_agents_dir() == ext_data.resolve() / "agents"
     assert get_souls_dir() == ext_data.resolve() / "souls"
     assert get_memories_dir() == ext_data.resolve() / "agent_memories"
     assert get_workspaces_dir() == ext_data.resolve() / "agent_workspaces"
@@ -166,4 +172,41 @@ agents:
     assert profile.memory_root == expected_memory
     assert profile.workspace_root == expected_workspace
     assert "settings/data" not in str(profile.memory_root)
+
+
+def test_agent_centric_profile_resolution(monkeypatch, tmp_path):
+    """Verify AgentProfile resolves agent-centric structure (agents/<id>/...) properly."""
+    ext_data = tmp_path / "fleet_data"
+    agent_dir = ext_data / "agents" / "bawtford"
+    (agent_dir / "memories").mkdir(parents=True)
+    (agent_dir / "workspace").mkdir(parents=True)
+    (agent_dir / "SOUL.md").write_text("# Bawtford Soul", encoding="utf-8")
+
+    manifest_file = ext_data / "settings" / "agents.yaml"
+    manifest_file.parent.mkdir(parents=True)
+    manifest_file.write_text(
+        """
+agents:
+  - id: bawtford
+    name: Bawtford
+    runtime: hermes
+    memory:
+      path: "agents/bawtford/memories"
+    workspace:
+      path: "agents/bawtford/workspace"
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("BRAINSOS_DATA_DIR", str(ext_data))
+    monkeypatch.delenv("BRAINSOS_AGENTS_DIR", raising=False)
+
+    profiles = AgentProfile.from_manifest_yaml(manifest_file)
+    assert len(profiles) == 1
+    profile = profiles[0]
+
+    assert profile.memory_root == (agent_dir / "memories").resolve()
+    assert profile.workspace_root == (agent_dir / "workspace").resolve()
+    assert profile.soul_path == (agent_dir / "SOUL.md").resolve()
+
 

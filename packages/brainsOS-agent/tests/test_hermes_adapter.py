@@ -141,6 +141,7 @@ class TestHermesRunsAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Spring launch looks great.", out.body)
         self.assertIn("operator@brainsos.local wrote:", out.body)
         self.assertIsNotNone(out.html_body)
+        assert out.html_body is not None
         self.assertIn("Spring launch looks great.", out.html_body)
         self.assertEqual(out.metadata["run_status"], "completed")
         self.assertEqual(out.metadata["run_id"], "run_abc")

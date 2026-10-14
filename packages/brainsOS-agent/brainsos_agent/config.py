@@ -12,28 +12,42 @@ def get_data_dir() -> Path:
 
 
 def get_souls_dir() -> Path:
-    """Return active souls directory from BRAINSOS_SOULS_DIR or data_dir / souls."""
-    return Path(os.getenv("BRAINSOS_SOULS_DIR", get_data_dir() / "souls")).resolve()
+    """Return active souls directory from BRAINSOS_SOULS_DIR, falling back to agents/ or souls/."""
+    if "BRAINSOS_SOULS_DIR" in os.environ:
+        return Path(os.environ["BRAINSOS_SOULS_DIR"]).resolve()
+    data_dir = get_data_dir()
+    if (data_dir / "agents").is_dir() and not (data_dir / "souls").is_dir():
+        return (data_dir / "agents").resolve()
+    return (data_dir / "souls").resolve()
+
+
+def get_agents_dir() -> Path:
+    """Return active agents directory from BRAINSOS_AGENTS_DIR or data_dir / agents."""
+    return Path(os.getenv("BRAINSOS_AGENTS_DIR", get_data_dir() / "agents")).resolve()
 
 
 def get_memories_dir() -> Path:
-    """Return active memories directory from BRAINSOS_MEMORIES_DIR or data_dir / agent_memories."""
-    return Path(
-        os.getenv(
-            "BRAINSOS_MEMORIES_DIR",
-            os.getenv("BRAINSOS_AGENT_MEMORIES_DIR", get_data_dir() / "agent_memories"),
-        )
-    ).resolve()
+    """Return active memories directory from BRAINSOS_MEMORIES_DIR, falling back to agents/ or agent_memories/."""
+    if "BRAINSOS_MEMORIES_DIR" in os.environ:
+        return Path(os.environ["BRAINSOS_MEMORIES_DIR"]).resolve()
+    if "BRAINSOS_AGENT_MEMORIES_DIR" in os.environ:
+        return Path(os.environ["BRAINSOS_AGENT_MEMORIES_DIR"]).resolve()
+    data_dir = get_data_dir()
+    if (data_dir / "agents").is_dir() and not (data_dir / "agent_memories").is_dir():
+        return (data_dir / "agents").resolve()
+    return (data_dir / "agent_memories").resolve()
 
 
 def get_workspaces_dir() -> Path:
-    """Return active workspaces directory from BRAINSOS_WORKSPACES_DIR or data_dir / agent_workspaces."""
-    return Path(
-        os.getenv(
-            "BRAINSOS_WORKSPACES_DIR",
-            os.getenv("BRAINSOS_AGENT_WORKSPACES_DIR", get_data_dir() / "agent_workspaces"),
-        )
-    ).resolve()
+    """Return active workspaces directory from BRAINSOS_WORKSPACES_DIR, falling back to agents/ or agent_workspaces/."""
+    if "BRAINSOS_WORKSPACES_DIR" in os.environ:
+        return Path(os.environ["BRAINSOS_WORKSPACES_DIR"]).resolve()
+    if "BRAINSOS_AGENT_WORKSPACES_DIR" in os.environ:
+        return Path(os.environ["BRAINSOS_AGENT_WORKSPACES_DIR"]).resolve()
+    data_dir = get_data_dir()
+    if (data_dir / "agents").is_dir() and not (data_dir / "agent_workspaces").is_dir():
+        return (data_dir / "agents").resolve()
+    return (data_dir / "agent_workspaces").resolve()
 
 
 def get_settings_dir() -> Path:
@@ -42,8 +56,13 @@ def get_settings_dir() -> Path:
 
 
 def get_agent_apps_dir() -> Path:
-    """Return active agent apps directory from BRAINSOS_AGENT_APPS_DIR or data_dir / agent_apps."""
-    return Path(os.getenv("BRAINSOS_AGENT_APPS_DIR", get_data_dir() / "agent_apps")).resolve()
+    """Return active agent apps directory from BRAINSOS_AGENT_APPS_DIR, falling back to agents/ or agent_apps/."""
+    if "BRAINSOS_AGENT_APPS_DIR" in os.environ:
+        return Path(os.environ["BRAINSOS_AGENT_APPS_DIR"]).resolve()
+    data_dir = get_data_dir()
+    if (data_dir / "agents").is_dir() and not (data_dir / "agent_apps").is_dir():
+        return (data_dir / "agents").resolve()
+    return (data_dir / "agent_apps").resolve()
 
 
 def get_runners_dir() -> Path:

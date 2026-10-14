@@ -39,8 +39,17 @@ def get_memory_dir() -> str:
         return os.environ["BRAINSOS_MEMORIES_DIR"]
     if "BRAINSOS_AGENT_MEMORIES_DIR" in os.environ:
         return os.environ["BRAINSOS_AGENT_MEMORIES_DIR"]
+    if "BRAINSOS_AGENTS_DIR" in os.environ:
+        return os.environ["BRAINSOS_AGENTS_DIR"]
     if "BRAINSOS_DATA_DIR" in os.environ:
-        return os.path.join(os.environ["BRAINSOS_DATA_DIR"], "agent_memories")
+        data_dir = os.environ["BRAINSOS_DATA_DIR"]
+        if os.path.isdir(os.path.join(data_dir, "agents")):
+            return os.path.join(data_dir, "agents")
+        return os.path.join(data_dir, "agent_memories")
+    if os.path.isdir("/data/agents"):
+        return "/data/agents"
+    if os.path.isdir("/data/agent_memories"):
+        return "/data/agent_memories"
     return "/memories"
 
 
@@ -66,8 +75,11 @@ class OKFEngine:
         self.logs_dir = os.path.join(self.root_dir, "logs")
         self.vector_store = vector_store or NullVectorStore()
 
-        for d in (self.knowledge_dir, self.rules_dir, self.logs_dir):
-            os.makedirs(d, exist_ok=True)
+        # Auto-create standard category directories only when root_dir is an actual memory partition,
+        # never when root_dir is the fleet-level agents container directory.
+        if os.path.basename(os.path.normpath(self.root_dir)) != "agents":
+            for d in (self.knowledge_dir, self.rules_dir, self.logs_dir):
+                os.makedirs(d, exist_ok=True)
 
     def _resolve_safe_path(self, rel_path: str) -> str:
         """Resolve target path ensuring it remains within root_dir."""

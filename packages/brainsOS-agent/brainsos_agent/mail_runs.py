@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import html
-from html.parser import HTMLParser
 import re
+from html.parser import HTMLParser
 from typing import Any
 
 # Terminal outcomes produced by the adapter / worker.

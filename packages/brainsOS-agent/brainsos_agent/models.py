@@ -10,6 +10,7 @@ import yaml
 from pydantic import AfterValidator, BaseModel, Field
 
 from .config import (
+    get_agents_dir,
     get_data_dir,
     get_memories_dir,
     get_runners_dir,
@@ -95,6 +96,9 @@ class AgentProfile(BaseModel):
             persona_path = base / persona_str
             if not persona_path.exists():
                 for candidate in [
+                    get_agents_dir() / agent_id / "SOUL.md",
+                    base / "data" / "agents" / agent_id / "SOUL.md",
+                    base / "config" / "default_agents" / agent_id / "SOUL.md",
                     base / "config" / "default_souls" / f"{agent_id}.md",
                     get_souls_dir() / f"{agent_id}.md",
                     base / "data" / "souls" / f"{agent_id}.md",
@@ -112,8 +116,16 @@ class AgentProfile(BaseModel):
                         break
             soul_path = Path(persona_str) if Path(persona_str).is_absolute() else persona_path
 
-        default_memory = get_memories_dir() / agent_id
-        default_workspace = get_workspaces_dir() / agent_id
+        agent_dir = get_agents_dir() / agent_id
+        if (agent_dir / "memories").is_dir() or agent_dir.is_dir():
+            default_memory = agent_dir / "memories"
+        else:
+            default_memory = get_memories_dir() / agent_id
+
+        if (agent_dir / "workspace").is_dir() or agent_dir.is_dir():
+            default_workspace = agent_dir / "workspace"
+        else:
+            default_workspace = get_workspaces_dir() / agent_id
 
         def _resolve_scoped_path(path_val: Any, default_path: Path, namespace: str) -> Path:
             if not path_val:
@@ -128,6 +140,10 @@ class AgentProfile(BaseModel):
                 norm = norm[2:]
             if norm.startswith("data/"):
                 norm = norm[5:]
+
+            if norm.startswith("agents/"):
+                sub = norm[len("agents/") :]
+                return (get_agents_dir() / sub).resolve()
 
             if norm.startswith(f"{namespace}/"):
                 sub = norm[len(namespace) + 1 :]
