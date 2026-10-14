@@ -151,7 +151,9 @@ class TestHermesRunsAdapter(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(checkpoints, [("run_abc", 1_000_000.0)])
 
         body = hermes.submits[0]
-        self.assertEqual(body["input"], "Review spring launch.")
+        self.assertIn("Review spring launch.", body["input"])
+        self.assertIn("--- INBOUND EMAIL MESSAGE ---", body["input"])
+        self.assertIn("Subject: Fashion Review", body["input"])
         self.assertEqual(body["model"], "cindy-active-coding-model")
         self.assertEqual(body["session_id"], "mail-bawtford-thread-001_x")
         self.assertIn("Creative Director", body["instructions"])

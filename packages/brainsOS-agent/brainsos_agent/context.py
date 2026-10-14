@@ -117,21 +117,10 @@ class ContextAssembler:
         """Assembles the system persona, historical OKF dialog turns, and latest inbound email."""
         messages: list[dict[str, str]] = []
 
-        # 1. System Prompt (Soul / Persona)
-        system_prompt = ""
-        if profile.soul:
-            try:
-                system_prompt = resolve_soul(profile.soul)
-            except Exception:
-                system_prompt = ""
-        if not system_prompt and profile.soul_path and profile.soul_path.exists():
-            try:
-                system_prompt = profile.soul_path.read_text(encoding="utf-8").strip()
-            except Exception:
-                pass
-        if not system_prompt:
-            system_prompt = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
+        # 1. System Prompt (Global Directives + Soul / Persona + Working Memory + Channel Directives)
+        from brainsos_agent.prompts import assemble_system_prompt
 
+        system_prompt = assemble_system_prompt(profile, channel="email")
         messages.append({"role": "system", "content": system_prompt})
 
         # 2. Historical Dialogue Turns from pure OKF memory

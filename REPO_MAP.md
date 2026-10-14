@@ -12,7 +12,7 @@ ProjectTitan/
 │   └── workflows/              # GitHub Actions CI matrix, pre-commit, and SST deployment
 ├── config/                     # Declarative appliance configurations & default templates
 │   ├── default_agents/         # Canonical agent-centric starter templates (SOUL.md, memories, workspace, apps)
-│   ├── default_settings/       # Canonical default manifests (agents.yaml, runners.yaml, README.md)
+│   ├── default_settings/       # Canonical default manifests (agents.yaml, runners.yaml, prompts/, README.md)
 │   ├── default_runners/        # Default runner starter templates (hermes, claude-sdk, openai-sdk)
 │   ├── default_skills/         # Baseline agent skills
 │   ├── templates/              # Repository seed templates (data-repo.gitignore)
@@ -30,7 +30,7 @@ ProjectTitan/
 │   │           └── cindypawford/
 │   │               ├── site/   # Agent web application canvas (HTML/CSS/JS)
 │   │               └── pipeline/ # Deployment infrastructure (SST Ion, AWS SDKs)
-│   ├── settings/               # Live fleet and runner manifest overrides (seeded on bootstrap)
+│   ├── settings/               # Live fleet manifests & modular prompt hierarchies (agents.yaml, runners.yaml, prompts/)
 │   ├── runners/                # Live runner execution scripts and configurations
 │   ├── comms/                  # Mail spools, vmail, signal, and SOGo database state
 │   ├── queue/                  # Asynchronous agent task queue persistence
