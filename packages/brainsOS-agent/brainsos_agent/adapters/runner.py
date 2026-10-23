@@ -35,47 +35,10 @@ class RunnerMailAdapter(AgentRuntime):
     def _assemble_system_prompt_with_working_memory(
         self, profile: AgentProfile, resolved_soul: str | None = None
     ) -> str:
-        """Injects persona (SOUL.md) and OKF working memory rules into system prompt."""
-        parts: list[str] = []
+        """Injects global directives, persona (SOUL.md), OKF memory rules, and channel directives into system prompt."""
+        from brainsos_agent.prompts import assemble_system_prompt
 
-        persona_text = (resolved_soul or "").strip()
-        if not persona_text and profile.soul:
-            try:
-                persona_text = resolve_soul(profile.soul)
-            except Exception:
-                persona_text = ""
-        if not persona_text and profile.soul_path and profile.soul_path.exists():
-            try:
-                persona_text = profile.soul_path.read_text(encoding="utf-8").strip()
-            except Exception as e:
-                logger.warning("Failed to read SOUL.md at %s: %s", profile.soul_path, e)
-        if not persona_text:
-            persona_text = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
-        parts.append(persona_text)
-
-        # Memory guidelines from memory_root/rules
-        rules_dir = profile.memory_root / "rules"
-        if rules_dir.exists() and rules_dir.is_dir():
-            for rule_file in sorted(rules_dir.glob("*.md")):
-                try:
-                    rule_text = rule_file.read_text(encoding="utf-8").strip()
-                    if rule_text.startswith("---"):
-                        splits = rule_text.split("---", 2)
-                        rule_body = splits[2].strip() if len(splits) >= 3 else rule_text
-                    else:
-                        rule_body = rule_text
-                    if rule_body:
-                        parts.append(f"\n### Memory Guideline ({rule_file.stem})\n{rule_body}")
-                except Exception as e:
-                    logger.debug("Could not read rule file %s: %s", rule_file, e)
-
-        parts.append(
-            f"\n### Runtime Environment\n"
-            f"- Assigned Identity: {profile.name} <{profile.email}>\n"
-            f"- Workspace Root: /workspace (isolated filesystem root)\n"
-            f"- Memory Root: /memories (human-auditable Markdown storage)\n"
-        )
-        return "\n\n".join(parts)
+        return assemble_system_prompt(profile, resolved_soul=resolved_soul, channel="email")
 
     async def process_message(
         self,

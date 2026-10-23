@@ -106,6 +106,7 @@ class HermesMailAdapter(AgentRuntime):
         submit_backoff: float | None = None,
         sleep: Callable[[float], Awaitable[Any]] | None = None,
         clock: Callable[[], float] | None = None,
+        use_envelope: bool | None = None,
     ) -> None:
         self.runner_url = (runner_url or os.getenv("HERMES_RUNNER_URL") or "http://127.0.0.1:8642/v1").rstrip("/")
         self.poll_interval = poll_interval if poll_interval is not None else _env_float("HERMES_RUN_POLL_SEC", 5.0)
@@ -117,6 +118,7 @@ class HermesMailAdapter(AgentRuntime):
         self._sleep = sleep or asyncio.sleep
         self._clock = clock or time.time
         self._client = http_client
+        self.use_envelope = use_envelope if use_envelope is not None else True
 
     # ------------------------------------------------------------------ helpers
 
@@ -137,65 +139,10 @@ class HermesMailAdapter(AgentRuntime):
     def _assemble_system_prompt_with_working_memory(
         self, profile: AgentProfile, resolved_soul: str | None = None
     ) -> str:
-        """Injects persona (SOUL.md) and OKF working memory rules into system prompt."""
-        parts: list[str] = []
+        """Injects global directives, persona (SOUL.md), OKF memory rules, and channel directives into system prompt."""
+        from brainsos_agent.prompts import assemble_system_prompt
 
-        # 1. Base Persona from SOUL.md / SoulResolver
-        persona_text = (resolved_soul or "").strip()
-        if not persona_text and profile.soul:
-            try:
-                persona_text = resolve_soul(profile.soul)
-            except Exception:
-                persona_text = ""
-        if not persona_text and profile.soul_path and profile.soul_path.exists():
-            try:
-                persona_text = profile.soul_path.read_text(encoding="utf-8").strip()
-            except Exception as e:
-                logger.warning("Failed to read SOUL.md at %s: %s", profile.soul_path, e)
-        if not persona_text:
-            persona_text = f"You are {profile.name}, an autonomous AI agent in the brainsOS fleet."
-        parts.append(persona_text)
-
-        # 2. Inject OKF working memory rules / guidelines from memory_root/rules
-        rules_dir = profile.memory_root / "rules"
-        if rules_dir.exists() and rules_dir.is_dir():
-            for rule_file in sorted(rules_dir.glob("*.md")):
-                try:
-                    rule_text = rule_file.read_text(encoding="utf-8").strip()
-                    if rule_text.startswith("---"):
-                        splits = rule_text.split("---", 2)
-                        rule_body = splits[2].strip() if len(splits) >= 3 else rule_text
-                    else:
-                        rule_body = rule_text
-                    if rule_body:
-                        parts.append(f"\n### Memory Guideline ({rule_file.stem})\n{rule_body}")
-                except Exception as e:
-                    logger.debug("Could not read rule file %s: %s", rule_file, e)
-
-        agent_id = profile.id or profile.name
-        # 3. Add workspace path guideline to keep tools isolated (Rule 7 compliant)
-        parts.append(
-            f"\n### Runtime Environment & Memory Guidelines\n"
-            f"- Assigned Identity: {profile.name} <{profile.email}>\n"
-            f"- Workspace Root: /workspace (or /data/agents/{agent_id}/workspace)\n"
-            f"- Memory Partition: /data/agents/{agent_id}/memories\n"
-            f"- Memory Tools: To store long-term notes, research summaries, facts, and rules, invoke `write_memory(rel_path, content)` (e.g. `write_memory('research/topic.md', content='...')`). Your memory operations are automatically and transparently scoped to your assigned memory partition.\n"
-        )
-
-        # 4. Email communication & formatting guidelines (HTML vs Markdown)
-        parts.append(
-            "\n### Email Communication & Formatting Guidelines\n"
-            "- You are communicating directly via email with the recipient.\n"
-            "- Start your email IMMEDIATELY with the opening salutation (e.g. `<p><strong>Dear <Name>,</strong></p>` or `<p>Hello <Name>,</p>`).\n"
-            "- NEVER include meta-commentary, preamble, status updates, or thoughts before the salutation (e.g. do NOT say 'I have everything I need', 'Here is the report', or 'Sure, here is your email:'). Output ONLY the exact email body starting with the greeting.\n"
-            "- Always format your responses in clean, modern HTML rather than Markdown.\n"
-            "- Use standard HTML tags for structure and styling: `<p>`, `<strong>`, `<em>`, `<ul>`, `<li>`, `<ol>`, `<code>`, `<pre>`, `<blockquote>`, `<h3>`, `<a>`, `<table>`, `<tr>`, `<td>`.\n"
-            "- Do NOT wrap your output in markdown code blocks like ```html ... ```; output clean HTML directly as your message body.\n"
-            "- Do NOT use Markdown formatting syntax like `**bold**`, `*italic*`, `# heading`, or `- bullet`.\n"
-            "- Write clean, structured, and modern email responses.\n"
-        )
-
-        return "\n\n".join(parts)
+        return assemble_system_prompt(profile, resolved_soul=resolved_soul, channel="email")
 
     @staticmethod
     def _conversation_history(profile: AgentProfile, thread_id: str) -> list[dict[str, str]]:
@@ -326,7 +273,28 @@ class HermesMailAdapter(AgentRuntime):
         ctx = run_context or RunContext()
         agent_id = profile.id or profile.name
         session_id = canonical_session_id(agent_id, email.thread_id)
-        user_text = (email.clean_body or email.body or "").strip() or f"(No message body. Subject: {email.subject})"
+        raw_user_text = (email.clean_body or email.body or "").strip() or f"(No message body. Subject: {email.subject})"
+
+        if self.use_envelope:
+            from brainsos_agent.prompts import render_inbound_envelope
+
+            date_val = getattr(email, "date", None)
+            if hasattr(date_val, "strftime"):
+                date_str = date_val.strftime("%Y-%m-%d %H:%M:%S UTC")
+            elif date_val:
+                date_str = str(date_val)
+            else:
+                date_str = ""
+            email_metadata = {
+                "sender": email.sender,
+                "recipient": email.recipient or profile.email,
+                "subject": email.subject,
+                "date_utc": date_str,
+                "thread_id": email.thread_id,
+            }
+            user_text = render_inbound_envelope("email", email_metadata, raw_user_text)
+        else:
+            user_text = raw_user_text
 
         # The request body is deterministic for a given email + OKF state, so a resubmit after a
         # worker crash replays the original run via Idempotency-Key instead of starting a new one.
@@ -375,7 +343,7 @@ class HermesMailAdapter(AgentRuntime):
             subject=email.subject,
             role="user",
             author=email.sender,
-            content=user_text,
+            content=raw_user_text,
         )
         if result.status == RUN_COMPLETED:
             ContextAssembler.record_turn(

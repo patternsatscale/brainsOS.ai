@@ -242,6 +242,16 @@ if [ -d "${REPO_ROOT}/config/default_settings" ]; then
     cp -R "${REPO_ROOT}/config/default_settings/"* "${DATA_ROOT}/settings/" 2>/dev/null || true
   else
     log_info "Preserving existing fleet configurations in ${DATA_ROOT}/settings."
+    # Ensure modular prompt hierarchies are seeded if not present
+    if [ -d "${REPO_ROOT}/config/default_settings/prompts" ]; then
+      mkdir -p "${DATA_ROOT}/settings/prompts"
+      for psub in global channels envelopes; do
+        if [ -d "${REPO_ROOT}/config/default_settings/prompts/${psub}" ]; then
+          mkdir -p "${DATA_ROOT}/settings/prompts/${psub}"
+          cp -n -R "${REPO_ROOT}/config/default_settings/prompts/${psub}/"* "${DATA_ROOT}/settings/prompts/${psub}/" 2>/dev/null || true
+        fi
+      done
+    fi
   fi
 fi
 
