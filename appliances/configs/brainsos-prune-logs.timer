@@ -1,0 +1,11 @@
+[Unit]
+Description=Run brainsOS log pruning and journal vacuuming daily
+Documentation=https://brainsos.ai
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

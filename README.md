@@ -363,6 +363,7 @@ Once running, the following local services are accessible in your browser:
 make setup          # Bootstrap .env, data dirs, venv, and editable packages
 make update         # Universal platform update (git sync, container pull, migrations & rollback)
 make update-check   # Check current versions vs latest upstream releases (LiteLLM, Langfuse, Git)
+make prune-logs     # Automated log rotation, journal vacuuming & disk retention maintenance
 make ssl-wildcard   # Configure public wildcard SSL via Route 53 & SST Ion (*.local.<zone>)
 make deploy-infra   # Deploy platform cloud infrastructure via SST Ion (Route 53, ACME IAM, SES)
 make env            # Generate .env with secure passwords, configure URLs, and rebuild

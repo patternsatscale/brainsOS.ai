@@ -1,0 +1,15 @@
+# ==============================================================================
+# brainsOS: Appliance Logrotate Policy (Ticket #317)
+# Automatically rotates and compresses host appliance service logs.
+# Install target: /etc/logrotate.d/brainsos
+# ==============================================================================
+
+/var/log/brainsos/*.log /var/log/caddy/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root adm
+}

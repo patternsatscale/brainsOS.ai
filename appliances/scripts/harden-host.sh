@@ -165,6 +165,29 @@ if [ "${CHECK_MODE}" = true ]; then
     AUDIT_FAILED=1
   fi
 
+  # Check 4: Systemd Journald Retention Policy (Ticket #317)
+  JOURNALD_CONF_DROPIN="/etc/systemd/journald.conf.d/99-brainsos.conf"
+  if [ -f "${JOURNALD_CONF_DROPIN}" ]; then
+    if grep -q "SystemMaxUse" "${JOURNALD_CONF_DROPIN}"; then
+      log_success "Journald retention policy configured in ${JOURNALD_CONF_DROPIN}."
+    else
+      log_warn "Journald drop-in exists but lacks SystemMaxUse directive."
+      AUDIT_FAILED=1
+    fi
+  else
+    log_warn "Journald drop-in ${JOURNALD_CONF_DROPIN} does not exist."
+    AUDIT_FAILED=1
+  fi
+
+  # Check 5: Logrotate Configuration (Ticket #317)
+  LOGROTATE_CONF="/etc/logrotate.d/brainsos"
+  if [ -f "${LOGROTATE_CONF}" ]; then
+    log_success "Logrotate policy configured in ${LOGROTATE_CONF}."
+  else
+    log_warn "Logrotate configuration ${LOGROTATE_CONF} does not exist."
+    AUDIT_FAILED=1
+  fi
+
   if [ ${AUDIT_FAILED} -eq 0 ]; then
     log_success "All appliance host hardening checks PASSED."
     exit 0
@@ -314,4 +337,52 @@ if [ "${DRY_RUN}" = false ]; then
   fi
 fi
 
-log_success "Appliance host perimeter hardening completed successfully."
+# ------------------------------------------------------------------------------
+# 5. Systemd Journald, Logrotate & Automated Retention Timer (Ticket #317)
+# ------------------------------------------------------------------------------
+log_info "Configuring systemd journal retention, logrotate, and automated maintenance timers..."
+
+JOURNALD_DIR="/etc/systemd/journald.conf.d"
+JOURNALD_FILE="${JOURNALD_DIR}/99-brainsos.conf"
+LOGROTATE_TARGET="/etc/logrotate.d/brainsos"
+SYSTEMD_SYSTEM_DIR="/etc/systemd/system"
+
+if [ "${DRY_RUN}" = true ]; then
+  log_info "[DRY-RUN] Would install ${JOURNALD_FILE} from appliances/configs/journald-brainsos.conf"
+  log_info "[DRY-RUN] Would install ${LOGROTATE_TARGET} from appliances/configs/logrotate-brainsos"
+  log_info "[DRY-RUN] Would install brainsos-prune-logs.service and .timer to ${SYSTEMD_SYSTEM_DIR}"
+  log_info "[DRY-RUN] Would execute: systemctl daemon-reload && systemctl enable --now brainsos-prune-logs.timer"
+else
+  # Journald configuration
+  mkdir -p "${JOURNALD_DIR}"
+  if [ -f "${REPO_ROOT}/appliances/configs/journald-brainsos.conf" ]; then
+    cp "${REPO_ROOT}/appliances/configs/journald-brainsos.conf" "${JOURNALD_FILE}"
+    chmod 644 "${JOURNALD_FILE}"
+    log_success "Installed journald retention configuration."
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl restart systemd-journald 2>/dev/null || true
+    fi
+  fi
+
+  # Logrotate configuration
+  if [ -f "${REPO_ROOT}/appliances/configs/logrotate-brainsos" ]; then
+    mkdir -p /etc/logrotate.d
+    cp "${REPO_ROOT}/appliances/configs/logrotate-brainsos" "${LOGROTATE_TARGET}"
+    chmod 644 "${LOGROTATE_TARGET}"
+    log_success "Installed logrotate policy for brainsOS and Caddy logs."
+  fi
+
+  # Systemd timer installation
+  if [ -f "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.service" ] && [ -f "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.timer" ]; then
+    cp "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.service" "${SYSTEMD_SYSTEM_DIR}/"
+    cp "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.timer" "${SYSTEMD_SYSTEM_DIR}/"
+    chmod 644 "${SYSTEMD_SYSTEM_DIR}/brainsos-prune-logs.service" "${SYSTEMD_SYSTEM_DIR}/brainsos-prune-logs.timer"
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload 2>/dev/null || true
+      systemctl enable --now brainsos-prune-logs.timer 2>/dev/null || true
+      log_success "Enabled daily brainsOS log pruning systemd timer."
+    fi
+  fi
+fi
+
+log_success "Appliance host perimeter hardening and log retention safeguards completed successfully."

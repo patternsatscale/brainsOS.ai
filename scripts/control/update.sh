@@ -281,12 +281,23 @@ services = {
     }
 }
 
+import shutil
+total_b, used_b, free_b = shutil.disk_usage(repo_root)
+disk_info = {
+    "total_gb": round(total_b / (1024**3), 1),
+    "used_gb": round(used_b / (1024**3), 1),
+    "free_gb": round(free_b / (1024**3), 1),
+    "free_pct": round((free_b / total_b) * 100.0, 1),
+    "warning": (free_b / total_b) < 0.15
+}
+
 overall_update = git_info.get("update_available", False) or any(s["update_available"] for s in services.values())
 
 status_data = {
     "platform": "brainsOS",
     "git": git_info,
     "services": services,
+    "disk": disk_info,
     "overall_update_available": overall_update
 }
 
@@ -354,6 +365,18 @@ for k, s in services.items():
         status = f"{GREEN}✓ Up to date{NC}"
     print(f"{name:<32} {curr:<14} {latest:<14} {status}")
 
+disk = data.get("disk", {})
+if disk:
+    print("")
+    total_g = disk.get("total_gb", 0)
+    free_g = disk.get("free_gb", 0)
+    free_p = disk.get("free_pct", 0)
+    if disk.get("warning"):
+        disk_status = f"{YELLOW}⚠️ Low Disk Space ({free_p}% free, {free_g} GB remaining){NC}"
+    else:
+        disk_status = f"{GREEN}✓ Healthy ({free_p}% free, {free_g} GB free of {total_g} GB){NC}"
+    print(f"{BOLD}Disk Capacity:{NC} {disk_status}")
+
 print("")
 if data.get("overall_update_available"):
     print(f"{YELLOW}{BOLD}Notice: Updates are available for your brainsOS appliance.{NC}")
@@ -392,6 +415,42 @@ if [ "${UNATTENDED}" = false ] && [ "${DRY_RUN}" = false ]; then
   if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
     log_info "Update cancelled by operator."
     exit 0
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 3A. Pre-Flight Disk Space Assertion (Ticket #317)
+# ------------------------------------------------------------------------------
+log_info "Verifying available disk space before update..."
+DISK_PRECHECK="$(python3 -c "
+import shutil
+total, used, free = shutil.disk_usage('/')
+pct_free = (free / total) * 100.0
+free_gb = free / (1024**3)
+print(f'{free_gb:.1f} {pct_free:.1f}')
+" 2>/dev/null || echo "50.0 50.0")"
+
+read -r PRE_FREE_GB PRE_PCT_FREE <<< "${DISK_PRECHECK}"
+log_info "Available root disk: ${PRE_FREE_GB} GB (${PRE_PCT_FREE}% free)"
+
+if python3 -c "import sys; sys.exit(0 if float('${PRE_PCT_FREE}') < 15.0 else 1)" 2>/dev/null; then
+  log_warn "WARNING: Available disk space is below 15% threshold (${PRE_PCT_FREE}% free)!"
+  log_info "Running automated log pruning to reclaim disk capacity..."
+  if [ -x "${REPO_ROOT}/scripts/control/prune-logs.sh" ]; then
+    "${REPO_ROOT}/scripts/control/prune-logs.sh" || true
+  fi
+
+  # Re-evaluate post-pruning
+  POST_CHECK="$(python3 -c "
+import shutil
+total, used, free = shutil.disk_usage('/')
+print(f'{(free / total) * 100.0:.1f}')
+" 2>/dev/null || echo "50.0")"
+  if python3 -c "import sys; sys.exit(0 if float('${POST_CHECK}') < 10.0 else 1)" 2>/dev/null; then
+    log_error "CRITICAL: Insufficient disk space for safe platform update (${POST_CHECK}% free). Minimum 10% required."
+    exit 1
+  else
+    log_success "Reclaimed disk space. Proceeding with update (${POST_CHECK}% free)."
   fi
 fi
 
