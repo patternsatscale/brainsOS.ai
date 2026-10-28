@@ -72,12 +72,34 @@ The policy grants:
 
 You must also enable access to the models you plan to use in the Bedrock console. The model catalog lives in `config/litellm/config.bedrock.yaml` and uses `us.` cross-region inference profiles. Outside US regions, swap the prefix (`eu.`, `apac.`, `global.`).
 
-## First Login
+## First Login & TLS Configuration
 
-1. Open `https://<public-dns>/`. The certificate is self-signed until you configure a domain; bring-your-own-domain is tracked in #323.
-2. Sign in as `admin` with the **EC2 instance ID** as the initial password.
-3. Change the password immediately.
-4. For shell access, use `aws ssm start-session --target <instance-id>`. Inbound SSH is closed.
+1. **Access Appliance**: Open `https://<public-dns>/` or `https://<public-ip>/`. The appliance runs with Caddy's internal CA (self-signed) by default.
+2. **Trust Root CA (Optional)**: Download the internal root CA certificate directly from the authenticated endpoint `https://<public-dns>/system/ca.crt` (or run `scripts/setup/trust-caddy-ca.sh --export` on host) and import it into your browser trust store.
+3. **Sign In**: Log in as `admin` with the **EC2 instance ID** as the initial password. Change the password immediately.
+4. **Shell Access**: Use AWS SSM: `aws ssm start-session --target <instance-id>`. (Inbound SSH port 22 is closed by default).
+5. **Bring Your Own Domain (BYOD)**:
+   - **Interactive / Post-Boot CLI**:
+     ```bash
+     # Let's Encrypt / ZeroSSL public ACME:
+     make set-domain ARGS="--domain brainsos.myorg.com --email ops@myorg.com"
+
+     # Route 53 DNS-01 (uses ambient EC2 IAM role, zero static keys):
+     make set-domain ARGS="--domain brainsos.myorg.com --email ops@myorg.com --dns route53"
+
+     # Revert to Caddy internal self-signed CA:
+     make set-domain ARGS="--internal"
+     ```
+   - **Launch-Time EC2 User-Data**:
+     Supply cloud-config or environment pairs in EC2 user-data at launch:
+     ```yaml
+     #cloud-config
+     brainsos:
+       domain: brainsos.myorg.com
+       email: ops@myorg.com
+       tls_mode: acme
+     ```
+     Caddy uses fallback-to-internal issuance, ensuring HTTPS remains available with zero downtime while ACME verification completes.
 
 ## CLI Usage
 

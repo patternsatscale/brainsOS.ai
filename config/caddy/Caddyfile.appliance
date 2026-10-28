@@ -1,35 +1,46 @@
 {
 	admin off
 	auto_https disable_redirects
+	# Clients connecting by bare IP send no SNI; serve the primary site certificate.
+	default_sni {$BRAINSOS_DOMAIN:localhost}
 }
 
 # ==============================================================================
-# brainsOS: Appliance TLS Policy (Ticket #312)
-# Supports:
-#   1. Automated TLS-ALPN-01 challenge over port 443 (Zero port 80 challenge reliance)
-#   2. AWS Route 53 DNS-01 ACME challenge when credentials/roles are present
-#   3. Internal self-signed CA fallback for local offline appliances
+# brainsOS: Appliance TLS Modes (Tickets #312 / #323)
+# Selected at parse time by BRAINSOS_TLS_MODE (written to .env by firstboot.sh
+# or scripts/control/set-domain.sh):
+#   internal (default) - Caddy internal CA (self-signed). Works on any hostname/IP.
+#   acme               - Bring-your-own-domain: public ACME (TLS-ALPN-01 on 443 or
+#                        HTTP-01 on 80). Falls back to the internal CA if issuance
+#                        fails, so HTTPS never goes down.
+#   route53            - BYOD via Route 53 DNS-01 using the EC2 instance role
+#                        (no static AWS credentials). Same internal-CA fallback.
+# Every tls_* snippet is reachable through `import tls_{$BRAINSOS_TLS_MODE}`.
 # ==============================================================================
-(appliance_tls) {
+(tls_internal) {
+	tls internal
+}
+
+(tls_acme) {
 	tls {
 		issuer acme {
-			email {$ACME_EMAIL:admin@brainsos.local}
-			disable_http_challenge
+			email {$ACME_EMAIL}
 		}
+		issuer internal
 	}
 }
 
-(route53_tls) {
-	tls {$ACME_EMAIL:admin@brainsos.local} {
-		dns route53
-		propagation_delay 30s
-		propagation_timeout 3m
-		resolvers 1.1.1.1 8.8.8.8
+(tls_route53) {
+	tls {
+		issuer acme {
+			email {$ACME_EMAIL}
+			dns route53
+			propagation_delay 30s
+			propagation_timeout 3m
+			resolvers 1.1.1.1 8.8.8.8
+		}
+		issuer internal
 	}
-}
-
-(internal_tls) {
-	tls internal
 }
 
 # ==============================================================================
@@ -144,11 +155,13 @@
 	}
 
 	# --------------------------------------------------------------------------
-	# Observability Platform (Host: langfuse.*)
+	# Observability Platform (Host: langfuse.*) - requires BYOD + wildcard DNS.
+	# Langfuse cannot be served under a sub-path, so bare-IP appliances have no
+	# browser route to the Langfuse UI (ingestion is in-network and unaffected).
 	# --------------------------------------------------------------------------
 	@langfuse_host header_regexp Host (?i)^langfuse\.
 	handle @langfuse_host {
-		reverse_proxy {$LANGFUSE_UPSTREAM:host.docker.internal:3001} {
+		reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
@@ -531,6 +544,17 @@
 		import portal_content
 	}
 
+	# Subsystem 9a: Internal CA root certificate download for operator trust (#323).
+	# Public certificate material only; gated by SSO to avoid anonymous probing.
+	handle /system/ca.crt {
+		import authentik_forward_auth
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=brainsos-root-ca.crt"
+		file_server
+	}
+
 	# Subsystem 9: System Manager & Update Center Web Subsystem (Ticket #311)
 	@system_path path /system /system/*
 	handle @system_path {
@@ -554,10 +578,26 @@
 }
 
 # ==============================================================================
-# Port 443 Listener: Hardened HTTPS Appliance Gateway
-# Single-origin ingress with TLS-ALPN-01 automated certificate issuance.
+# HTTPS Listeners (Single-Origin Port 443 Invariant)
+# Explicit site addresses so certificates are issued for real names only.
 # ==============================================================================
-:443 {
-	import appliance_tls
+
+# Primary hostname (EC2 public DNS by default, or the operator's own domain).
+{$BRAINSOS_DOMAIN:localhost} {
+	import tls_{$BRAINSOS_TLS_MODE:internal}
+	import unified_ingress
+}
+
+# Subdomain planes (langfuse., proxy., mail.). Only resolvable with BYOD +
+# wildcard DNS; in ACME modes a failed issuance falls back to the internal CA.
+langfuse.{$BRAINSOS_DOMAIN:localhost}, proxy.{$BRAINSOS_DOMAIN:localhost}, mail.{$BRAINSOS_DOMAIN:localhost} {
+	import tls_{$BRAINSOS_TLS_MODE:internal}
+	import unified_ingress
+}
+
+# Bare-IP access (public/private IPv4 written by firstboot.sh). Public CAs do
+# not issue for these, so they always use the internal CA.
+{$BRAINSOS_IP_SITES:127.0.0.1} {
+	import tls_internal
 	import unified_ingress
 }

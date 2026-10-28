@@ -187,6 +187,43 @@ MAGENTA = "\033[0;35m"
 DIM = "\033[2m"
 NC = "\033[0m"
 
+tls_mode = env.get("BRAINSOS_TLS_MODE", "internal")
+
+def get_certificate_info(target_domain, port=443):
+    try:
+        import ssl, socket, subprocess
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=0.8) as sock:
+            with ctx.wrap_socket(sock, server_hostname=target_domain) as ssock:
+                der = ssock.getpeercert(binary_form=True)
+                pem = ssl.DER_cert_to_PEM_cert(der)
+                p = subprocess.run(["openssl", "x509", "-noout", "-issuer"], input=pem, text=True, capture_output=True)
+                issuer_line = p.stdout.strip()
+                if "Caddy Local Authority" in issuer_line:
+                    return "internal_ca", issuer_line
+                elif any(ca in issuer_line for ca in ["Let's Encrypt", "ZeroSSL", "ISRG", "DigiCert", "Sectigo"]):
+                    return "public_acme", issuer_line
+                return "other", issuer_line
+    except Exception:
+        return "unreachable", ""
+
+cert_type, issuer_info = get_certificate_info(domain, caddy_https)
+acme_fallback_active = (tls_mode in ("acme", "route53") and cert_type == "internal_ca")
+
+if tls_mode in ("acme", "route53"):
+    if cert_type == "internal_ca":
+        tls_display = f"{YELLOW}⚠️  Self-Signed Fallback (ACME pending/failed){NC}"
+    elif cert_type == "public_acme":
+        tls_display = f"{GREEN}✅ Public CA ({issuer_info}){NC}"
+    elif cert_type == "unreachable":
+        tls_display = f"{DIM}Caddy not responding on {caddy_https}{NC}"
+    else:
+        tls_display = f"{CYAN}{issuer_info}{NC}"
+else:
+    tls_display = f"{DIM}Self-Signed (Internal CA) | Trust: /system/ca.crt{NC}"
+
 sep_line = f"{CYAN}{'═' * 115}{NC}"
 sub_line = f"{DIM}{'─' * 115}{NC}"
 
@@ -196,11 +233,15 @@ def print_row(name, pub_url, local_url, auth_info=""):
 if portal_only:
     print(sep_line)
     print(f"{CYAN}{BOLD}  brainsOS Appliance Portal Gateway{NC}")
-    print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | Config: {env_file}{NC}")
+    print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | TLS: {BOLD}{tls_mode}{DIM} ({tls_display}{DIM}) | Config: {env_file}{NC}")
     print(sep_line)
     print(f"  {BOLD}Portal URL:{NC}              {CYAN}https://{domain}/{NC}  {DIM}(or http://localhost:{caddy_http}/){NC}")
+    print(f"  {BOLD}TLS Security:{NC}            {tls_display}")
     print(f"  {BOLD}Username:{NC}                {GREEN}admin{NC} {DIM}(or akadmin / operator){NC}")
     print(f"  {BOLD}Password:{NC}                {YELLOW}{admin_pass if not mask_secrets else mask(admin_pass)}{NC}")
+    if acme_fallback_active:
+        print(f"  {YELLOW}{BOLD}Notice:{NC}                  {YELLOW}ACME issuance in progress or failed. Caddy is serving internal-CA cert.{NC}")
+        print(f"                            {DIM}Inspect ACME logs: docker compose logs caddy{NC}")
     print(sep_line)
     print(f"{DIM}  Authentik SSO provides seamless single sign-on across all platform subsystems:{NC}")
     print(f"{DIM}  - Operator IDE (VS Code)       https://{domain}/editor/{NC}")
@@ -214,7 +255,10 @@ if portal_only:
 else:
     print(sep_line)
     print(f"{CYAN}{BOLD}  brainsOS Platform Service Directory & Ingress Gateway{NC}")
-    print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | Email Host: {BOLD}{mail_domain}{DIM} | Config: {env_file}{NC}")
+    print(f"{DIM}  Target Domain: {BOLD}{domain}{DIM} | TLS: {BOLD}{tls_mode}{DIM} ({tls_display}{DIM}) | Email Host: {BOLD}{mail_domain}{NC}")
+    if acme_fallback_active:
+        print(f"  {YELLOW}{BOLD}⚠️  TLS Warning:{NC} {YELLOW}Configured for public ACME ({tls_mode}), but Caddy is currently serving{NC}")
+        print(f"  {YELLOW}the self-signed internal CA fallback (no outage). Check: docker compose logs caddy{NC}")
     print(sep_line)
     print(f"{BOLD}{'SERVICE':<28} {'PUBLIC / LAN URL':<34} {'LOCALHOST FALLBACK':<24} {'CREDENTIALS / AUTH'}{NC}")
     print(sub_line)

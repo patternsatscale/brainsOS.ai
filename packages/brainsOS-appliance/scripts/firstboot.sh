@@ -139,9 +139,64 @@ if [ -n "${IMDS_TOKEN}" ]; then
   LOCAL_IPV4="$(imds_get local-ipv4)"
   PUBLIC_IPV4="$(imds_get public-ipv4)"
   AWS_REGION_DETECTED="$(imds_get placement/region)"
+  USER_DATA="$(curl -s -f -H "X-aws-ec2-metadata-token: ${IMDS_TOKEN}" \
+    "http://169.254.169.254/latest/user-data" --connect-timeout 2 --max-time 3 2>/dev/null || true)"
 else
   log_info "IMDSv2 not available (baremetal, offline, local virtualization or --skip-imds)."
+  USER_DATA=""
 fi
+
+# Test hook / non-EC2 hosts: user-data supplied from a local file
+if [ -n "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE:-}" ] && [ -f "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE}" ]; then
+  USER_DATA="$(cat "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE}")"
+fi
+
+# ------------------------------------------------------------------------------
+# 1b. Optional bring-your-own-domain settings from EC2 user-data (#323)
+#     Only these KEY=VALUE lines are honoured; everything else (cloud-config,
+#     scripts) is ignored. Example user-data:
+#       BRAINSOS_DOMAIN=brainsos.example.com
+#       ACME_EMAIL=ops@example.com
+#       BRAINSOS_TLS_MODE=acme        # or route53
+# ------------------------------------------------------------------------------
+strip_value() { local v="${1%%#*}"; printf '%s' "${v}" | tr -d "\"' \r"; }
+UD_DOMAIN=""
+UD_ACME_EMAIL=""
+UD_TLS_MODE=""
+if [ -n "${USER_DATA}" ]; then
+  while IFS= read -r ud_line; do
+    ud_trimmed="${ud_line#"${ud_line%%[![:space:]]*}"}"
+    case "${ud_trimmed}" in
+      BRAINSOS_DOMAIN=*|BRAINSOS_DOMAIN:*)
+        val="${ud_trimmed#BRAINSOS_DOMAIN[=:]}"
+        UD_DOMAIN="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      domain:*)
+        val="${ud_trimmed#domain:}"
+        UD_DOMAIN="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      ACME_EMAIL=*|ACME_EMAIL:*)
+        val="${ud_trimmed#ACME_EMAIL[=:]}"
+        UD_ACME_EMAIL="$(strip_value "${val}")"
+        ;;
+      email:*)
+        val="${ud_trimmed#email:}"
+        UD_ACME_EMAIL="$(strip_value "${val}")"
+        ;;
+      BRAINSOS_TLS_MODE=*|BRAINSOS_TLS_MODE:*)
+        val="${ud_trimmed#BRAINSOS_TLS_MODE[=:]}"
+        UD_TLS_MODE="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      tls_mode:*)
+        val="${ud_trimmed#tls_mode:}"
+        UD_TLS_MODE="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+    esac
+  done <<< "${USER_DATA}"
+fi
+
+is_fqdn() { [[ "$1" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; }
+is_ipv4() { [[ "$1" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; }
 
 # Fallback values if not on AWS EC2
 if [ -z "${INSTANCE_ID}" ]; then
@@ -159,8 +214,50 @@ fi
 
 APPLIANCE_REGION="${AWS_REGION_DETECTED:-${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}}"
 
+# Primary hostname: operator domain from user-data, else EC2 public DNS / IP
+APPLIANCE_DOMAIN="${PUBLIC_HOSTNAME}"
+if [ -n "${UD_DOMAIN}" ]; then
+  if is_fqdn "${UD_DOMAIN}"; then
+    APPLIANCE_DOMAIN="${UD_DOMAIN}"
+  else
+    log_warn "Ignoring invalid BRAINSOS_DOMAIN in user-data: '${UD_DOMAIN}'"
+  fi
+fi
+
+# TLS mode: internal CA unless a complete BYOD request was supplied
+TLS_MODE="internal"
+ACME_EMAIL_VALUE=""
+case "${UD_TLS_MODE}" in
+  ""|internal) ;;
+  acme|route53)
+    if [ "${APPLIANCE_DOMAIN}" != "${UD_DOMAIN}" ] || [ -z "${UD_DOMAIN}" ]; then
+      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid BRAINSOS_DOMAIN in user-data; using internal CA."
+    elif [[ ! "${UD_ACME_EMAIL}" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
+      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid ACME_EMAIL in user-data; using internal CA."
+    else
+      TLS_MODE="${UD_TLS_MODE}"
+      ACME_EMAIL_VALUE="${UD_ACME_EMAIL}"
+    fi
+    ;;
+  *)
+    log_warn "Unknown BRAINSOS_TLS_MODE '${UD_TLS_MODE}' in user-data; using internal CA."
+    ;;
+esac
+
+# Bare-IP site addresses (internal CA), excluding the primary hostname itself
+IP_SITES=""
+for ip in "${PUBLIC_IPV4}" "${LOCAL_IPV4}"; do
+  if [ -n "${ip}" ] && is_ipv4 "${ip}" && [ "${ip}" != "${APPLIANCE_DOMAIN}" ]; then
+    case " ${IP_SITES} " in *" ${ip} "*) ;; *) IP_SITES="${IP_SITES:+${IP_SITES} }${ip}" ;; esac
+  fi
+done
+[ -z "${IP_SITES}" ] && IP_SITES="127.0.0.1"
+
 log_info "Instance ID:     ${INSTANCE_ID}"
 log_info "Public Hostname: ${PUBLIC_HOSTNAME}"
+log_info "Primary Domain:  ${APPLIANCE_DOMAIN}"
+log_info "TLS Mode:        ${TLS_MODE}"
+log_info "IP Sites:        ${IP_SITES}"
 log_info "Local IPv4:      ${LOCAL_IPV4:-unknown}"
 log_info "AWS Region:      ${APPLIANCE_REGION}"
 
@@ -173,10 +270,14 @@ case "${APPLIANCE_REGION}" in
 esac
 
 if [ "${DRY_RUN}" = true ]; then
-  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${PUBLIC_HOSTNAME} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
+  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
   log_info "[DRY-RUN] Would write appliance overrides to ${TARGET_ENV}:"
   log_info "[DRY-RUN] BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
-  log_info "[DRY-RUN] BRAINSOS_DOMAIN=${PUBLIC_HOSTNAME}"
+  log_info "[DRY-RUN] BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
+  log_info "[DRY-RUN] CADDYFILE=Caddyfile.appliance BRAINSOS_TLS_MODE=${TLS_MODE} BRAINSOS_IP_SITES=${IP_SITES}"
+  if [ -n "${ACME_EMAIL_VALUE}" ]; then
+    log_info "[DRY-RUN] ACME_EMAIL=${ACME_EMAIL_VALUE}"
+  fi
   log_info "[DRY-RUN] COMPOSE_FILE=${REPO_ROOT}/docker-compose.yml:${REPO_ROOT}/docker/compose/compose.appliance.yml"
   log_info "[DRY-RUN] LITELLM_CONFIG=${REPO_ROOT}/config/litellm/config.bedrock.yaml"
   log_info "[DRY-RUN] Would run: ${REPO_ROOT}/scripts/control/bootstrap-env.sh --skip-images --skip-portal --skip-models"
@@ -196,7 +297,7 @@ else
   fi
   log_info "Generating unique per-instance secrets via scripts/control/generate-env.sh..."
   "${GENERATE_ENV}" --non-interactive \
-    --domain "${PUBLIC_HOSTNAME}" \
+    --domain "${APPLIANCE_DOMAIN}" \
     --data-dir "${REPO_ROOT}/data" \
     --force-passwords \
     --no-rebuild </dev/null
@@ -230,53 +331,20 @@ else
     "OLLAMA_ENABLED=false"
     "AWS_REGION=${APPLIANCE_REGION}"
     "AWS_DEFAULT_REGION=${APPLIANCE_REGION}"
+    # Ingress (#323): appliance Caddyfile, self-signed by default, BYOD via user-data or set-domain.sh
+    "BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
+    "CADDYFILE=Caddyfile.appliance"
+    "BRAINSOS_TLS_MODE=${TLS_MODE}"
+    "BRAINSOS_IP_SITES=${IP_SITES}"
+    "NEXTAUTH_URL=https://langfuse.${APPLIANCE_DOMAIN}"
   )
+  if [ -n "${ACME_EMAIL_VALUE}" ]; then
+    APPLIANCE_OVERRIDES+=("ACME_EMAIL=${ACME_EMAIL_VALUE}")
+  fi
 
-  OVERRIDE_TMP="$(mktemp)"
-  printf '%s\n' "${APPLIANCE_OVERRIDES[@]}" > "${OVERRIDE_TMP}"
-  python3 - "${TARGET_ENV}" "${OVERRIDE_TMP}" <<'PYEOF'
-import sys
-
-env_path, overrides_path = sys.argv[1], sys.argv[2]
-overrides = {}
-with open(overrides_path, encoding="utf-8") as fh:
-    for raw in fh:
-        raw = raw.rstrip("\n")
-        if raw and not raw.startswith("#") and "=" in raw:
-            key, value = raw.split("=", 1)
-            overrides[key] = value
-
-lines = []
-seen = set()
-with open(env_path, encoding="utf-8") as fh:
-    for raw in fh:
-        line = raw.rstrip("\n")
-        is_comment = line.startswith("#")
-        body = line[1:].lstrip() if is_comment else line
-        key = body.split("=", 1)[0].strip() if "=" in body else None
-        if key and " " not in key and key in overrides:
-            if key not in seen:
-                # First occurrence (assignment or commented template line) becomes the override
-                lines.append(f"{key}={overrides[key]}")
-                seen.add(key)
-                continue
-            if not is_comment:
-                continue  # drop later duplicate assignments
-        lines.append(line)
-
-missing = [k for k in overrides if k not in seen]
-if missing:
-    lines.append("")
-    lines.append("# ==============================================================================")
-    lines.append("# Appliance Overrides (written by packages/brainsOS-appliance/scripts/firstboot.sh)")
-    lines.append("# ==============================================================================")
-    for key in missing:
-        lines.append(f"{key}={overrides[key]}")
-
-with open(env_path, "w", encoding="utf-8") as fh:
-    fh.write("\n".join(lines) + "\n")
-PYEOF
-  rm -f "${OVERRIDE_TMP}"
+  "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${TARGET_ENV}" \
+    --section "Appliance Overrides (written by packages/brainsOS-appliance/scripts/firstboot.sh)" \
+    "${APPLIANCE_OVERRIDES[@]}"
   chmod 600 "${TARGET_ENV}"
   log_success "Wrote appliance .env with unique secrets and strict 0600 permissions."
 fi
@@ -320,6 +388,12 @@ if [ "${SKIP_IMDS}" != true ] && command -v systemctl >/dev/null 2>&1; then
   systemctl disable brainsos-firstboot.service 2>/dev/null || true
 fi
 
+if [ "${TLS_MODE}" = "internal" ]; then
+  TLS_NOTE="self-signed (Caddy internal CA)"
+else
+  TLS_NOTE="public ACME (${TLS_MODE}); falls back to self-signed until issued"
+fi
+
 # Login instructions to console/journal. The initial password is the instance-id,
 # which is only visible to principals with ec2:DescribeInstances in the owning account.
 cat <<BANNER
@@ -327,11 +401,15 @@ cat <<BANNER
 ================================================================================
  brainsOS Appliance Initialization Complete
 --------------------------------------------------------------------------------
- URL:               https://${PUBLIC_HOSTNAME}/   (self-signed until a domain is configured)
+ URL:               https://${APPLIANCE_DOMAIN}/
+ Certificate:       ${TLS_NOTE}
+ Root CA download:  https://${APPLIANCE_DOMAIN}/system/ca.crt  (after sign-in)
  Operator Username: admin
  Initial Password:  your EC2 instance ID
 
  ACTION REQUIRED: change the initial password at first login.
+ Use your own domain (public certificate):
+   sudo /opt/brainsos/scripts/control/set-domain.sh --domain <fqdn> --email <addr>
  Inbound SSH (port 22) is disabled; use AWS Systems Manager Session Manager.
 ================================================================================
 
