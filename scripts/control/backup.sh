@@ -21,7 +21,10 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+REPO_ROOT="${BRAINSOS_REPO_ROOT:-}"
+if [ -z "${REPO_ROOT}" ]; then
+  REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+fi
 if [ -z "${REPO_ROOT}" ]; then
   _check_dir="${SCRIPT_DIR}"
   while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
@@ -38,15 +41,13 @@ cd "${REPO_ROOT}"
 
 # Load environment configuration
 _EXPLICIT_DATA_DIR="${BRAINSOS_DATA_DIR:-}"
-if [ -f .env ]; then
-  set -a
-  . ./.env
-  set +a
-elif [ -f .env.example ]; then
-  set -a
-  . ./.env.example
-  set +a
+if [ ! -f "${REPO_ROOT}/.env" ]; then
+  log_error "Missing .env configuration in ${REPO_ROOT}. An initialized .env is required (Rule 13)."
+  exit 1
 fi
+set -a
+. "${REPO_ROOT}/.env"
+set +a
 if [ -n "${_EXPLICIT_DATA_DIR}" ]; then
   BRAINSOS_DATA_DIR="${_EXPLICIT_DATA_DIR}"
 fi
@@ -76,21 +77,6 @@ BACKUP_DIR="${DATA_ROOT}/backups"
 MAX_BACKUPS="${MAX_BACKUPS:-14}"
 
 mkdir -p "${BACKUP_DIR}"
-
-# Delegate to colocated backup/restore harness in DATA_ROOT/backups if present
-if [ -x "${BACKUP_DIR}/backup.sh" ]; then
-  case "${1:-}" in
-    --restore)
-      if [ -x "${BACKUP_DIR}/restore.sh" ]; then
-        shift
-        exec "${BACKUP_DIR}/restore.sh" "$@"
-      fi
-      ;;
-    *)
-      exec "${BACKUP_DIR}/backup.sh" "$@"
-      ;;
-  esac
-fi
 
 # ------------------------------------------------------------------------------
 # Help & Usage
@@ -159,13 +145,13 @@ create_backup() {
   log_info "  - Memories:  ${MEMORIES_DIR}"
   log_info "  - Workspace: ${WORKSPACE_DIR}"
   log_info "  - Comms:     ${COMMS_DIR}"
-  log_info "  - Database:  ${DB_DIR}"
+  log_info "  - Databases: Logical pg_dump of active Postgres services"
 
   mkdir -p "${staging_dir}/agents"
   mkdir -p "${staging_dir}/memories"
   mkdir -p "${staging_dir}/workspace"
   mkdir -p "${staging_dir}/comms"
-  mkdir -p "${staging_dir}/litellm_db"
+  mkdir -p "${staging_dir}/db_dumps"
 
   # 0. Copy agents if present
   if [ -d "${AGENTS_DIR}" ]; then
@@ -191,23 +177,42 @@ create_backup() {
     cp -a "${COMMS_DIR}/." "${staging_dir}/comms/" 2>/dev/null || true
   fi
 
-  # 4. Copy database if present and readable
-  if [ -d "${DB_DIR}" ]; then
-    cp -a "${DB_DIR}/." "${staging_dir}/litellm_db/" 2>/dev/null || true
-  fi
+  # 4. Logical database dumps for all running Postgres containers (Rule 6: credentials from container env)
+  local active_dbs=()
+  for db_svc in litellm-db langfuse-db authentik-db sogo-db; do
+    local cid
+    cid="$(docker compose ps -q "${db_svc}" 2>/dev/null || true)"
+    if [ -n "${cid}" ]; then
+      local is_running
+      is_running="$(docker inspect -f '{{.State.Running}}' "${cid}" 2>/dev/null || echo "false")"
+      if [ "${is_running}" = "true" ]; then
+        log_info "Creating logical dump for ${db_svc} via pg_dump..."
+        if docker compose exec -T "${db_svc}" sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "${staging_dir}/db_dumps/${db_svc}.sql" 2>/dev/null; then
+          local dsize
+          dsize=$(du -h "${staging_dir}/db_dumps/${db_svc}.sql" | cut -f1)
+          log_success "Logical dump created for ${db_svc} (${dsize})."
+          active_dbs+=("${db_svc}")
+        else
+          log_error "Failed to generate logical database dump for ${db_svc}."
+          rm -rf "${staging_dir}"
+          exit 1
+        fi
+      fi
+    fi
+  done
 
   # Write backup manifest
   cat <<EOF > "${staging_dir}/manifest.json"
 {
   "timestamp": "${timestamp}",
   "created_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "planes": {
     "agents": "${AGENTS_DIR}",
     "memories": "${MEMORIES_DIR}",
     "workspace": "${WORKSPACE_DIR}",
     "comms": "${COMMS_DIR}",
-    "litellm_db": "${DB_DIR}"
+    "databases": [$(printf '"%s",' "${active_dbs[@]}" | sed 's/,$//')]
   }
 }
 EOF
@@ -315,11 +320,72 @@ restore_backup() {
     log_success "Restored communications plane."
   fi
 
-  if [ -d "${extract_dir}/litellm_db" ]; then
+  # Logical database restores
+  if [ -d "${extract_dir}/db_dumps" ]; then
+    for dump_file in "${extract_dir}/db_dumps/"*.sql; do
+      if [ -f "${dump_file}" ]; then
+        local db_svc
+        db_svc="$(basename "${dump_file}" .sql)"
+        log_info "Restoring logical database dump for ${db_svc}..."
+        
+        # Stop dependent services before database restore
+        case "${db_svc}" in
+          litellm-db)
+            docker compose stop litellm 2>/dev/null || true
+            ;;
+          langfuse-db)
+            docker compose stop langfuse-web langfuse-worker 2>/dev/null || true
+            ;;
+          authentik-db)
+            docker compose stop authentik-server authentik-worker 2>/dev/null || true
+            ;;
+          sogo-db)
+            docker compose stop sogo 2>/dev/null || true
+            ;;
+        esac
+
+        # Ensure database container is up and ready
+        docker compose up -d "${db_svc}" 2>/dev/null || true
+        for _w in {1..30}; do
+          if docker compose exec -T "${db_svc}" pg_isready >/dev/null 2>&1; then
+            break
+          fi
+          sleep 1
+        done
+
+        # Recreate public schema and stream dump into psql
+        docker compose exec -T "${db_svc}" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"' 2>/dev/null || true
+        if docker compose exec -T "${db_svc}" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" --quiet' < "${dump_file}" 2>/dev/null; then
+          log_success "Restored ${db_svc} from logical dump."
+        else
+          log_error "Failed to restore database for ${db_svc}."
+          rm -rf "${extract_dir}"
+          exit 1
+        fi
+
+        # Restart dependent services
+        case "${db_svc}" in
+          litellm-db)
+            docker compose up -d litellm 2>/dev/null || true
+            ;;
+          langfuse-db)
+            docker compose up -d langfuse-web langfuse-worker 2>/dev/null || true
+            ;;
+          authentik-db)
+            docker compose up -d authentik-server authentik-worker 2>/dev/null || true
+            ;;
+          sogo-db)
+            docker compose up -d sogo 2>/dev/null || true
+            ;;
+        esac
+      fi
+    done
+  elif [ -d "${extract_dir}/litellm_db" ]; then
+    # Legacy flat database directory fallback
     mkdir -p "${DB_DIR}"
     cp -a "${extract_dir}/litellm_db/." "${DB_DIR}/" 2>/dev/null || true
     chmod 700 "${DB_DIR}" || true
-    log_success "Restored database plane."
+    log_success "Restored legacy litellm_db files."
   fi
 
   rm -rf "${extract_dir}"
@@ -343,8 +409,16 @@ while [[ $# -gt 0 ]]; do
       ACTION="restore"
       ARCHIVE_ARG="${2:-}"
       if [ -z "${ARCHIVE_ARG}" ]; then
-        log_error "Option --restore requires an archive file path."
+        log_error "Option --restore requires an archive file path or 'latest'."
         exit 1
+      fi
+      if [ "${ARCHIVE_ARG}" = "latest" ]; then
+        ARCHIVE_ARG="$(find "${BACKUP_DIR}" -maxdepth 1 -name "brainsos_data_*.tar.gz" -type f | sort | tail -n1 || true)"
+        if [ -z "${ARCHIVE_ARG}" ] || [ ! -f "${ARCHIVE_ARG}" ]; then
+          log_error "No backup archives found in ${BACKUP_DIR} to restore."
+          exit 1
+        fi
+        log_info "Resolved 'latest' backup archive to: ${ARCHIVE_ARG}"
       fi
       shift 2
       ;;

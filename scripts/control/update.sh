@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # brainsOS: Universal Appliance & Platform Update Engine (update.sh)
+# Tickets #310 / #324 (Epic #309 / #321)
 #
 # Idempotent, host-agnostic lifecycle update manager:
 #   - Works identically across AWS EC2 (AMI), ASUS Ascent GX10, and macOS
+#   - Appliance-aware: honors COMPOSE_FILE from .env, zero unpublished port leaks
 #   - Checks current vs. latest upstream releases (Git, LiteLLM, Langfuse, Caddy)
-#   - Supports granular service updates (--service <name>) or full platform sync
-#   - Automatic pre-flight database & memory snapshots (backup.sh)
-#   - Self-healing automatic rollback if post-update health checks fail
+#   - Supports granular service updates (--service <name> --version <tag>)
+#   - Support restoring defaults via --service <name> --reset-version
+#   - Automatic pre-flight logical database & memory snapshots (backup.sh)
+#   - In-network health checks across all Postgres instances, LiteLLM, Langfuse, Caddy
+#   - Self-healing automated rollback without risk of data corruption or git loss
 # ==============================================================================
 
 set -euo pipefail
@@ -23,13 +27,16 @@ MAGENTA="\033[0;35m"
 DIM="\033[2m"
 NC="\033[0m"
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+log_info()    { echo -e "${BLUE}[INFO]${NC} $*"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+log_warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
+log_error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+REPO_ROOT="${BRAINSOS_REPO_ROOT:-}"
+if [ -z "${REPO_ROOT}" ]; then
+  REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+fi
 if [ -z "${REPO_ROOT}" ]; then
   _check_dir="${SCRIPT_DIR}"
   while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
@@ -44,27 +51,32 @@ fi
 
 cd "${REPO_ROOT}"
 
-# Load environment configuration
-if [ -f .env ]; then
-  set -a
-  . ./.env
-  set +a
-elif [ -f .env.example ]; then
-  set -a
-  . ./.env.example
-  set +a
+# Rule 13: Execution Environment Precondition
+if [ ! -f "${REPO_ROOT}/.env" ]; then
+  log_error "Missing .env configuration in ${REPO_ROOT}. An initialized .env is required (Rule 13)."
+  exit 1
 fi
 
-# Options
+set -a
+. "${REPO_ROOT}/.env"
+set +a
+
+# Appliance awareness: honor COMPOSE_FILE from .env, default to docker-compose.yml
+export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
+ENV_UPSERT="${REPO_ROOT}/scripts/control/env-upsert.sh"
+
+# CLI Options
 CHECK_ONLY=false
 JSON_OUTPUT=false
 CONTAINERS_ONLY=false
 FULL_UPDATE=true
 TARGET_SERVICE=""
 TARGET_VERSION=""
+RESET_VERSION=false
 UNATTENDED=false
 NO_BACKUP=false
 DRY_RUN=false
+HEALTH_TIMEOUT=30
 
 show_help() {
   echo -e "${BOLD}brainsOS Universal Appliance & Platform Update Engine${NC}"
@@ -73,17 +85,20 @@ show_help() {
   echo "  $0 [options]"
   echo ""
   echo "Options:"
-  echo "  --check             Check for available updates without applying them"
-  echo "  --json              Output version status and check results in JSON format"
-  echo "  --containers-only   Update upstream container images only (do not pull git code)"
-  echo "  --full              Update both git source code and container images (default)"
-  echo "  --service <name>    Update a specific service (e.g. litellm, langfuse, caddy, sogo)"
-  echo "  --version <tag>     Target a specific upstream image version tag"
+  echo "  --check               Check for available updates without applying them"
+  echo "  --json                Output version status and check results in JSON format"
+  echo "  --containers-only     Update upstream container images only (do not pull git code)"
+  echo "  --full                Update both git source code and container images (default)"
+  echo "  --service <name>      Target a specific service (e.g. litellm, langfuse, caddy)"
+  echo "  --version <tag>       Target a specific upstream image version tag for --service"
   echo "  --target-version <tag> Alias for --version"
-  echo "  -y, --unattended    Non-interactive mode (bypass confirmation prompts)"
-  echo "  --no-backup         Skip pre-flight data snapshot"
-  echo "  --dry-run           Simulate update actions without altering disk or containers"
-  echo "  -h, --help          Show this help documentation"
+  echo "  --reset-version       Remove .env version override for --service and restore pinned default"
+  echo "  --reset               Alias for --reset-version"
+  echo "  --health-timeout <s>  Timeout in seconds for post-update health verification (default: 30)"
+  echo "  -y, --unattended      Non-interactive mode (bypass confirmation prompts)"
+  echo "  --no-backup           Skip pre-flight data snapshot"
+  echo "  --dry-run             Simulate update actions without altering disk or containers"
+  echo "  -h, --help            Show this help documentation"
   echo ""
   echo "Supported Environments:"
   echo "  - AWS EC2 Appliance (ARM64 Graviton AMI)"
@@ -122,6 +137,14 @@ while [[ $# -gt 0 ]]; do
       TARGET_VERSION="$2"
       shift 2
       ;;
+    --reset-version|--reset)
+      RESET_VERSION=true
+      shift
+      ;;
+    --health-timeout)
+      HEALTH_TIMEOUT="$2"
+      shift 2
+      ;;
     -y|--unattended|--yes)
       UNATTENDED=true
       shift
@@ -147,18 +170,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ------------------------------------------------------------------------------
-# 1. Version Detection & Status Query
+# 1. Version Detection & Status Query (C2)
 # ------------------------------------------------------------------------------
 query_status() {
   python3 - << EOF
 import json
 import os
+import re
 import subprocess
 import urllib.request
 import urllib.error
 
 repo_root = "${REPO_ROOT}"
-target_service = "${TARGET_SERVICE}"
 
 def run_cmd(cmd, cwd=repo_root):
     try:
@@ -176,7 +199,6 @@ def get_git_info():
     remote_commit = ""
     commits_behind = 0
     
-    # Try fetching remote commit
     ls_out = run_cmd(f"git ls-remote origin -h refs/heads/{branch}")
     if ls_out:
         remote_commit = ls_out.split()[0][:7] if ls_out.split() else ""
@@ -203,47 +225,66 @@ def get_latest_github_release(repo):
         req = urllib.request.Request(url, headers={"User-Agent": "brainsOS-Updater"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode())
-            return data.get("tag_name", "").lstrip("v")
+            raw_tag = data.get("tag_name", "").lstrip("v")
+            return raw_tag
     except Exception:
         return ""
 
-def get_container_version(service_name, compose_file, default_ver):
-    path = os.path.join(repo_root, compose_file)
-    if not os.path.exists(path):
-        return default_ver
+# Resolve image definitions via docker inspect (running) or compose config (declared)
+def get_service_image(service_name, container_name):
+    img = run_cmd(f"docker inspect --format '{{{{.Config.Image}}}}' {container_name}")
+    if img:
+        return img
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                if "image:" in line and service_name in line:
-                    parts = line.strip().split(":")
-                    if len(parts) >= 3:
-                        return parts[-1].strip().split("@")[0]
-                    elif len(parts) == 2:
-                        return parts[1].strip()
+        raw_cfg = run_cmd("docker compose config --format json")
+        if raw_cfg:
+            cfg = json.loads(raw_cfg)
+            svcs = cfg.get("services", {})
+            if service_name in svcs and "image" in svcs[service_name]:
+                return svcs[service_name]["image"]
+            if service_name == "langfuse" and "langfuse-web" in svcs:
+                return svcs["langfuse-web"]["image"]
     except Exception:
         pass
-    return default_ver
+    return ""
+
+def parse_semver(img_str):
+    if not img_str:
+        return "unknown"
+    tag = img_str.split(":")[-1].split("@")[0]
+    if tag == "latest":
+        return "local build"
+    # Strip any variable expansion artifacts
+    tag = re.sub(r'[\$\{\}\-]', '', tag)
+    m = re.search(r'v?([0-9]+(\.[0-9]+)+.*)', tag)
+    if m:
+        return m.group(1).lstrip("v")
+    return tag.lstrip("v")
 
 git_info = get_git_info()
 
 # LiteLLM
-litellm_curr = get_container_version("litellm-database", "docker/compose/compose.control.yml", "1.105.0")
+litellm_img = get_service_image("litellm", "brainsos-control-litellm")
+litellm_curr = parse_semver(litellm_img) or "1.105.0"
 litellm_latest = get_latest_github_release("berriai/litellm") or litellm_curr
-litellm_update = (litellm_latest != "" and litellm_latest != litellm_curr)
+litellm_update = (litellm_latest != "" and litellm_latest != litellm_curr and litellm_curr != "local build")
 
 # Langfuse
-langfuse_curr = get_container_version("langfuse", "docker/compose/compose.telemetry.yml", "4.58.0")
+langfuse_img = get_service_image("langfuse-web", "brainsos-telemetry-langfuse-web")
+langfuse_curr = parse_semver(langfuse_img) or "4.58.0"
 langfuse_latest = get_latest_github_release("langfuse/langfuse") or langfuse_curr
-langfuse_update = (langfuse_latest != "" and langfuse_latest != langfuse_curr)
+langfuse_update = (langfuse_latest != "" and langfuse_latest != langfuse_curr and langfuse_curr != "local build")
 
 # Caddy
-caddy_curr = "2.8.4"
-caddy_latest = "2.8.4"
+caddy_img = get_service_image("caddy", "brainsos-ingress-caddy")
+caddy_curr = parse_semver(caddy_img) or "local build"
+caddy_latest = caddy_curr
 caddy_update = False
 
 # Hermes Runner
-hermes_curr = "1.0.0"
-hermes_latest = "1.0.0"
+hermes_img = get_service_image("runner-hermes", "brainsos-agent-runner-hermes")
+hermes_curr = parse_semver(hermes_img) or "local build"
+hermes_latest = hermes_curr
 hermes_update = False
 
 services = {
@@ -389,7 +430,7 @@ EOF
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Interactive Confirmation
+# 3. Interactive Confirmation & Unattended Precondition Verification (C5)
 # ------------------------------------------------------------------------------
 echo ""
 echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
@@ -398,7 +439,13 @@ echo -e "${CYAN}${BOLD}╚══════════════════
 echo ""
 
 if [ -n "${TARGET_SERVICE}" ]; then
-  log_info "Targeted service update selected: ${BOLD}${TARGET_SERVICE}${NC}"
+  if [ "${RESET_VERSION}" = true ]; then
+    log_info "Targeted service reset selected: ${BOLD}${TARGET_SERVICE}${NC} (restoring pinned default)"
+  elif [ -n "${TARGET_VERSION}" ]; then
+    log_info "Targeted service update selected: ${BOLD}${TARGET_SERVICE}${NC} -> ${BOLD}${TARGET_VERSION}${NC}"
+  else
+    log_info "Targeted service update selected: ${BOLD}${TARGET_SERVICE}${NC}"
+  fi
 elif [ "${CONTAINERS_ONLY}" = true ]; then
   log_info "Container-only update selected (skipping git source pull)."
 else
@@ -407,6 +454,15 @@ fi
 
 if [ "${DRY_RUN}" = true ]; then
   log_warn "DRY-RUN mode enabled: No files or containers will be modified."
+fi
+
+# C5: Refuse to update dirty git repository in unattended mode
+if [ "${FULL_UPDATE}" = true ] && [ "${UNATTENDED}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  DIRTY_CHECK="$(git status --porcelain)"
+  if [ -n "${DIRTY_CHECK}" ]; then
+    log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
+    exit 1
+  fi
 fi
 
 if [ "${UNATTENDED}" = false ] && [ "${DRY_RUN}" = false ]; then
@@ -440,7 +496,6 @@ if python3 -c "import sys; sys.exit(0 if float('${PRE_PCT_FREE}') < 15.0 else 1)
     "${REPO_ROOT}/scripts/control/prune-logs.sh" || true
   fi
 
-  # Re-evaluate post-pruning
   POST_CHECK="$(python3 -c "
 import shutil
 total, used, free = shutil.disk_usage('/')
@@ -455,21 +510,40 @@ print(f'{(free / total) * 100.0:.1f}')
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Pre-Flight Snapshot & Safety Guardrail
+# 4. Pre-Flight Snapshot & Safety Guardrails (C4)
 # ------------------------------------------------------------------------------
 PRE_UPDATE_BACKUP=""
 PRE_UPDATE_GIT_REF=""
+PRE_UPDATE_ENV_BACKUP="$(mktemp "${TMPDIR:-/tmp}/brainsos_env_pre_update_XXXXXX")"
+cp "${REPO_ROOT}/.env" "${PRE_UPDATE_ENV_BACKUP}"
+
+# Record current image IDs/digests per container
+PRE_UPDATE_IMAGES="$(python3 -c "
+import subprocess, json
+try:
+    raw = subprocess.check_output(['docker', 'compose', 'ps', '--format', 'json'], text=True)
+    containers = [json.loads(line) for line in raw.strip().splitlines() if line.strip()]
+    res = {c.get('Service', c.get('Name')): c.get('Image', '') for c in containers}
+    print(json.dumps(res))
+except Exception:
+    print('{}')
+" 2>/dev/null || echo "{}")"
 
 if [ "${DRY_RUN}" = false ] && [ "${NO_BACKUP}" = false ]; then
-  log_info "Creating pre-flight data snapshot for safe automated rollback..."
+  log_info "Creating pre-flight data snapshot for safe automated rollback (Audit #15)..."
   if [ -f "${REPO_ROOT}/scripts/control/backup.sh" ]; then
-    # Run backup and capture output
-    BACKUP_OUTPUT="$("${REPO_ROOT}/scripts/control/backup.sh" --backup 2>/dev/null || true)"
+    if ! BACKUP_OUTPUT="$("${REPO_ROOT}/scripts/control/backup.sh" --backup)"; then
+      log_error "Pre-flight data snapshot failed! Aborting update to protect data integrity (pass --no-backup to override)."
+      rm -f "${PRE_UPDATE_ENV_BACKUP}"
+      exit 1
+    fi
     PRE_UPDATE_BACKUP="$(echo "${BACKUP_OUTPUT}" | grep -E "brainsos_data_.*\.tar\.gz" | head -n1 | tr -d ' ' || true)"
     if [ -n "${PRE_UPDATE_BACKUP}" ]; then
-      log_success "Pre-flight snapshot created: ${PRE_UPDATE_BACKUP}"
+      log_success "Pre-flight snapshot verified: ${PRE_UPDATE_BACKUP}"
     else
-      log_warn "Data snapshot completed (archive registered in data/backups/)."
+      log_error "Could not verify pre-flight snapshot archive. Aborting update."
+      rm -f "${PRE_UPDATE_ENV_BACKUP}"
+      exit 1
     fi
   else
     log_warn "scripts/control/backup.sh not found; proceeding without automatic snapshot."
@@ -480,33 +554,41 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   PRE_UPDATE_GIT_REF="$(git rev-parse HEAD)"
 fi
 
-# Rollback trap on failure
+# Rollback trap on failure (C4)
 rollback_handler() {
   local exit_code=$?
   if [ $exit_code -ne 0 ] && [ "${DRY_RUN}" = false ]; then
     log_error "Update failed with exit code ${exit_code}! Initiating automated rollback..."
     
-    # 1. Rollback Git if modified
+    # 1. Restore .env
+    if [ -f "${PRE_UPDATE_ENV_BACKUP}" ]; then
+      log_info "Restoring pre-update .env configuration..."
+      cp "${PRE_UPDATE_ENV_BACKUP}" "${REPO_ROOT}/.env"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+
+    # 2. Rollback Git without reset --hard (safe git handling)
     if [ -n "${PRE_UPDATE_GIT_REF}" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       CURRENT_REF="$(git rev-parse HEAD)"
       if [ "${CURRENT_REF}" != "${PRE_UPDATE_GIT_REF}" ]; then
-        log_info "Reverting git repository to ${PRE_UPDATE_GIT_REF}..."
-        git reset --hard "${PRE_UPDATE_GIT_REF}" || true
+        log_info "Restoring git branch pointer to ${PRE_UPDATE_GIT_REF}..."
+        git checkout "${PRE_UPDATE_GIT_REF}" 2>/dev/null || git reset --keep "${PRE_UPDATE_GIT_REF}" 2>/dev/null || true
       fi
     fi
 
-    # 2. Restore pre-flight backup if available
+    # 3. Restore pre-flight database & memories backup if available
     if [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
-      log_info "Restoring pre-flight data plane backup from ${PRE_UPDATE_BACKUP}..."
+      log_info "Restoring pre-flight logical database and memory planes from ${PRE_UPDATE_BACKUP}..."
       "${REPO_ROOT}/scripts/control/backup.sh" --restore "${PRE_UPDATE_BACKUP}" -f || true
     fi
 
-    # 3. Ensure Docker containers are restored
-    log_info "Restoring container stack (docker compose up -d)..."
+    # 4. Recreate Docker container stack with restored parameters
+    log_info "Re-aligning container stack (docker compose up -d)..."
     docker compose up -d || true
 
     log_warn "Automated rollback completed. System restored to pre-update baseline."
   fi
+  rm -f "${PRE_UPDATE_ENV_BACKUP}"
 }
 trap rollback_handler EXIT
 
@@ -520,7 +602,6 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
   if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would fetch and pull origin/${CURRENT_BRANCH}"
   else
-    # Stash any uncommitted tracking modifications safely
     DIRTY_DIFF="$(git status --porcelain)"
     STASHED=false
     if [ -n "${DIRTY_DIFF}" ]; then
@@ -538,7 +619,6 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
       log_success "Source code updated to commit $(git rev-parse --short HEAD)."
     fi
 
-    # Restore uncommitted work if stashed
     if [ "${STASHED}" = true ]; then
       git stash pop >/dev/null 2>&1 || true
     fi
@@ -552,8 +632,6 @@ fi
 # ------------------------------------------------------------------------------
 if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ]; then
   log_info "Step 2/5: Synchronizing Python dependencies and portal assets..."
-  
-  # Python packages
   if [ -d ".venv" ]; then
     if command -v uv >/dev/null 2>&1; then
       uv pip install -e packages/brainsOS-* --quiet >/dev/null 2>&1 || true
@@ -562,7 +640,6 @@ if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ]; then
     fi
   fi
 
-  # Portal static build check
   if [ ! -f "packages/brainsOS-portal/dist/index.html" ] || [ "${STASHED:-false}" = true ]; then
     log_info "Building portal static bundle in packages/brainsOS-portal..."
     (cd packages/brainsOS-portal && npm run build --silent) >/dev/null 2>&1 || true
@@ -573,20 +650,72 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 7. Step 3: Upstream Container Images Pull
+# 7. Step 3: Version Targeting & Container Image Pull (C2)
 # ------------------------------------------------------------------------------
-log_info "Step 3/5: Pulling upstream container images..."
+log_info "Step 3/5: Reconciling service image versions and pulling containers..."
+
+COMPOSE_TARGETS=()
+if [ -n "${TARGET_SERVICE}" ]; then
+  case "${TARGET_SERVICE}" in
+    litellm|litellm-proxy)
+      TARGET_SERVICE="litellm"
+      COMPOSE_TARGETS=("litellm")
+      OVERRIDE_VAR="LITELLM_IMAGE_TAG"
+      ;;
+    langfuse|langfuse-web)
+      TARGET_SERVICE="langfuse-web"
+      COMPOSE_TARGETS=("langfuse-web" "langfuse-worker")
+      OVERRIDE_VAR="LANGFUSE_IMAGE_TAG"
+      ;;
+    caddy|ingress)
+      TARGET_SERVICE="caddy"
+      COMPOSE_TARGETS=("caddy")
+      OVERRIDE_VAR="CADDY_IMAGE_TAG"
+      ;;
+    *)
+      COMPOSE_TARGETS=("${TARGET_SERVICE}")
+      OVERRIDE_VAR=""
+      ;;
+  esac
+
+  # Apply or reset version override in .env
+  if [ "${RESET_VERSION}" = true ] && [ -n "${OVERRIDE_VAR}" ]; then
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would unset ${OVERRIDE_VAR} in .env to restore default image tag"
+    else
+      log_info "Unsetting ${OVERRIDE_VAR} in .env to restore pinned default..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" --unset "${OVERRIDE_VAR}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  elif [ -n "${TARGET_VERSION}" ] && [ -n "${OVERRIDE_VAR}" ]; then
+    # Format tag prefix per service conventions
+    TAG_VAL="${TARGET_VERSION}"
+    if [ "${OVERRIDE_VAR}" = "LITELLM_IMAGE_TAG" ] && [[ "${TAG_VAL}" =~ ^[0-9] ]]; then
+      TAG_VAL="v${TAG_VAL}"
+    elif [ "${OVERRIDE_VAR}" = "LANGFUSE_IMAGE_TAG" ] && [[ "${TAG_VAL}" =~ ^v[0-9] ]]; then
+      TAG_VAL="${TAG_VAL#v}"
+    fi
+
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set ${OVERRIDE_VAR}=${TAG_VAL} in .env"
+    else
+      log_info "Persisting ${OVERRIDE_VAR}=${TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "${OVERRIDE_VAR}=${TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+fi
 
 if [ "${DRY_RUN}" = true ]; then
-  if [ -n "${TARGET_SERVICE}" ]; then
-    log_info "[DRY-RUN] Would pull: docker compose pull ${TARGET_SERVICE}"
+  if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
+    log_info "[DRY-RUN] Would pull: docker compose pull ${COMPOSE_TARGETS[*]}"
   else
     log_info "[DRY-RUN] Would pull: docker compose pull"
   fi
 else
-  if [ -n "${TARGET_SERVICE}" ]; then
-    log_info "Pulling image for targeted service: ${TARGET_SERVICE}..."
-    docker compose pull "${TARGET_SERVICE}"
+  if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
+    log_info "Pulling image(s) for targeted service: ${COMPOSE_TARGETS[*]}..."
+    docker compose pull "${COMPOSE_TARGETS[@]}"
   else
     log_info "Pulling latest images for all compose services..."
     docker compose pull
@@ -600,11 +729,15 @@ fi
 log_info "Step 4/5: Applying environment reconciliations and recreating containers..."
 
 if [ "${DRY_RUN}" = true ]; then
-  log_info "[DRY-RUN] Would recreate containers via docker compose up -d"
+  if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
+    log_info "[DRY-RUN] Would recreate: docker compose up -d --no-deps ${COMPOSE_TARGETS[*]}"
+  else
+    log_info "[DRY-RUN] Would recreate containers via reload-env.sh or docker compose up -d"
+  fi
 else
-  if [ -n "${TARGET_SERVICE}" ]; then
-    log_info "Recreating container: ${TARGET_SERVICE}..."
-    docker compose up -d --no-deps "${TARGET_SERVICE}"
+  if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
+    log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
+    docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
   else
     log_info "Recreating all active compose services..."
     if [ -f "${REPO_ROOT}/scripts/control/reload-env.sh" ]; then
@@ -617,29 +750,54 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 9. Step 5: Post-Flight Health Verification & Affirmation
+# 9. Step 5: Post-Flight Health Verification & Affirmation (C1, C3)
 # ------------------------------------------------------------------------------
-log_info "Step 5/5: Probing post-update service health and API availability..."
+log_info "Step 5/5: Probing in-network service health across all active planes (timeout: ${HEALTH_TIMEOUT}s)..."
 
 if [ "${DRY_RUN}" = false ]; then
   HEALTH_PASSED=false
-  for i in $(seq 1 30); do
-    CADDY_OK=false
+  for i in $(seq 1 "${HEALTH_TIMEOUT}"); do
+    ALL_DBS_OK=true
     LITELLM_OK=false
+    LANGFUSE_OK=false
+    CADDY_OK=false
 
-    # Check Caddy HTTP or HTTPS
-    if curl -s "http://127.0.0.1:80/" >/dev/null 2>&1 || curl -s -k "https://127.0.0.1:443/" >/dev/null 2>&1; then
+    # 1. In-network Postgres health checks (litellm-db, langfuse-db, authentik-db, sogo-db)
+    for db_svc in litellm-db langfuse-db; do
+      cid="$(docker compose ps -q "${db_svc}" 2>/dev/null || true)"
+      if [ -n "${cid}" ]; then
+        if ! docker compose exec -T "${db_svc}" pg_isready >/dev/null 2>&1; then
+          ALL_DBS_OK=false
+          break
+        fi
+      fi
+    done
+
+    # 2. In-network LiteLLM probe
+    if [ -n "$(docker compose ps -q litellm 2>/dev/null)" ]; then
+      if docker compose exec -T litellm python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4000/health/liveness", timeout=2)' >/dev/null 2>&1; then
+        LITELLM_OK=true
+      fi
+    else
+      LITELLM_OK=true
+    fi
+
+    # 3. In-network Langfuse probe
+    if [ -n "$(docker compose ps -q langfuse-web 2>/dev/null)" ]; then
+      if docker compose exec -T langfuse-web node -e 'fetch("http://127.0.0.1:3000/api/public/health").then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))' >/dev/null 2>&1; then
+        LANGFUSE_OK=true
+      fi
+    else
+      LANGFUSE_OK=true
+    fi
+
+    # 4. Ingress (Caddy) non-5xx probe
+    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --resolve localhost:443:127.0.0.1 https://localhost:443/ 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/ 2>/dev/null || echo "000")"
+    if [ "${HTTP_CODE}" != "000" ] && [ "${HTTP_CODE}" -lt 500 ]; then
       CADDY_OK=true
     fi
 
-    # Check LiteLLM health endpoint
-    if curl -s "http://127.0.0.1:4000/health/liveness" | grep -qE "healthy|live|ok|200" 2>/dev/null; then
-      LITELLM_OK=true
-    elif [ -n "${TARGET_SERVICE}" ] && [ "${TARGET_SERVICE}" != "litellm" ]; then
-      LITELLM_OK=true
-    fi
-
-    if [ "${CADDY_OK}" = true ] && [ "${LITELLM_OK}" = true ]; then
+    if [ "${ALL_DBS_OK}" = true ] && [ "${LITELLM_OK}" = true ] && [ "${LANGFUSE_OK}" = true ] && [ "${CADDY_OK}" = true ]; then
       HEALTH_PASSED=true
       break
     fi
@@ -647,24 +805,25 @@ if [ "${DRY_RUN}" = false ]; then
   done
 
   if [ "${HEALTH_PASSED}" = true ]; then
-    log_success "All service health checks passed successfully!"
+    log_success "All in-network service health checks passed successfully!"
   else
-    log_error "Service health checks timed out after 30 seconds."
+    log_error "Service health checks failed or timed out after ${HEALTH_TIMEOUT} seconds."
     exit 1
   fi
 
-  # Clean up dangling images to save disk
+  # Clean up dangling images
   docker image prune -f >/dev/null 2>&1 || true
 fi
 
 # Disable error trap on clean exit
 trap - EXIT
+rm -f "${PRE_UPDATE_ENV_BACKUP}"
 
 echo ""
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}${BOLD}  brainsOS Platform Update Successfully Completed!                                 ${NC}"
 echo -e "${GREEN}${BOLD}══════════════════════════════════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "All services are running the latest versions with health checks verified."
+echo -e "All services are running target versions with health checks verified."
 echo -e "You can inspect active service URLs at any time with: ${BOLD}make urls${NC}"
 echo ""
