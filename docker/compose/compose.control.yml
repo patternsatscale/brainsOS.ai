@@ -43,7 +43,7 @@ services:
   # Rule 2: Routes completions to host Ollama (http://host.docker.internal:11434)
   # Rule 6: Strictly isolated database access over brainsos-control-net
   litellm:
-    image: ghcr.io/berriai/litellm-database:v1.105.0
+    image: ghcr.io/berriai/litellm-database:${LITELLM_IMAGE_TAG:-v1.105.0}
     container_name: brainsos-control-litellm
     restart: unless-stopped
     security_opt:

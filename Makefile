@@ -9,7 +9,7 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync
+.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync update update-check
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
@@ -17,6 +17,8 @@ help:
 	@echo "brainsOS Developer Lifecycle Commands:"
 	@echo "  make install        - Turnkey interactive appliance installer (env, setup, portal & credentials)"
 	@echo "  make setup          - Turnkey bootstrap (.env, data dirs, venv, packages, portal & images)"
+	@echo "  make update         - Universal platform update (git sync, container pull, migrations & rollback)"
+	@echo "  make update-check   - Check current versions vs latest upstream releases"
 	@echo "  make models-pull    - Seed and pull required LLM weights into local Ollama"
 	@echo "  make models-check   - Check presence of required LLM weights in local Ollama"
 	@echo "  make build          - Build base runner and all platform container images"
@@ -127,6 +129,12 @@ refresh_env: reload-env
 
 urls:
 	@scripts/control/show-urls.sh $(ARGS)
+
+update:
+	@scripts/control/update.sh $(ARGS)
+
+update-check:
+	@scripts/control/update.sh --check $(ARGS)
 
 up: runner-base
 	@if [ ! -f .env ]; then \
