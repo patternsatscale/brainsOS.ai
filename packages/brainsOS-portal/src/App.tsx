@@ -13,6 +13,7 @@ const getInitialKey = (): string => {
   const path = window.location.pathname.replace(/\/$/, '');
   const hash = window.location.hash.replace(/^#/, '');
   if (hash && SUBSYSTEMS[hash]) return hash;
+  if (path === '/system') return 'system';
   if (path === '/docs') return 'help';
   if (path === '/editor') return 'console';
   if (path === '/mail' || path === '/SOGo') return 'comms';

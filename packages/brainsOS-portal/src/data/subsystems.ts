@@ -272,12 +272,56 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
       </div>
     `
   },
+  system: {
+    id: "system",
+    title: "System",
+    desc: "Appliance Updates & Management",
+    route: "/system",
+    hotkey: "⌘6",
+    color: "#00f2fe",
+    icon: "Cpu",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
+          <div>
+            <h1 style="font-size:20px; font-weight:700; margin:0; color:#00f2fe;">System Manager &amp; Update Center</h1>
+            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Universal Appliance Lifecycle • Upstream Container &amp; Git Engine</p>
+          </div>
+          <div style="background:rgba(0,242,254,0.15); border:1px solid #00f2fe; color:#00f2fe; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
+            Auto-Rollback Active • ARM64
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:24px;">
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Host Appliance</div>
+            <div style="font-size:20px; font-weight:700; color:#fff; margin-top:6px;">ASUS Ascent GX10</div>
+            <div style="font-size:11px; color:#10b981; margin-top:4px;">● GB10 Unified Bus 273 GB/s</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">LiteLLM Gateway</div>
+            <div style="font-size:20px; font-weight:700; color:#f59e0b; margin-top:6px;">Update Available</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">v1.105.0 &rarr; 1.106.5</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Langfuse Tracing</div>
+            <div style="font-size:20px; font-weight:700; color:#3b82f6; margin-top:6px;">Update Available</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">4.58.0 &rarr; 4.71.0</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Core Ingress</div>
+            <div style="font-size:20px; font-weight:700; color:#10b981; margin-top:6px;">Caddy 2.8.4</div>
+            <div style="font-size:11px; color:#10b981; margin-top:4px;">● Up to Date (TLS Ready)</div>
+          </div>
+        </div>
+      </div>
+    `
+  },
   users: {
     id: "users",
     title: "Identity",
     desc: "Authentik IdP & Event Logs",
     route: "/auth/if/admin/#/events/log",
-    hotkey: "⌘6",
+    hotkey: "⌘7",
     color: "#a855f7",
     icon: "Users",
     previewHtml: `

@@ -7,11 +7,13 @@ import {
   Shield,
   Network,
   Activity,
+  Cpu,
   Users,
   HelpCircle
 } from 'lucide-react';
 import { Subsystem, SUBSYSTEMS } from '../data/subsystems';
 import { HelpView } from './HelpView';
+import { SystemManager } from './SystemManager';
 
 interface ViewportFrameProps {
   subsystem: Subsystem;
@@ -46,6 +48,8 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
         return <Network {...props} />;
       case 'trace':
         return <Activity {...props} />;
+      case 'system':
+        return <Cpu {...props} />;
       case 'users':
         return <Users {...props} />;
       case 'help':
@@ -97,6 +101,9 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
     if (subsystem.id === 'help') {
       return `${host} • Knowledge Base`;
     }
+    if (subsystem.id === 'system') {
+      return `${host} • System Manager & Update Center`;
+    }
     if (currentCustomUrl) {
       if (currentCustomUrl.includes('default-user-settings-flow')) {
         return `${host}/if/flow/default-user-settings-flow/`;
@@ -118,7 +125,7 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    if (subsystem.id === 'help') {
+    if (subsystem.id === 'help' || subsystem.id === 'system') {
       setTimeout(() => setIsRefreshing(false), 300);
       return;
     }
@@ -199,6 +206,22 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
                 }`}
               >
                 <HelpView />
+              </div>
+            );
+          }
+
+          // System Manager Viewport: Render native React System Manager (zero iframe recursion)
+          if (key === 'system') {
+            return (
+              <div
+                key="system"
+                className={`absolute inset-0 w-full h-full transition-opacity duration-150 ${
+                  isActive
+                    ? 'visible opacity-100 pointer-events-auto z-10'
+                    : 'invisible opacity-0 pointer-events-none -z-10'
+                }`}
+              >
+                <SystemManager />
               </div>
             );
           }

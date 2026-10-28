@@ -6,6 +6,7 @@ import {
   Shield,
   Network,
   Activity,
+  Cpu,
   Users,
   HelpCircle,
   Maximize2
@@ -44,6 +45,8 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
         return <Network className="w-5 h-5" />;
       case 'trace':
         return <Activity className="w-5 h-5" />;
+      case 'system':
+        return <Cpu className="w-5 h-5" />;
       case 'users':
         return <Users className="w-5 h-5" />;
       case 'help':
