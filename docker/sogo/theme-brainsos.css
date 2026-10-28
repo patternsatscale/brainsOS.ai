@@ -189,7 +189,8 @@ div[ui-view="list"] {
 /* Message List Items */
 .sg-tile-list md-list-item,
 .sg-message-list md-list-item,
-md-list-item.sg-tile-list-item {
+md-list-item.sg-tile-list-item,
+md-list-item.sg-message-list-item {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
   background-color: #141A26 !important;
   color: #CBD5E1 !important;
@@ -197,58 +198,135 @@ md-list-item.sg-tile-list-item {
 }
 
 .sg-tile-list md-list-item:hover,
-.sg-message-list md-list-item:hover {
-  background-color: rgba(255, 255, 255, 0.03) !important;
+.sg-message-list md-list-item:hover,
+md-list-item.sg-message-list-item:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
 }
 
 /* Active Selected Message in List */
 .sg-tile-list md-list-item.selected,
 .sg-tile-list md-list-item.md-selected,
-.sg-message-list md-list-item.selected {
-  background-color: rgba(0, 242, 254, 0.12) !important;
+.sg-message-list md-list-item.selected,
+md-list-item.sg-message-list-item.selected,
+md-list-item.sg-message-list-item.md-accent.md-bg {
+  background-color: rgba(0, 242, 254, 0.14) !important;
+  border-left: 3px solid #00F2FE !important;
+}
+
+/* Threaded Messages View ("Sort messages by threads")
+ * Replaces unreadable default mint-green (#E1F5F3) background with sleek obsidian slate */
+.sg-message-thread,
+.sg-message-thread-first,
+md-list-item.sg-message-thread,
+md-list-item.sg-message-thread-first,
+md-list-item.sg-message-list-item.sg-message-thread,
+md-list-item.sg-message-list-item.sg-message-thread-first {
+  background-color: #0E1422 !important;
+  border-left: 2px solid rgba(0, 242, 254, 0.35) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+.sg-message-thread-first,
+md-list-item.sg-message-thread-first,
+md-list-item.sg-message-list-item.sg-message-thread-first {
+  background-color: #141C2E !important;
+  border-left: 3px solid #00F2FE !important;
+}
+
+.sg-message-thread:hover,
+.sg-message-thread-first:hover,
+md-list-item.sg-message-list-item.sg-message-thread:hover,
+md-list-item.sg-message-list-item.sg-message-thread-first:hover {
+  background-color: #1B2438 !important;
+}
+
+.sg-message-thread.selected,
+.sg-message-thread.md-selected,
+.sg-message-thread-first.selected,
+.sg-message-thread-first.md-selected,
+md-list-item.sg-message-list-item.sg-message-thread.selected,
+md-list-item.sg-message-list-item.sg-message-thread-first.selected,
+md-list-item.sg-message-list-item.sg-message-thread.md-accent.md-bg,
+md-list-item.sg-message-list-item.sg-message-thread-first.md-accent.md-bg {
+  background-color: rgba(0, 242, 254, 0.18) !important;
   border-left: 3px solid #00F2FE !important;
 }
 
 /* Message List Typography */
 .sg-tile-list .sg-subject,
-.sg-message-list .sg-subject {
+.sg-message-list .sg-subject,
+.sg-message-list-item .sg-subject,
+.sg-message-thread .sg-subject,
+.sg-message-thread-first .sg-subject {
   color: #FFFFFF !important;
   font-weight: 600 !important;
 }
 
 .sg-tile-list .sg-from,
-.sg-message-list .sg-from {
+.sg-message-list .sg-from,
+.sg-message-list-item .sg-from,
+.sg-message-thread .sg-from,
+.sg-message-thread-first .sg-from {
   color: #E2E8F0 !important;
   font-weight: 500 !important;
 }
 
 .sg-tile-list .sg-snippet,
-.sg-message-list .sg-snippet {
+.sg-message-list .sg-snippet,
+.sg-message-list-item .sg-snippet,
+.sg-message-thread .sg-snippet,
+.sg-message-thread-first .sg-snippet {
   color: #94A3B8 !important;
   font-size: 12px !important;
 }
 
 .sg-tile-list .sg-date,
-.sg-message-list .sg-date {
+.sg-message-list .sg-date,
+.sg-message-list-item .sg-date,
+.sg-message-list-item time.msg-date,
+.sg-message-thread time.msg-date,
+.sg-message-thread-first time.msg-date {
   color: #00F2FE !important;
   font-size: 11px !important;
   font-family: monospace !important;
 }
 
-/* 5. Reading Pane / Message Viewer (Right Column - Entire Area Clean White) */
+.sg-message-thread md-icon,
+.sg-message-thread-first md-icon {
+  color: #CBD5E1 !important;
+  fill: #CBD5E1 !important;
+}
+
+/* 5. Reading Pane / Message Viewer Detail View
+ * Empty State: Deep Obsidian void (#07090E) preventing harsh white screen flash */
+#detailView,
+.view-detail,
+div[ui-view="message"],
+#detailView md-content,
+div[ui-view="message"] md-content,
+.sg-detail-view .sg-no-selection,
+.sg-detail-view .sg-empty-state {
+  background-color: #07090E !important;
+  color: #94A3B8 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#detailView .sg-md-title,
+.view-detail .sg-md-title {
+  color: #64748B !important;
+}
+
+/* Active Message Content Card (Clean white reading surface for HTML emails) */
 .sg-detail-view,
 .sg-message-viewer,
-div[ui-view="detail"],
 .sg-mail-content,
 .sg-reversible,
-.sg-face,
 .sg-face md-card,
 .sg-message-viewer md-card,
-.sg-detail-view md-card,
-div[ui-view="detail"] md-card,
 .sg-message-viewer md-card-content,
 .sg-face md-card-content,
-md-card-content,
 .sg-message-body,
 .sg-mail-body,
 .sg-content-body {
@@ -417,20 +495,45 @@ md-icon.sg-icon-toolbar-bg {
   fill: rgba(255, 255, 255, 0.2) !important;
 }
 
-/* Dialog Form Labels & Placeholders */
+/* Dialog & Preferences Form Labels, Captions & Placeholders */
 md-dialog md-input-container label,
 md-dialog md-input-container .md-placeholder,
+md-input-container label,
+.md-input-container label,
+md-input-container .md-placeholder,
 .sg-form-section md-input-container label,
 .sg-form-section label,
 .pseudo-input-label,
-label.pseudo-input-label {
+label.pseudo-input-label,
+.pseudo-input-container label,
+form[name="preferencesForm"] label,
+form[name="preferencesForm"] md-input-container label,
+form[name="preferencesForm"] .sg-subtext,
+form[name="preferencesForm"] small,
+form[name="preferencesForm"] .md-caption,
+[ui-view="preferences"] label,
+[ui-view="module"] label {
   color: #94A3B8 !important;
   font-size: 13px !important;
 }
 
 md-dialog md-input-container.md-input-focused label,
-.sg-form-section md-input-container.md-input-focused label {
+.sg-form-section md-input-container.md-input-focused label,
+md-input-container.md-input-focused label,
+md-input-container.md-input-has-value label,
+md-input-container.md-input-has-placeholder label,
+form[name="preferencesForm"] md-input-container.md-input-focused label,
+form[name="preferencesForm"] md-input-container.md-input-has-value label {
   color: #00F2FE !important;
+}
+
+/* Disabled Form Labels in Preferences & Dialogs */
+md-input-container[disabled] label,
+md-input-container.md-input-focused[disabled] label,
+[disabled] label,
+form[name="preferencesForm"] [disabled] label,
+form[name="preferencesForm"] md-input-container[disabled] label {
+  color: #64748B !important;
 }
 
 /* Dialog Form Inputs, Textareas, Datepickers & Timepickers */
@@ -519,13 +622,31 @@ sg-timepicker md-icon {
 
 /* Select Dropdown Trigger & Value */
 md-dialog md-select .md-select-value,
-.sg-form-section md-select .md-select-value {
+.sg-form-section md-select .md-select-value,
+md-select .md-select-value,
+.md-select-value,
+.md-select-value span,
+.md-select-value .md-text,
+form[name="preferencesForm"] .md-select-value,
+form[name="preferencesForm"] .md-select-value span,
+form[name="preferencesForm"] .md-select-value .md-text {
   color: #FFFFFF !important;
   border-bottom-color: rgba(255, 255, 255, 0.2) !important;
 }
 
+md-select[disabled] .md-select-value,
+md-select[disabled] .md-select-value *,
+form[name="preferencesForm"] md-select[disabled] .md-select-value,
+form[name="preferencesForm"] md-select[disabled] .md-select-value span {
+  color: #64748B !important;
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
 md-dialog md-select .md-select-icon,
-.sg-form-section md-select .md-select-icon {
+.sg-form-section md-select .md-select-icon,
+md-select .md-select-icon,
+.md-select-icon,
+.md-select-icon:after {
   color: #94A3B8 !important;
 }
 
@@ -606,23 +727,45 @@ md-checkbox.md-checked .md-icon:after {
 
 md-dialog md-checkbox .md-label,
 .sg-form-section md-checkbox .md-label,
-md-checkbox .md-label {
+md-checkbox .md-label,
+form[name="preferencesForm"] md-checkbox .md-label {
   color: #E2E8F0 !important;
 }
 
+md-checkbox[disabled] .md-label,
+form[name="preferencesForm"] md-checkbox[disabled] .md-label {
+  color: #64748B !important;
+}
+
 md-dialog md-radio-button .md-off,
-.sg-form-section md-radio-button .md-off {
+.sg-form-section md-radio-button .md-off,
+md-radio-button .md-off {
   border-color: #94A3B8 !important;
 }
 
 md-dialog md-radio-button.md-checked .md-off,
-.sg-form-section md-radio-button.md-checked .md-off {
+.sg-form-section md-radio-button.md-checked .md-off,
+md-radio-button.md-checked .md-off {
   border-color: #00F2FE !important;
 }
 
 md-dialog md-radio-button .md-on,
-.sg-form-section md-radio-button .md-on {
+.sg-form-section md-radio-button .md-on,
+md-radio-button .md-on {
   background-color: #00F2FE !important;
+}
+
+md-dialog md-radio-button .md-label,
+.sg-form-section md-radio-button .md-label,
+md-radio-button .md-label,
+form[name="preferencesForm"] md-radio-button .md-label,
+form[name="preferencesForm"] md-radio-button .md-label span {
+  color: #E2E8F0 !important;
+}
+
+md-radio-button[disabled] .md-label,
+form[name="preferencesForm"] md-radio-button[disabled] .md-label {
+  color: #64748B !important;
 }
 
 /* Action Trigger Buttons ("+ Attach", "+ Add From", "+ Add Due", Remove Circle) */
@@ -912,3 +1055,103 @@ md-option.md-focused {
 md-divider {
   border-top-color: rgba(255, 255, 255, 0.08) !important;
 }
+
+/* ==============================================================================
+ * 7. SOGo Preferences & Settings Panel (/SOGo/so/admin/Preferences)
+ * Resolves black text on black background across all settings tabs
+ * ============================================================================== */
+[ui-view="preferences"],
+[ui-view="module"],
+form[name="preferencesForm"],
+.sg-preference-view,
+md-sidenav#left-sidenav,
+md-sidenav#left-sidenav md-content {
+  background-color: #07090E !important;
+  color: #E2E8F0 !important;
+}
+
+/* Preference Cards & Sections */
+form[name="preferencesForm"] md-content {
+  background-color: #07090E !important;
+}
+
+form[name="preferencesForm"] section {
+  background-color: #07090E !important;
+}
+
+form[name="preferencesForm"] md-card {
+  background-color: #141A26 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  color: #E2E8F0 !important;
+}
+
+/* Preference Navigation Sidenav Items */
+md-sidenav#left-sidenav md-list-item,
+md-sidenav#left-sidenav .sg-item-name {
+  color: #CBD5E1 !important;
+}
+
+md-sidenav#left-sidenav md-list-item:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+md-sidenav#left-sidenav md-list-item.md-default-theme.md-background.md-bg.md-hue-1,
+md-sidenav#left-sidenav md-list-item.selected,
+md-sidenav#left-sidenav md-list-item.md-selected {
+  background-color: rgba(0, 242, 254, 0.14) !important;
+  border-left: 3px solid #00F2FE !important;
+}
+
+md-sidenav#left-sidenav md-list-item.selected md-icon,
+md-sidenav#left-sidenav md-list-item.md-default-theme.md-background.md-bg.md-hue-1 md-icon {
+  color: #00F2FE !important;
+  fill: #00F2FE !important;
+}
+
+/* Subheaders & Section Titles */
+form[name="preferencesForm"] md-subheader,
+form[name="preferencesForm"] md-subheader .md-subheader-inner,
+md-sidenav#left-sidenav md-subheader,
+md-sidenav#left-sidenav md-subheader .md-subheader-inner {
+  background-color: #0B0E14 !important;
+  color: #00F2FE !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* Preference Text Inputs, Number Inputs & Textareas */
+form[name="preferencesForm"] input[type="text"],
+form[name="preferencesForm"] input[type="number"],
+form[name="preferencesForm"] input[type="password"],
+form[name="preferencesForm"] textarea,
+form[name="preferencesForm"] .md-input {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+form[name="preferencesForm"] input:focus,
+form[name="preferencesForm"] textarea:focus,
+form[name="preferencesForm"] .md-input:focus {
+  border-bottom: 2px solid #00F2FE !important;
+}
+
+/* Preference Description Text, Helper Labels & Microcopy */
+form[name="preferencesForm"] p,
+form[name="preferencesForm"] span,
+form[name="preferencesForm"] div,
+form[name="preferencesForm"] .sg-subtext,
+form[name="preferencesForm"] small,
+form[name="preferencesForm"] .md-caption {
+  color: #94A3B8;
+}
+
+/* Highlight important option titles */
+form[name="preferencesForm"] .md-title,
+form[name="preferencesForm"] h3,
+form[name="preferencesForm"] h4 {
+  color: #FFFFFF !important;
+}
+

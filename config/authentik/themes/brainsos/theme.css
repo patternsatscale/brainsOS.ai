@@ -371,31 +371,48 @@ ak-sidebar {
   width: 240px !important;
 }
 
-/* Refined "User interface" item in sidebar (clean cyber pill instead of giant cyan block) */
-ak-sidebar-item[highlight] .pf-c-nav__link,
-ak-sidebar-item[highlight] a,
-.pf-c-nav__item[highlight] a {
-  background: rgba(0, 242, 254, 0.1) !important;
-  color: #00f2fe !important;
+/* Refined "User interface" item in sidebar
+ * Overrides --ak-accent and styles projected slot to resolve white-on-cyan contrast failure */
+ak-sidebar-item[highlight] {
+  --ak-accent: rgba(0, 242, 254, 0.12) !important;
+  display: block !important;
   border: 1px solid rgba(0, 242, 254, 0.35) !important;
   border-radius: 8px !important;
-  margin: 8px 12px 12px 12px !important;
-  padding: 6px 12px !important;
-  font-size: 0.78rem !important;
+  margin: 12px 14px 16px 14px !important;
+  transition: all 0.2s ease !important;
+}
+
+ak-sidebar-item[highlight]:hover {
+  --ak-accent: rgba(0, 242, 254, 0.22) !important;
+  border-color: rgba(0, 242, 254, 0.6) !important;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.25) !important;
+}
+
+ak-sidebar-item[highlight] span[slot="label"],
+ak-sidebar-item[highlight] [slot="label"],
+ak-sidebar-item[highlight] .pf-c-nav__link,
+ak-sidebar-item[highlight] a {
+  color: #00f2fe !important;
+  font-size: 0.82rem !important;
   font-weight: 600 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  transition: all 0.2s ease !important;
+  padding: 6px 12px !important;
   text-shadow: none !important;
 }
 
-ak-sidebar-item[highlight] .pf-c-nav__link:hover,
-ak-sidebar-item[highlight] a:hover {
-  background: rgba(0, 242, 254, 0.2) !important;
+ak-sidebar-item[highlight]:hover span[slot="label"],
+ak-sidebar-item[highlight]:hover [slot="label"] {
   color: #ffffff !important;
-  border-color: rgba(0, 242, 254, 0.6) !important;
-  box-shadow: 0 0 14px rgba(0, 242, 254, 0.25) !important;
+}
+
+/* Enforce high-contrast dark text on any solid primary buttons across Authentik */
+.pf-c-button.pf-m-primary,
+button.pf-m-primary,
+a.pf-c-button.pf-m-primary {
+  color: #07090E !important;
+  font-weight: 700 !important;
 }
 
 /* Nav Menu Links & Sections */
