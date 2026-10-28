@@ -1,0 +1,10 @@
+[Unit]
+Description=brainsOS Automated Log Rotation & Disk Retention
+Documentation=https://brainsos.ai
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/brainsos/scripts/control/prune-logs.sh
+StandardOutput=journal
+StandardError=journal

@@ -34,11 +34,33 @@ def get_system_status() -> Dict[str, Any]:
                 timeout=15,
             )
             if res.returncode == 0 and res.stdout.strip():
-                return json.loads(res.stdout)
+                status = json.loads(res.stdout)
+                if "disk" in status:
+                    return status
+
         except Exception as e:
             logger.warning(f"Error querying update.sh: {e}")
 
     # Fallback status representation if update.sh is unavailable
+    import shutil
+    try:
+        total, used, free = shutil.disk_usage(repo_root)
+        disk_info = {
+            "total_gb": round(total / (1024**3), 1),
+            "used_gb": round(used / (1024**3), 1),
+            "free_gb": round(free / (1024**3), 1),
+            "free_pct": round((free / total) * 100.0, 1),
+            "warning": (free / total) < 0.15,
+        }
+    except Exception:
+        disk_info = {
+            "total_gb": 0.0,
+            "used_gb": 0.0,
+            "free_gb": 0.0,
+            "free_pct": 100.0,
+            "warning": False,
+        }
+
     return {
         "platform": "brainsOS",
         "git": {
@@ -50,6 +72,7 @@ def get_system_status() -> Dict[str, Any]:
             "update_available": False,
         },
         "services": {},
+        "disk": disk_info,
         "overall_update_available": False,
     }
 
@@ -110,6 +133,62 @@ async def stream_system_update(
         yield f"data: {payload}\n\n"
 
 
+async def stream_prune_logs(
+    dry_run: bool = False,
+    check: bool = False,
+    retention_days: Optional[int] = None,
+) -> AsyncGenerator[str, None]:
+    """Execute prune-logs.sh and stream output lines as Server-Sent Events (SSE)."""
+    repo_root = get_repo_root()
+    prune_script = os.path.join(repo_root, "scripts/control/prune-logs.sh")
+
+    if not os.path.isfile(prune_script):
+        err_msg = json.dumps({"type": "error", "line": "scripts/control/prune-logs.sh not found", "status": "failed"})
+        yield f"data: {err_msg}\n\n"
+        return
+
+    cmd = [prune_script]
+    if check:
+        cmd.append("--check")
+    elif dry_run:
+        cmd.append("--dry-run")
+    if retention_days:
+        cmd.extend(["--retention-days", str(retention_days)])
+
+    yield f"data: {json.dumps({'type': 'start', 'cmd': ' '.join(cmd), 'status': 'running'})}\n\n"
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=repo_root,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+
+        assert proc.stdout is not None
+        while True:
+            line_bytes = await proc.stdout.readline()
+            if not line_bytes:
+                break
+            line = line_bytes.decode(errors="replace").rstrip("\r\n")
+            if line:
+                payload = json.dumps({"type": "log", "line": line, "status": "running"})
+                yield f"data: {payload}\n\n"
+
+        await proc.wait()
+        exit_code = proc.returncode or 0
+
+        status = "success" if exit_code == 0 else "failed"
+        payload = json.dumps({"type": "complete", "exit_code": exit_code, "status": status})
+        yield f"data: {payload}\n\n"
+
+    except Exception as e:
+        logger.error(f"Error streaming prune-logs: {e}")
+        payload = json.dumps({"type": "error", "line": str(e), "status": "failed"})
+        yield f"data: {payload}\n\n"
+
+
 def create_system_api_app():
     """Create a FastAPI application exposing system telemetry & update management endpoints."""
     from fastapi import FastAPI
@@ -136,6 +215,11 @@ def create_system_api_app():
         containers_only: bool = Field(False, description="Update upstream containers only without pulling git source")
         full: bool = Field(True, description="Full update including git source code and containers")
 
+    class PruneRequest(BaseModel):
+        dry_run: bool = Field(False, description="Simulate actions without deleting")
+        check: bool = Field(False, description="Audit disk and log usage only")
+        retention_days: Optional[int] = Field(None, description="Retention days")
+
     @app.get("/health")
     @app.get("/api/v1/system/health")
     async def health():
@@ -161,4 +245,21 @@ def create_system_api_app():
             },
         )
 
+    @app.post("/api/v1/system/prune-logs")
+    async def trigger_prune(req: PruneRequest):
+        return StreamingResponse(
+            stream_prune_logs(
+                dry_run=req.dry_run,
+                check=req.check,
+                retention_days=req.retention_days,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     return app
+

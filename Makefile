@@ -136,6 +136,9 @@ update:
 update-check:
 	@scripts/control/update.sh --check $(ARGS)
 
+prune-logs:
+	@scripts/control/prune-logs.sh $(ARGS)
+
 up: runner-base
 	@if [ ! -f .env ]; then \
 		echo "[ERROR] No .env file found in repository root."; \
