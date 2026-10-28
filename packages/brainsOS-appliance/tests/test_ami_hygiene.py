@@ -55,6 +55,7 @@ def firstboot_tree(tmp_path: Path) -> Path:
     (root / "scripts" / "control").mkdir(parents=True)
     (root / "packages" / "brainsOS-appliance" / "scripts").mkdir(parents=True)
     shutil.copy2(REPO_ROOT / "scripts" / "control" / "generate-env.sh", root / "scripts" / "control")
+    shutil.copy2(REPO_ROOT / "scripts" / "control" / "env-upsert.sh", root / "scripts" / "control")
     shutil.copy2(FIRSTBOOT, root / "packages" / "brainsOS-appliance" / "scripts")
     shutil.copy2(REPO_ROOT / ".env.example", root)
     _git(root, "init", "--quiet")

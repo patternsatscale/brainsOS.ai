@@ -53,6 +53,12 @@ services:
       - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
       - ACME_DNS_PROVIDER=${ACME_DNS_PROVIDER:-route53}
       - ACME_EMAIL=${ACME_EMAIL:-}
+      # Runtime config selection (#323): Caddyfile (dev hosts) | Caddyfile.appliance (AMI)
+      - CADDYFILE=${CADDYFILE:-Caddyfile}
+      # Appliance TLS mode: internal (self-signed, default) | acme | route53 (BYOD)
+      - BRAINSOS_TLS_MODE=${BRAINSOS_TLS_MODE:-internal}
+      # Space-separated bare-IP site addresses served with the internal CA
+      - BRAINSOS_IP_SITES=${BRAINSOS_IP_SITES:-127.0.0.1}
     command: >
       sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
         export OPERATOR_PASSWORD_HASH="$$(caddy hash-password --plaintext "$${CODE_SERVER_PASSWORD}")";
@@ -62,7 +68,8 @@ services:
         else
           export BRAINSOS_MAIL_HOST="$${BRAINSOS_MAIL_DOMAIN}";
         fi;
-      fi; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+      fi; case "$${CADDYFILE}" in Caddyfile|Caddyfile.appliance) ;; *) echo "Unsupported CADDYFILE=$${CADDYFILE}" >&2; exit 1;; esac;
+      exec caddy run --config "/etc/caddy/$${CADDYFILE}" --adapter caddyfile'
 
 volumes:
   caddy_data:

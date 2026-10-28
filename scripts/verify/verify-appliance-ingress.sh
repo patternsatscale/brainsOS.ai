@@ -131,6 +131,62 @@ else
   exit 1
 fi
 
+# ------------------------------------------------------------------------------
+# Test 6: Verify Explicit Site Addresses & Dynamic TLS Modes (Ticket #323)
+# ------------------------------------------------------------------------------
+log_info "6. Verifying Ticket #323 Ingress & TLS invariants..."
+
+# 6A. Ensure no bare :443 listener exists in Caddyfile.appliance
+if grep -qE '^:443\s*\{' config/caddy/Caddyfile.appliance; then
+  log_error "Caddyfile.appliance must not define a bare :443 site block (must use explicit {$BRAINSOS_DOMAIN})."
+  exit 1
+fi
+log_success "No bare :443 block found; explicit hostname listeners verified."
+
+# 6B. Ensure all defined (tls_*) snippets are imported or dynamically selected
+python3 -c "
+with open('config/caddy/Caddyfile.appliance') as f:
+    content = f.read()
+
+import re
+defined_snippets = re.findall(r'^\((tls_[a-zA-Z0-9_]+)\)\s*\{', content, re.MULTILINE)
+assert defined_snippets, 'No tls_* snippets found in Caddyfile.appliance'
+
+# Check that import tls_{\$BRAINSOS_TLS_MODE...} or direct imports exist
+assert 'import tls_{\$BRAINSOS_TLS_MODE' in content or all(f'import {s}' in content for s in defined_snippets), \
+    f'Defined tls snippets {defined_snippets} not imported or dynamically selected!'
+print(f'Verified TLS snippets: {defined_snippets}')
+"
+log_success "All TLS snippets in Caddyfile.appliance are dynamically imported."
+
+# 6C. Verify /system/ca.crt endpoint exists for operator trust
+if grep -q "handle /system/ca.crt" config/caddy/Caddyfile.appliance; then
+  log_success "Found /system/ca.crt root CA download route in Caddyfile.appliance."
+else
+  log_error "Missing /system/ca.crt download route in Caddyfile.appliance!"
+  exit 1
+fi
+
+# 6D. Verify Caddyfile.appliance syntax across all TLS modes
+for mode in internal acme route53; do
+  docker run --rm \
+    -e BRAINSOS_TLS_MODE="${mode}" \
+    -e ACME_EMAIL="ops@example.com" \
+    -e BRAINSOS_DOMAIN="test.brainsos.ai" \
+    -e BRAINSOS_IP_SITES="127.0.0.1" \
+    -v "${REPO_ROOT}/config/caddy:/etc/caddy:ro" \
+    --entrypoint caddy brainsos-caddy:latest validate --config /etc/caddy/Caddyfile.appliance --adapter caddyfile >/dev/null 2>&1
+done
+log_success "Caddyfile.appliance successfully validated for all TLS modes (internal, acme, route53)."
+
+# 6E. Verify compose.ingress.yml supports runtime CADDYFILE selection
+if grep -q "CADDYFILE=\${CADDYFILE:-Caddyfile}" docker/compose/compose.ingress.yml; then
+  log_success "Verified CADDYFILE runtime selection in docker/compose/compose.ingress.yml."
+else
+  log_error "Missing CADDYFILE runtime selection in docker/compose/compose.ingress.yml!"
+  exit 1
+fi
+
 log_success "=================================================================="
-log_success "All Ticket #312 Appliance Ingress Lockdown verifications PASSED!"
+log_success "All Ticket #312 / #323 Appliance Ingress verifications PASSED!"
 log_success "=================================================================="

@@ -26,6 +26,37 @@ if [ -f "${REPO_ROOT}/.env" ]; then
   set +a
 fi
 
+INSTALL_STORE=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --export|--export-only)
+      INSTALL_STORE=0
+      shift
+      ;;
+    --install)
+      INSTALL_STORE=1
+      shift
+      ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: trust-caddy-ca.sh [OPTIONS]
+
+Exports Caddy's internal root CA certificate and optionally installs it into the host trust store.
+
+Options:
+  --export, --export-only  Only export root CA to data/control_plane/caddy_root.crt without installing to system store
+  --install                Install into host system trust store (Linux ca-certificates / macOS Keychain)
+  -h, --help               Show this help message
+EOF
+      exit 0
+      ;;
+    *)
+      log_warn "Unknown option: $1"
+      shift
+      ;;
+  esac
+done
+
 TARGET_CERT_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
 TARGET_CERT_FILE="${TARGET_CERT_DIR}/caddy_root.crt"
 mkdir -p "${TARGET_CERT_DIR}"
@@ -61,11 +92,6 @@ chmod 644 "${TARGET_CERT_FILE}" 2>/dev/null || true
 log_success "Exported Caddy root CA certificate to: ${TARGET_CERT_FILE}"
 
 # Optional automatic installation into host system trust store
-INSTALL_STORE=1
-if [[ "${1:-}" == "--export-only" ]]; then
-  INSTALL_STORE=0
-fi
-
 if [ ${INSTALL_STORE} -eq 1 ]; then
   OS_TYPE="$(uname -s)"
   if [ "${OS_TYPE}" = "Linux" ]; then

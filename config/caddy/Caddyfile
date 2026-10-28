@@ -121,7 +121,7 @@ import tls_policy.caddy
 	# --------------------------------------------------------------------------
 	@langfuse_host header_regexp Host (?i)^langfuse\.
 	handle @langfuse_host {
-		reverse_proxy {$LANGFUSE_UPSTREAM:host.docker.internal:3001} {
+		reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
 			flush_interval -1
