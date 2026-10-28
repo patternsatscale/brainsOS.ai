@@ -1,0 +1,64 @@
+# ==============================================================================
+# brainsOS: LiteLLM AWS Bedrock Configuration (Appliance Edition)
+# Utilizes ambient EC2 IAM role credentials via IMDSv2 without hardcoded API keys.
+#
+# Model IDs use US cross-region inference profiles ("us." prefix), which current
+# Anthropic/Amazon models require for on-demand throughput. Non-US regions must
+# swap the prefix (eu./apac./global.) per `aws bedrock list-inference-profiles`.
+# Required IAM permissions: packages/brainsOS-appliance/iam/instance-policy.json
+# ==============================================================================
+
+model_list:
+  # Primary Agent Model Alias -> Claude Sonnet 4.5
+  - model_name: brainsos-core
+    litellm_params:
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 300
+      max_retries: 3
+
+  # Direct Model Name Aliases
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 300
+
+  - model_name: claude-haiku-4-5
+    litellm_params:
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 120
+
+  - model_name: claude-3-5-haiku
+    litellm_params:
+      model: bedrock/us.anthropic.claude-3-5-haiku-20241022-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 120
+
+  - model_name: amazon-nova-pro
+    litellm_params:
+      model: bedrock/us.amazon.nova-pro-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 300
+
+  - model_name: amazon-nova-lite
+    litellm_params:
+      model: bedrock/us.amazon.nova-lite-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 120
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  request_timeout: 300
+  success_callback:
+    - langfuse_otel
+  failure_callback:
+    - langfuse_otel
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  disable_env_credential_login: true

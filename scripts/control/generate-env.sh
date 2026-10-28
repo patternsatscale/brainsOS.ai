@@ -399,6 +399,11 @@ redundant_legacy_keys = {
     "OPERATOR_PASSWORD_HASH",
 }
 
+# Appliance installs (#322) intentionally decouple service passwords from the
+# instance-id operator password; never collapse them back into the admin password.
+if current_vars.get("BRAINSOS_APPLIANCE", "").strip().lower() == "true":
+    redundant_legacy_keys = {"OPERATOR_PASSWORD_HASH"}
+
 # Append any custom unmapped keys from existing .env
 unmapped = [
     k for k in current_vars

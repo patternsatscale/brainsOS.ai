@@ -2,7 +2,7 @@
 # ==============================================================================
 # brainsOS: Automated Verification for Log Management & Retention (Ticket #317)
 # Validates:
-#   1. appliances/configs/ configurations (docker-daemon, journald, logrotate, systemd timer)
+#   1. packages/brainsOS-appliance/configs/ configurations (docker-daemon, journald, logrotate, systemd timer)
 #   2. scripts/control/prune-logs.sh (--dry-run and --check)
 #   3. Makefile target 'make prune-logs'
 #   4. Pre-flight disk space assertion in update.sh and system.py
@@ -35,12 +35,21 @@ log_info "Running Ticket #317 Log Retention & Disk Safeguards Verification Suite
 # ------------------------------------------------------------------------------
 # Test 1: Configuration Templates Validation
 # ------------------------------------------------------------------------------
-log_info "1. Validating configuration templates in appliances/configs/..."
+APPLIANCE_CONFIGS="packages/brainsOS-appliance/configs"
+APPLIANCE_SCRIPTS="packages/brainsOS-appliance/scripts"
+for required_dir in "${APPLIANCE_CONFIGS}" "${APPLIANCE_SCRIPTS}"; do
+  if [ ! -d "${required_dir}" ]; then
+    log_error "Missing ${required_dir}"
+    exit 1
+  fi
+done
+
+log_info "1. Validating configuration templates in ${APPLIANCE_CONFIGS}/..."
 
 # 1A. docker-daemon.json
 python3 -c "
 import json
-with open('appliances/configs/docker-daemon.json') as f:
+with open('${APPLIANCE_CONFIGS}/docker-daemon.json') as f:
     d = json.load(f)
 assert d.get('log-driver') == 'json-file'
 assert d.get('log-opts', {}).get('max-size') == '50m'
@@ -49,7 +58,7 @@ assert d.get('log-opts', {}).get('max-file') == '3'
 log_success "docker-daemon.json template is valid JSON with max-size: 50m and max-file: 3."
 
 # 1B. journald-brainsos.conf
-if grep -q "SystemMaxUse=500M" appliances/configs/journald-brainsos.conf && grep -q "MaxRetentionSec=1month" appliances/configs/journald-brainsos.conf; then
+if grep -q "SystemMaxUse=500M" "${APPLIANCE_CONFIGS}/journald-brainsos.conf" && grep -q "MaxRetentionSec=1month" "${APPLIANCE_CONFIGS}/journald-brainsos.conf"; then
   log_success "journald-brainsos.conf contains SystemMaxUse and MaxRetentionSec directives."
 else
   log_error "journald-brainsos.conf missing required retention limits."
@@ -58,14 +67,14 @@ fi
 
 # 1C. logrotate-brainsos
 if command -v logrotate >/dev/null 2>&1; then
-  logrotate -d appliances/configs/logrotate-brainsos >/dev/null 2>&1 || true
+  logrotate -d "${APPLIANCE_CONFIGS}/logrotate-brainsos" >/dev/null 2>&1 || true
   log_success "logrotate-brainsos syntax verified via 'logrotate -d'."
 else
   log_warn "logrotate binary not available; skipping live parser check."
 fi
 
 # 1D. systemd service and timer
-if grep -q "ExecStart=" appliances/configs/brainsos-prune-logs.service && grep -q "OnCalendar=" appliances/configs/brainsos-prune-logs.timer; then
+if grep -q "ExecStart=" "${APPLIANCE_CONFIGS}/brainsos-prune-logs.service" && grep -q "OnCalendar=" "${APPLIANCE_CONFIGS}/brainsos-prune-logs.timer"; then
   log_success "Systemd timer and service units verified."
 else
   log_error "Systemd unit files invalid."
@@ -77,7 +86,7 @@ fi
 # ------------------------------------------------------------------------------
 log_info "2. Validating bash syntax for scripts/control/prune-logs.sh..."
 bash -n scripts/control/prune-logs.sh
-bash -n appliances/scripts/harden-host.sh
+bash -n "${APPLIANCE_SCRIPTS}/harden-host.sh"
 log_success "Shell syntax validation passed."
 
 # ------------------------------------------------------------------------------

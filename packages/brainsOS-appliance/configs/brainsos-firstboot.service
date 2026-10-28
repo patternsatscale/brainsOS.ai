@@ -1,0 +1,20 @@
+[Unit]
+Description=brainsOS First Boot Appliance Provisioner & IMDSv2 Cloud-Init
+Documentation=https://brainsos.ai
+Before=brainsos.service
+After=network-online.target docker.service
+Wants=network-online.target
+ConditionPathExists=!/opt/brainsos/.brainsos-initialized
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/opt/brainsos
+Environment=HOME=/root
+TimeoutStartSec=900
+ExecStart=/opt/brainsos/packages/brainsOS-appliance/scripts/firstboot.sh
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

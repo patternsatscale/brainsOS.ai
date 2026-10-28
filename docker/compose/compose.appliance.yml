@@ -26,6 +26,11 @@ services:
 
   litellm:
     ports: !reset []
+    environment:
+      # Consumed by config/litellm/config.bedrock.yaml (aws_region_name) and boto3.
+      # Credentials come from the instance role via IMDSv2; never from .env.
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
 
   mail-server:
     ports: !reset []

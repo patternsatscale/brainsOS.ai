@@ -9,7 +9,7 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync update update-check
+.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync update update-check prune-logs build-ami
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
@@ -19,6 +19,8 @@ help:
 	@echo "  make setup          - Turnkey bootstrap (.env, data dirs, venv, packages, portal & images)"
 	@echo "  make update         - Universal platform update (git sync, container pull, migrations & rollback)"
 	@echo "  make update-check   - Check current versions vs latest upstream releases"
+	@echo "  make prune-logs     - Prune historical docker, journald, and service logs (ARGS=--dry-run)"
+	@echo "  make build-ami      - Build private ARM64 appliance AMI from a git ref (ARGS='--ref vX.Y.Z [--dry-run]' | '--promote ami-...')"
 	@echo "  make models-pull    - Seed and pull required LLM weights into local Ollama"
 	@echo "  make models-check   - Check presence of required LLM weights in local Ollama"
 	@echo "  make build          - Build base runner and all platform container images"
@@ -138,6 +140,9 @@ update-check:
 
 prune-logs:
 	@scripts/control/prune-logs.sh $(ARGS)
+
+build-ami:
+	@scripts/control/build-ami.sh $(ARGS)
 
 up: runner-base
 	@if [ ! -f .env ]; then \
