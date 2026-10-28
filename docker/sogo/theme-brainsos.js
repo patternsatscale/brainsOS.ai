@@ -8,7 +8,7 @@
       link.id = cssId;
       link.rel = 'stylesheet';
       link.type = 'text/css';
-      link.href = '/SOGo.woa/WebServerResources/css/theme-brainsos.css?v=20261006-3';
+      link.href = '/SOGo.woa/WebServerResources/css/theme-brainsos.css?v=20261023-1';
       link.media = 'all';
       head.appendChild(link);
     }

@@ -141,6 +141,14 @@ table tr.selected, .flow-table tr.selected, table tr.has-focus, .flow-table tr.h
   border-left: 3px solid var(--accent-cyan) !important;
 }
 
+/* Flow Table Column Icons (Tones down stark white icon backgrounds) */
+.flow-table .col-icon .resource-icon,
+.resource-icon {
+  opacity: 0.85 !important;
+  border-radius: 4px !important;
+  filter: contrast(1.05) brightness(0.95) !important;
+}
+
 /* 4. HTTP Status Code Styling */
 .status-2xx, [data-status^="2"] {
   color: var(--accent-emerald) !important;
@@ -171,12 +179,75 @@ table tr.selected, .flow-table tr.selected, table tr.has-focus, .flow-table tr.h
   line-height: 1.5 !important;
 }
 
-.headers .kv-key, .trailers .kv-key {
-  color: var(--accent-cyan) !important;
+/* Request Summary Banner (Resolves white text on light blue background) */
+.flow-detail .first-line {
+  background-color: #141A26 !important;
+  color: #F8FAFC !important;
+  border: 1px solid rgba(0, 242, 254, 0.35) !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+  margin: 0 0 10px 0 !important;
+  font-family: 'JetBrains Mono', Menlo, monospace !important;
 }
 
-.headers .kv-value, .trailers .kv-value {
+.flow-detail .first-line .method,
+.flow-detail .first-line span:first-child {
+  color: var(--accent-cyan) !important;
+  font-weight: 700 !important;
+}
+
+/* Detail Navigation Bar */
+.flow-detail nav,
+.flow-detail .nav-tabs {
+  background-color: #0B0E14 !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+
+/* Header & Trailer Tables (Resolves solid white highlight boxes) */
+.headers .inline-input,
+.trailers .inline-input,
+.inline-input,
+.inline-input[contenteditable] {
+  background-color: transparent !important;
   color: #FFFFFF !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+.headers .inline-input:hover,
+.trailers .inline-input:hover,
+.inline-input:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #FFFFFF !important;
+}
+
+.headers .inline-input:focus,
+.trailers .inline-input:focus,
+.inline-input:focus,
+.inline-input[contenteditable]:focus {
+  background-color: rgba(0, 242, 254, 0.08) !important;
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.3) !important;
+  color: #FFFFFF !important;
+  outline: none !important;
+}
+
+.headers .kv-key,
+.trailers .kv-key {
+  color: var(--accent-cyan) !important;
+  font-weight: 600 !important;
+}
+
+.headers .kv-value,
+.trailers .kv-value {
+  color: #FFFFFF !important;
+}
+
+.headers .kv-row,
+.trailers .kv-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  padding: 4px 0 !important;
 }
 
 /* 6. Event Log & Footer */
