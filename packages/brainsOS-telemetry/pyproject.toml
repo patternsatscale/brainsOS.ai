@@ -12,7 +12,10 @@ authors = [
 ]
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+]
 
 [project.optional-dependencies]
 test = [
