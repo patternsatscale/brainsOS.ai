@@ -378,6 +378,11 @@ make emergency-stop # Instantly terminate all agent containers
 
 # Fleet snapshots & backups
 ./scripts/control/snapshot-memories.sh # Automated Git commit/push of private fleet repo
+
+# Appliance Ingress Lockdown & Host Perimeter Security (Ticket #312)
+docker compose -f docker-compose.yml -f docker/compose/compose.appliance.yml up -d # Single-origin port 443 lockdown
+sudo ./appliances/scripts/harden-host.sh     # Enforce UFW firewall, SSH hardening, and Docker log constraints
+./scripts/verify/verify-appliance-ingress.sh  # Verify published ports and Caddy TLS invariants
 ./scripts/control/backup.sh            # Compressed tarball backup of all data planes
 
 # Inspect runtime services & logs

@@ -163,6 +163,14 @@ import tls_policy.caddy
 	handle /static/* {
 		reverse_proxy authentik-server:9000
 	}
+	# Subsystem 9: System Telemetry & Universal Update Engine API
+	handle /api/v1/system/* {
+		import authentik_forward_auth
+		reverse_proxy host.docker.internal:8000 {
+			flush_interval -1
+		}
+	}
+
 	handle /api/* {
 		reverse_proxy authentik-server:9000
 	}
@@ -493,6 +501,13 @@ import tls_policy.caddy
 	# I. Subsystem 8: Documentation & Architectural Matrix
 	@docs_path path /docs /docs/*
 	handle @docs_path {
+		import authentik_forward_auth
+		import portal_content
+	}
+
+	# Subsystem 9: System Manager & Update Center Web Subsystem
+	@system_path path /system /system/*
+	handle @system_path {
 		import authentik_forward_auth
 		import portal_content
 	}

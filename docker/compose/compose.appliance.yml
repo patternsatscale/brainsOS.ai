@@ -1,0 +1,55 @@
+# ==============================================================================
+# brainsOS: Appliance Ingress Lockdown Overlay (Ticket #312)
+# Enforces strict perimeter isolation for turn-key appliance deployments.
+# Unpublishes all internal service ports from host interfaces, ensuring that
+# only Caddy on ports 80 and 443 can receive inbound traffic.
+# ==============================================================================
+
+services:
+  authentik-server:
+    ports: !reset []
+
+  clickhouse:
+    ports: !reset []
+
+  code-server:
+    ports: !reset []
+
+  langfuse-db:
+    ports: !reset []
+
+  langfuse-web:
+    ports: !reset []
+
+  langfuse-worker:
+    ports: !reset []
+
+  litellm:
+    ports: !reset []
+
+  mail-server:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  runner-claude:
+    ports: !reset []
+
+  runner-hermes:
+    ports: !reset []
+
+  runner-openai:
+    ports: !reset []
+
+  sogo:
+    ports: !reset []
+
+  sogo-db:
+    ports: !reset []
+
+  tool-egress-proxy:
+    ports: !reset []
