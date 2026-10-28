@@ -1,0 +1,563 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+# ==============================================================================
+# brainsOS: Appliance TLS Policy (Ticket #312)
+# Supports:
+#   1. Automated TLS-ALPN-01 challenge over port 443 (Zero port 80 challenge reliance)
+#   2. AWS Route 53 DNS-01 ACME challenge when credentials/roles are present
+#   3. Internal self-signed CA fallback for local offline appliances
+# ==============================================================================
+(appliance_tls) {
+	tls {
+		issuer acme {
+			email {$ACME_EMAIL:admin@brainsos.local}
+			disable_http_challenge
+		}
+	}
+}
+
+(route53_tls) {
+	tls {$ACME_EMAIL:admin@brainsos.local} {
+		dns route53
+		propagation_delay 30s
+		propagation_timeout 3m
+		resolvers 1.1.1.1 8.8.8.8
+	}
+}
+
+(internal_tls) {
+	tls internal
+}
+
+# ==============================================================================
+# Authentik Identity Provider & Forward Auth Gateway Snippets
+# ==============================================================================
+(authentik_forward_auth) {
+	forward_auth authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
+		trusted_proxies private_ranges
+	}
+}
+
+(authentik_backend) {
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy authentik-server:9000 {
+		flush_interval -1
+	}
+}
+
+(hermes_runner_backend) {
+	import authentik_forward_auth
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+	reverse_proxy runner-hermes:8787 {
+		header_up Remote-User {header.Remote-User}
+		header_up X-Authentik-Username {header.X-Authentik-Username}
+		flush_interval -1
+	}
+}
+
+# ==============================================================================
+# BrainsOS Thin-Spine React Portal SPA Content
+# ==============================================================================
+(portal_content) {
+	encode gzip zstd
+	root * /srv/portal
+	try_files {path} /index.html
+	file_server
+}
+
+# ==============================================================================
+# Core Ingress Routing Engine (Single-Origin Port 443 Invariant)
+# ==============================================================================
+(unified_ingress) {
+	encode gzip zstd
+	log {
+		output stdout
+		format console
+	}
+
+	# --------------------------------------------------------------------------
+	# PLANE 2: Programmatic LiteLLM API Gateway (Direct Token Auth, No SSO)
+	# --------------------------------------------------------------------------
+	@proxy_host header_regexp Host (?i)^proxy\.
+	handle @proxy_host {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	@proxy_api_path path /proxy/v1/* /v1/*
+	handle @proxy_api_path {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			flush_interval -1
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# PLANE 3: Mail Ingress & Groupware Sync (MX, CalDAV, CardDAV, ActiveSync)
+	# --------------------------------------------------------------------------
+	@mail_static {
+		header_regexp Host (?i)^mail\.
+		path /SOGo.woa/WebServerResources/* /SOGo/WebServerResources/* /WebServerResources/*
+	}
+	handle @mail_static {
+		reverse_proxy sogo:20000 {
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
+	@mail_host header_regexp Host (?i)^mail\.
+	handle @mail_host {
+		import authentik_forward_auth
+		redir /.well-known/caldav /SOGo/dav/ 301
+		redir /.well-known/carddav /SOGo/dav/ 301
+		@mail_host_root path /
+		redir @mail_host_root /SOGo 302
+		reverse_proxy sogo:20000 {
+			header_up x-webobjects-remote-user {header.X-Authentik-Username}
+			header_up Remote-User {header.X-Authentik-Username}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up x-webobjects-server-name {host}
+			header_up x-webobjects-server-port {server_port}
+			header_up x-webobjects-server-url https://{host}
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# Observability Platform (Host: langfuse.*)
+	# --------------------------------------------------------------------------
+	@langfuse_host header_regexp Host (?i)^langfuse\.
+	handle @langfuse_host {
+		reverse_proxy {$LANGFUSE_UPSTREAM:host.docker.internal:3001} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# --------------------------------------------------------------------------
+	# PLANE 1: Single-Origin Web Portal & Authentik SSO Ingress
+	# --------------------------------------------------------------------------
+
+	# A. Authentik SSO Endpoints & Outposts
+	handle /outpost.goauthentik.io/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /auth/* {
+		uri strip_prefix /auth
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+		}
+	}
+	handle /flows/* {
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+		}
+	}
+	handle /if/* {
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+		}
+	}
+	handle /media/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /-/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /static/* {
+		reverse_proxy authentik-server:9000
+	}
+
+	# Subsystem: System Telemetry & Universal Update Engine API (Ticket #310 / #311)
+	handle /api/v1/system/* {
+		import authentik_forward_auth
+		reverse_proxy host.docker.internal:8000 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy authentik-server:9000
+	}
+	handle /application/* {
+		reverse_proxy authentik-server:9000 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+		}
+	}
+	handle /ws/* {
+		reverse_proxy authentik-server:9000
+	}
+
+	# B. Subsystem 1: Operator Studio (VS Code IDE)
+	@editor_no_slash path /editor
+	redir @editor_no_slash /editor/ 308
+	handle /editor/* {
+		import authentik_forward_auth
+		uri strip_prefix /editor
+		reverse_proxy code-server:8443 {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# C. Subsystem 2: Communications Plane (SOGo Webmail & Groupware)
+	@sogo_static path /SOGo.woa/WebServerResources/* /SOGo/WebServerResources/* /WebServerResources/*
+	handle @sogo_static {
+		reverse_proxy sogo:20000 {
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
+	@mail_path path /mail /mail/
+	redir @mail_path /SOGo 302
+	handle /SOGo* {
+		import authentik_forward_auth
+		reverse_proxy sogo:20000 {
+			header_up x-webobjects-remote-user {header.X-Authentik-Username}
+			header_up Remote-User {header.X-Authentik-Username}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up x-webobjects-server-name {host}
+			header_up x-webobjects-server-port {server_port}
+			header_up x-webobjects-server-url https://{host}
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
+	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui
+	redir @proxy_ui_defaults /ui/ 308
+	handle /proxy/ui/* {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /ui/* {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /sso/* {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /proxy/sso/* {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /litellm-asset-prefix/* {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /.well-known/litellm-ui-config {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /litellm/.well-known/litellm-ui-config {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /proxy/.well-known/litellm-ui-config {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	handle /proxy/litellm/.well-known/litellm-ui-config {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	@litellm_api path \
+ /key /key/* \
+ /model /model/* /models /models* /model_group /model_group/* /model_hub /model_hub/* \
+ /user /user/* \
+ /team /team/* \
+ /customer /customer/* \
+ /spend /spend/* \
+ /global /global/* \
+ /health /health/* \
+ /routes /routes* \
+ /config /config/* \
+ /service_account /service_account/* \
+ /public /public/* \
+ /settings /settings/* \
+ /get /get/* \
+ /update /update/* \
+ /add /add/* \
+ /delete /delete/* \
+ /tag /tag/* \
+ /gateway /gateway/* \
+ /audit /audit/* \
+ /router /router/* \
+ /cache /cache/* \
+ /coordination_redis /coordination_redis/* \
+ /cost /cost/* /cost_optimization /cost_optimization/* \
+ /email /email/* \
+ /project /project/* \
+ /budget /budget/* \
+ /invitation /invitation/* \
+ /alerting /alerting/* \
+ /organization /organization/* \
+ /auto_router /auto_router/* \
+ /access_group /access_group/* \
+ /guardrails /guardrails/* \
+ /policies /policies/* /policy /policy/* \
+ /prompts /prompts/* \
+ /search_tools /search_tools/* \
+ /mcp-rest /mcp-rest/* \
+ /vector_store /vector_store/* \
+ /rag /rag/* \
+ /callbacks /callbacks/* \
+ /credentials /credentials/* \
+ /fallback /fallback/* \
+ /activity /activity/* \
+ /agent /agent/* \
+ /onboarding /onboarding/* \
+ /session /session/* \
+ /utils /utils/* \
+ /compliance /compliance/* \
+ /claude-code /claude-code/* \
+ /reload /reload/* \
+ /schedule /schedule/* \
+ /v1 /v1/* \
+ /v2 /v2/* \
+ /v3 /v3/* \
+ /v1beta /v1beta/* \
+ /openai /openai/* /openai_passthrough /openai_passthrough/* \
+ /chat /chat/* \
+ /completions /completions/* \
+ /embeddings /embeddings/* \
+ /batches /batches/* \
+ /files /files/* \
+ /threads /threads/* \
+ /assistants /assistants/* \
+ /audio /audio/* \
+ /images /images/* \
+ /responses /responses/* \
+ /realtime /realtime/* \
+ /a2a /a2a/* \
+ /scim /scim/* \
+ /openapi.json /get_favicon /get_image /get_logo_url /get_cache_settings
+	handle @litellm_api {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+	@proxy_litellm_api path \
+ /proxy/key /proxy/key/* \
+ /proxy/model /proxy/model/* /proxy/models /proxy/models* /proxy/model_group /proxy/model_group/* /proxy/model_hub /proxy/model_hub/* \
+ /proxy/user /proxy/user/* \
+ /proxy/team /proxy/team/* \
+ /proxy/customer /proxy/customer/* \
+ /proxy/spend /proxy/spend/* \
+ /proxy/global /proxy/global/* \
+ /proxy/health /proxy/health/* \
+ /proxy/routes /proxy/routes* \
+ /proxy/config /proxy/config/* \
+ /proxy/service_account /proxy/service_account/* \
+ /proxy/public /proxy/public/* \
+ /proxy/settings /proxy/settings/* \
+ /proxy/get /proxy/get/* \
+ /proxy/update /proxy/update/* \
+ /proxy/add /proxy/add/* \
+ /proxy/delete /proxy/delete/* \
+ /proxy/tag /proxy/tag/* \
+ /proxy/gateway /proxy/gateway/* \
+ /proxy/audit /proxy/audit/* \
+ /proxy/router /proxy/router/* \
+ /proxy/cache /proxy/cache/* \
+ /proxy/coordination_redis /proxy/coordination_redis/* \
+ /proxy/cost /proxy/cost/* /proxy/cost_optimization /proxy/cost_optimization/* \
+ /proxy/email /proxy/email/* \
+ /proxy/project /proxy/project/* \
+ /proxy/budget /proxy/budget/* \
+ /proxy/invitation /proxy/invitation/* \
+ /proxy/alerting /proxy/alerting/* \
+ /proxy/organization /proxy/organization/* \
+ /proxy/auto_router /proxy/auto_router/* \
+ /proxy/access_group /proxy/access_group/* \
+ /proxy/guardrails /proxy/guardrails/* \
+ /proxy/policies /proxy/policies/* /proxy/policy /proxy/policy/* \
+ /proxy/prompts /proxy/prompts/* \
+ /proxy/search_tools /proxy/search_tools/* \
+ /proxy/mcp-rest /proxy/mcp-rest/* \
+ /proxy/vector_store /proxy/vector_store/* \
+ /proxy/rag /proxy/rag/* \
+ /proxy/callbacks /proxy/callbacks/* \
+ /proxy/credentials /proxy/credentials/* \
+ /proxy/fallback /proxy/fallback/* \
+ /proxy/activity /proxy/activity/* \
+ /proxy/agent /proxy/agent/* \
+ /proxy/onboarding /proxy/onboarding/* \
+ /proxy/session /proxy/session/* \
+ /proxy/utils /proxy/utils/* \
+ /proxy/compliance /proxy/compliance/* \
+ /proxy/claude-code /proxy/claude-code/* \
+ /proxy/reload /proxy/reload/* \
+ /proxy/schedule /proxy/schedule/* \
+ /proxy/v1 /proxy/v1/* \
+ /proxy/v2 /proxy/v2/* \
+ /proxy/v3 /proxy/v3/* \
+ /proxy/v1beta /proxy/v1beta/* \
+ /proxy/openai /proxy/openai/* /proxy/openai_passthrough /proxy/openai_passthrough/* \
+ /proxy/chat /proxy/chat/* \
+ /proxy/completions /proxy/completions/* \
+ /proxy/embeddings /proxy/embeddings/* \
+ /proxy/batches /proxy/batches/* \
+ /proxy/files /proxy/files/* \
+ /proxy/threads /proxy/threads/* \
+ /proxy/assistants /proxy/assistants/* \
+ /proxy/audio /proxy/audio/* \
+ /proxy/images /proxy/images/* \
+ /proxy/responses /proxy/responses/* \
+ /proxy/realtime /proxy/realtime/* \
+ /proxy/a2a /proxy/a2a/* \
+ /proxy/scim /proxy/scim/* \
+ /proxy/openapi.json /proxy/get_favicon /proxy/get_image /proxy/get_logo_url /proxy/get_cache_settings
+	handle @proxy_litellm_api {
+		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# E. Subsystem 4: Tool Egress Gateway & Inspection Console (mitmweb)
+	@efw_no_slash path /efw
+	redir @efw_no_slash /efw/ 308
+	handle /efw/* {
+		import authentik_forward_auth
+		uri strip_prefix /efw
+		reverse_proxy tool-egress-proxy:8081 {
+			header_up Authorization "Bearer {$TOOL_EGRESS_WEB_PASSWORD:brainsos_tool_egress_secret}"
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# F. Subsystem 5: Observability Plane (Langfuse)
+	@langfuse_root path /langfuse /langfuse/
+	handle @langfuse_root {
+		redir https://langfuse.{host}/project/brainsos/sessions 302
+	}
+	@langfuse_subpath path /langfuse/*
+	handle @langfuse_subpath {
+		uri strip_prefix /langfuse
+		redir https://langfuse.{host}{uri} 302
+	}
+
+	# G. Subsystem 6: Agent Plane (Hermes Runner WebUI)
+	handle /runner* {
+		import authentik_forward_auth
+		reverse_proxy runner-hermes:8787 {
+			header_up Remote-User {header.Remote-User}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
+	# H. Subsystem 7: Hardware Telemetry (NVIDIA DGX Dashboard)
+	handle /dgx* {
+		import authentik_forward_auth
+		reverse_proxy host.docker.internal:11001 {
+			header_down -x-frame-options
+			flush_interval -1
+		}
+	}
+
+	# I. Subsystem 8: Documentation & Architectural Matrix
+	@docs_path path /docs /docs/*
+	handle @docs_path {
+		import authentik_forward_auth
+		import portal_content
+	}
+
+	# Subsystem 9: System Manager & Update Center Web Subsystem (Ticket #311)
+	@system_path path /system /system/*
+	handle @system_path {
+		import authentik_forward_auth
+		import portal_content
+	}
+
+	# J. Default Handler: BrainsOS Thin-Spine React Portal SPA
+	handle {
+		import authentik_forward_auth
+		import portal_content
+	}
+}
+
+# ==============================================================================
+# Port 80 Listener: Strict HTTP -> HTTPS 301 Permanent Redirect
+# Enforces the Single-Origin Port 443 Invariant across all external requests.
+# ==============================================================================
+:80 {
+	redir https://{host}{uri} 301
+}
+
+# ==============================================================================
+# Port 443 Listener: Hardened HTTPS Appliance Gateway
+# Single-origin ingress with TLS-ALPN-01 automated certificate issuance.
+# ==============================================================================
+:443 {
+	import appliance_tls
+	import unified_ingress
+}
