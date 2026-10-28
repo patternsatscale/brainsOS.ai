@@ -91,6 +91,13 @@ export DATABASE_URL="${DATABASE_URL}"
 export INFERENCE_NUM_CTX="${INFERENCE_NUM_CTX}"
 export BRAINSOS_CORE_MODEL="${BRAINSOS_CORE_MODEL:-ollama_chat/llama3.2:3b}"
 
+# Host inference engine toggle. Appliances (#322) route to cloud models (e.g. Bedrock)
+# and ship no host Ollama: OLLAMA_ENABLED=false skips start, model seeding and status.
+OLLAMA_ENABLED="${OLLAMA_ENABLED:-true}"
+ollama_enabled() {
+  [[ ! "${OLLAMA_ENABLED}" =~ ^(false|0|no)$ ]]
+}
+
 # Helper to detect Docker bridge gateway IP
 get_docker_gateway() {
   local gw
@@ -110,7 +117,11 @@ check_db_ready() {
 
 # Helper to check if containerized LiteLLM gateway is responding
 check_litellm_ready() {
-  curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'
+  if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" 2>/dev/null | grep -qE '^(200|401|405)'; then
+    return 0
+  fi
+  # Appliance lockdown overlay unpublishes the loopback port; trust the container healthcheck
+  [ "$(docker inspect --format '{{.State.Health.Status}}' brainsos-control-litellm 2>/dev/null || true)" = "healthy" ]
 }
 
 # Helper to identify ASUS Ascent GX10 / DGX OS hardware context
@@ -260,7 +271,9 @@ status_services() {
   log_info "Checking brainsOS host control plane status..."
   
   # Ollama status
-  if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
+  if ! ollama_enabled; then
+    log_info "Ollama: DISABLED (OLLAMA_ENABLED=false; cloud model routing)"
+  elif curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
     log_success "Ollama: RUNNING on http://127.0.0.1:11434"
   else
     log_warn "Ollama: NOT RUNNING on http://127.0.0.1:11434"
@@ -338,7 +351,9 @@ start_services() {
   log_info "Starting brainsOS host control plane..."
 
   # 1. Start Ollama if not already responding
-  if curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
+  if ! ollama_enabled; then
+    log_info "Host Ollama disabled (OLLAMA_ENABLED=false); skipping inference engine and model seeding."
+  elif curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1; then
     log_info "Ollama is already running on http://127.0.0.1:11434."
   else
     log_info "Starting host Ollama daemon (bound strictly to 127.0.0.1:11434)..."
@@ -365,7 +380,7 @@ start_services() {
   fi
 
   # 1.5. Ensure required LLM weights are seeded in Ollama
-  if [ -f "${REPO_ROOT}/scripts/setup/setup-models.sh" ]; then
+  if ollama_enabled && [ -f "${REPO_ROOT}/scripts/setup/setup-models.sh" ]; then
     log_info "Verifying required LLM model weights in Ollama..."
     "${REPO_ROOT}/scripts/setup/setup-models.sh" || log_warn "Model seeding encountered a warning."
   fi

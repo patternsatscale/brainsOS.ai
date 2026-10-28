@@ -5,7 +5,7 @@
 # and Docker daemon log rotation constraints for turn-key appliance deployments.
 #
 # Usage:
-#   sudo ./appliances/scripts/harden-host.sh [OPTIONS]
+#   sudo ./packages/brainsOS-appliance/scripts/harden-host.sh [OPTIONS]
 #
 # Options:
 #   --dry-run       Simulate changes without modifying firewall or host files
@@ -57,7 +57,7 @@ while [ $# -gt 0 ]; do
 brainsOS Appliance Host Hardening Script (Ticket #312)
 
 Usage:
-  sudo ./appliances/scripts/harden-host.sh [OPTIONS]
+  sudo ./packages/brainsOS-appliance/scripts/harden-host.sh [OPTIONS]
 
 Options:
   --dry-run       Simulate changes without modifying firewall or host files
@@ -77,8 +77,10 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -z "${REPO_ROOT}" ]; then
-  REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 fi
+
+CONFIGS_DIR="$(cd "${SCRIPT_DIR}/../configs" && pwd)"
 
 # Detect Operating System
 OS_NAME="$(uname -s)"
@@ -348,15 +350,15 @@ LOGROTATE_TARGET="/etc/logrotate.d/brainsos"
 SYSTEMD_SYSTEM_DIR="/etc/systemd/system"
 
 if [ "${DRY_RUN}" = true ]; then
-  log_info "[DRY-RUN] Would install ${JOURNALD_FILE} from appliances/configs/journald-brainsos.conf"
-  log_info "[DRY-RUN] Would install ${LOGROTATE_TARGET} from appliances/configs/logrotate-brainsos"
+  log_info "[DRY-RUN] Would install ${JOURNALD_FILE} from ${CONFIGS_DIR}/journald-brainsos.conf"
+  log_info "[DRY-RUN] Would install ${LOGROTATE_TARGET} from ${CONFIGS_DIR}/logrotate-brainsos"
   log_info "[DRY-RUN] Would install brainsos-prune-logs.service and .timer to ${SYSTEMD_SYSTEM_DIR}"
   log_info "[DRY-RUN] Would execute: systemctl daemon-reload && systemctl enable --now brainsos-prune-logs.timer"
 else
   # Journald configuration
   mkdir -p "${JOURNALD_DIR}"
-  if [ -f "${REPO_ROOT}/appliances/configs/journald-brainsos.conf" ]; then
-    cp "${REPO_ROOT}/appliances/configs/journald-brainsos.conf" "${JOURNALD_FILE}"
+  if [ -f "${CONFIGS_DIR}/journald-brainsos.conf" ]; then
+    cp "${CONFIGS_DIR}/journald-brainsos.conf" "${JOURNALD_FILE}"
     chmod 644 "${JOURNALD_FILE}"
     log_success "Installed journald retention configuration."
     if command -v systemctl >/dev/null 2>&1; then
@@ -365,17 +367,17 @@ else
   fi
 
   # Logrotate configuration
-  if [ -f "${REPO_ROOT}/appliances/configs/logrotate-brainsos" ]; then
+  if [ -f "${CONFIGS_DIR}/logrotate-brainsos" ]; then
     mkdir -p /etc/logrotate.d
-    cp "${REPO_ROOT}/appliances/configs/logrotate-brainsos" "${LOGROTATE_TARGET}"
+    cp "${CONFIGS_DIR}/logrotate-brainsos" "${LOGROTATE_TARGET}"
     chmod 644 "${LOGROTATE_TARGET}"
     log_success "Installed logrotate policy for brainsOS and Caddy logs."
   fi
 
   # Systemd timer installation
-  if [ -f "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.service" ] && [ -f "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.timer" ]; then
-    cp "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.service" "${SYSTEMD_SYSTEM_DIR}/"
-    cp "${REPO_ROOT}/appliances/configs/brainsos-prune-logs.timer" "${SYSTEMD_SYSTEM_DIR}/"
+  if [ -f "${CONFIGS_DIR}/brainsos-prune-logs.service" ] && [ -f "${CONFIGS_DIR}/brainsos-prune-logs.timer" ]; then
+    cp "${CONFIGS_DIR}/brainsos-prune-logs.service" "${SYSTEMD_SYSTEM_DIR}/"
+    cp "${CONFIGS_DIR}/brainsos-prune-logs.timer" "${SYSTEMD_SYSTEM_DIR}/"
     chmod 644 "${SYSTEMD_SYSTEM_DIR}/brainsos-prune-logs.service" "${SYSTEMD_SYSTEM_DIR}/brainsos-prune-logs.timer"
     if command -v systemctl >/dev/null 2>&1; then
       systemctl daemon-reload 2>/dev/null || true

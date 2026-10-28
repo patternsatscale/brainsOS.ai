@@ -1,0 +1,26 @@
+[Unit]
+Description=brainsOS Appliance Container Topology
+Documentation=https://brainsos.ai
+# First boot must have generated a unique .env before the topology starts.
+After=docker.service network-online.target brainsos-firstboot.service
+Wants=network-online.target
+Requires=docker.service brainsos-firstboot.service
+ConditionPathExists=/opt/brainsos/.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/opt/brainsos
+# reload-env.sh sources /opt/brainsos/.env itself (COMPOSE_FILE, LITELLM_CONFIG),
+# applies identity/password state and restarts the control plane.
+Environment=HOME=/root
+
+ExecStart=/opt/brainsos/scripts/control/reload-env.sh --no-urls
+# COMPOSE_FILE is resolved from /opt/brainsos/.env by docker compose.
+ExecStop=/usr/bin/docker compose --env-file /opt/brainsos/.env down
+
+TimeoutStartSec=1200
+TimeoutStopSec=180
+
+[Install]
+WantedBy=multi-user.target

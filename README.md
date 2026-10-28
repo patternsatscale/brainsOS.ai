@@ -382,9 +382,13 @@ make emergency-stop # Instantly terminate all agent containers
 
 # Appliance Ingress Lockdown & Host Perimeter Security (Ticket #312)
 docker compose -f docker-compose.yml -f docker/compose/compose.appliance.yml up -d # Single-origin port 443 lockdown
-sudo ./appliances/scripts/harden-host.sh     # Enforce UFW firewall, SSH hardening, and Docker log constraints
+sudo ./packages/brainsOS-appliance/scripts/harden-host.sh # Enforce UFW firewall, SSH hardening, and Docker log constraints
 ./scripts/verify/verify-appliance-ingress.sh  # Verify published ports and Caddy TLS invariants
-./scripts/control/backup.sh            # Compressed tarball backup of all data planes
+make build-ami ARGS="--ref v0.1.1 --dry-run" # Stage clean artifact from a git tag + fail-closed scan, print Packer command (#313/#322)
+make build-ami ARGS="--ref v0.1.1"          # Build a PRIVATE ARM64 golden AMI (Packer over SSM Session Manager)
+make build-ami ARGS="--promote ami-..."     # After rehearsal: Block Public Access pre-flight, then make public
+# Instance role policy: packages/brainsOS-appliance/iam/instance-policy.json (see package README)
+./scripts/control/backup.sh                  # Compressed tarball backup of all data planes
 
 # Inspect runtime services & logs
 ./scripts/control/start-control-plane.sh status

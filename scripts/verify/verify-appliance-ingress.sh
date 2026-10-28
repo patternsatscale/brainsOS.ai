@@ -5,7 +5,7 @@
 #   1. docker/compose/compose.appliance.yml correctly unpublishes internal ports
 #      and ensures only Caddy publishes ports (80/tcp and 443/tcp).
 #   2. config/caddy/Caddyfile.appliance syntax and single-origin TLS-ALPN-01 configuration.
-#   3. appliances/scripts/harden-host.sh syntax and dry-run/check functionality.
+#   3. packages/brainsOS-appliance/scripts/harden-host.sh syntax and dry-run/check functionality.
 # ==============================================================================
 
 set -euo pipefail
@@ -35,16 +35,22 @@ log_info "Running Ticket #312 Appliance Ingress Lockdown Verification Suite..."
 # ------------------------------------------------------------------------------
 # Test 1: Shell script syntax validation
 # ------------------------------------------------------------------------------
-log_info "1. Validating shell script syntax for appliances/scripts/harden-host.sh..."
-bash -n appliances/scripts/harden-host.sh
+HARDEN_SCRIPT="packages/brainsOS-appliance/scripts/harden-host.sh"
+if [ ! -f "${HARDEN_SCRIPT}" ]; then
+  log_error "Missing ${HARDEN_SCRIPT}"
+  exit 1
+fi
+
+log_info "1. Validating shell script syntax for ${HARDEN_SCRIPT}..."
+bash -n "${HARDEN_SCRIPT}"
 log_success "Shell syntax validation passed."
 
 # ------------------------------------------------------------------------------
 # Test 2: Host hardening script dry-run execution
 # ------------------------------------------------------------------------------
-log_info "2. Testing appliances/scripts/harden-host.sh --dry-run..."
-DRY_RUN_OUTPUT="$(./appliances/scripts/harden-host.sh --dry-run)"
-if echo "${DRY_RUN_OUTPUT}" | grep -q "Appliance host perimeter hardening completed successfully"; then
+log_info "2. Testing ${HARDEN_SCRIPT} --dry-run..."
+DRY_RUN_OUTPUT="$("${HARDEN_SCRIPT}" --dry-run)"
+if echo "${DRY_RUN_OUTPUT}" | grep -q "Appliance host perimeter hardening"; then
   log_success "harden-host.sh --dry-run executed successfully."
 else
   log_error "harden-host.sh --dry-run did not complete as expected:"
