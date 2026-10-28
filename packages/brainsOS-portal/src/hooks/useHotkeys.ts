@@ -58,7 +58,7 @@ export function useHotkeys({
         return;
       }
 
-      // Subsystem number hotkeys: ⌘1 through ⌘6, ⌘I, and ⌘H
+      // Subsystem number hotkeys: ⌘1 through ⌘7, ⌘I, and ⌘H
       if (e.metaKey || e.ctrlKey) {
         const keyMap: Record<string, string> = {
           '1': 'comms',
@@ -66,7 +66,8 @@ export function useHotkeys({
           '3': 'security',
           '4': 'network',
           '5': 'trace',
-          '6': 'users',
+          '6': 'system',
+          '7': 'users',
           'i': 'users',
           'h': 'help',
         };
