@@ -49,6 +49,7 @@ REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || tru
 if [ -z "${REPO_ROOT}" ]; then
   REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 fi
+export PATH="${REPO_ROOT}/.venv/bin:${HOME}/.local/bin:${PATH}"
 
 PACKER_DIR="${REPO_ROOT}/packages/brainsOS-appliance/packer"
 PROVISION_SH="${PACKER_DIR}/provision.sh"
