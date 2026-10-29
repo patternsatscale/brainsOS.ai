@@ -139,7 +139,7 @@ if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] 1. apt: curl, jq, ufw, logrotate, git, make, python3, nodejs, npm"
   log_info "[DRY-RUN] 2. Ensure a single AWS SSM Agent (reuse Canonical snap if present)"
   log_info "[DRY-RUN] 3. Install Docker CE + Compose plugin; install uv"
-  log_info "[DRY-RUN] 4. Install brainsos.service + brainsos-firstboot.service"
+  log_info "[DRY-RUN] 4. Install brainsos.service, brainsos-firstboot.service & brainsos-system-api.service"
   log_info "[DRY-RUN] 5. Execute ${SCRIPTS_DIR}/harden-host.sh"
   log_info "[DRY-RUN] 6. make runner-base build; docker compose pull; verify images; portal build; .venv (bootstrap-env.sh)"
   log_info "[DRY-RUN] 7. Sanitize: provisioning env, SSH keys, host keys, machine-id, cloud-init"
@@ -242,7 +242,7 @@ log_info "4. Configuring brainsOS systemd units..."
 mkdir -p "${APP_DIR}/data/"{settings,souls,agents,agent_memories,agent_workspaces,agent_apps}
 chown -R root:root "${APP_DIR}"
 
-for unit in brainsos.service brainsos-firstboot.service; do
+for unit in brainsos.service brainsos-firstboot.service brainsos-system-api.service; do
   if [ ! -f "${CONFIGS_DIR}/${unit}" ]; then
     log_error "Missing systemd unit template: ${CONFIGS_DIR}/${unit}"
     exit 1
@@ -255,6 +255,7 @@ chmod +x "${SCRIPTS_DIR}/firstboot.sh" "${SCRIPTS_DIR}/harden-host.sh"
 systemctl daemon-reload
 systemctl enable brainsos-firstboot.service
 systemctl enable brainsos.service
+systemctl enable brainsos-system-api.service
 log_success "Systemd services enabled."
 
 # ------------------------------------------------------------------------------

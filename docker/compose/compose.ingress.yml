@@ -59,6 +59,7 @@ services:
       - BRAINSOS_TLS_MODE=${BRAINSOS_TLS_MODE:-internal}
       # Space-separated bare-IP site addresses served with the internal CA
       - BRAINSOS_IP_SITES=${BRAINSOS_IP_SITES:-127.0.0.1}
+      - SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN:-}
     command: >
       sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
         export OPERATOR_PASSWORD_HASH="$$(caddy hash-password --plaintext "$${CODE_SERVER_PASSWORD}")";

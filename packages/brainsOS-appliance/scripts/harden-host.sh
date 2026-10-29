@@ -119,6 +119,12 @@ if [ "${CHECK_MODE}" = true ]; then
         log_warn "UFW is active but ports 80 and/or 443 are not explicitly allowed."
         AUDIT_FAILED=1
       fi
+      if echo "${UFW_STATUS}" | grep -qE "8000/tcp.*ALLOW.*172\."; then
+        log_success "UFW port 8000/tcp is allowed from Docker bridge subnet only."
+      else
+        log_warn "UFW is active but port 8000/tcp is not restricted to Docker bridge subnet."
+        AUDIT_FAILED=1
+      fi
     else
       log_warn "UFW is not active (status: inactive)."
       AUDIT_FAILED=1
@@ -214,6 +220,7 @@ if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Would execute: ufw default allow outgoing"
   log_info "[DRY-RUN] Would execute: ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'"
   log_info "[DRY-RUN] Would execute: ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'"
+  log_info "[DRY-RUN] Would execute: ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS System API from Docker bridge subnet'"
   if [ "${ALLOW_SSH}" = true ]; then
     log_info "[DRY-RUN] Would execute: ufw allow ${SSH_PORT}/tcp comment 'brainsOS SSH Operator Ingress'"
   else
@@ -225,6 +232,7 @@ else
   ufw default allow outgoing
   ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'
   ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'
+  ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS System API from Docker bridge subnet'
 
   if [ "${ALLOW_SSH}" = true ]; then
     ufw allow "${SSH_PORT}/tcp" comment 'brainsOS SSH Operator Ingress'

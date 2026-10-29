@@ -152,7 +152,9 @@ const renderAnsiLine = (text: string) => {
 };
 
 export const SystemManager: React.FC = () => {
-  const [status, setStatus] = useState<SystemStatus>(DEFAULT_STATUS);
+  const [status, setStatus] = useState<SystemStatus | null>(import.meta.env.DEV ? DEFAULT_STATUS : null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [lastChecked, setLastChecked] = useState<string>('Just now');
   const [confirmTarget, setConfirmTarget] = useState<UpdateTarget | null>(null);
@@ -173,6 +175,21 @@ export const SystemManager: React.FC = () => {
     }
   }, [logs, autoScroll]);
 
+  // Fetch CSRF token on mount (Ticket #325 D2/D4)
+  const fetchCsrfToken = useCallback(async () => {
+    try {
+      const res = await fetch('/api/v1/system/csrf');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.csrf_token) {
+          setCsrfToken(data.csrf_token);
+        }
+      }
+    } catch {
+      // Ignore CSRF pre-fetch failure, handled on request
+    }
+  }, []);
+
   // Fetch live system status
   const fetchStatus = useCallback(async () => {
     setIsChecking(true);
@@ -181,9 +198,19 @@ export const SystemManager: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
+        setStatusError(null);
+      } else {
+        if (!import.meta.env.DEV) {
+          setStatus(null);
+        }
+        setStatusError(`System API returned HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch {
-      // Fallback gracefully on local preview or mock mode
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (!import.meta.env.DEV) {
+        setStatus(null);
+      }
+      setStatusError(`Failed connecting to System API: ${errMsg}`);
     } finally {
       setIsChecking(false);
       setLastChecked(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -192,7 +219,8 @@ export const SystemManager: React.FC = () => {
 
   useEffect(() => {
     fetchStatus();
-  }, [fetchStatus]);
+    fetchCsrfToken();
+  }, [fetchStatus, fetchCsrfToken]);
 
   // Trigger an update action
   const handleConfirmUpdate = async () => {
@@ -225,10 +253,15 @@ export const SystemManager: React.FC = () => {
       setLogs((prev) => [...prev, { id: logCounter++, timestamp: ts, text, type }]);
     };
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
+
     try {
       const res = await fetch('/api/v1/system/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           service: target.service,
           containers_only: target.containersOnly,
@@ -236,8 +269,19 @@ export const SystemManager: React.FC = () => {
         })
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+      if (!res.ok) {
+        let errorDetail = res.statusText;
+        try {
+          const errData = await res.json();
+          if (errData && errData.detail) errorDetail = errData.detail;
+        } catch {
+          // Fall back to status text
+        }
+        throw new Error(`HTTP ${res.status}: ${errorDetail}`);
+      }
+
+      if (!res.body) {
+        throw new Error('Response body is null');
       }
 
       const reader = res.body.getReader();
@@ -284,20 +328,27 @@ export const SystemManager: React.FC = () => {
 
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      // If live API unavailable, simulate a realistic successful update session in UI preview mode
-      addLog(`[Local Simulation Mode Active: ${errMsg}]`, 'info');
-      addLog(`[INFO] Pulling container updates for ${target.name}...`, 'log');
-      await new Promise(r => setTimeout(r, 600));
-      addLog(`[INFO] Updating environment parameters in .env...`, 'log');
-      await new Promise(r => setTimeout(r, 600));
-      addLog(`[INFO] Recreating container topology...`, 'log');
-      await new Promise(r => setTimeout(r, 800));
-      addLog(`[SUCCESS] Container restarted cleanly.`, 'success');
-      addLog(`[INFO] Running post-update health verification...`, 'log');
-      await new Promise(r => setTimeout(r, 700));
-      addLog(`[SUCCESS] Health check passed on all planes!`, 'success');
-      addLog(`✅ In-place update completed with 0 errors.`, 'success');
-      setExecutionStatus('success');
+      if (import.meta.env.DEV) {
+        // If live API unavailable, simulate a realistic update session in UI preview mode only
+        addLog(`[Local Simulation Mode Active: ${errMsg}]`, 'info');
+        addLog(`[INFO] Pulling container updates for ${target.name}...`, 'log');
+        await new Promise(r => setTimeout(r, 600));
+        addLog(`[INFO] Updating environment parameters in .env...`, 'log');
+        await new Promise(r => setTimeout(r, 600));
+        addLog(`[INFO] Recreating container topology...`, 'log');
+        await new Promise(r => setTimeout(r, 800));
+        addLog(`[SUCCESS] Container restarted cleanly.`, 'success');
+        addLog(`[INFO] Running post-update health verification...`, 'log');
+        await new Promise(r => setTimeout(r, 700));
+        addLog(`[SUCCESS] Health check passed on all planes!`, 'success');
+        addLog(`✅ In-place update completed with 0 errors.`, 'success');
+        setExecutionStatus('success');
+      } else {
+        // Production failure state (Audit #11 / D4)
+        setExecutionStatus('failed');
+        addLog(`❌ In-place update failed: ${errMsg}`, 'error');
+        addLog(`💡 Remediation: Verify daemon is active ('systemctl status brainsos-system-api') and review journal logs ('journalctl -u brainsos-system-api -n 50').`, 'info');
+      }
     }
   };
 
@@ -333,15 +384,27 @@ export const SystemManager: React.FC = () => {
       setLogs((prev) => [...prev, { id: logCounter++, timestamp: ts, text, type }]);
     };
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken;
+    }
+
     try {
       const response = await fetch('/api/v1/system/prune-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ check: checkOnly, dry_run: dryRun })
       });
 
       if (!response.ok) {
-        throw new Error(`API returned HTTP ${response.status}`);
+        let errorDetail = response.statusText;
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) errorDetail = errData.detail;
+        } catch {
+          // Fall back to status text
+        }
+        throw new Error(`HTTP ${response.status}: ${errorDetail}`);
       }
 
       if (!response.body) {
@@ -391,28 +454,34 @@ export const SystemManager: React.FC = () => {
 
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      addLog(`[Local Simulation Mode Active: ${errMsg}]`, 'info');
-      if (checkOnly) {
-        addLog(`[INFO] Checking filesystem disk space...`, 'log');
-        addLog(`[INFO] Disk Status: Total: 915.3 GB | Used: 221.6 GB (24.2%) | Free: 647.2 GB (70.7%)`, 'log');
-        addLog(`[SUCCESS] Available disk space is healthy (70.7% free, threshold >= 15%).`, 'success');
-        addLog(`[INFO] Auditing log storage consumers...`, 'log');
-        addLog(`[INFO] systemd journal usage: Archived and active journals take up 2.5G.`, 'log');
-        addLog(`[INFO] Docker disk utilization: Images: 26.5GB, Reclaimable: 13.5GB`, 'log');
+      if (import.meta.env.DEV) {
+        addLog(`[Local Simulation Mode Active: ${errMsg}]`, 'info');
+        if (checkOnly) {
+          addLog(`[INFO] Checking filesystem disk space...`, 'log');
+          addLog(`[INFO] Disk Status: Total: 915.3 GB | Used: 221.6 GB (24.2%) | Free: 647.2 GB (70.7%)`, 'log');
+          addLog(`[SUCCESS] Available disk space is healthy (70.7% free, threshold >= 15%).`, 'success');
+          addLog(`[INFO] Auditing log storage consumers...`, 'log');
+          addLog(`[INFO] systemd journal usage: Archived and active journals take up 2.5G.`, 'log');
+          addLog(`[INFO] Docker disk utilization: Images: 26.5GB, Reclaimable: 13.5GB`, 'log');
+        } else {
+          addLog(`[INFO] Checking filesystem disk space...`, 'log');
+          addLog(`[INFO] Vacuuming systemd journal logs (--vacuum-size=500M)...`, 'log');
+          await new Promise(r => setTimeout(r, 500));
+          addLog(`[SUCCESS] Vacuumed systemd journal. Reclaimed 2.0 GB.`, 'success');
+          addLog(`[INFO] Truncating oversized container logs (>50MB)...`, 'log');
+          await new Promise(r => setTimeout(r, 600));
+          addLog(`[SUCCESS] Docker container logs verified under 50MB bound.`, 'success');
+          addLog(`[INFO] Cleaning ephemeral logs in /tmp older than 7 days...`, 'log');
+          await new Promise(r => setTimeout(r, 400));
+          addLog(`[SUCCESS] Log pruning & retention maintenance complete.`, 'success');
+          addLog(`[INFO] Available Disk Space: 649.2 GB (70.9% free)`, 'log');
+        }
+        setExecutionStatus('success');
       } else {
-        addLog(`[INFO] Checking filesystem disk space...`, 'log');
-        addLog(`[INFO] Vacuuming systemd journal logs (--vacuum-size=500M)...`, 'log');
-        await new Promise(r => setTimeout(r, 500));
-        addLog(`[SUCCESS] Vacuumed systemd journal. Reclaimed 2.0 GB.`, 'success');
-        addLog(`[INFO] Truncating oversized container logs (>50MB)...`, 'log');
-        await new Promise(r => setTimeout(r, 600));
-        addLog(`[SUCCESS] Docker container logs verified under 50MB bound.`, 'success');
-        addLog(`[INFO] Cleaning ephemeral logs in /tmp older than 7 days...`, 'log');
-        await new Promise(r => setTimeout(r, 400));
-        addLog(`[SUCCESS] Log pruning & retention maintenance complete.`, 'success');
-        addLog(`[INFO] Available Disk Space: 649.2 GB (70.9% free)`, 'log');
+        setExecutionStatus('failed');
+        addLog(`❌ Maintenance execution failed: ${errMsg}`, 'error');
+        addLog(`💡 Remediation: Verify daemon is active ('systemctl status brainsos-system-api') or run scripts/control/prune-logs.sh on host.`, 'info');
       }
-      setExecutionStatus('success');
     }
   };
 
@@ -470,7 +539,12 @@ export const SystemManager: React.FC = () => {
               name: 'brainsOS Platform (Full Stack & Containers)',
               full: true
             })}
-            className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#00f2fe]/20 to-blue-600/20 hover:from-[#00f2fe]/30 hover:to-blue-600/30 border border-[#00f2fe]/40 hover:border-[#00f2fe] text-xs font-mono text-[#00f2fe] hover:text-white font-semibold shadow-[0_0_15px_rgba(0,242,254,0.15)] transition-all flex items-center gap-2"
+            disabled={!status}
+            className={`px-4 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
+              !status
+                ? 'opacity-40 cursor-not-allowed bg-slate-800 border-slate-700 text-slate-500'
+                : 'bg-gradient-to-r from-[#00f2fe]/20 to-blue-600/20 hover:from-[#00f2fe]/30 hover:to-blue-600/30 border-[#00f2fe]/40 hover:border-[#00f2fe] text-[#00f2fe] hover:text-white shadow-[0_0_15px_rgba(0,242,254,0.15)]'
+            }`}
           >
             <ArrowUpCircle className="w-4 h-4" />
             <span>Update Platform</span>
@@ -479,8 +553,37 @@ export const SystemManager: React.FC = () => {
       </div>
 
       <div className="p-6 space-y-6 max-w-7xl w-full mx-auto flex-1">
+        {/* Status Unavailable Warning Banner (Audit #11 / D4) */}
+        {(!status || statusError) && (
+          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-headline font-semibold text-sm text-red-300">
+                  Status unavailable
+                </h3>
+                <p className="font-mono text-xs text-slate-400 mt-0.5">
+                  {statusError || "Live platform status could not be queried. Verify that the brainsos-system-api daemon is running."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={fetchStatus}
+                className="px-3.5 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin' : ''}`} />
+                <span>Retry Connection</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 2. Update Available Alert Banner */}
-        {status.overall_update_available && (
+        {status?.overall_update_available && (
           <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
@@ -532,16 +635,22 @@ export const SystemManager: React.FC = () => {
               <GitBranch className="w-4 h-4 text-purple-400" />
             </div>
             <div className="font-headline font-bold text-base text-white">
-              {status.git.branch || 'main'}
-              <span className="font-mono text-xs font-normal text-slate-400 ml-2">
-                ({status.git.current_commit.substring(0, 7)})
-              </span>
+              {status ? (status.git.branch || 'main') : 'Status unavailable'}
+              {status && (
+                <span className="font-mono text-xs font-normal text-slate-400 ml-2">
+                  ({status.git.current_commit.substring(0, 7)})
+                </span>
+              )}
             </div>
             <div className="font-mono text-[11px] text-slate-400">
-              {status.git.commits_behind > 0 ? (
-                <span className="text-amber-400 font-medium">⚠️ {status.git.commits_behind} commits behind origin</span>
+              {status ? (
+                status.git.commits_behind > 0 ? (
+                  <span className="text-amber-400 font-medium">⚠️ {status.git.commits_behind} commits behind origin</span>
+                ) : (
+                  <span className="text-emerald-400">● Clean &amp; Synced with origin</span>
+                )
               ) : (
-                <span className="text-emerald-400">● Clean &amp; Synced with origin</span>
+                <span className="text-slate-500">Probe offline</span>
               )}
             </div>
           </div>
@@ -553,13 +662,19 @@ export const SystemManager: React.FC = () => {
               <HardDrive className="w-4 h-4 text-[#00f2fe]" />
             </div>
             <div className="font-headline font-bold text-base text-white">
-              {status.disk?.free_gb ?? 647.2} GB Free
+              {status?.disk ? `${status.disk.free_gb} GB Free` : 'Status unavailable'}
             </div>
             <div className="font-mono text-[11px] text-slate-400 flex items-center justify-between">
-              <span className={status.disk?.warning ? 'text-amber-400 font-semibold' : 'text-emerald-400'}>
-                {status.disk?.free_pct ?? 70.7}% available
-              </span>
-              <span className="text-slate-500">({status.disk?.total_gb ?? 915.3} GB)</span>
+              {status?.disk ? (
+                <>
+                  <span className={status.disk.warning ? 'text-amber-400 font-semibold' : 'text-emerald-400'}>
+                    {status.disk.free_pct}% available
+                  </span>
+                  <span className="text-slate-500">({status.disk.total_gb} GB)</span>
+                </>
+              ) : (
+                <span className="text-slate-500">Probe offline</span>
+              )}
             </div>
           </div>
 
@@ -581,7 +696,7 @@ export const SystemManager: React.FC = () => {
             </div>
             <div className="font-headline font-bold text-base text-white">{lastChecked}</div>
             <div className="font-mono text-[11px] text-slate-400">
-              {status.overall_update_available ? 'Updates pending install' : 'All services current'}
+              {status ? (status.overall_update_available ? 'Updates pending install' : 'All services current') : 'Status unavailable'}
             </div>
           </div>
         </div>
@@ -598,13 +713,13 @@ export const SystemManager: React.FC = () => {
                   <h2 className="font-headline font-bold text-white text-base">
                     Log Management &amp; Disk Retention Safeguards
                   </h2>
-                  {status.disk?.warning ? (
+                  {status?.disk?.warning ? (
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[10px] font-semibold animate-pulse">
-                      LOW DISK SPACE ({status.disk?.free_pct}% FREE)
+                      LOW DISK SPACE ({status.disk.free_pct}% FREE)
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] font-semibold">
-                      DISK HEALTHY ({status.disk?.free_pct ?? 70.7}% FREE)
+                      DISK HEALTHY ({status?.disk ? `${status.disk.free_pct}% FREE` : 'STATUS UNAVAILABLE'})
                     </span>
                   )}
                 </div>
@@ -655,7 +770,7 @@ export const SystemManager: React.FC = () => {
                   <span>Root Filesystem Usage</span>
                 </span>
                 <span className="text-[#00f2fe] font-semibold">
-                  {status.disk?.free_gb ?? 647.2} GB Free
+                  {status?.disk ? `${status.disk.free_gb} GB Free` : 'Status unavailable'}
                 </span>
               </div>
 
@@ -663,17 +778,21 @@ export const SystemManager: React.FC = () => {
               <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    status.disk?.warning
+                    status?.disk?.warning
                       ? 'bg-gradient-to-r from-amber-500 to-red-500'
                       : 'bg-gradient-to-r from-[#00f2fe] to-emerald-400'
                   }`}
-                  style={{ width: `${Math.min(100, Math.max(0, 100 - (status.disk?.free_pct ?? 70.7)))}%` }}
+                  style={{ width: `${status?.disk ? Math.min(100, Math.max(0, 100 - status.disk.free_pct)) : 0}%` }}
                 />
               </div>
 
               <div className="flex items-center justify-between text-[11px] font-mono text-slate-500">
-                <span>Used: {status.disk?.used_gb ?? 221.6} GB ({((status.disk?.used_gb ?? 221.6) / (status.disk?.total_gb ?? 915.3) * 100).toFixed(1)}%)</span>
-                <span>Total: {status.disk?.total_gb ?? 915.3} GB</span>
+                <span>
+                  Used: {status?.disk ? `${status.disk.used_gb} GB (${((status.disk.used_gb / status.disk.total_gb) * 100).toFixed(1)}%)` : 'Status unavailable'}
+                </span>
+                <span>
+                  Total: {status?.disk ? `${status.disk.total_gb} GB` : 'Status unavailable'}
+                </span>
               </div>
             </div>
 
@@ -736,12 +855,31 @@ export const SystemManager: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Card 0: brainsOS.ai Core Platform (Source Code) */}
-            <div className="col-span-1 md:col-span-2 p-5 rounded-2xl bg-[#141a26]/90 border border-white/10 hover:border-purple-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 shrink-0">
-                  <GitBranch className="w-5 h-5" />
+            {!status ? (
+              <div className="col-span-1 md:col-span-2 p-8 rounded-2xl bg-[#141a26]/60 border border-white/5 text-center space-y-3">
+                <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <AlertTriangle className="w-6 h-6" />
                 </div>
+                <h3 className="font-headline font-bold text-lg text-white">Status Unavailable</h3>
+                <p className="font-mono text-xs text-slate-400 max-w-md mx-auto">
+                  Live service status could not be queried from the host system daemon. Verify that the <code>brainsos-system-api</code> daemon is running and reachable.
+                </p>
+                <button
+                  onClick={fetchStatus}
+                  className="mt-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-200 transition-all inline-flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin' : ''}`} />
+                  <span>Retry Telemetry Probe</span>
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Card 0: brainsOS.ai Core Platform (Source Code) */}
+                <div className="col-span-1 md:col-span-2 p-5 rounded-2xl bg-[#141a26]/90 border border-white/10 hover:border-purple-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 shrink-0">
+                      <GitBranch className="w-5 h-5" />
+                    </div>
                 <div>
                   <div className="flex items-center gap-2.5">
                     <h3 className="font-headline font-bold text-white text-base">brainsOS.ai Platform Core</h3>
@@ -1023,6 +1161,8 @@ export const SystemManager: React.FC = () => {
                   <span className="text-xs font-mono text-slate-500">Stateless Registry Active</span>
                 </div>
               </div>
+            )}
+              </>
             )}
           </div>
         </div>

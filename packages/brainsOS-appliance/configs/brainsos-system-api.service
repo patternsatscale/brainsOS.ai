@@ -1,0 +1,23 @@
+[Unit]
+Description=brainsOS System Management & Telemetry API Daemon
+Documentation=https://brainsos.ai
+After=network-online.target docker.service brainsos.service
+Wants=network-online.target docker.service
+Requires=docker.service
+ConditionPathExists=/opt/brainsos/.env
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/brainsos
+Environment=HOME=/root
+# Sources .env for BRAINSOS_SYSTEM_API_HOST, BRAINSOS_SYSTEM_API_PORT, SYSTEM_API_TOKEN
+EnvironmentFile=-/opt/brainsos/.env
+ExecStart=/opt/brainsos/.venv/bin/brainsos-system-api
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
