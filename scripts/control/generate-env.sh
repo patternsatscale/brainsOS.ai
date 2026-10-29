@@ -313,6 +313,7 @@ secret_generators = {
     "MINIO_ROOT_PASSWORD": lambda: gen_hex(16),
     "LANGFUSE_PUBLIC_KEY": lambda: f"pk-lf-{gen_hex(16)}",
     "LANGFUSE_SECRET_KEY": lambda: f"sk-lf-{gen_hex(16)}",
+    "SYSTEM_API_TOKEN": lambda: f"sat-{gen_hex(24)}",
 }
 
 generated_secrets = {}

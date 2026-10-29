@@ -17,6 +17,9 @@ dependencies = [
     "uvicorn>=0.20.0",
 ]
 
+[project.scripts]
+brainsos-system-api = "brainsos_telemetry.system:main"
+
 [project.optional-dependencies]
 test = [
     "pytest>=7.0.0",

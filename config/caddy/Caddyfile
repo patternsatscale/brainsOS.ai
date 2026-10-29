@@ -167,6 +167,7 @@ import tls_policy.caddy
 	handle /api/v1/system/* {
 		import authentik_forward_auth
 		reverse_proxy host.docker.internal:8000 {
+			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
 			flush_interval -1
 		}
 	}
