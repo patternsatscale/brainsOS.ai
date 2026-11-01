@@ -54,6 +54,9 @@ data/skills/*
 !data/skills/.gitkeep
 data/agent_apps/*
 !data/agent_apps/.gitkeep
+data/agents/*
+!data/agents/.gitkeep
+/.brainsos-initialized
 *.tar.gz
 *.vsix
 

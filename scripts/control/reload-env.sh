@@ -321,6 +321,9 @@ fi
 
 docker compose up -d
 log_success "Docker services updated with current .env configurations."
+if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
+fi
 
 # Synchronize Authentik Identity & Master Credentials
 AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"

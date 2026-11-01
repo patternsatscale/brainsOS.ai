@@ -89,6 +89,7 @@ show_help() {
   echo ""
   echo "Options:"
   echo "  --backup              Create a timestamped compressed archive of all data (default)"
+  echo "  --output-path-file <p> Write the created backup archive absolute path to file <p>"
   echo "  --restore <archive>   Restore all data planes from a tar.gz archive"
   echo "  --list                List all available archives in the backup directory"
   echo "  --force, -f           Bypass interactive confirmation during restore"
@@ -230,6 +231,9 @@ EOF
   size=$(du -h "${archive_path}" | cut -f1)
   log_success "Backup completed successfully: ${archive_name} (${size})"
   log_success "Stored at: ${archive_path}"
+  if [ -n "${OUTPUT_PATH_FILE}" ]; then
+    printf '%s\n' "${archive_path}" > "${OUTPUT_PATH_FILE}"
+  fi
 
   # Enforce retention policy
   prune_retention
@@ -354,8 +358,10 @@ restore_backup() {
         done
 
         # Recreate public schema and stream dump into psql
-        docker compose exec -T "${db_svc}" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"' 2>/dev/null || true
-        if docker compose exec -T "${db_svc}" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" --quiet' < "${dump_file}" 2>/dev/null; then
+        if ! docker compose exec -T "${db_svc}" sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DROP SCHEMA IF EXISTS template CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'; then
+          log_error "Failed to reset schema for ${db_svc}."; rm -rf "${extract_dir}"; exit 1
+        fi
+        if docker compose exec -T "${db_svc}" sh -c 'psql -v ON_ERROR_STOP=1 --single-transaction -U "$POSTGRES_USER" -d "$POSTGRES_DB" --quiet' < "${dump_file}"; then
           log_success "Restored ${db_svc} from logical dump."
         else
           log_error "Failed to restore database for ${db_svc}."
@@ -398,12 +404,17 @@ restore_backup() {
 ACTION="backup"
 ARCHIVE_ARG=""
 FORCE=false
+OUTPUT_PATH_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --backup)
       ACTION="backup"
       shift
+      ;;
+    --output-path-file)
+      OUTPUT_PATH_FILE="${2:?--output-path-file requires a path}"
+      shift 2
       ;;
     --restore)
       ACTION="restore"

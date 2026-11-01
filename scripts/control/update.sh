@@ -65,6 +65,11 @@ set +a
 export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 ENV_UPSERT="${REPO_ROOT}/scripts/control/env-upsert.sh"
 
+# Prints the names of compose services that have a build: section (one per line)
+buildable_services() {
+  docker compose config --format json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(k for k,v in d["services"].items() if v.get("build")))'
+}
+
 # CLI Options
 CHECK_ONLY=false
 JSON_OUTPUT=false
@@ -90,7 +95,7 @@ show_help() {
   echo "  --containers-only     Update upstream container images only (do not pull git code)"
   echo "  --full                Update both git source code and container images (default)"
   echo "  --service <name>      Target a specific service (e.g. litellm, langfuse, caddy)"
-  echo "  --version <tag>       Target a specific upstream image version tag for --service"
+  echo "  --version <tag>       Target a specific upstream image version tag (litellm and langfuse only)"
   echo "  --target-version <tag> Alias for --version"
   echo "  --reset-version       Remove .env version override for --service and restore pinned default"
   echo "  --reset               Alias for --reset-version"
@@ -458,7 +463,7 @@ fi
 
 # C5: Refuse to update dirty git repository in unattended mode
 if [ "${FULL_UPDATE}" = true ] && [ "${UNATTENDED}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  DIRTY_CHECK="$(git status --porcelain)"
+  DIRTY_CHECK="$(git status --porcelain --untracked-files=no)"
   if [ -n "${DIRTY_CHECK}" ]; then
     log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
     exit 1
@@ -514,6 +519,7 @@ fi
 # ------------------------------------------------------------------------------
 PRE_UPDATE_BACKUP=""
 PRE_UPDATE_GIT_REF=""
+CONTAINERS_CHANGED=false
 PRE_UPDATE_ENV_BACKUP="$(mktemp "${TMPDIR:-/tmp}/brainsos_env_pre_update_XXXXXX")"
 cp "${REPO_ROOT}/.env" "${PRE_UPDATE_ENV_BACKUP}"
 
@@ -532,19 +538,20 @@ except Exception:
 if [ "${DRY_RUN}" = false ] && [ "${NO_BACKUP}" = false ]; then
   log_info "Creating pre-flight data snapshot for safe automated rollback (Audit #15)..."
   if [ -f "${REPO_ROOT}/scripts/control/backup.sh" ]; then
-    if ! BACKUP_OUTPUT="$("${REPO_ROOT}/scripts/control/backup.sh" --backup)"; then
+    BACKUP_PATH_FILE="$(mktemp "${TMPDIR:-/tmp}/brainsos_backup_path_XXXXXX")"
+    if ! "${REPO_ROOT}/scripts/control/backup.sh" --backup --output-path-file "${BACKUP_PATH_FILE}"; then
       log_error "Pre-flight data snapshot failed! Aborting update to protect data integrity (pass --no-backup to override)."
+      rm -f "${PRE_UPDATE_ENV_BACKUP}" "${BACKUP_PATH_FILE}"
+      exit 1
+    fi
+    PRE_UPDATE_BACKUP="$(head -n1 "${BACKUP_PATH_FILE}")"
+    rm -f "${BACKUP_PATH_FILE}"
+    if [ -z "${PRE_UPDATE_BACKUP}" ] || [ ! -f "${PRE_UPDATE_BACKUP}" ]; then
+      log_error "Pre-flight snapshot archive not found (${PRE_UPDATE_BACKUP:-<empty>}). Aborting update."
       rm -f "${PRE_UPDATE_ENV_BACKUP}"
       exit 1
     fi
-    PRE_UPDATE_BACKUP="$(echo "${BACKUP_OUTPUT}" | grep -E "brainsos_data_.*\.tar\.gz" | head -n1 | tr -d ' ' || true)"
-    if [ -n "${PRE_UPDATE_BACKUP}" ]; then
-      log_success "Pre-flight snapshot verified: ${PRE_UPDATE_BACKUP}"
-    else
-      log_error "Could not verify pre-flight snapshot archive. Aborting update."
-      rm -f "${PRE_UPDATE_ENV_BACKUP}"
-      exit 1
-    fi
+    log_success "Pre-flight snapshot verified: ${PRE_UPDATE_BACKUP}"
   else
     log_warn "scripts/control/backup.sh not found; proceeding without automatic snapshot."
   fi
@@ -572,19 +579,26 @@ rollback_handler() {
       CURRENT_REF="$(git rev-parse HEAD)"
       if [ "${CURRENT_REF}" != "${PRE_UPDATE_GIT_REF}" ]; then
         log_info "Restoring git branch pointer to ${PRE_UPDATE_GIT_REF}..."
-        git checkout "${PRE_UPDATE_GIT_REF}" 2>/dev/null || git reset --keep "${PRE_UPDATE_GIT_REF}" 2>/dev/null || true
+        git reset --keep "${PRE_UPDATE_GIT_REF}" || log_error "git reset --keep failed; repository left at $(git rev-parse --short HEAD)"
       fi
     fi
 
     # 3. Restore pre-flight database & memories backup if available
-    if [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
+    if [ "${CONTAINERS_CHANGED}" = true ] && [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
       log_info "Restoring pre-flight logical database and memory planes from ${PRE_UPDATE_BACKUP}..."
       "${REPO_ROOT}/scripts/control/backup.sh" --restore "${PRE_UPDATE_BACKUP}" -f || true
+    else
+      log_info "No containers were recreated; skipping database restore."
     fi
 
     # 4. Recreate Docker container stack with restored parameters
-    log_info "Re-aligning container stack (docker compose up -d)..."
-    docker compose up -d || true
+    if [ "${CONTAINERS_CHANGED}" = true ]; then
+      log_info "Re-aligning container stack (docker compose up -d)..."
+      docker compose up -d || true
+      if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
+        "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
+      fi
+    fi
 
     log_warn "Automated rollback completed. System restored to pre-update baseline."
   fi
@@ -595,19 +609,18 @@ trap rollback_handler EXIT
 # ------------------------------------------------------------------------------
 # 5. Step 1: Git Source Update (Baremetal / Developer Mode)
 # ------------------------------------------------------------------------------
+PRE_PULL_HEAD=""
 if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   log_info "Step 1/5: Pulling latest source code from remote tracking branch..."
   CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  PRE_PULL_HEAD="$(git rev-parse HEAD)"
   
   if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would fetch and pull origin/${CURRENT_BRANCH}"
   else
-    DIRTY_DIFF="$(git status --porcelain)"
-    STASHED=false
-    if [ -n "${DIRTY_DIFF}" ]; then
-      log_info "Stashing working tree modifications..."
-      git stash push -u -m "automated-pre-update-stash-$(date +%s)" >/dev/null 2>&1 || true
-      STASHED=true
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+      log_error "Tracked files have local modifications. Commit or revert them before updating."
+      exit 1
     fi
 
     git fetch origin --quiet
@@ -617,10 +630,6 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
       log_info "Fast-forwarding ${CURRENT_BRANCH} to origin/${CURRENT_BRANCH}..."
       git pull --ff-only origin "${CURRENT_BRANCH}"
       log_success "Source code updated to commit $(git rev-parse --short HEAD)."
-    fi
-
-    if [ "${STASHED}" = true ]; then
-      git stash pop >/dev/null 2>&1 || true
     fi
   fi
 else
@@ -640,7 +649,7 @@ if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ]; then
     fi
   fi
 
-  if [ ! -f "packages/brainsOS-portal/dist/index.html" ] || [ "${STASHED:-false}" = true ]; then
+  if [ ! -f "packages/brainsOS-portal/dist/index.html" ] || [ "${PRE_PULL_HEAD}" != "$(git rev-parse HEAD)" ]; then
     log_info "Building portal static bundle in packages/brainsOS-portal..."
     (cd packages/brainsOS-portal && npm run build --silent) >/dev/null 2>&1 || true
   fi
@@ -670,13 +679,18 @@ if [ -n "${TARGET_SERVICE}" ]; then
     caddy|ingress)
       TARGET_SERVICE="caddy"
       COMPOSE_TARGETS=("caddy")
-      OVERRIDE_VAR="CADDY_IMAGE_TAG"
+      OVERRIDE_VAR=""
       ;;
     *)
       COMPOSE_TARGETS=("${TARGET_SERVICE}")
       OVERRIDE_VAR=""
       ;;
   esac
+
+  if [ -n "${TARGET_VERSION}" ] && [ -z "${OVERRIDE_VAR}" ]; then
+    log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse."
+    exit 1
+  fi
 
   # Apply or reset version override in .env
   if [ "${RESET_VERSION}" = true ] && [ -n "${OVERRIDE_VAR}" ]; then
@@ -708,19 +722,40 @@ fi
 
 if [ "${DRY_RUN}" = true ]; then
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
-    log_info "[DRY-RUN] Would pull: docker compose pull ${COMPOSE_TARGETS[*]}"
+    log_info "[DRY-RUN] Would pull: docker compose pull --ignore-buildable ${COMPOSE_TARGETS[*]}"
   else
-    log_info "[DRY-RUN] Would pull: docker compose pull"
+    log_info "[DRY-RUN] Would pull: docker compose pull --ignore-buildable"
+  fi
+  if [ "${FULL_UPDATE}" = true ]; then
+    log_info "[DRY-RUN] Would build: make -C ${REPO_ROOT} runner-base && docker compose build"
+  elif [ -n "${TARGET_SERVICE}" ] && buildable_services 2>/dev/null | grep -qxF "${TARGET_SERVICE}"; then
+    if [[ "${TARGET_SERVICE}" == runner-* ]]; then
+      log_info "[DRY-RUN] Would build: make -C ${REPO_ROOT} runner-base && docker compose build ${COMPOSE_TARGETS[*]}"
+    else
+      log_info "[DRY-RUN] Would build: docker compose build ${COMPOSE_TARGETS[*]}"
+    fi
   fi
 else
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
     log_info "Pulling image(s) for targeted service: ${COMPOSE_TARGETS[*]}..."
-    docker compose pull "${COMPOSE_TARGETS[@]}"
+    docker compose pull --ignore-buildable "${COMPOSE_TARGETS[@]}"
   else
     log_info "Pulling latest images for all compose services..."
-    docker compose pull
+    docker compose pull --ignore-buildable
   fi
   log_success "Container images pulled successfully."
+
+  if [ "${FULL_UPDATE}" = true ]; then
+    log_info "Rebuilding locally built images..."
+    make -C "${REPO_ROOT}" runner-base
+    docker compose build
+  elif [ -n "${TARGET_SERVICE}" ] && buildable_services 2>/dev/null | grep -qxF "${TARGET_SERVICE}"; then
+    log_info "Rebuilding locally built service: ${COMPOSE_TARGETS[*]}..."
+    if [[ "${TARGET_SERVICE}" == runner-* ]]; then
+      make -C "${REPO_ROOT}" runner-base
+    fi
+    docker compose build "${COMPOSE_TARGETS[@]}"
+  fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -735,15 +770,22 @@ if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would recreate containers via reload-env.sh or docker compose up -d"
   fi
 else
+  CONTAINERS_CHANGED=true
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
     log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
     docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
+    if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
+      "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
+    fi
   else
     log_info "Recreating all active compose services..."
     if [ -f "${REPO_ROOT}/scripts/control/reload-env.sh" ]; then
       "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
     else
       docker compose up -d
+      if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
+        "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
+      fi
     fi
   fi
   log_success "Containers recreated with latest images and parameters."

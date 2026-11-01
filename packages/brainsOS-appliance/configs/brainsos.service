@@ -16,6 +16,7 @@ WorkingDirectory=/opt/brainsos
 Environment=HOME=/root
 
 ExecStart=/opt/brainsos/scripts/control/reload-env.sh --no-urls
+ExecStartPost=/opt/brainsos/scripts/setup/imds-guard.sh --apply
 # COMPOSE_FILE is resolved from /opt/brainsos/.env by docker compose.
 ExecStop=/usr/bin/docker compose --env-file /opt/brainsos/.env down
 

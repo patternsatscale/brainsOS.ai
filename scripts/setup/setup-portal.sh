@@ -79,7 +79,11 @@ cd "${PORTAL_DIR}"
 
 if [ ! -d "node_modules" ]; then
   log_info "Installing portal npm dependencies..."
-  npm install --silent
+  if [ -f package-lock.json ]; then
+    npm ci --silent
+  else
+    npm install --silent
+  fi
 fi
 
 log_info "Compiling production static bundle via Vite (Host: ${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}, Version: ${BRAINSOS_VERSION:-v0.1.0-arm64})..."

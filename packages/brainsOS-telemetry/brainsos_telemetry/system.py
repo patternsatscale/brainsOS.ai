@@ -82,7 +82,10 @@ def get_default_api_host() -> str:
     """
     env_host = os.environ.get("BRAINSOS_SYSTEM_API_HOST")
     if env_host:
-        return env_host
+        if env_host.strip() in ("0.0.0.0", "::"):
+            logger.error("Refusing wildcard BRAINSOS_SYSTEM_API_HOST=%r; falling back to auto-detected gateway.", env_host)
+        else:
+            return env_host
 
     # Try docker0 on Linux
     try:
@@ -100,7 +103,7 @@ def get_default_api_host() -> str:
     if platform.system() != "Linux":
         return "127.0.0.1"
 
-    # Default appliance bridge gateway
+    # Last resort fallback only when docker0 is missing
     return "172.20.0.1"
 
 
