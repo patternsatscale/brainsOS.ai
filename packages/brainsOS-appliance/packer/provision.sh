@@ -329,7 +329,7 @@ log_info "7. Sanitizing host for AMI snapshot..."
 
 # Repository runtime state that provisioning may have produced
 rm -f "${APP_DIR}/.env" "${APP_DIR}/.env.bak" "${APP_DIR}/.brainsos-initialized"
-find "${APP_DIR}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" -type f -print -delete 2>/dev/null || true
+find "${APP_DIR}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" -type f -exec rm -f {} + 2>/dev/null || true
 find "${APP_DIR}/data" -type f ! -name ".gitkeep" -delete 2>/dev/null || true
 
 # SSH: remove Packer's temporary key and host keys (cloud-init regenerates host keys)
