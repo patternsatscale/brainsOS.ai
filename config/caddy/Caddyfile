@@ -40,6 +40,14 @@ import tls_policy.caddy
 	file_server
 }
 
+(langfuse_proxy) {
+	reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
+		header_down -x-frame-options
+		header_down -content-security-policy
+		flush_interval -1
+	}
+}
+
 # ==============================================================================
 # Core Ingress Routing Engine
 # Handles:
@@ -166,7 +174,7 @@ import tls_policy.caddy
 	# Subsystem 9: System Telemetry & Universal Update Engine API
 	handle /api/v1/system/* {
 		import authentik_forward_auth
-		reverse_proxy host.docker.internal:8000 {
+		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
 			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
 			flush_interval -1
 		}
@@ -320,11 +328,11 @@ import tls_policy.caddy
 		/coordination_redis /coordination_redis/* \
 		/cost /cost/* /cost_optimization /cost_optimization/* \
 		/email /email/* \
-		/project /project/* \
+		/project/new /project/update /project/delete /project/info /project/list \
 		/budget /budget/* \
 		/invitation /invitation/* \
 		/alerting /alerting/* \
-		/organization /organization/* \
+		/organization/new /organization/update /organization/delete /organization/info /organization/list /organization/member_add /organization/member_update /organization/member_delete \
 		/auto_router /auto_router/* \
 		/access_group /access_group/* \
 		/guardrails /guardrails/* \
@@ -466,17 +474,102 @@ import tls_policy.caddy
 		}
 	}
 
-	# F. Subsystem 5: Observability Plane (Langfuse)
-	# Redirect /langfuse* to dedicated subdomain langfuse.{host} with subpath preserved
-	# Default target is /project/brainsos/sessions
+	# F. Subsystem 5: Observability Plane (Langfuse Single-Origin & Subdomain Ingress)
 	@langfuse_root path /langfuse /langfuse/
 	handle @langfuse_root {
-		redir https://langfuse.{host}/project/brainsos/sessions 302
+		redir /project/brainsos/sessions 302
 	}
 	@langfuse_subpath path /langfuse/*
 	handle @langfuse_subpath {
 		uri strip_prefix /langfuse
-		redir https://langfuse.{host}{uri} 302
+		redir {uri} 302
+	}
+	handle /_next/* {
+		import langfuse_proxy
+	}
+	handle /icon.svg {
+		import langfuse_proxy
+	}
+	handle /icon256.png {
+		import langfuse_proxy
+	}
+	handle /icon512.png {
+		import langfuse_proxy
+	}
+	handle /wordart-black.svg {
+		import langfuse_proxy
+	}
+	handle /wordart-white.svg {
+		import langfuse_proxy
+	}
+	handle /fonts/* {
+		import langfuse_proxy
+	}
+	handle /generated/* {
+		import langfuse_proxy
+	}
+	handle /trace/* {
+		import langfuse_proxy
+	}
+	handle /project/brainsos* {
+		import langfuse_proxy
+	}
+	handle /project/~* {
+		import langfuse_proxy
+	}
+	handle /organization/brainsos* {
+		import langfuse_proxy
+	}
+	handle /api/trpc/* {
+		import langfuse_proxy
+	}
+	handle /api/auth/* {
+		import langfuse_proxy
+	}
+	handle /api/public/* {
+		import langfuse_proxy
+	}
+	handle /api/project/* {
+		import langfuse_proxy
+	}
+	handle /api/traces/* {
+		import langfuse_proxy
+	}
+	handle /api/dashboard/* {
+		import langfuse_proxy
+	}
+	handle /api/chatCompletion* {
+		import langfuse_proxy
+	}
+	handle /api/admin/* {
+		import langfuse_proxy
+	}
+	handle /api/internal/* {
+		import langfuse_proxy
+	}
+	handle /auth/sign-in* {
+		import langfuse_proxy
+	}
+	handle /auth/error* {
+		import langfuse_proxy
+	}
+	handle /auth/sso-initiate* {
+		import langfuse_proxy
+	}
+	handle /auth/reset-password* {
+		import langfuse_proxy
+	}
+	handle /auth/setup-password* {
+		import langfuse_proxy
+	}
+	handle /auth/sign-up* {
+		import langfuse_proxy
+	}
+	handle /auth/enterprise-sso-required* {
+		import langfuse_proxy
+	}
+	handle /account/settings* {
+		import langfuse_proxy
 	}
 
 	# G. Subsystem 6: Agent Plane (Hermes Runner WebUI)

@@ -302,6 +302,31 @@ if [ ! -f "${DATA_ROOT}/.vscode/settings.json" ] && [ -f "${REPO_ROOT}/config/ed
   log_info "Seeded workspace settings into ${DATA_ROOT}/.vscode/settings.json"
 fi
 
+# When bootstrap-env.sh runs as root (e.g. brainsos-firstboot.service on EC2),
+# ensure non-database directories mounted by UID 1000 containers (code-server,
+# authentik-server, signal-cli, runner-hermes) are owned by PUID:PGID (1000:1000).
+if [ "$(id -u)" -eq 0 ]; then
+  TARGET_UID="${PUID:-1000}"
+  TARGET_GID="${PGID:-1000}"
+  chown "${TARGET_UID}:${TARGET_GID}" \
+    "${DATA_ROOT}" \
+    "${DATA_ROOT}/control_plane" \
+    "${DATA_ROOT}/comms" \
+    "${DATA_ROOT}/comms/sogo" \
+    "${REPO_ROOT}/packages/brainsOS-portal/dist" 2>/dev/null || true
+  for rel_dir in \
+    agents agent_memories agent_workspaces agent_apps souls \
+    comms/spool comms/maildir comms/sogo/spool comms/email comms/signal \
+    queue runners settings \
+    control_plane/authentik_media control_plane/vscode_config control_plane/vscode_data \
+    skills backups .vscode; do
+    if [ -e "${DATA_ROOT}/${rel_dir}" ]; then
+      chown -R "${TARGET_UID}:${TARGET_GID}" "${DATA_ROOT}/${rel_dir}" 2>/dev/null || true
+    fi
+  done
+  log_info "Synchronized non-DB data directory ownership to ${TARGET_UID}:${TARGET_GID}."
+fi
+
 # 2.5 Initialize Langfuse Distributed Observability Configuration
 if [ -f "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
   log_info "Initializing Langfuse distributed observability configuration..."

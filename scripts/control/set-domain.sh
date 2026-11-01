@@ -231,8 +231,9 @@ log_info "  TLS Mode:     ${TLS_MODE}"
 
 ENV_CHANGES=(
   "BRAINSOS_DOMAIN=${DOMAIN}"
+  "AUTHENTIK_COOKIE_DOMAIN="
   "BRAINSOS_TLS_MODE=${TLS_MODE}"
-  "NEXTAUTH_URL=https://langfuse.${DOMAIN}"
+  "NEXTAUTH_URL=https://${DOMAIN}"
 )
 
 if [ "${TLS_MODE}" = "route53" ]; then

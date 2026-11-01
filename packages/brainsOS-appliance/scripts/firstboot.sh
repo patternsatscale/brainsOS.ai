@@ -311,8 +311,11 @@ else
     "BRAINSOS_APPLIANCE=true"
     "BRAINSOS_STAGE=aws"
     # Operator login (Authentik admin/akadmin/operator) - AWS Marketplace convention, rotate at first login
+    "BRAINSOS_ADMIN_EMAIL=admin@brainsos.ai"
     "BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
     "AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
+    "AUTHENTIK_BOOTSTRAP_EMAIL=admin@brainsos.ai"
+    "LANGFUSE_INIT_USER_EMAIL=admin@brainsos.ai"
     # Independent service credentials (never derived from the instance-id)
     "CODE_SERVER_PASSWORD=$(gen_secret 16)"
     "TOOL_EGRESS_WEB_PASSWORD=$(gen_secret 16)"
@@ -333,11 +336,12 @@ else
     "AWS_DEFAULT_REGION=${APPLIANCE_REGION}"
     # Ingress (#323): appliance Caddyfile, self-signed by default, BYOD via user-data or set-domain.sh
     "BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
+    "AUTHENTIK_COOKIE_DOMAIN="
     "CADDYFILE=Caddyfile.appliance"
     "BRAINSOS_TLS_MODE=${TLS_MODE}"
     "BRAINSOS_IP_SITES=${IP_SITES}"
-    "NEXTAUTH_URL=https://langfuse.${APPLIANCE_DOMAIN}"
-    "BRAINSOS_SYSTEM_API_PORT=8000"
+    "NEXTAUTH_URL=https://${APPLIANCE_DOMAIN}"
+    "BRAINSOS_SYSTEM_API_PORT=8010"
   )
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
     APPLIANCE_OVERRIDES+=("ACME_EMAIL=${ACME_EMAIL_VALUE}")

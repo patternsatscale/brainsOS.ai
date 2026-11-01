@@ -105,6 +105,27 @@ get_docker_gateway() {
   echo "${gw:-172.17.0.1}"
 }
 
+# Helper to resolve a container's first Docker bridge IPv4 address (when host ports are unpublished on appliances)
+get_container_ip() {
+  local name="$1"
+  docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${name}" 2>/dev/null | awk '{print $1}' || true
+}
+
+# Helper to resolve reachable LiteLLM base URL (host loopback in dev; container bridge IP on locked-down appliances)
+get_litellm_url() {
+  if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" 2>/dev/null | grep -qE '^(200|401|405)'; then
+    echo "http://127.0.0.1:${LITELLM_PORT}"
+    return 0
+  fi
+  local ip
+  ip=$(get_container_ip brainsos-control-litellm)
+  if [ -n "${ip}" ]; then
+    echo "http://${ip}:4000"
+    return 0
+  fi
+  echo "http://127.0.0.1:${LITELLM_PORT}"
+}
+
 # Helper to check if LiteLLM database container is running and healthy (Rule 6: isolated on brainsos-control-net)
 check_db_ready() {
   local status
@@ -117,7 +138,9 @@ check_db_ready() {
 
 # Helper to check if containerized LiteLLM gateway is responding
 check_litellm_ready() {
-  if curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" 2>/dev/null | grep -qE '^(200|401|405)'; then
+  local url
+  url="$(get_litellm_url)"
+  if curl -s -o /dev/null -w "%{http_code}" "${url}/health/liveness" 2>/dev/null | grep -qE '^(200|401|405)'; then
     return 0
   fi
   # Appliance lockdown overlay unpublishes the loopback port; trust the container healthcheck
@@ -295,6 +318,12 @@ status_services() {
 
   # Langfuse Observability status
   LOCAL_LF_BODY=$(curl -s "http://localhost:${LANGFUSE_PORT}/api/public/health" 2>/dev/null || true)
+  if [ -z "${LOCAL_LF_BODY}" ]; then
+    LF_IP="$(get_container_ip brainsos-telemetry-langfuse-web)"
+    if [ -n "${LF_IP}" ]; then
+      LOCAL_LF_BODY=$(curl -s "http://${LF_IP}:3000/api/public/health" 2>/dev/null || true)
+    fi
+  fi
   REMOTE_LF_BODY=$(curl -s "${LANGFUSE_HOST}/api/public/health" 2>/dev/null || true)
 
   if [ -n "${LOCAL_LF_BODY}" ] && echo "${LOCAL_LF_BODY}" | grep -q '"status":"OK"'; then
@@ -451,9 +480,12 @@ start_services() {
       local budget="${3:-}"
       [ -z "${key}" ] && return 0
 
+      local litellm_url
+      litellm_url="$(get_litellm_url)"
+
       local key_check
       key_check=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${key}" \
+        -X GET "${litellm_url}/key/info?key=${key}" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
 
       if [ "${key_check}" = "200" ]; then
@@ -466,7 +498,7 @@ start_services() {
       if [[ "${alias}" == *"/editor/"* ]]; then
         del_aliases="[\"${alias}\", \"brainsos-operator\"]"
       fi
-      curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
+      curl -s -o /dev/null -X POST "${litellm_url}/key/delete" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
         -H "Content-Type: application/json" \
         -d "{\"key_aliases\": ${del_aliases}}" || true
@@ -480,10 +512,10 @@ start_services() {
       fi
       local res
       res=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
-        -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
+        -X POST "${litellm_url}/key/generate" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
         -H "Content-Type: application/json" \
-        -d "${payload}")
+        -d "${payload}" || echo "HTTP_STATUS:000")
       if echo "${res}" | grep -q "HTTP_STATUS:200"; then
         log_success "LiteLLM virtual key '${alias}' initialized in database."
       else

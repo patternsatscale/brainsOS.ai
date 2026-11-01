@@ -16,47 +16,71 @@ export SIGNAL_NATIVE_HTTP_PORT
 export SIGNAL_REST_API_PORT
 export PORT="${PROXY_PORT}"
 
-usermod -u "${SIGNAL_CLI_UID}" signal-api 2>/dev/null || true
-groupmod -o -g "${SIGNAL_CLI_GID}" signal-api 2>/dev/null || true
+mkdir -p "${SIGNAL_CLI_CONFIG_DIR}" 2>/dev/null || true
 
-# Enforce host workspace permissions
-if [ "${SIGNAL_CLI_CHOWN_ON_STARTUP}" != "false" ]; then
-    mkdir -p "${SIGNAL_CLI_CONFIG_DIR}"
-    chown -R "${SIGNAL_CLI_UID}:${SIGNAL_CLI_GID}" "${SIGNAL_CLI_CONFIG_DIR}"
+if [ "$(id -u)" -eq 0 ]; then
+    usermod -u "${SIGNAL_CLI_UID}" signal-api 2>/dev/null || true
+    groupmod -o -g "${SIGNAL_CLI_GID}" signal-api 2>/dev/null || true
+    if [ "${SIGNAL_CLI_CHOWN_ON_STARTUP}" != "false" ]; then
+        chown -R "${SIGNAL_CLI_UID}:${SIGNAL_CLI_GID}" "${SIGNAL_CLI_CONFIG_DIR}" 2>/dev/null || true
+    fi
 fi
 
 cap_prefix="-cap_"
 caps="$cap_prefix$(seq -s ",$cap_prefix" 0 $(cat /proc/sys/kernel/cap_last_cap 2>/dev/null || echo 40))"
 
+DAEMON_PID=""
 # Initialize jsonrpc2 configuration for signal-cli
 if [ "$MODE" = "json-rpc" ] || [ "$MODE" = "json-rpc-native" ]; then
-    /usr/bin/jsonrpc2-helper || true
-
-    # Inject native HTTP daemon endpoint (--http 127.0.0.1:8082) into supervisor config
     CONF_FILE="/etc/supervisor/conf.d/signal-cli-json-rpc-1.conf"
-    if [ -f "${CONF_FILE}" ]; then
-        sed -i "s|daemon  --tcp 127.0.0.1:6001.*|daemon  --tcp 127.0.0.1:6001 --http 127.0.0.1:${SIGNAL_NATIVE_HTTP_PORT}|" "${CONF_FILE}"
-        sed -i "s|daemon --tcp 127.0.0.1:6001.*|daemon --tcp 127.0.0.1:6001 --http 127.0.0.1:${SIGNAL_NATIVE_HTTP_PORT}|" "${CONF_FILE}"
+    if [ -d "/etc/supervisor/conf.d" ] && [ "$(id -u)" -eq 0 ]; then
+        /usr/bin/jsonrpc2-helper || true
+        if [ -f "${CONF_FILE}" ]; then
+            sed -i "s|daemon  --tcp 127.0.0.1:6001.*|daemon  --tcp 127.0.0.1:6001 --http 127.0.0.1:${SIGNAL_NATIVE_HTTP_PORT}|" "${CONF_FILE}"
+            sed -i "s|daemon --tcp 127.0.0.1:6001.*|daemon --tcp 127.0.0.1:6001 --http 127.0.0.1:${SIGNAL_NATIVE_HTTP_PORT}|" "${CONF_FILE}"
+        fi
+        if [ -n "$JAVA_OPTS" ]; then
+            echo "export JAVA_OPTS='$JAVA_OPTS'" >> /etc/default/supervisor
+        fi
+        service supervisor start
+        supervisorctl start all || true
+    else
+        # s6-overlay / rootless upstream image (bbernhard/signal-cli-rest-api >= 0.100):
+        # jsonrpc2-helper runs signal-cli daemon in the foreground, so we write jsonrpc2.yml
+        # and launch signal-cli daemon in the background with both --tcp and --http enabled.
+        if [ ! -f "${SIGNAL_CLI_CONFIG_DIR}/jsonrpc2.yml" ]; then
+            cat <<EOF > "${SIGNAL_CLI_CONFIG_DIR}/jsonrpc2.yml"
+config:
+  <multi-account>:
+    tcp_port: 6001
+EOF
+        fi
+        SIGNAL_BIN="/usr/bin/signal-cli"
+        if [ "$MODE" = "json-rpc-native" ] && [ -x "/usr/bin/signal-cli-native" ]; then
+            SIGNAL_BIN="/usr/bin/signal-cli-native"
+        fi
+        "${SIGNAL_BIN}" --config "${SIGNAL_CLI_CONFIG_DIR}" daemon \
+            --tcp 127.0.0.1:6001 \
+            --http "127.0.0.1:${SIGNAL_NATIVE_HTTP_PORT}" &
+        DAEMON_PID=$!
     fi
-
-    if [ -n "$JAVA_OPTS" ]; then
-        echo "export JAVA_OPTS='$JAVA_OPTS'" >> /etc/default/supervisor
-    fi
-
-    service supervisor start
-    supervisorctl start all || true
 fi
 
 # Launch signal-cli-rest-api on dedicated REST port (8084)
 export PORT="${SIGNAL_REST_API_PORT}"
-setpriv --reuid="${SIGNAL_CLI_UID}" --regid="${SIGNAL_CLI_GID}" --init-groups --inh-caps=$caps \
+if [ "$(id -u)" -eq 0 ]; then
+    setpriv --reuid="${SIGNAL_CLI_UID}" --regid="${SIGNAL_CLI_GID}" --init-groups --inh-caps=$caps \
+        signal-cli-rest-api -signal-cli-config="${SIGNAL_CLI_CONFIG_DIR}" &
+else
     signal-cli-rest-api -signal-cli-config="${SIGNAL_CLI_CONFIG_DIR}" &
+fi
 REST_PID=$!
 
 _cleanup() {
     echo "[signal-entrypoint] Shutting down services..."
     kill -TERM "${REST_PID}" 2>/dev/null || true
-    service supervisor stop 2>/dev/null || true
+    [ -n "${DAEMON_PID}" ] && kill -TERM "${DAEMON_PID}" 2>/dev/null || true
+    [ "$(id -u)" -eq 0 ] && service supervisor stop 2>/dev/null || true
     exit 0
 }
 

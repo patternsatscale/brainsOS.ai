@@ -119,10 +119,10 @@ if [ "${CHECK_MODE}" = true ]; then
         log_warn "UFW is active but ports 80 and/or 443 are not explicitly allowed."
         AUDIT_FAILED=1
       fi
-      if echo "${UFW_STATUS}" | grep -qE "8000/tcp.*ALLOW.*172\."; then
-        log_success "UFW port 8000/tcp is allowed from Docker bridge subnet only."
+      if echo "${UFW_STATUS}" | grep -qE "(8000|8010)/tcp.*ALLOW.*172\."; then
+        log_success "UFW ports 8000/tcp and 8010/tcp are allowed from Docker bridge subnet only."
       else
-        log_warn "UFW is active but port 8000/tcp is not restricted to Docker bridge subnet."
+        log_warn "UFW is active but ports 8000/8010/tcp are not restricted to Docker bridge subnet."
         AUDIT_FAILED=1
       fi
     else
@@ -220,7 +220,8 @@ if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Would execute: ufw default allow outgoing"
   log_info "[DRY-RUN] Would execute: ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'"
   log_info "[DRY-RUN] Would execute: ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'"
-  log_info "[DRY-RUN] Would execute: ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS System API from Docker bridge subnet'"
+  log_info "[DRY-RUN] Would execute: ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress from Docker bridge subnet'"
+  log_info "[DRY-RUN] Would execute: ufw allow from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API from Docker bridge subnet'"
   if [ "${ALLOW_SSH}" = true ]; then
     log_info "[DRY-RUN] Would execute: ufw allow ${SSH_PORT}/tcp comment 'brainsOS SSH Operator Ingress'"
   else
@@ -232,7 +233,8 @@ else
   ufw default allow outgoing
   ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'
   ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'
-  ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS System API from Docker bridge subnet'
+  ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress from Docker bridge subnet'
+  ufw allow from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API from Docker bridge subnet'
 
   if [ "${ALLOW_SSH}" = true ]; then
     ufw allow "${SSH_PORT}/tcp" comment 'brainsOS SSH Operator Ingress'
@@ -391,6 +393,30 @@ else
       systemctl daemon-reload 2>/dev/null || true
       systemctl enable --now brainsos-prune-logs.timer 2>/dev/null || true
       log_success "Enabled daily brainsOS log pruning systemd timer."
+    fi
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 6. Swapfile Safeguard (Prevents OOM on 4 GB RAM instances like t4g.medium)
+# ------------------------------------------------------------------------------
+SWAP_FILE="/swapfile"
+if [ "${DRY_RUN}" = true ]; then
+  log_info "[DRY-RUN] Would provision 4G ${SWAP_FILE} if not present and register in /etc/fstab"
+else
+  if [ ! -f "${SWAP_FILE}" ] && ! swapon --show 2>/dev/null | grep -q .; then
+    log_info "Provisioning 4G swapfile at ${SWAP_FILE} to protect small instances (e.g. t4g.medium) from OOM..."
+    if (fallocate -l 4G "${SWAP_FILE}" 2>/dev/null || dd if=/dev/zero of="${SWAP_FILE}" bs=1M count=4096 status=none 2>/dev/null) && \
+       chmod 600 "${SWAP_FILE}" && \
+       mkswap "${SWAP_FILE}" >/dev/null 2>&1 && \
+       swapon "${SWAP_FILE}" 2>/dev/null; then
+      if [ -f /etc/fstab ] && ! grep -q "^${SWAP_FILE} " /etc/fstab; then
+        echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
+      fi
+      log_success "Activated 4G swapfile at ${SWAP_FILE}."
+    else
+      rm -f "${SWAP_FILE}" 2>/dev/null || true
+      log_warn "Could not activate swapfile at ${SWAP_FILE} (continuing)."
     fi
   fi
 fi

@@ -67,9 +67,6 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
     const port = window.location.port ? `:${window.location.port}` : '';
 
     if (item.id === 'trace' || item.route.includes('/langfuse')) {
-      if (!host.startsWith('langfuse.')) {
-        return `${proto}//langfuse.${host}${port}/project/brainsos/sessions`;
-      }
       return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
     if (item.id === 'security' || item.route.includes('/proxy') || item.route.includes('/ui')) {
@@ -111,8 +108,7 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       return `${host}${currentCustomUrl.startsWith('/') ? '' : '/'}${currentCustomUrl}`;
     }
     if (subsystem.id === 'trace') {
-      const baseHost = host.startsWith('langfuse.') ? host : `langfuse.${host}`;
-      return `${baseHost}/project/brainsos/sessions`;
+      return `${host}/project/brainsos/sessions`;
     }
     if (subsystem.id === 'security') {
       return `${host}/proxy/ui/usage/`;

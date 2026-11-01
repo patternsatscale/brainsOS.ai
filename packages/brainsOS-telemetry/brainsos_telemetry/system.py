@@ -659,11 +659,11 @@ def main():
 
     parser = argparse.ArgumentParser(description="brainsOS System Management & Telemetry API")
     parser.add_argument("--host", default=None, help="Host to bind to (defaults to Docker bridge gateway)")
-    parser.add_argument("--port", type=int, default=None, help="Port to bind to (default: 8000)")
+    parser.add_argument("--port", type=int, default=None, help="Port to bind to (default: 8010)")
     args, _ = parser.parse_known_args()
 
     host = args.host or get_default_api_host()
-    port = args.port or int(os.environ.get("BRAINSOS_SYSTEM_API_PORT", "8000"))
+    port = args.port or int(os.environ.get("BRAINSOS_SYSTEM_API_PORT", "8010"))
     logger.info(f"Starting brainsOS System API daemon on http://{host}:{port}")
     uvicorn.run("brainsos_telemetry.system:create_system_api_app", host=host, port=port, factory=True, log_level="info")
 

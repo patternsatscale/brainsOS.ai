@@ -328,8 +328,19 @@ fi
 # Synchronize Authentik Identity & Master Credentials
 AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
+  log_info "Waiting for Authentik blueprint & database readiness..."
+  for i in $(seq 1 45); do
+    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "from authentik.providers.proxy.models import ProxyProvider; import sys; sys.exit(0 if ProxyProvider.objects.count() > 0 else 1)" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+
   log_info "Synchronizing Authentik identity and master credentials..."
-  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}"
+  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.ai}"
+  if [[ "${ADMIN_EMAIL}" == *.local ]]; then
+    ADMIN_EMAIL="admin@brainsos.ai"
+  fi
   ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
 from authentik.core.models import User, Group
@@ -345,25 +356,33 @@ admin_u.save()
 
 ak_u = User.objects.filter(username='akadmin').first()
 if ak_u:
+    ak_u.email = '${ADMIN_EMAIL}'
     ak_u.set_password('${ADMIN_PASS}')
     ak_u.save()
 
-op_u = User.objects.filter(username='operator').first()
-if op_u:
-    op_u.set_password('${ADMIN_PASS}')
-    op_u.save()
+op_u, _ = User.objects.get_or_create(username='operator', defaults={'name': 'Appliance Operator', 'email': 'operator@brainsos.ai'})
+if op_u.email.endswith('.local'):
+    op_u.email = 'operator@brainsos.ai'
+op_u.set_password('${ADMIN_PASS}')
+op_u.is_active = True
+if admin_group:
+    op_u.ak_groups.add(admin_group)
+op_u.save()
 " >/dev/null 2>&1 || true
   log_success "Authentik accounts (admin, akadmin, operator) synchronized with master credentials."
 
-  # Synchronize Authentik Outpost & Proxy Provider domain routing
+  # Synchronize Authentik Outpost, Proxy Provider & OAuth2 OIDC secrets/domains
   EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
+  LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}"
+  LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}"
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
 from authentik.outposts.models import Outpost
 from authentik.providers.proxy.models import ProxyProvider
+from authentik.providers.oauth2.models import OAuth2Provider
 from authentik.core.models import Application
 
 domain = '${EFFECTIVE_DOMAIN}'
-cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else domain
+cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else ''
 
 for o in Outpost.objects.all():
     o._config['authentik_host'] = f'https://{domain}'
@@ -376,12 +395,25 @@ for p in ProxyProvider.objects.all():
     p.redirect_uris = f'https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://{domain}?X-authentik-auth-callback=true\nhttps://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://local.brainsos.ai?X-authentik-auth-callback=true\n.*'
     p.save()
 
+for oa in OAuth2Provider.objects.all():
+    if oa.client_id == 'litellm-proxy':
+        oa.client_secret = '${LITELLM_CLIENT_SECRET}'
+        oa.redirect_uris = f'https://{domain}/sso/callback\nhttps://{domain}/proxy/ui/sso/callback\nhttps://.*\\.brainsos\\.ai/sso/callback\nhttp://localhost:4000/sso/callback\n.*'
+        oa.save()
+    elif oa.client_id == 'langfuse-trace':
+        oa.client_secret = '${LANGFUSE_CLIENT_SECRET}'
+        oa.redirect_uris = f'https://{domain}/api/auth/callback/custom\nhttps://langfuse.{domain}/api/auth/callback/custom\nhttps://langfuse\\..*/api/auth/callback/custom\nhttp://localhost:3001/api/auth/callback/custom\n.*'
+        oa.save()
+
 for a in Application.objects.all():
     if a.slug == 'brainsos-portal':
         a.meta_launch_url = f'https://{domain}/'
         a.save()
     elif a.slug == 'litellm':
         a.meta_launch_url = f'https://{domain}/proxy/ui/'
+        a.save()
+    elif a.slug == 'langfuse':
+        a.meta_launch_url = f'https://{domain}/project/brainsos/sessions'
         a.save()
 " >/dev/null 2>&1 || true
   log_success "Authentik SSO Outpost & Proxy Provider synchronized with domain '${EFFECTIVE_DOMAIN}'."

@@ -55,6 +55,9 @@ log_info "======================================================================
 log_info "Step 1: Scaffolding Authentik database and media directories..."
 mkdir -p "${DATA_DIR}/control_plane/authentik_db"
 mkdir -p "${DATA_DIR}/control_plane/authentik_media"
+if [ "$(id -u)" -eq 0 ]; then
+  chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_DIR}/control_plane/authentik_media" 2>/dev/null || true
+fi
 
 # Ensure authentik database exists if auth-db container is active
 AUTH_DB_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-db$' | head -n 1 || true)"
@@ -134,7 +137,7 @@ from authentik.core.models import Application
 from authentik.providers.oauth2.models import OAuth2Provider
 
 domain = '${EFFECTIVE_DOMAIN}'
-cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else domain
+cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else ''
 
 for o in Outpost.objects.all():
     o._config['authentik_host'] = f'https://{domain}'
@@ -155,12 +158,17 @@ for a in Application.objects.all():
         a.meta_launch_url = f'https://{domain}/ui/'
         a.save()
     elif a.slug == 'langfuse':
-        a.meta_launch_url = f'https://langfuse.{domain}/'
+        a.meta_launch_url = f'https://{domain}/project/brainsos/sessions'
         a.save()
 
 for oa in OAuth2Provider.objects.all():
-    if oa.name == 'Langfuse Observability OIDC':
-        oa.redirect_uris = f'https://langfuse.{domain}/api/auth/callback/custom\nhttps://langfuse.local.brainsos.ai/api/auth/callback/custom\nhttp://localhost:3001/api/auth/callback/custom\n.*'
+    if oa.client_id == 'litellm-proxy':
+        oa.client_secret = '${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}'
+        oa.redirect_uris = f'https://{domain}/sso/callback\nhttps://{domain}/proxy/ui/sso/callback\nhttps://.*\\.brainsos\\.ai/sso/callback\nhttp://localhost:4000/sso/callback\n.*'
+        oa.save()
+    elif oa.client_id == 'langfuse-trace':
+        oa.client_secret = '${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}'
+        oa.redirect_uris = f'https://{domain}/api/auth/callback/custom\nhttps://langfuse.{domain}/api/auth/callback/custom\nhttps://langfuse.local.brainsos.ai/api/auth/callback/custom\nhttp://localhost:3001/api/auth/callback/custom\n.*'
         oa.save()
 "
   log_success "Authentik blueprint applied and domain synchronized with '${EFFECTIVE_DOMAIN}'."
