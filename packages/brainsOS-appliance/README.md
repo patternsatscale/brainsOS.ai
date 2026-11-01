@@ -9,9 +9,10 @@
 - **Per-instance secrets**: first boot generates every secret with `scripts/control/generate-env.sh`.
   - Operator login uses the EC2 instance ID (AWS Marketplace convention). The operator should rotate it at first login.
   - Every service credential is independent and random.
-- **Perimeter hardening**: UFW default-deny with only 80/443 exposed (port 22 closed), SSH password authentication disabled, and bounded Docker logging.
+- **Perimeter hardening**: UFW default-deny with only 80/443 exposed (port 22 closed), SSH password authentication disabled, and bounded Docker logging. If your `.env` sets `BRAINSOS_SYSTEM_API_HOST`, remove it with `scripts/control/env-upsert.sh --unset BRAINSOS_SYSTEM_API_HOST` and restart `brainsos-system-api`.
 - **Log management & disk retention**: the systemd journal is capped at 500 MB, with daily logrotate and a daily prune timer.
 - **Ambient Bedrock**: LiteLLM uses the EC2 instance role through IMDSv2. There are no API keys in `.env`.
+- **IMDS isolation**: `scripts/setup/imds-guard.sh` manages the `BRAINSOS-IMDS` iptables chain (jumped from `DOCKER-USER` for `169.254.169.254/32`), allowing only the LiteLLM control-plane container to reach EC2 IMDSv2 and dropping all other containers (including agent runners). Verify at any time with `sudo scripts/setup/imds-guard.sh --check`.
 - **Zero-inbound remote access**: the AWS SSM Agent is installed. Packer also builds over Session Manager by default.
 
 ## Layout

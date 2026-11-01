@@ -68,6 +68,17 @@ import tempfile
 env_path, pairs_path, section = sys.argv[1], sys.argv[2], sys.argv[3]
 unset_keys = set(sys.argv[4:])
 key_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@,+=%-]*$")
+
+def render(k: str, val: str) -> str:
+    # Already quoted by the caller ("..." or '...'): keep verbatim.
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+        return f"{k}={val}"
+    if SAFE_VALUE_RE.match(val):
+        return f"{k}={val}"
+    if "'" in val:
+        sys.exit(f"[ERROR] Value for {k} contains a single quote; refusing to write an unsafe .env line")
+    return f"{k}='{val}'"
 
 overrides = {}
 with open(pairs_path, encoding="utf-8") as fh:
@@ -95,7 +106,7 @@ with open(env_path, encoding="utf-8") as fh:
                 continue
             if key in overrides:
                 if key not in seen:
-                    lines.append(f"{key}={overrides[key]}")
+                    lines.append(render(key, overrides[key]))
                     seen.add(key)
                     continue
                 if not is_comment:
@@ -105,7 +116,7 @@ with open(env_path, encoding="utf-8") as fh:
 missing = [k for k in overrides if k not in seen]
 if missing:
     lines += ["", "# " + "=" * 78, f"# {section}", "# " + "=" * 78]
-    lines += [f"{k}={overrides[k]}" for k in missing]
+    lines += [render(k, overrides[k]) for k in missing]
 
 directory = os.path.dirname(os.path.abspath(env_path))
 fd, tmp_path = tempfile.mkstemp(prefix=".env.upsert.", dir=directory)

@@ -175,6 +175,7 @@ apt-get install -y --no-install-recommends \
   git \
   make \
   jq \
+  iptables \
   ufw \
   logrotate \
   socat \

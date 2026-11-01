@@ -3,12 +3,41 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 UPDATE_SCRIPT = REPO_ROOT / "scripts" / "control" / "update.sh"
 BACKUP_SCRIPT = REPO_ROOT / "scripts" / "control" / "backup.sh"
+ENV_UPSERT = REPO_ROOT / "scripts" / "control" / "env-upsert.sh"
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.email=test@brainsos.ai", "-c", "user.name=test", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture()
+def scratch_repo(tmp_path: Path) -> Path:
+    """Disposable git repository that update.sh can run in safely via BRAINSOS_REPO_ROOT."""
+    repo = tmp_path / "scratch_repo"
+    (repo / "scripts" / "control").mkdir(parents=True)
+    shutil.copy2(UPDATE_SCRIPT, repo / "scripts" / "control")
+    shutil.copy2(ENV_UPSERT, repo / "scripts" / "control")
+    shutil.copy2(BACKUP_SCRIPT, repo / "scripts" / "control")
+    shutil.copy2(REPO_ROOT / ".gitignore", repo / ".gitignore")
+    _git(repo, "init", "--quiet", "--initial-branch=main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--quiet", "-m", "init")
+    (repo / ".env").write_text("BRAINSOS_DATA_DIR=./data\n", encoding="utf-8")
+    return repo
 
 
 def test_update_requires_env_file(tmp_path: Path):
@@ -105,7 +134,7 @@ def test_update_version_targeting_dry_run():
     )
     assert proc.returncode == 0
     assert "Would set LITELLM_IMAGE_TAG=v1.106.0 in .env" in proc.stdout
-    assert "docker compose pull litellm" in proc.stdout
+    assert "docker compose pull --ignore-buildable litellm" in proc.stdout
 
     # 2. Langfuse targeting
     proc = subprocess.run(
@@ -117,7 +146,7 @@ def test_update_version_targeting_dry_run():
     )
     assert proc.returncode == 0
     assert "Would set LANGFUSE_IMAGE_TAG=4.60.0 in .env" in proc.stdout
-    assert "docker compose pull langfuse-web langfuse-worker" in proc.stdout
+    assert "docker compose pull --ignore-buildable langfuse-web langfuse-worker" in proc.stdout
 
     # 3. Reset version override
     proc = subprocess.run(
@@ -165,18 +194,215 @@ def test_appliance_compose_overlay_port_lockdown_with_update():
     assert non_caddy_published == [], f"Unexpected exposed ports in appliance mode: {non_caddy_published}"
 
 
-def test_update_unattended_rejects_dirty_repo():
-    """Verify update.sh -y refuses to run unattended on a dirty repo (Audit #18)."""
+def test_untracked_firstboot_artifacts_do_not_block_unattended_update(scratch_repo: Path):
+    """Untracked first-boot files (.brainsos-initialized, data/agents/*) do not block unattended updates."""
+    (scratch_repo / ".brainsos-initialized").write_text("2026-10-29\n", encoding="utf-8")
+    agent_dir = scratch_repo / "data" / "agents" / "ping"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "SOUL.md").write_text("# Ping\n", encoding="utf-8")
+
+    env = {**os.environ, "BRAINSOS_REPO_ROOT": str(scratch_repo)}
     proc = subprocess.run(
-        [str(UPDATE_SCRIPT), "-y", "--full"],
+        [str(scratch_repo / "scripts" / "control" / "update.sh"), "--unattended", "--full", "--dry-run", "--no-backup"],
+        cwd=scratch_repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "dirty repository" not in proc.stderr
+
+
+def test_tracked_modification_blocks_unattended_update(scratch_repo: Path):
+    """Modifications to tracked files refuse unattended updates."""
+    with open(scratch_repo / "scripts" / "control" / "env-upsert.sh", "a", encoding="utf-8") as fh:
+        fh.write("\n# local edit\n")
+
+    env = {**os.environ, "BRAINSOS_REPO_ROOT": str(scratch_repo)}
+    proc = subprocess.run(
+        [str(scratch_repo / "scripts" / "control" / "update.sh"), "--unattended", "--full", "--dry-run", "--no-backup"],
+        cwd=scratch_repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "dirty repository" in proc.stderr
+
+
+def test_update_script_never_stashes():
+    """Verify update.sh does not contain git stash logic."""
+    text = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    assert "git stash" not in text
+
+
+def test_firstboot_artifacts_are_gitignored():
+    """Verify .brainsos-initialized and data/agents/x/SOUL.md are gitignored."""
+    for relpath in (".brainsos-initialized", "data/agents/x/SOUL.md"):
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", relpath],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0, f"{relpath} is not gitignored"
+
+
+def test_update_has_no_log_scraping_for_backup_path():
+    """Verify update.sh uses --output-path-file and does not scrape backup stdout with tr -d ' '."""
+    text = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    assert "--output-path-file" in text
+    assert "tr -d ' '" not in text
+
+
+def test_rollback_uses_reset_keep_not_checkout():
+    """Verify rollback_handler uses git reset --keep and not git checkout PRE_UPDATE_GIT_REF."""
+    text = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    assert "git reset --keep" in text
+    assert 'git checkout "${PRE_UPDATE_GIT_REF}"' not in text
+
+
+def test_rollback_skips_db_restore_when_no_containers_changed(scratch_repo: Path, tmp_path: Path):
+    """When update fails during pull before any containers are recreated, rollback skips DB restore."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker_log = tmp_path / "docker.log"
+    fake_docker = bin_dir / "docker"
+    fake_docker.write_text(
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "{docker_log}"
+for arg in "$@"; do
+  if [ "$arg" = "pull" ]; then
+    exit 1
+  fi
+done
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+
+    dummy_tarball = tmp_path / "dummy_backup.tar.gz"
+    dummy_tarball.write_bytes(b"dummy")
+    backup_log = tmp_path / "backup.log"
+    stub_backup = scratch_repo / "scripts" / "control" / "backup.sh"
+    stub_backup.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-path-file)
+      printf '%s\\n' "{dummy_tarball}" > "$2"
+      shift 2
+      ;;
+    --restore)
+      printf 'RESTORE %s\\n' "$2" >> "{backup_log}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+""",
+        encoding="utf-8",
+    )
+    stub_backup.chmod(0o755)
+    _git(scratch_repo, "add", "-A")
+    _git(scratch_repo, "commit", "--quiet", "-m", "stub backup")
+
+    env = {
+        **os.environ,
+        "BRAINSOS_REPO_ROOT": str(scratch_repo),
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+    }
+    proc = subprocess.run(
+        [str(scratch_repo / "scripts" / "control" / "update.sh"), "--unattended", "--containers-only"],
+        cwd=scratch_repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + proc.stderr
+    assert proc.returncode != 0
+    assert "skipping database restore" in combined
+    assert not backup_log.exists() or "RESTORE" not in backup_log.read_text(encoding="utf-8")
+
+
+def test_every_compose_pull_ignores_buildable():
+    """Every non-comment docker compose pull line in update.sh must include --ignore-buildable."""
+    lines = UPDATE_SCRIPT.read_text(encoding="utf-8").splitlines()
+    pull_lines = [
+        ln for ln in lines
+        if "docker compose pull" in ln and not ln.lstrip().startswith("#")
+    ]
+    assert pull_lines, "Expected at least one docker compose pull line in update.sh"
+    for ln in pull_lines:
+        assert "--ignore-buildable" in ln, f"Missing --ignore-buildable in: {ln}"
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker not on PATH")
+def test_targeted_buildable_service_is_rebuilt(tmp_path: Path):
+    """Targeting a locally built service (caddy) pulls with --ignore-buildable and rebuilds it."""
+    real_docker = shutil.which("docker")
+    assert real_docker is not None
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker_log = tmp_path / "docker.log"
+    fake_docker = bin_dir / "docker"
+    fake_docker.write_text(
+        f"""#!/usr/bin/env bash
+for arg in "$@"; do
+  if [ "$arg" = "config" ]; then
+    exec "{real_docker}" "$@"
+  fi
+done
+printf '%s\\n' "$*" >> "{docker_log}"
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+
+    # Also shim curl so health check fails deterministically even if Caddy is running on host
+    fake_curl = bin_dir / "curl"
+    fake_curl.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+    fake_curl.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+    }
+    subprocess.run(
+        [str(UPDATE_SCRIPT), "--service", "caddy", "--unattended", "--no-backup", "--health-timeout", "1"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    log_text = docker_log.read_text(encoding="utf-8")
+    assert "compose pull --ignore-buildable caddy" in log_text
+    assert "compose build caddy" in log_text
+
+
+def test_version_rejected_for_caddy():
+    """--version is rejected for locally built caddy service."""
+    proc = subprocess.run(
+        [str(UPDATE_SCRIPT), "--service", "caddy", "--version", "2.8", "--dry-run", "--unattended"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
-    # If the working tree has edits, it must refuse to run unattended
-    dirty = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout
-    if dirty.strip():
-        assert proc.returncode != 0
-        assert "Refusing to run unattended update on a dirty repository" in proc.stderr
+    assert proc.returncode != 0
+    assert "not supported" in proc.stderr
+
+
+
 
