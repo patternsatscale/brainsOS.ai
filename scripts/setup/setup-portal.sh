@@ -155,7 +155,7 @@ for a in Application.objects.all():
         a.meta_launch_url = f'https://{domain}/'
         a.save()
     elif a.slug == 'litellm':
-        a.meta_launch_url = f'https://{domain}/ui/'
+        a.meta_launch_url = f'https://{domain}/proxy/ui/'
         a.save()
     elif a.slug == 'langfuse':
         a.meta_launch_url = f'https://{domain}/project/brainsos/sessions'

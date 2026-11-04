@@ -87,7 +87,66 @@ _cleanup() {
 trap _cleanup TERM INT QUIT
 
 # Launch gateway reverse proxy on canonical external port (8080)
-PORT="${PROXY_PORT}" python3 /usr/local/bin/gateway_proxy.py &
-PROXY_PID=$!
+if command -v python3 >/dev/null 2>&1; then
+    PORT="${PROXY_PORT}" python3 /usr/local/bin/gateway_proxy.py &
+    PROXY_PID=$!
+else
+    PORT="${PROXY_PORT}" perl -MIO::Socket::INET -MIO::Select -e '
+        $|=1;
+        my $listen_port = $ENV{PORT} || 8080;
+        my $native_port = $ENV{SIGNAL_NATIVE_HTTP_PORT} || 8082;
+        my $rest_port   = $ENV{SIGNAL_REST_API_PORT} || 8084;
+        my $srv = IO::Socket::INET->new(
+            LocalAddr => "0.0.0.0",
+            LocalPort => $listen_port,
+            Proto     => "tcp",
+            Listen    => 128,
+            ReuseAddr => 1
+        ) or die "Cannot listen on $listen_port: $!";
+        $SIG{CHLD} = "IGNORE";
+        while (my $client = $srv->accept()) {
+            my $pid = fork();
+            next unless defined $pid;
+            if ($pid == 0) {
+                $srv->close();
+                my $buf = "";
+                while ($buf !~ /\r\n\r\n/ && length($buf) < 65536) {
+                    my $n = sysread($client, my $chunk, 4096);
+                    last if !$n;
+                    $buf .= $chunk;
+                }
+                my ($first_line) = split(/\r\n/, $buf, 2);
+                my (undef, $path) = split(/ /, $first_line // "");
+                my $target_port = (defined $path && $path =~ m{^/api/v1}) ? $native_port : $rest_port;
+                $buf =~ s/^Host:[^\r\n]*/Host: 127.0.0.1:$target_port/mi;
+                my $backend = IO::Socket::INET->new(
+                    PeerAddr => "127.0.0.1",
+                    PeerPort => $target_port,
+                    Proto    => "tcp",
+                    Timeout  => 5
+                );
+                if (!$backend) {
+                    syswrite($client, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    exit 0;
+                }
+                syswrite($backend, $buf);
+                my $sel = IO::Select->new($client, $backend);
+                LOOP: while (my @ready = $sel->can_read()) {
+                    for my $fh (@ready) {
+                        my $n = sysread($fh, my $data, 8192);
+                        if (!$n) {
+                            last LOOP;
+                        }
+                        my $out = ($fh == $client) ? $backend : $client;
+                        syswrite($out, $data);
+                    }
+                }
+                exit 0;
+            }
+            $client->close();
+        }
+    ' &
+    PROXY_PID=$!
+fi
 
 wait "${PROXY_PID}"

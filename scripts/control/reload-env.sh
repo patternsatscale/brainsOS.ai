@@ -328,9 +328,9 @@ fi
 # Synchronize Authentik Identity & Master Credentials
 AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
-  log_info "Waiting for Authentik blueprint & database readiness..."
-  for i in $(seq 1 45); do
-    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "from authentik.providers.proxy.models import ProxyProvider; import sys; sys.exit(0 if ProxyProvider.objects.count() > 0 else 1)" >/dev/null 2>&1; then
+  log_info "Waiting for Authentik blueprint & Embedded Outpost readiness..."
+  for i in $(seq 1 60); do
+    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "from authentik.outposts.models import Outpost; import sys; sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)" >/dev/null 2>&1; then
       break
     fi
     sleep 2
