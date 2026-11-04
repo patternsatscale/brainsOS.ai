@@ -126,6 +126,7 @@ log_success "Authentik blueprint validated."
 AUTH_SERVER_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_C}" ]; then
   log_info "Step 4: Applying Authentik blueprint in running auth-server..."
+  docker exec -i "${AUTH_SERVER_C}" ak apply_blueprint /blueprints/zzz-brainsos/brainsos-portal.yaml || \
   docker exec -i "${AUTH_SERVER_C}" ak apply_blueprint /blueprints/brainsos/brainsos-portal.yaml || log_warn "Blueprint apply will complete on container initialization."
   docker exec -i "${AUTH_SERVER_C}" ak shell -c "from authentik.core.models import User; u = User.objects.filter(username='operator').first(); (u.set_password('${AUTHENTIK_OPERATOR_PASSWORD:-brainsos}'), u.save()) if u else None" 2>/dev/null || true
 

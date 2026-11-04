@@ -296,6 +296,7 @@ services:
       - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ../../config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
       - ../../config/authentik/themes/brainsos:/templates/custom-themes/brainsos:ro
+      - ../../config/authentik/blueprints:/blueprints/zzz-brainsos:ro
       - ../../config/authentik/blueprints:/blueprints/brainsos:ro
       - ${BRAINSOS_AUTHENTIK_MEDIA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_media}:/media
     ports:
@@ -342,6 +343,7 @@ services:
       - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ../../config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
       - ../../config/authentik/themes/brainsos:/templates/custom-themes/brainsos:ro
+      - ../../config/authentik/blueprints:/blueprints/zzz-brainsos:ro
       - ../../config/authentik/blueprints:/blueprints/brainsos:ro
       - ${BRAINSOS_AUTHENTIK_MEDIA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_media}:/media
     networks:

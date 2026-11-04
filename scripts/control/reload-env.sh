@@ -333,6 +333,12 @@ if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
     if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "from authentik.outposts.models import Outpost; import sys; sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)" >/dev/null 2>&1; then
       break
     fi
+    # On a fresh database, default blueprints (flows/certs) may still be applying when
+    # authentik-worker first discovers brainsos-portal.yaml; explicitly apply it once ready.
+    if [ $((i % 4)) -eq 0 ]; then
+      docker exec -i "${AUTH_SERVER_CONTAINER}" ak apply_blueprint /blueprints/zzz-brainsos/brainsos-portal.yaml >/dev/null 2>&1 || \
+      docker exec -i "${AUTH_SERVER_CONTAINER}" ak apply_blueprint /blueprints/brainsos/brainsos-portal.yaml >/dev/null 2>&1 || true
+    fi
     sleep 2
   done
 

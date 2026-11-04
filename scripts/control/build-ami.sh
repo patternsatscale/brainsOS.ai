@@ -65,6 +65,7 @@ VALIDATE_ONLY=false
 DRY_RUN=false
 ALLOW_DIRTY=false
 KEEP_STAGE=false
+VERIFY_COLDBOOT=false
 BUILD_REF=""
 PROMOTE_AMI=""
 
@@ -83,6 +84,7 @@ Options:
   --volume-size SIZE      Root EBS volume size in GB (Default: ${VOLUME_SIZE})
   --ssh-interface IFACE   Packer communicator interface (Default: ${SSH_INTERFACE})
   --publish-community     Publish publicly at build time (prefer --promote)
+  --verify-coldboot       Automatically boot and verify the newly baked AMI
   --promote AMI_ID        Make an existing private AMI public (BPA pre-flight)
   --keep-stage            Keep the staged artifact directory after exit
   --validate-only         Validate Packer templates without starting build
@@ -112,6 +114,7 @@ while [ $# -gt 0 ]; do
     --volume-size)    require_arg "$1" "${2:-}"; VOLUME_SIZE="$2"; shift 2 ;;
     --ssh-interface)  require_arg "$1" "${2:-}"; SSH_INTERFACE="$2"; shift 2 ;;
     --publish-community) PUBLISH_COMMUNITY=true; shift ;;
+    --verify-coldboot) VERIFY_COLDBOOT=true; shift ;;
     --promote)        require_arg "$1" "${2:-}"; PROMOTE_AMI="$2"; shift 2 ;;
     --keep-stage)     KEEP_STAGE=true; shift ;;
     --validate-only)  VALIDATE_ONLY=true; shift ;;
@@ -382,6 +385,19 @@ fi
 log_info "Starting Packer AMI build..."
 "${BUILD_CMD[@]}"
 log_success "brainsOS ARM64 golden AMI build completed (ref ${BUILD_REF}, commit ${BUILD_COMMIT:0:12})."
+
+if [ "${VERIFY_COLDBOOT}" = true ]; then
+  NEW_AMI_ID="$(aws ec2 describe-images --region "${AWS_REGION}" --owners self \
+    --filters "Name=tag:BrainsOSCommit,Values=${BUILD_COMMIT}" \
+    --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' --output text 2>/dev/null || true)"
+  if [ -n "${NEW_AMI_ID}" ] && [ "${NEW_AMI_ID}" != "None" ]; then
+    log_info "Running automated cold-boot verification against ${NEW_AMI_ID}..."
+    "${REPO_ROOT}/scripts/verify/verify-ami-coldboot.sh" --ami "${NEW_AMI_ID}" --region "${AWS_REGION}" --instance-type "${INSTANCE_TYPE}"
+  else
+    log_warn "Could not resolve newly baked AMI ID for commit ${BUILD_COMMIT}; skipping cold-boot verification."
+  fi
+fi
+
 if [ "${PUBLISH_COMMUNITY}" != true ]; then
   log_info "The AMI is private. After rehearsal (#320), publish it with:"
   log_info "  ./scripts/control/build-ami.sh --region ${AWS_REGION} --promote <ami-id>"
