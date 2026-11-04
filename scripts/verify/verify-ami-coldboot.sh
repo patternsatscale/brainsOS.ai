@@ -144,7 +144,8 @@ log_info "Polling HTTPS endpoint from outside (expecting 503 Initializing splash
 READY=false
 SAW_404=false
 for attempt in $(seq 1 90); do
-  HTTP_CODE="$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "https://${PUBLIC_DNS}/" 2>/dev/null || echo "000")"
+  HTTP_CODE="$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "https://${PUBLIC_DNS}/" 2>/dev/null || true)"
+  [ -z "${HTTP_CODE}" ] && HTTP_CODE="000"
   if [ "${HTTP_CODE}" = "404" ]; then
     log_warn "[Attempt ${attempt}] Received HTTP 404 (Authentik Outpost Not Found)!"
     SAW_404=true
@@ -167,7 +168,8 @@ if [ "${READY}" != true ]; then
 fi
 
 # Verify bare-IP HTTPS redirect to primary DNS hostname
-IP_CODE="$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "https://${PUBLIC_IP}/" 2>/dev/null || echo "000")"
+IP_CODE="$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "https://${PUBLIC_IP}/" 2>/dev/null || true)"
+[ -z "${IP_CODE}" ] && IP_CODE="000"
 if [ "${IP_CODE}" = "302" ]; then
   log_success "Bare-IP HTTPS request (https://${PUBLIC_IP}/) cleanly returned HTTP 302 redirect to primary hostname."
 else
@@ -186,3 +188,4 @@ log_success "  URL:               https://${PUBLIC_DNS}/"
 log_success "  Username:          admin"
 log_success "  Initial Password:  ${INST_ID}"
 log_success "=============================================================================="
+
