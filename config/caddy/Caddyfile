@@ -16,6 +16,10 @@ import tls_policy.caddy
 		uri /outpost.goauthentik.io/auth/caddy
 		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
 		trusted_proxies private_ranges
+		@outpost_warming status 404 502 503 504
+		handle_response @outpost_warming {
+			error 503
+		}
 	}
 }
 
