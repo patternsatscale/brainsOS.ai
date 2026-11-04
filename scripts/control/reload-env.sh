@@ -309,15 +309,31 @@ if ! docker image inspect brainsos-runner-base:latest >/dev/null 2>&1; then
   docker build -t brainsos-runner-base:latest -f "${REPO_ROOT}/docker/runners/base/Dockerfile" "${REPO_ROOT}"
 fi
 
-# Ensure caddy_root.crt exists as a regular file before docker compose bind-mounts it
+# Ensure caddy_root.crt and runner/settings bind-mounted files exist as regular files before docker compose bind-mounts them
 EFFECTIVE_DATA_DIR="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/../data}"
 if [[ "${EFFECTIVE_DATA_DIR}" != /* ]]; then
   EFFECTIVE_DATA_DIR="${REPO_ROOT}/${EFFECTIVE_DATA_DIR#./}"
 fi
-mkdir -p "${EFFECTIVE_DATA_DIR}/control_plane"
+mkdir -p "${EFFECTIVE_DATA_DIR}/control_plane" "${EFFECTIVE_DATA_DIR}/runners/hermes" "${EFFECTIVE_DATA_DIR}/settings"
+if [ -d "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt" ]; then
+  rm -rf "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt"
+fi
 if [ ! -f "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt" ]; then
   touch "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt" 2>/dev/null || true
 fi
+for hfile in config.yaml config.json model_pool.json mcp.json; do
+  if [ -d "${EFFECTIVE_DATA_DIR}/runners/hermes/${hfile}" ]; then
+    rm -rf "${EFFECTIVE_DATA_DIR}/runners/hermes/${hfile}"
+  fi
+  if [ ! -f "${EFFECTIVE_DATA_DIR}/runners/hermes/${hfile}" ] && [ -f "${REPO_ROOT}/config/default_runners/hermes/${hfile}" ]; then
+    cp "${REPO_ROOT}/config/default_runners/hermes/${hfile}" "${EFFECTIVE_DATA_DIR}/runners/hermes/${hfile}"
+  fi
+done
+for sfile in agents.yaml runners.yaml; do
+  if [ ! -f "${EFFECTIVE_DATA_DIR}/settings/${sfile}" ] && [ -f "${REPO_ROOT}/config/default_settings/${sfile}" ]; then
+    cp "${REPO_ROOT}/config/default_settings/${sfile}" "${EFFECTIVE_DATA_DIR}/settings/${sfile}"
+  fi
+done
 
 docker compose up -d
 log_success "Docker services updated with current .env configurations."

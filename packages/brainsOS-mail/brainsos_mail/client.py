@@ -12,12 +12,42 @@ import logging
 import os
 import re
 import smtplib
+import socket
+import subprocess
 import time
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Any
 
 logger = logging.getLogger("brainsos_mail.client")
+
+
+def _is_tcp_reachable(host: str, port: int, timeout: float = 0.2) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _resolve_mail_container_ip() -> str | None:
+    """Resolve mail-server container bridge IP when host ports are unpublished (compose.appliance.yml)."""
+    for name in ("brainsos-app-mail-server", "brainsos-net-mail-server", "brainsos-mail-server"):
+        try:
+            proc = subprocess.run(
+                ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", name],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                ip = proc.stdout.strip().split()[0]
+                if ip:
+                    return ip
+        except Exception:
+            continue
+    return None
 
 
 def _format_msg_id(val: str) -> str:
@@ -57,27 +87,43 @@ class BrainsOSMailClient:
 
         if not smtp_host:
             try:
-                import socket
-
                 socket.gethostbyname("mail-server")
                 smtp_host = "mail-server"
                 default_smtp_port = "25"
             except (socket.gaierror, OSError):
-                smtp_host = "127.0.0.1"
-                default_smtp_port = os.getenv("MAIL_SMTP_PORT", "10025")
+                loopback_smtp = int(os.getenv("MAIL_SMTP_PORT", "10025"))
+                if _is_tcp_reachable("127.0.0.1", loopback_smtp):
+                    smtp_host = "127.0.0.1"
+                    default_smtp_port = str(loopback_smtp)
+                else:
+                    container_ip = _resolve_mail_container_ip()
+                    if container_ip:
+                        smtp_host = container_ip
+                        default_smtp_port = "25"
+                    else:
+                        smtp_host = "127.0.0.1"
+                        default_smtp_port = str(loopback_smtp)
         else:
             default_smtp_port = "25"
 
         if not imap_host:
             try:
-                import socket
-
                 socket.gethostbyname("mail-server")
                 imap_host = "mail-server"
                 default_imap_port = "143"
             except (socket.gaierror, OSError):
-                imap_host = "127.0.0.1"
-                default_imap_port = os.getenv("MAIL_IMAP_PORT", "10143")
+                loopback_imap = int(os.getenv("MAIL_IMAP_PORT", "10143"))
+                if _is_tcp_reachable("127.0.0.1", loopback_imap):
+                    imap_host = "127.0.0.1"
+                    default_imap_port = str(loopback_imap)
+                else:
+                    container_ip = _resolve_mail_container_ip()
+                    if container_ip:
+                        imap_host = container_ip
+                        default_imap_port = "143"
+                    else:
+                        imap_host = "127.0.0.1"
+                        default_imap_port = str(loopback_imap)
         else:
             default_imap_port = "143"
 
@@ -244,9 +290,17 @@ class BrainsOSMailClient:
 
         # Step 1: Outbound Dispatch
         # Route external destinations (e.g. @gmail.com) through Amazon SES.
-        # Route internal domains (*.local, localhost) through local Postfix SMTP.
+        # Route internal domains (*.local, localhost, BRAINSOS_DOMAIN, BRAINSOS_MAIL_DOMAIN) through local Postfix SMTP.
         to_domain = to.split("@")[-1].lower() if "@" in to else ""
-        is_external = bool(to_domain and not to_domain.endswith(".local") and to_domain != "localhost")
+        is_internal = (
+            not to_domain
+            or to_domain.endswith(".local")
+            or to_domain == "localhost"
+            or "local.brainsos.ai" in to_domain
+            or to_domain == os.getenv("BRAINSOS_DOMAIN", "").lower()
+            or to_domain == os.getenv("BRAINSOS_MAIL_DOMAIN", "").lower()
+        )
+        is_external = not is_internal
         use_ses = force_ses or (is_external and os.getenv("BRAINSOS_MAIL_OUTBOUND_BACKEND", "ses") != "smtp")
 
         if use_ses:

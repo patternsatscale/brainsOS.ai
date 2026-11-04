@@ -141,6 +141,8 @@ services:
       - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
       - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
       - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
+      - CLAUDE_MAIL_PASSWORD=${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}
+      - GPT_MAIL_PASSWORD=${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
       - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}
 
@@ -176,6 +178,8 @@ services:
       - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
       - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
       - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
+      - CLAUDE_MAIL_PASSWORD=${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}
+      - GPT_MAIL_PASSWORD=${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}

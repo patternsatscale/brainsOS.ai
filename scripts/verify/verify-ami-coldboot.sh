@@ -181,6 +181,57 @@ if [ "${SAW_404}" = true ]; then
   exit 1
 fi
 
+# Verify via SSM that fleet settings (agents.yaml, runners.yaml), agent partitions,
+# runner configs, and the host queue worker + email pipeline are active on cold boot.
+if aws ssm describe-instance-information --region "${AWS_REGION}" \
+  --filters "Key=InstanceIds,Values=${INST_ID}" \
+  --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null | grep -q "Online"; then
+  log_info "Verifying fleet seeding (agents.yaml, souls, runner configs) and email pipeline via SSM..."
+  SSM_CMD_ID="$(aws ssm send-command --region "${AWS_REGION}" \
+    --instance-ids "${INST_ID}" \
+    --document-name "AWS-RunShellScript" \
+    --parameters 'commands=[
+      "set -euo pipefail",
+      "for i in $(seq 1 60); do systemctl is-active --quiet brainsos.service && break; sleep 3; done",
+      "test -f /opt/brainsos/data/settings/agents.yaml",
+      "test -f /opt/brainsos/data/settings/runners.yaml",
+      "test -f /opt/brainsos/data/agents/terrastella/SOUL.md",
+      "test -f /opt/brainsos/data/agents/ping/SOUL.md",
+      "test -f /opt/brainsos/data/runners/hermes/config.yaml",
+      "for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/health/liveness >/dev/null && break; sleep 2; done",
+      "curl -sf http://127.0.0.1:8000/health/liveness",
+      "MSG_ID=\"<coldboot-verify-$(date +%s)@brainsos.local>\"",
+      "RESP=$(printf \"From: admin@brainsos.local\\r\\nTo: ping@brainsos.local\\r\\nSubject: Coldboot Ping Test\\r\\nMessage-ID: ${MSG_ID}\\r\\n\\r\\nping\\r\\n\" | curl -sf -X POST http://127.0.0.1:8000/api/v1/mail/inbound -H \"Content-Type: message/rfc822\" --data-binary @-)",
+      "echo \"Ingress response: ${RESP}\"",
+      "echo \"${RESP}\" | grep -q \"enqueued\"",
+      "for i in $(seq 1 20); do docker exec brainsos-app-mail-server ls /var/mail/vmail/admin/Maildir/new /var/mail/vmail/admin/Maildir/cur 2>/dev/null | grep -q . && break; sleep 1; done",
+      "echo \"COLD_BOOT_FLEET_AND_MAIL_OK\""
+    ]' \
+    --query 'Command.CommandId' --output text)"
+
+  SSM_STATUS="InProgress"
+  for _ in $(seq 1 60); do
+    SSM_STATUS="$(aws ssm get-command-invocation --region "${AWS_REGION}" \
+      --command-id "${SSM_CMD_ID}" --instance-id "${INST_ID}" \
+      --query 'Status' --output text 2>/dev/null || echo "InProgress")"
+    case "${SSM_STATUS}" in
+      Success|Failed|Cancelled|TimedOut) break ;;
+    esac
+    sleep 3
+  done
+
+  SSM_OUT="$(aws ssm get-command-invocation --region "${AWS_REGION}" \
+    --command-id "${SSM_CMD_ID}" --instance-id "${INST_ID}" \
+    --query '[StandardOutputContent,StandardErrorContent]' --output text 2>/dev/null || true)"
+
+  if [ "${SSM_STATUS}" != "Success" ] || ! echo "${SSM_OUT}" | grep -q "COLD_BOOT_FLEET_AND_MAIL_OK"; then
+    log_error "Fleet seeding / email pipeline verification failed on ${INST_ID} (status=${SSM_STATUS}):"
+    echo "${SSM_OUT}" >&2
+    exit 1
+  fi
+  log_success "Verified /opt/brainsos/data/settings/agents.yaml, agent SOULs, runner configs, and end-to-end email auto-reply!"
+fi
+
 log_success "=============================================================================="
 log_success "Cold-Boot AMI Verification PASSED for ${AMI_ID}!"
 log_success "  Instance ID:       ${INST_ID}"

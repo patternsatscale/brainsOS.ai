@@ -555,6 +555,11 @@ class AgentQueueWorkerDaemon:
             os.getenv("BRAINSOS_DOMAIN") and "dgx.local.brainsos.ai" in os.getenv("BRAINSOS_DOMAIN", "")
         ):
             sender_email = f"{profile.id}@dgx.local.brainsos.ai"
+        elif is_internal_dest and to_domain and to_domain in (
+            os.getenv("BRAINSOS_DOMAIN", "").lower(),
+            os.getenv("BRAINSOS_MAIL_DOMAIN", "").lower(),
+        ):
+            sender_email = f"{profile.id}@{to_domain}"
         elif is_external_dest:
             configured_public_domain = (
                 os.getenv("BRAINSOS_EMAIL_DOMAIN", "").split(",")[0].strip()

@@ -27,6 +27,8 @@ TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_
 BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
 MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
 PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
 # 1. Wait for isolated SOGo database host to become available and accept authentication
 echo "[BRAINSOS-SOGO] Waiting for database ${DB_HOST}:${DB_PORT} and validating credentials..."
@@ -69,6 +71,8 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
         ('bawtford@brainsos.local', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@brainsos.local'),
         ('marvin@brainsos.local', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@brainsos.local'),
         ('ping@brainsos.local', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@brainsos.local'),
+        ('claude@brainsos.local', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@brainsos.local'),
+        ('gpt@brainsos.local', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@brainsos.local'),
         ('akadmin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@brainsos.local'),
         ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
         ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
@@ -76,7 +80,9 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
         ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
         ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
         ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
-        ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}')
+        ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
+        ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
+        ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
 
@@ -89,6 +95,8 @@ EOSQL
                 ('bawtford@${MAIL_DOMAIN}', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
                 ('marvin@${MAIL_DOMAIN}', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
                 ('ping@${MAIL_DOMAIN}', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
+                ('claude@${MAIL_DOMAIN}', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
+                ('gpt@${MAIL_DOMAIN}', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
                 ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}')
             ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
