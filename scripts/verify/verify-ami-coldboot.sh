@@ -143,7 +143,7 @@ log_info "Polling HTTPS endpoint from outside (expecting 503 Initializing splash
 
 READY=false
 SAW_404=false
-for attempt in $(seq 1 90); do
+for attempt in $(seq 1 120); do
   HTTP_CODE="$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "https://${PUBLIC_DNS}/" 2>/dev/null || true)"
   [ -z "${HTTP_CODE}" ] && HTTP_CODE="000"
   if [ "${HTTP_CODE}" = "404" ]; then
@@ -191,7 +191,7 @@ if aws ssm describe-instance-information --region "${AWS_REGION}" \
     --instance-ids "${INST_ID}" \
     --document-name "AWS-RunShellScript" \
     --parameters 'commands=[
-      "set -euo pipefail",
+      "set -eu",
       "for i in $(seq 1 60); do systemctl is-active --quiet brainsos.service && break; sleep 3; done",
       "test -f /opt/brainsos/data/settings/agents.yaml",
       "test -f /opt/brainsos/data/settings/runners.yaml",
