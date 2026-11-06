@@ -37,14 +37,15 @@ services:
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,langfuse
-      # Langfuse observability plugin config
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web
+      # Langfuse observability plugin config (in-network via brainsos-ingress-net)
       - HERMES_LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - HERMES_LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
-      - HERMES_LANGFUSE_BASE_URL=http://host.docker.internal:3001
+      - HERMES_LANGFUSE_BASE_URL=${HERMES_LANGFUSE_BASE_URL:-http://langfuse-web:3000}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
-      - LANGFUSE_HOST=http://host.docker.internal:3001
+      - LANGFUSE_HOST=http://langfuse-web:3000
       - LANGFUSE_OTEL_AUTH=${LANGFUSE_OTEL_AUTH}
       # Tool Egress Proxy CA bundle trust
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
@@ -68,8 +69,8 @@ services:
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/mcp.json:/opt/data/mcp.json:ro
       # brainsOS Hermes provider plugins (#295: forwards session_id to LiteLLM Langfuse traces)
       - ../hermes/plugins/model-providers:/opt/data/plugins/model-providers:ro
-      # brainsOS Hermes Langfuse plugin override (#299: sets trace_name to brainsOS event instead of 'Hermes turn')
-      - ../hermes/plugins/observability/langfuse/__init__.py:/opt/hermes/plugins/observability/langfuse/__init__.py:ro
+      # brainsOS Hermes Langfuse plugin override (#299/#320: mounts plugin.yaml + __init__.py)
+      - ../hermes/plugins/observability/langfuse:/opt/hermes/plugins/observability/langfuse:ro
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     command: ["gateway", "run"]
     extra_hosts:

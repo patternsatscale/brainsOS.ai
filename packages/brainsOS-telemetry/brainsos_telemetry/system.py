@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import platform
+import re
 import secrets
 import shutil
 import subprocess
@@ -300,6 +301,8 @@ async def stream_job_logs(job_record: Dict[str, Any]) -> AsyncGenerator[str, Non
 
 async def stream_system_update(
     service: Optional[str] = None,
+    version: Optional[str] = None,
+    reset_version: bool = False,
     containers_only: bool = False,
     full: bool = False,
 ) -> AsyncGenerator[str, None]:
@@ -315,6 +318,10 @@ async def stream_system_update(
     cmd = [update_script, "--unattended"]
     if service:
         cmd.extend(["--service", service])
+        if reset_version:
+            cmd.append("--reset-version")
+        elif version:
+            cmd.extend(["--version", version.strip()])
     elif containers_only:
         cmd.append("--containers-only")
     elif full:
@@ -364,6 +371,47 @@ async def stream_prune_logs(
         yield chunk
 
 
+def detect_appliance_platform(repo_root: str) -> tuple[str, str]:
+    """Detect whether the host is an AWS EC2 AMI, ASUS Ascent GX10, macOS, or Linux host."""
+    arch = platform.machine() or "ARM64"
+    sys_name = platform.system()
+    if sys_name == "Darwin":
+        return "macOS Workstation", f"Apple Silicon • {arch}"
+
+    def _read_dmi(field: str) -> str:
+        for base in ("/sys/class/dmi/id", "/sys/devices/virtual/dmi/id"):
+            p = os.path.join(base, field)
+            if os.path.isfile(p):
+                try:
+                    with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                        val = f.read().strip()
+                        if val:
+                            return val
+                except Exception:
+                    pass
+        return ""
+
+    vendor = _read_dmi("sys_vendor")
+    product = _read_dmi("product_name")
+    board = _read_dmi("board_name")
+
+    is_aws = (
+        "amazon" in vendor.lower()
+        or os.path.isfile(os.path.join(repo_root, ".brainsos-initialized"))
+        or "compose.appliance.yml" in os.environ.get("COMPOSE_FILE", "")
+    )
+    if is_aws:
+        inst_type = product if product and "amazon" not in product.lower() and "gx10" not in product.lower() else ""
+        arch_label = "ARM64 Graviton" if arch in ("aarch64", "arm64") else arch
+        detail = f"AWS {arch_label} • {inst_type}" if inst_type else f"AWS {arch_label} • EC2"
+        return "AWS EC2 Appliance (AMI)", detail
+
+    if "gx10" in product.lower() or ("asus" in vendor.lower() and "gx10" in board.lower()):
+        return "ASUS Ascent GX10", "NVIDIA GB10 ARM64 • 273 GB/s"
+
+    return f"Linux Host ({arch})", f"{sys_name} {arch}"
+
+
 def get_system_status() -> Dict[str, Any]:
     """Query current platform status and available updates via scripts/control/update.sh."""
     repo_root = get_repo_root()
@@ -381,6 +429,10 @@ def get_system_status() -> Dict[str, Any]:
             if res.returncode == 0 and res.stdout.strip():
                 status = json.loads(res.stdout)
                 if "disk" in status:
+                    if "platform_name" not in status:
+                        pname, pdetail = detect_appliance_platform(repo_root)
+                        status["platform_name"] = pname
+                        status["platform_detail"] = pdetail
                     return status
         except Exception as e:
             logger.warning(f"Error querying update.sh: {e}")
@@ -403,8 +455,11 @@ def get_system_status() -> Dict[str, Any]:
             "warning": False,
         }
 
+    platform_name, platform_detail = detect_appliance_platform(repo_root)
     return {
         "platform": "brainsOS",
+        "platform_name": platform_name,
+        "platform_detail": platform_detail,
         "git": {
             "is_git": os.path.isdir(os.path.join(repo_root, ".git")),
             "branch": "unknown",
@@ -503,6 +558,8 @@ def create_system_api_app():
 
     class UpdateRequest(BaseModel):
         service: Optional[str] = Field(None, description="Optional targeted service name (e.g. litellm, langfuse)")
+        version: Optional[str] = Field(None, description="Optional target upstream image version tag (e.g. 1.108.0)")
+        reset_version: bool = Field(False, description="Remove .env version override and restore default image tag")
         containers_only: bool = Field(False, description="Update upstream containers only without pulling git source")
         full: bool = Field(True, description="Full update including git source code and containers")
 
@@ -575,6 +632,14 @@ def create_system_api_app():
                 detail=f"Invalid service '{req.service}'. Must be one of declared compose services: {sorted(list(ALLOWED_SERVICES))}",
             )
 
+        if req.version is not None:
+            ver = req.version.strip()
+            if not ver or ver.startswith("-") or not re.match(r"^[A-Za-z0-9._-]+$", ver):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid version tag '{req.version}'. Must be a valid alphanumeric version identifier.",
+                )
+
         update_script = os.path.join(repo_root, "scripts/control/update.sh")
         if not os.path.isfile(update_script):
             raise HTTPException(status_code=500, detail="scripts/control/update.sh not found")
@@ -582,6 +647,10 @@ def create_system_api_app():
         cmd = [update_script, "--unattended"]
         if req.service:
             cmd.extend(["--service", req.service.lower()])
+            if req.reset_version:
+                cmd.append("--reset-version")
+            elif req.version:
+                cmd.extend(["--version", req.version.strip()])
         elif req.containers_only:
             cmd.append("--containers-only")
         elif req.full:

@@ -64,6 +64,7 @@ DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
 RUNNERS_ROOT="${BRAINSOS_RUNNERS_DIR:-${DATA_ROOT}/runners}"
 LIVE_CONFIG="${RUNNERS_ROOT}/hermes/config.yaml"
 PLUGIN_DIR="${REPO_ROOT}/docker/hermes/plugins/model-providers/brainsos-litellm-session"
+LANGFUSE_PLUGIN_DIR="${REPO_ROOT}/docker/hermes/plugins/observability/langfuse"
 PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
 [ -x "${PYTHON_BIN}" ] || PYTHON_BIN="python3"
 
@@ -73,6 +74,10 @@ if [ ! -f "${LIVE_CONFIG}" ]; then
 fi
 if [ ! -f "${PLUGIN_DIR}/__init__.py" ]; then
   log_error "Provider plugin missing at ${PLUGIN_DIR}."
+  exit 1
+fi
+if [ ! -f "${LANGFUSE_PLUGIN_DIR}/__init__.py" ] || [ ! -f "${LANGFUSE_PLUGIN_DIR}/plugin.yaml" ]; then
+  log_error "Langfuse observability plugin files (plugin.yaml + __init__.py) missing at ${LANGFUSE_PLUGIN_DIR}."
   exit 1
 fi
 
@@ -152,6 +157,16 @@ def drift(c):
         out.append("monitoring.gateway_health_export.enabled")
     if section(c, "monitoring", "export", "otlp").get("enabled") is not False:
         out.append("monitoring.export.otlp.enabled")
+    installed = c.get("_left_core_installed")
+    if not isinstance(installed, list) or "langfuse" not in installed:
+        out.append("_left_core_installed.langfuse")
+    enabled_plugins = section(c, "plugins").get("enabled")
+    if not isinstance(enabled_plugins, list):
+        out.append("plugins.enabled")
+    else:
+        for req_plugin in ("observability/langfuse", "model-providers/brainsos-litellm-session"):
+            if req_plugin not in enabled_plugins:
+                out.append(f"plugins.enabled.{req_plugin}")
     return out
 
 
@@ -179,6 +194,22 @@ otlp = export.setdefault("otlp", {})
 if not isinstance(otlp, dict):
     otlp = export["otlp"] = {}
 otlp["enabled"] = False
+installed = cfg.get("_left_core_installed")
+if not isinstance(installed, list):
+    installed = []
+if "langfuse" not in installed:
+    installed.append("langfuse")
+cfg["_left_core_installed"] = installed
+plugins_cfg = cfg.setdefault("plugins", {})
+if not isinstance(plugins_cfg, dict):
+    plugins_cfg = cfg["plugins"] = {}
+enabled_plugins = plugins_cfg.get("enabled")
+if not isinstance(enabled_plugins, list):
+    enabled_plugins = []
+for req_plugin in ("observability/langfuse", "model-providers/brainsos-litellm-session"):
+    if req_plugin not in enabled_plugins:
+        enabled_plugins.append(req_plugin)
+plugins_cfg["enabled"] = enabled_plugins
 
 text = yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True)
 open(path, "w", encoding="utf-8").write(text)
@@ -188,19 +219,21 @@ PY
 )"
 
 case "${MONITOR_RESULT}" in
-  ok) log_success "Live config already has gateway-health / OTLP monitoring export disabled" ;;
-  applied) log_success "Disabled gateway-health / OTLP monitoring export in ${LIVE_CONFIG}" ;;
+  ok) log_success "Live config already has gateway-health / OTLP monitoring export disabled & langfuse left-core marker set" ;;
+  applied) log_success "Updated monitoring export & langfuse left-core marker in ${LIVE_CONFIG}" ;;
   missing:*)
-    log_error "Monitoring export still enabled in live config: ${MONITOR_RESULT#missing:}"
+    log_error "Monitoring/plugin guard missing in live config: ${MONITOR_RESULT#missing:}"
     exit 1 ;;
   *) log_error "Could not apply monitoring export guard: ${MONITOR_RESULT}"; exit 1 ;;
 esac
 
 if ${CHECK_ONLY}; then
-  if docker compose exec -T runner-hermes test -f /opt/data/plugins/model-providers/brainsos-litellm-session/__init__.py 2>/dev/null; then
-    log_success "Provider plugin is mounted in runner-hermes."
+  if docker compose exec -T runner-hermes test -f /opt/data/plugins/model-providers/brainsos-litellm-session/__init__.py 2>/dev/null && \
+     docker compose exec -T runner-hermes test -f /opt/hermes/plugins/observability/langfuse/plugin.yaml 2>/dev/null && \
+     docker compose exec -T runner-hermes test -f /opt/hermes/plugins/observability/langfuse/__init__.py 2>/dev/null; then
+    log_success "Provider and Langfuse observability plugins are mounted in runner-hermes."
   else
-    log_error "Provider plugin is NOT mounted in runner-hermes (run without --check)."
+    log_error "Provider or Langfuse observability plugin is NOT mounted in runner-hermes (run without --check)."
     exit 1
   fi
   exit 0
@@ -229,6 +262,13 @@ if docker compose exec -T runner-hermes test -f /opt/data/plugins/model-provider
   log_success "Provider plugin mounted at /opt/data/plugins/model-providers/brainsos-litellm-session"
 else
   log_error "Provider plugin mount missing inside runner-hermes."
+  exit 1
+fi
+if docker compose exec -T runner-hermes test -f /opt/hermes/plugins/observability/langfuse/plugin.yaml && \
+   docker compose exec -T runner-hermes test -f /opt/hermes/plugins/observability/langfuse/__init__.py; then
+  log_success "Langfuse observability plugin mounted at /opt/hermes/plugins/observability/langfuse (plugin.yaml + __init__.py)"
+else
+  log_error "Langfuse observability plugin mount (plugin.yaml + __init__.py) missing inside runner-hermes."
   exit 1
 fi
 if docker compose exec -T runner-hermes grep -q 'NO_LOG_FIELD = "no-log"' /opt/data/plugins/model-providers/brainsos-litellm-session/__init__.py; then

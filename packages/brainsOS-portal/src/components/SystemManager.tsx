@@ -51,6 +51,8 @@ interface DiskStatus {
 
 interface SystemStatus {
   platform: string;
+  platform_name?: string;
+  platform_detail?: string;
   git: GitStatus;
   services: Record<string, ServiceStatus>;
   disk?: DiskStatus;
@@ -58,7 +60,9 @@ interface SystemStatus {
 }
 
 const DEFAULT_STATUS: SystemStatus = {
-  platform: "brainsOS Appliance (ARM64)",
+  platform: "brainsOS",
+  platform_name: "AWS EC2 Appliance (AMI)",
+  platform_detail: "AWS ARM64 Graviton • EC2",
   disk: {
     total_gb: 915.3,
     used_gb: 221.6,
@@ -264,6 +268,7 @@ export const SystemManager: React.FC = () => {
         headers,
         body: JSON.stringify({
           service: target.service,
+          version: target.targetVersion,
           containers_only: target.containersOnly,
           full: target.full
         })
@@ -622,10 +627,12 @@ export const SystemManager: React.FC = () => {
               <span className="font-mono text-[10px] uppercase tracking-wider font-semibold">Appliance Platform</span>
               <Server className="w-4 h-4 text-[#00f2fe]" />
             </div>
-            <div className="font-headline font-bold text-base text-white">ASUS Ascent GX10</div>
+            <div className="font-headline font-bold text-base text-white">
+              {status?.platform_name || (status?.platform && status.platform !== 'brainsOS' ? status.platform : 'AWS EC2 Appliance (AMI)')}
+            </div>
             <div className="font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>NVIDIA GB10 ARM64 • 273 GB/s</span>
+              <span>{status?.platform_detail || 'AWS ARM64 Graviton • EC2'}</span>
             </div>
           </div>
 
@@ -1119,7 +1126,9 @@ export const SystemManager: React.FC = () => {
             )}
 
             {/* Card 4: Hermes Agent Runner */}
-            {status.services.hermes && (
+            {(status.services.hermes || status.services['runner-hermes']) && (() => {
+              const hermesSvc = status.services.hermes || status.services['runner-hermes'];
+              return (
               <div className="p-5 rounded-2xl bg-[#141a26]/80 border border-white/10 hover:border-purple-500/40 transition-all flex flex-col justify-between space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -1140,7 +1149,7 @@ export const SystemManager: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 py-2 border-y border-white/5 font-mono text-xs">
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">Current Version</span>
-                    <span className="text-white font-medium">{status.services.hermes.current_version}</span>
+                    <span className="text-white font-medium">{hermesSvc.current_version}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">Release Line</span>
@@ -1150,7 +1159,7 @@ export const SystemManager: React.FC = () => {
 
                 <div className="flex items-center justify-between pt-1">
                   <a
-                    href={status.services.hermes.changelog_url}
+                    href={hermesSvc.changelog_url || 'https://github.com/patternsatscale/brainsOS.ai/releases'}
                     target="_blank"
                     rel="noreferrer"
                     className="text-xs font-mono text-slate-400 hover:text-purple-400 flex items-center gap-1 transition-colors"
@@ -1161,7 +1170,8 @@ export const SystemManager: React.FC = () => {
                   <span className="text-xs font-mono text-slate-500">Stateless Registry Active</span>
                 </div>
               </div>
-            )}
+              );
+            })()}
               </>
             )}
           </div>

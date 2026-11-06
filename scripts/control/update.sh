@@ -81,7 +81,7 @@ RESET_VERSION=false
 UNATTENDED=false
 NO_BACKUP=false
 DRY_RUN=false
-HEALTH_TIMEOUT=30
+HEALTH_TIMEOUT=90
 
 show_help() {
   echo -e "${BOLD}brainsOS Universal Appliance & Platform Update Engine${NC}"
@@ -99,7 +99,7 @@ show_help() {
   echo "  --target-version <tag> Alias for --version"
   echo "  --reset-version       Remove .env version override for --service and restore pinned default"
   echo "  --reset               Alias for --reset-version"
-  echo "  --health-timeout <s>  Timeout in seconds for post-update health verification (default: 30)"
+  echo "  --health-timeout <s>  Timeout in seconds for post-update health verification (default: 90)"
   echo "  -y, --unattended      Non-interactive mode (bypass confirmation prompts)"
   echo "  --no-backup           Skip pre-flight data snapshot"
   echo "  --dry-run             Simulate update actions without altering disk or containers"
@@ -195,6 +195,46 @@ def run_cmd(cmd, cwd=repo_root):
     except Exception:
         return ""
 
+def get_platform_info():
+    import platform as py_platform
+    arch = py_platform.machine() or "ARM64"
+    sys_name = py_platform.system()
+    if sys_name == "Darwin":
+        return "macOS Workstation", f"Apple Silicon • {arch}"
+
+    def read_dmi(field):
+        for base in ("/sys/class/dmi/id", "/sys/devices/virtual/dmi/id"):
+            p = os.path.join(base, field)
+            if os.path.isfile(p):
+                try:
+                    with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                        val = f.read().strip()
+                        if val:
+                            return val
+                except Exception:
+                    pass
+        return ""
+
+    vendor = read_dmi("sys_vendor")
+    product = read_dmi("product_name")
+    board = read_dmi("board_name")
+
+    is_aws = (
+        "amazon" in vendor.lower()
+        or os.path.isfile(os.path.join(repo_root, ".brainsos-initialized"))
+        or "compose.appliance.yml" in os.environ.get("COMPOSE_FILE", "")
+    )
+    if is_aws:
+        inst_type = product if product and "amazon" not in product.lower() and "gx10" not in product.lower() else ""
+        arch_label = "ARM64 Graviton" if arch in ("aarch64", "arm64") else arch
+        detail = f"AWS {arch_label} • {inst_type}" if inst_type else f"AWS {arch_label} • EC2"
+        return "AWS EC2 Appliance (AMI)", detail
+
+    if "gx10" in product.lower() or ("asus" in vendor.lower() and "gx10" in board.lower()):
+        return "ASUS Ascent GX10", "NVIDIA GB10 ARM64 • 273 GB/s"
+
+    return f"Linux Host ({arch})", f"{sys_name} {arch}"
+
 def get_git_info():
     is_git = os.path.isdir(os.path.join(repo_root, ".git"))
     if not is_git:
@@ -208,7 +248,10 @@ def get_git_info():
     if ls_out:
         remote_commit = ls_out.split()[0][:7] if ls_out.split() else ""
     if remote_commit and remote_commit != current_commit:
-        run_cmd("git fetch origin --quiet")
+        if os.path.isfile(os.path.join(repo_root, ".git", "shallow")):
+            run_cmd("git fetch --unshallow origin --quiet || git fetch origin --quiet")
+        else:
+            run_cmd("git fetch origin --quiet")
         behind_out = run_cmd(f"git rev-list --count HEAD..origin/{branch}")
         try:
             commits_behind = int(behind_out)
@@ -299,6 +342,7 @@ services = {
         "current_version": litellm_curr,
         "latest_version": litellm_latest,
         "update_available": litellm_update,
+        "changelog_url": "https://github.com/BerriAI/litellm/releases",
         "plane": "control"
     },
     "langfuse": {
@@ -307,6 +351,7 @@ services = {
         "current_version": langfuse_curr,
         "latest_version": langfuse_latest,
         "update_available": langfuse_update,
+        "changelog_url": "https://github.com/langfuse/langfuse/releases",
         "plane": "telemetry"
     },
     "caddy": {
@@ -315,6 +360,7 @@ services = {
         "current_version": caddy_curr,
         "latest_version": caddy_latest,
         "update_available": caddy_update,
+        "changelog_url": "https://github.com/caddyserver/caddy/releases",
         "plane": "ingress"
     },
     "runner-hermes": {
@@ -323,6 +369,7 @@ services = {
         "current_version": hermes_curr,
         "latest_version": hermes_latest,
         "update_available": hermes_update,
+        "changelog_url": "https://github.com/patternsatscale/brainsOS.ai/releases",
         "plane": "agent"
     }
 }
@@ -338,9 +385,12 @@ disk_info = {
 }
 
 overall_update = git_info.get("update_available", False) or any(s["update_available"] for s in services.values())
+platform_name, platform_detail = get_platform_info()
 
 status_data = {
     "platform": "brainsOS",
+    "platform_name": platform_name,
+    "platform_detail": platform_detail,
     "git": git_info,
     "services": services,
     "disk": disk_info,
@@ -385,6 +435,7 @@ YELLOW = "\033[1;33m"
 DIM = "\033[2m"
 NC = "\033[0m"
 
+print(f"{BOLD}Appliance Platform:{NC} {CYAN}{data.get('platform_name', 'brainsOS')}{NC} ({DIM}{data.get('platform_detail', '')}{NC})")
 print(f"{BOLD}Core Platform (Git Repository):{NC}")
 if git.get("is_git"):
     curr = git.get("current_commit", "unknown")
@@ -623,7 +674,11 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
       exit 1
     fi
 
-    git fetch origin --quiet
+    if [ -f "${REPO_ROOT}/.git/shallow" ]; then
+      git fetch --unshallow origin --quiet || git fetch origin --quiet
+    else
+      git fetch origin --quiet
+    fi
     if git merge-base --is-ancestor "origin/${CURRENT_BRANCH}" HEAD 2>/dev/null; then
       log_success "Source code is already at the latest commit (${CURRENT_BRANCH})."
     else
@@ -663,6 +718,20 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 3/5: Reconciling service image versions and pulling containers..."
 
+resolve_latest_github_release() {
+  local repo="$1"
+  python3 -c "
+import json, urllib.request
+try:
+    req = urllib.request.Request('https://api.github.com/repos/${repo}/releases/latest', headers={'User-Agent': 'brainsOS-Updater'})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.loads(resp.read().decode())
+        print(data.get('tag_name', '').lstrip('v'))
+except Exception:
+    pass
+" 2>/dev/null || true
+}
+
 COMPOSE_TARGETS=()
 if [ -n "${TARGET_SERVICE}" ]; then
   case "${TARGET_SERVICE}" in
@@ -670,26 +739,39 @@ if [ -n "${TARGET_SERVICE}" ]; then
       TARGET_SERVICE="litellm"
       COMPOSE_TARGETS=("litellm")
       OVERRIDE_VAR="LITELLM_IMAGE_TAG"
+      UPSTREAM_REPO="berriai/litellm"
       ;;
     langfuse|langfuse-web)
       TARGET_SERVICE="langfuse-web"
       COMPOSE_TARGETS=("langfuse-web" "langfuse-worker")
       OVERRIDE_VAR="LANGFUSE_IMAGE_TAG"
+      UPSTREAM_REPO="langfuse/langfuse"
       ;;
     caddy|ingress)
       TARGET_SERVICE="caddy"
       COMPOSE_TARGETS=("caddy")
       OVERRIDE_VAR=""
+      UPSTREAM_REPO=""
       ;;
     *)
       COMPOSE_TARGETS=("${TARGET_SERVICE}")
       OVERRIDE_VAR=""
+      UPSTREAM_REPO=""
       ;;
   esac
 
   if [ -n "${TARGET_VERSION}" ] && [ -z "${OVERRIDE_VAR}" ]; then
     log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse."
     exit 1
+  fi
+
+  # Auto-resolve latest upstream release tag if --version was omitted for a versioned upstream service
+  if [ -z "${TARGET_VERSION}" ] && [ "${RESET_VERSION}" = false ] && [ -n "${OVERRIDE_VAR}" ] && [ -n "${UPSTREAM_REPO}" ]; then
+    RESOLVED_VER="$(resolve_latest_github_release "${UPSTREAM_REPO}")"
+    if [ -n "${RESOLVED_VER}" ]; then
+      TARGET_VERSION="${RESOLVED_VER}"
+      log_info "Resolved latest upstream release for ${TARGET_SERVICE}: ${BOLD}${TARGET_VERSION}${NC}"
+    fi
   fi
 
   # Apply or reset version override in .env
@@ -715,6 +797,32 @@ if [ -n "${TARGET_SERVICE}" ]; then
     else
       log_info "Persisting ${OVERRIDE_VAR}=${TAG_VAL} in .env..."
       "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "${OVERRIDE_VAR}=${TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+else
+  # Full or containers-only update: resolve latest upstream tags for LiteLLM & Langfuse
+  LATEST_LITELLM="$(resolve_latest_github_release "berriai/litellm")"
+  if [ -n "${LATEST_LITELLM}" ]; then
+    LITELLM_TAG_VAL="${LATEST_LITELLM}"
+    [[ "${LITELLM_TAG_VAL}" =~ ^[0-9] ]] && LITELLM_TAG_VAL="v${LITELLM_TAG_VAL}"
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set LITELLM_IMAGE_TAG=${LITELLM_TAG_VAL} in .env"
+    elif [ "${LITELLM_IMAGE_TAG:-v1.105.0}" != "${LITELLM_TAG_VAL}" ]; then
+      log_info "Updating LITELLM_IMAGE_TAG=${LITELLM_TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "LITELLM_IMAGE_TAG=${LITELLM_TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+
+  LATEST_LANGFUSE="$(resolve_latest_github_release "langfuse/langfuse")"
+  if [ -n "${LATEST_LANGFUSE}" ]; then
+    LANGFUSE_TAG_VAL="${LATEST_LANGFUSE#v}"
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL} in .env"
+    elif [ "${LANGFUSE_IMAGE_TAG:-4.58.0}" != "${LANGFUSE_TAG_VAL}" ]; then
+      log_info "Updating LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL}"
       set -a; . "${REPO_ROOT}/.env"; set +a
     fi
   fi

@@ -52,7 +52,8 @@ services:
       # In-network Langfuse (host port 3001 is unpublished on the appliance, #323)
       HERMES_LANGFUSE_BASE_URL: http://langfuse-web:3000
       LANGFUSE_HOST: http://langfuse-web:3000
-      NO_PROXY: localhost,127.0.0.1,host.docker.internal,litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,langfuse,langfuse-web
+      NO_PROXY: localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web
+      no_proxy: localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web
 
   runner-openai:
     ports: !reset []

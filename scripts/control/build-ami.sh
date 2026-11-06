@@ -310,12 +310,12 @@ log_info "Root Volume:     ${VOLUME_SIZE} GB"
 log_info "Communicator:    ${SSH_INTERFACE}"
 log_info "Publish Public:  ${PUBLISH_COMMUNITY}"
 
-# 4. Stage a clean artifact from git (shallow clone of exactly one commit)
+# 4. Stage a clean artifact from git (with commit ancestry so git rev-list/pull work cleanly)
 STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/brainsos-ami-stage.XXXXXX")"
 STAGE_DIR="${STAGE_PARENT}/brainsos"
 log_info "Staging clean artifact from ${BUILD_REF} into ${STAGE_DIR}..."
 git init --quiet --initial-branch=main "${STAGE_DIR}"
-git -C "${STAGE_DIR}" fetch --quiet --depth 1 \
+git -C "${STAGE_DIR}" fetch --quiet \
   --upload-pack="git -c uploadpack.allowAnySHA1InWant=true upload-pack" \
   "file://${REPO_ROOT}" "${BUILD_COMMIT}"
 git -C "${STAGE_DIR}" checkout --quiet -B main FETCH_HEAD
