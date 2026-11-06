@@ -120,6 +120,12 @@ def build_email_run_otlp(
     start_ts = started_at if started_at is not None else end_ts
     clean_subj = (subject or "").strip()
     trace_name = f"brainsos: email: {clean_subj[:120]}" if clean_subj else f"brainsos: email: {agent_id}"
+    local_domain = (
+        os.getenv("BRAINSOS_LOCAL_DOMAIN")
+        or os.getenv("BRAINSOS_MAIL_DOMAIN")
+        or os.getenv("BRAINSOS_DOMAIN")
+        or "brainsos.local"
+    ).strip()
     candidates = [
         # Trace-level attributes (names the root trace after the brainsOS event).
         _attr("langfuse.trace.name", trace_name),
@@ -128,6 +134,7 @@ def build_email_run_otlp(
         _attr("langfuse.trace.tags", ["brainsos-mail", f"agent:{agent_id}", f"status:{status}"]),
         _attr("langfuse.trace.metadata.agent_id", agent_id),
         _attr("langfuse.trace.metadata.agent_name", agent_name),
+        _attr("langfuse.trace.metadata.local_domain", local_domain),
         # Observation-level attributes (this email only).
         _attr("langfuse.observation.type", "span"),
         _attr("langfuse.observation.level", "ERROR" if failed else "DEFAULT"),
@@ -138,6 +145,7 @@ def build_email_run_otlp(
         _attr("langfuse.observation.metadata.status", status),
         _attr("langfuse.observation.metadata.subject", subject),
         _attr("langfuse.observation.metadata.sender", sender),
+        _attr("langfuse.observation.metadata.local_domain", local_domain),
         _attr("langfuse.observation.metadata.usage", usage or {}),
     ]
     span = {
@@ -155,7 +163,16 @@ def build_email_run_otlp(
     return {
         "resourceSpans": [
             {
-                "resource": {"attributes": [_attr("service.name", _SERVICE_NAME)]},
+                "resource": {
+                    "attributes": [
+                        a
+                        for a in (
+                            _attr("service.name", _SERVICE_NAME),
+                            _attr("host.name", local_domain),
+                        )
+                        if a is not None
+                    ]
+                },
                 "scopeSpans": [{"scope": {"name": _SCOPE_NAME}, "spans": [span]}],
             }
         ]

@@ -21,7 +21,15 @@ import {
   Layers,
   HardDrive,
   Trash2,
-  FileText
+  FileText,
+  Globe,
+  Lock,
+  UserCheck,
+  Mail,
+  Download,
+  Wand2,
+  CheckCircle2,
+  KeyRound
 } from 'lucide-react';
 
 interface GitStatus {
@@ -54,16 +62,49 @@ interface SystemStatus {
   platform: string;
   platform_name?: string;
   platform_detail?: string;
+  firstboot_wizard_completed?: boolean;
+  url?: string;
+  local_domain?: string;
+  admin_username?: string;
+  admin_email?: string;
+  tls_mode?: string;
+  acme_email?: string;
+  hostname?: string;
+  preserve_hostname?: boolean;
+  public_ipv4?: string;
+  local_ipv4?: string;
+  instance_id?: string;
   git: GitStatus;
   services: Record<string, ServiceStatus>;
   disk?: DiskStatus;
   overall_update_available: boolean;
 }
 
+interface DnsCheckResult {
+  domain: string;
+  valid_syntax: boolean;
+  resolved_ip: string | null;
+  public_ipv4: string;
+  matches_appliance: boolean;
+  message: string;
+}
+
 const DEFAULT_STATUS: SystemStatus = {
   platform: "brainsOS",
   platform_name: "AWS EC2 Appliance (AMI)",
   platform_detail: "AWS ARM64 Graviton • EC2",
+  firstboot_wizard_completed: true,
+  url: "ec2-32-192-215-107.compute-1.amazonaws.com",
+  local_domain: "jsm.cloud.aws.brainsos.ai",
+  admin_username: "jsm",
+  admin_email: "jsm@jsm.cloud.aws.brainsos.ai",
+  tls_mode: "internal",
+  acme_email: "",
+  hostname: "jsm.cloud.aws.brainsos.ai",
+  preserve_hostname: true,
+  public_ipv4: "32.192.215.107",
+  local_ipv4: "172.31.24.180",
+  instance_id: "i-0d32ae443d40e32d4",
   disk: {
     total_gb: 915.3,
     used_gb: 221.6,
@@ -167,6 +208,22 @@ export const SystemManager: React.FC = () => {
   const [confirmTarget, setConfirmTarget] = useState<UpdateTarget | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
 
+  // First-Boot Setup Wizard & Appliance Identity State (#332 / #333)
+  const [wizardOpen, setWizardOpen] = useState<boolean>(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [wizardAutoOpened, setWizardAutoOpened] = useState<boolean>(false);
+  const [setupLocalDomain, setSetupLocalDomain] = useState<string>('local.brainsos.ai');
+  const [setupAdminUsername, setSetupAdminUsername] = useState<string>('admin');
+  const [setupAdminPassword, setSetupAdminPassword] = useState<string>('');
+  const [setupAdminPasswordConfirm, setSetupAdminPasswordConfirm] = useState<string>('');
+  const [setupUrl, setSetupUrl] = useState<string>('local.brainsos.ai');
+  const [setupTlsMode, setSetupTlsMode] = useState<'internal' | 'acme' | 'route53'>('internal');
+  const [setupAcmeEmail, setSetupAcmeEmail] = useState<string>('');
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [dnsChecking, setDnsChecking] = useState<boolean>(false);
+  const [dnsCheckResult, setDnsCheckResult] = useState<DnsCheckResult | null>(null);
+  const [newConfiguredUrl, setNewConfiguredUrl] = useState<string | null>(null);
+
   // Terminal & SSE Log Drawer State
   const [terminalOpen, setTerminalOpen] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -209,6 +266,26 @@ export const SystemManager: React.FC = () => {
         if (data?.git?.branch) {
           setSelectedBranch((prev) => prev || data.git.branch);
         }
+        if (data?.local_domain) {
+          setSetupLocalDomain((prev) => (prev === 'local.brainsos.ai' ? data.local_domain : prev));
+        }
+        if (data?.admin_username) {
+          setSetupAdminUsername((prev) => (prev === 'admin' ? data.admin_username : prev));
+        }
+        if (data?.url) {
+          setSetupUrl((prev) => (prev === 'local.brainsos.ai' ? data.url : prev));
+        }
+        if (data?.tls_mode && ['internal', 'acme', 'route53'].includes(data.tls_mode)) {
+          setSetupTlsMode(data.tls_mode as 'internal' | 'acme' | 'route53');
+        }
+        if (data?.acme_email) {
+          setSetupAcmeEmail((prev) => prev || data.acme_email);
+        }
+        if (data?.firstboot_wizard_completed === false && !wizardAutoOpened) {
+          setWizardAutoOpened(true);
+          setWizardStep(1);
+          setWizardOpen(true);
+        }
         setStatusError(null);
       } else {
         if (!import.meta.env.DEV) {
@@ -232,6 +309,49 @@ export const SystemManager: React.FC = () => {
     fetchStatus();
     fetchCsrfToken();
   }, [fetchStatus, fetchCsrfToken]);
+
+  // Fallback polling when an SSE connection drops mid-stream (e.g. during Caddy ingress reload)
+  const pollJobUntilComplete = async (
+    jobId: string,
+    addLog: (text: string, type?: 'log' | 'info' | 'error' | 'success') => void,
+    onSuccess?: () => void
+  ) => {
+    addLog(`🔄 Ingress proxy reloading — reattaching to background job ${jobId}...`, 'info');
+    let seenCount = 0;
+    for (let attempt = 0; attempt < 90; attempt++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch(`/api/v1/system/jobs/${jobId}`);
+        if (!res.ok) continue;
+        const job = await res.json();
+        const jobLogs: string[] = Array.isArray(job.logs) ? job.logs : [];
+        if (seenCount === 0 && jobLogs.length > 0) {
+          seenCount = Math.max(0, jobLogs.length - 3);
+        }
+        while (seenCount < jobLogs.length) {
+          addLog(jobLogs[seenCount], 'log');
+          seenCount++;
+        }
+        if (job.status === 'success') {
+          addLog(`✅ Background job ${jobId} completed successfully!`, 'success');
+          setExecutionStatus('success');
+          if (onSuccess) onSuccess();
+          fetchStatus();
+          return;
+        }
+        if (job.status === 'failed') {
+          addLog(`❌ Background job ${jobId} exited with code ${job.exit_code}.`, 'error');
+          setExecutionStatus('failed');
+          fetchStatus();
+          return;
+        }
+      } catch {
+        // Wait for Caddy ingress to finish restarting
+      }
+    }
+    setExecutionStatus('failed');
+    addLog(`⚠️ Timed out waiting for background job ${jobId}.`, 'error');
+  };
 
   // Trigger an update action
   const handleConfirmUpdate = async () => {
@@ -297,43 +417,55 @@ export const SystemManager: React.FC = () => {
         throw new Error('Response body is null');
       }
 
+      const activeJobId = res.headers.get('X-Job-ID') || '';
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let completedCleanly = false;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const payload = JSON.parse(line.slice(6));
-              if (payload.type === 'log') {
-                addLog(payload.line, 'log');
-              } else if (payload.type === 'start') {
-                addLog(`⚙️ Command launched: ${payload.cmd}`, 'info');
-              } else if (payload.type === 'complete') {
-                if (payload.exit_code === 0) {
-                  addLog(`✅ Update completed successfully! All health invariants satisfied.`, 'success');
-                  setExecutionStatus('success');
-                } else {
-                  addLog(`❌ Update exited with error code ${payload.exit_code}. Rollback evaluated.`, 'error');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const payload = JSON.parse(line.slice(6));
+                if (payload.type === 'log') {
+                  addLog(payload.line, 'log');
+                } else if (payload.type === 'start') {
+                  addLog(`⚙️ Command launched: ${payload.cmd}`, 'info');
+                } else if (payload.type === 'complete') {
+                  completedCleanly = true;
+                  if (payload.exit_code === 0) {
+                    addLog(`✅ Update completed successfully! All health invariants satisfied.`, 'success');
+                    setExecutionStatus('success');
+                  } else {
+                    addLog(`❌ Update exited with error code ${payload.exit_code}. Rollback evaluated.`, 'error');
+                    setExecutionStatus('failed');
+                  }
+                } else if (payload.type === 'error') {
+                  completedCleanly = true;
+                  addLog(`⚠️ Error: ${payload.line}`, 'error');
                   setExecutionStatus('failed');
                 }
-              } else if (payload.type === 'error') {
-                addLog(`⚠️ Error: ${payload.line}`, 'error');
-                setExecutionStatus('failed');
+              } catch {
+                addLog(line.slice(6));
               }
-            } catch {
-              addLog(line.slice(6));
             }
           }
         }
+      } catch (streamErr: unknown) {
+        if (activeJobId && !completedCleanly) {
+          await pollJobUntilComplete(activeJobId, addLog);
+          return;
+        }
+        throw streamErr;
       }
 
       // Re-fetch system status after update finishes
@@ -510,6 +642,240 @@ export const SystemManager: React.FC = () => {
     setExecutionStatus('idle');
   };
 
+  const handleOpenWizard = (initialStep: 1 | 2 | 3 = 1) => {
+    if (status?.local_domain) setSetupLocalDomain(status.local_domain);
+    if (status?.admin_username) setSetupAdminUsername(status.admin_username);
+    if (status?.url) setSetupUrl(status.url);
+    if (status?.tls_mode && ['internal', 'acme', 'route53'].includes(status.tls_mode)) {
+      setSetupTlsMode(status.tls_mode as 'internal' | 'acme' | 'route53');
+    }
+    if (status?.acme_email) setSetupAcmeEmail(status.acme_email);
+    setSetupAdminPassword('');
+    setSetupAdminPasswordConfirm('');
+    setSetupError(null);
+    setDnsCheckResult(null);
+    setWizardStep(initialStep);
+    setWizardOpen(true);
+  };
+
+  const handleVerifyDns = async () => {
+    if (!setupUrl.trim()) return;
+    setDnsChecking(true);
+    setDnsCheckResult(null);
+    try {
+      const res = await fetch('/api/v1/system/dns-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: setupUrl.trim() }),
+      });
+      if (res.ok) {
+        const data: DnsCheckResult = await res.json();
+        setDnsCheckResult(data);
+      } else {
+        setDnsCheckResult({
+          domain: setupUrl.trim(),
+          valid_syntax: false,
+          resolved_ip: null,
+          public_ipv4: status?.public_ipv4 || '',
+          matches_appliance: false,
+          message: `DNS check failed (HTTP ${res.status})`,
+        });
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setDnsCheckResult({
+        domain: setupUrl.trim(),
+        valid_syntax: false,
+        resolved_ip: null,
+        public_ipv4: status?.public_ipv4 || '',
+        matches_appliance: false,
+        message: `DNS check error: ${errMsg}`,
+      });
+    } finally {
+      setDnsChecking(false);
+    }
+  };
+
+  const handleDismissWizard = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    try {
+      await fetch('/api/v1/system/setup', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ dismiss_only: true }),
+      });
+    } catch {
+      // Ignore dismiss error in preview
+    }
+    setWizardOpen(false);
+    fetchStatus();
+  };
+
+  const handleApplySetup = async () => {
+    setSetupError(null);
+    const cleanLocal = setupLocalDomain.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    const cleanUser = setupAdminUsername.trim();
+    const cleanUrl = setupUrl.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+
+    if (!cleanLocal || !/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(cleanLocal)) {
+      setSetupError('Please enter a valid fully-qualified local domain (e.g. jsm.cloud.aws.brainsos.ai).');
+      setWizardStep(1);
+      return;
+    }
+    if (!cleanUser || !/^[a-zA-Z0-9._-]{2,64}$/.test(cleanUser)) {
+      setSetupError('Administrator username must be 2–64 alphanumeric characters.');
+      setWizardStep(2);
+      return;
+    }
+    if (setupAdminPassword || status?.firstboot_wizard_completed === false) {
+      if (setupAdminPassword && setupAdminPassword.length < 8) {
+        setSetupError('Administrator password must be at least 8 characters long.');
+        setWizardStep(2);
+        return;
+      }
+      if (setupAdminPassword !== setupAdminPasswordConfirm) {
+        setSetupError('Password and confirmation do not match.');
+        setWizardStep(2);
+        return;
+      }
+    }
+    if (!cleanUrl) {
+      setSetupError('Please enter a valid external web URL or hostname.');
+      setWizardStep(3);
+      return;
+    }
+    if ((setupTlsMode === 'acme' || setupTlsMode === 'route53') && (!setupAcmeEmail.trim() || !setupAcmeEmail.includes('@'))) {
+      setSetupError('A valid ACME contact email address is required for Let\'s Encrypt / Route 53 TLS.');
+      setWizardStep(3);
+      return;
+    }
+
+    const previousUrl = status?.url || '';
+    setWizardOpen(false);
+    setTerminalOpen(true);
+    setExecutionStatus('running');
+
+    const startTimestamp = new Date().toLocaleTimeString();
+    setLogs([
+      {
+        id: 1,
+        timestamp: startTimestamp,
+        text: `🪄 Applying Appliance Identity & Custom Domain Configuration...`,
+        type: 'info',
+      },
+      {
+        id: 2,
+        timestamp: startTimestamp,
+        text: `🌐 Local Domain: ${cleanLocal} | Admin: ${cleanUser}@${cleanLocal} | Web URL: https://${cleanUrl}/ (${setupTlsMode})`,
+        type: 'info',
+      },
+    ]);
+
+    let logCounter = 3;
+    const addLog = (text: string, type: 'log' | 'info' | 'error' | 'success' = 'log') => {
+      const ts = new Date().toLocaleTimeString();
+      setLogs((prev) => [...prev, { id: logCounter++, timestamp: ts, text, type }]);
+    };
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    try {
+      const res = await fetch('/api/v1/system/setup', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          local_domain: cleanLocal,
+          admin_username: cleanUser,
+          admin_password: setupAdminPassword || undefined,
+          url: cleanUrl,
+          tls_mode: setupTlsMode,
+          acme_email: setupAcmeEmail.trim() || undefined,
+          mark_wizard_completed: true,
+          force: true,
+        }),
+      });
+
+      if (!res.ok) {
+        let errorDetail = res.statusText;
+        try {
+          const errData = await res.json();
+          if (errData && errData.detail) errorDetail = errData.detail;
+        } catch {
+          // fallback
+        }
+        throw new Error(`HTTP ${res.status}: ${errorDetail}`);
+      }
+
+      if (!res.body) throw new Error('Response body is null');
+
+      const activeJobId = res.headers.get('X-Job-ID') || '';
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let completedCleanly = false;
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const payload = JSON.parse(line.slice(6));
+                if (payload.type === 'log') {
+                  addLog(payload.line, 'log');
+                } else if (payload.type === 'start') {
+                  addLog(`⚙️ Executing: ${payload.cmd}`, 'info');
+                } else if (payload.type === 'complete') {
+                  completedCleanly = true;
+                  if (payload.exit_code === 0) {
+                    addLog(`✅ Appliance identity, hostname, mailboxes, and TLS configured!`, 'success');
+                    setExecutionStatus('success');
+                    if (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase()) {
+                      setNewConfiguredUrl(`https://${cleanUrl}/`);
+                    }
+                  } else {
+                    addLog(`❌ Setup exited with code ${payload.exit_code}.`, 'error');
+                    setExecutionStatus('failed');
+                  }
+                } else if (payload.type === 'error') {
+                  completedCleanly = true;
+                  addLog(`⚠️ Error: ${payload.line}`, 'error');
+                  setExecutionStatus('failed');
+                }
+              } catch {
+                addLog(line.slice(6));
+              }
+            }
+          }
+        }
+      } catch (streamErr: unknown) {
+        if (activeJobId && !completedCleanly) {
+          await pollJobUntilComplete(activeJobId, addLog, () => {
+            if (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase()) {
+              setNewConfiguredUrl(`https://${cleanUrl}/`);
+            }
+          });
+          return;
+        }
+        throw streamErr;
+      }
+
+      fetchStatus();
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setExecutionStatus('failed');
+      addLog(`❌ Setup failed: ${errMsg}`, 'error');
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-[#07090E] text-slate-200 overflow-y-auto font-sans antialiased selection:bg-[#00f2fe] selection:text-black">
       {/* 1. Header Bar */}
@@ -536,6 +902,15 @@ export const SystemManager: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => handleOpenWizard(1)}
+            className="px-3.5 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/40 text-xs font-mono text-purple-300 hover:text-white transition-all flex items-center gap-2"
+            title="Configure Appliance Identity, Local Domain, Admin Credentials & TLS"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+            <span>Identity &amp; Domain Setup</span>
+          </button>
+
           <button
             onClick={fetchStatus}
             disabled={isChecking}
@@ -746,6 +1121,192 @@ export const SystemManager: React.FC = () => {
             <div className="font-headline font-bold text-base text-white">{lastChecked}</div>
             <div className="font-mono text-[11px] text-slate-400">
               {status ? (status.overall_update_available ? 'Updates pending install' : 'All services current') : 'Status unavailable'}
+            </div>
+          </div>
+        </div>
+
+        {/* 3A. First-Boot Setup Prompt / New URL Redirect Banner (#333) */}
+        {status?.firstboot_wizard_completed === false && (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/15 via-[#00f2fe]/10 to-transparent border border-purple-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                <Wand2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-headline font-semibold text-sm text-white">
+                  Welcome to brainsOS — Complete First-Boot Appliance Setup
+                </h3>
+                <p className="font-mono text-xs text-slate-300 mt-0.5">
+                  Configure your unit local domain (<code className="text-[#00f2fe]">BRAINSOS_LOCAL_DOMAIN</code>), rotate the initial <code className="text-amber-300">instance-id</code> bootstrap password, and choose your TLS mode.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => handleOpenWizard(1)}
+                className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-[#00f2fe] text-slate-950 font-mono text-xs font-bold transition-all flex items-center gap-1.5 shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>Launch Setup Wizard</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {newConfiguredUrl && (
+          <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-headline font-semibold text-sm text-emerald-300">
+                  External Web Access URL Updated
+                </h3>
+                <p className="font-mono text-xs text-slate-300 mt-0.5">
+                  Caddy and Authentik SSO are now serving on <a href={newConfiguredUrl} className="text-[#00f2fe] underline">{newConfiguredUrl}</a>.
+                </p>
+              </div>
+            </div>
+            <a
+              href={newConfiguredUrl}
+              className="px-4 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-200 hover:text-white text-xs font-mono font-semibold transition-all flex items-center gap-1.5 shrink-0"
+            >
+              <span>Open {newConfiguredUrl}</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        )}
+
+        {/* 3A-2. Persistent Appliance Identity, Domain & TLS Card (#332 / #333) */}
+        <div className="p-5 rounded-2xl bg-[#141a26]/90 border border-white/10 hover:border-purple-500/40 transition-all space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 shrink-0">
+                <Globe className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="font-headline font-bold text-white text-base">
+                    Appliance Identity, Custom Domain &amp; TLS Ingress
+                  </h2>
+                  {status?.tls_mode === 'route53' ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] font-semibold">
+                      TLS: ROUTE 53 DNS-01 ACME
+                    </span>
+                  ) : status?.tls_mode === 'acme' ? (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-[10px] font-semibold">
+                      TLS: PUBLIC ACME (LET&apos;S ENCRYPT)
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-[#00f2fe] font-mono text-[10px] font-semibold">
+                      TLS: INTERNAL SELF-SIGNED CA
+                    </span>
+                  )}
+                  {status?.preserve_hostname && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono text-[10px] font-semibold">
+                      HOSTNAME PERSISTENT
+                    </span>
+                  )}
+                </div>
+                <p className="font-mono text-xs text-slate-400 mt-0.5">
+                  Decoupled Unit Identity (<code className="text-purple-300">BRAINSOS_LOCAL_DOMAIN</code>) &amp; Browser Access URL (<code className="text-[#00f2fe]">BRAINSOS_URL</code>)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <a
+                href="/system/ca.crt"
+                download="brainsos-caddy-root-ca.crt"
+                className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-slate-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
+                title="Download Caddy Root CA certificate to trust self-signed HTTPS in your browser/OS"
+              >
+                <Download className="w-3.5 h-3.5 text-[#00f2fe]" />
+                <span>Download Root CA</span>
+              </a>
+
+              <button
+                onClick={() => handleOpenWizard(1)}
+                className="px-3.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>Configure Domain &amp; Identity</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-white/5 font-mono text-xs">
+            {/* Column 1: Unit Local Domain & OS Hostname */}
+            <div className="p-3.5 rounded-xl bg-[#0B0E14]/60 border border-white/5 space-y-1.5">
+              <div className="text-white font-medium flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-purple-400" />
+                <span>Unit Local Domain &amp; Mailboxes</span>
+              </div>
+              <div className="space-y-1 text-[11px] text-slate-400">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">BRAINSOS_LOCAL_DOMAIN:</span>
+                  <span className="text-purple-300 font-semibold truncate">{status?.local_domain || 'local.brainsos.ai'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">OS Hostname (FQDN):</span>
+                  <span className="text-slate-200 truncate">{status?.hostname || status?.local_domain || 'local.brainsos.ai'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Agent Mail Domain:</span>
+                  <span className="text-emerald-400 truncate">@{status?.local_domain || 'local.brainsos.ai'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Column 2: External Web Access & Network */}
+            <div className="p-3.5 rounded-xl bg-[#0B0E14]/60 border border-white/5 space-y-1.5">
+              <div className="text-white font-medium flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-[#00f2fe]" />
+                <span>External Web Access &amp; Network</span>
+              </div>
+              <div className="space-y-1 text-[11px] text-slate-400">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">BRAINSOS_URL:</span>
+                  <span className="text-[#00f2fe] font-semibold truncate" title={status?.url}>
+                    {status?.url || 'local.brainsos.ai'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Public / Private IPv4:</span>
+                  <span className="text-slate-200">
+                    {status?.public_ipv4 || 'N/A'} {status?.local_ipv4 ? `/ ${status.local_ipv4}` : ''}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Instance ID:</span>
+                  <span className="text-slate-300">{status?.instance_id || 'Baremetal / Local'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Column 3: Primary Administrator & SSO */}
+            <div className="p-3.5 rounded-xl bg-[#0B0E14]/60 border border-white/5 space-y-1.5">
+              <div className="text-white font-medium flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Primary Administrator &amp; SSO</span>
+              </div>
+              <div className="space-y-1 text-[11px] text-slate-400">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Admin Username:</span>
+                  <span className="text-white font-semibold">{status?.admin_username || 'admin'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Admin Mailbox:</span>
+                  <span className="text-emerald-400 truncate">
+                    {status?.admin_email || `${status?.admin_username || 'admin'}@${status?.local_domain || 'local.brainsos.ai'}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">SOGo / Dovecot ACL:</span>
+                  <span className="text-slate-300">Full Fleet Oversight</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1429,6 +1990,386 @@ export const SystemManager: React.FC = () => {
                 <Play className="w-3.5 h-3.5 fill-current" />
                 <span>Confirm &amp; Apply Update</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. 3-Step Guided First-Boot Setup & Appliance Identity Wizard Modal (#332 / #333) */}
+      {wizardOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-2xl bg-[#0D111A] border border-white/15 rounded-2xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500/20 to-[#00f2fe]/20 border border-purple-500/40 text-[#00f2fe]">
+                  <Wand2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-headline font-bold text-lg text-white">
+                      brainsOS Appliance Identity &amp; First-Boot Setup Wizard
+                    </h3>
+                    <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/40 font-mono text-[10px] text-purple-300 font-semibold">
+                      STEP {wizardStep} OF 3
+                    </span>
+                  </div>
+                  <p className="font-mono text-xs text-slate-400 mt-0.5">
+                    Configure coherent unit hostname &amp; mail domain, administrator credentials, and HTTPS ingress
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setWizardOpen(false)}
+                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors shrink-0"
+                title="Close Wizard"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Step Progress Pills */}
+            <div className="grid grid-cols-3 gap-2 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setWizardStep(1)}
+                className={`p-2.5 rounded-xl border text-left transition-all ${
+                  wizardStep === 1
+                    ? 'bg-purple-500/20 border-purple-400 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="text-[10px] text-purple-300 font-bold">1. UNIT IDENTITY</div>
+                <div className="truncate font-semibold mt-0.5">Local Domain &amp; Hostname</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWizardStep(2)}
+                className={`p-2.5 rounded-xl border text-left transition-all ${
+                  wizardStep === 2
+                    ? 'bg-purple-500/20 border-purple-400 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="text-[10px] text-purple-300 font-bold">2. ADMIN ACCOUNT</div>
+                <div className="truncate font-semibold mt-0.5">Username &amp; Password</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWizardStep(3)}
+                className={`p-2.5 rounded-xl border text-left transition-all ${
+                  wizardStep === 3
+                    ? 'bg-purple-500/20 border-purple-400 text-white'
+                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="text-[10px] text-purple-300 font-bold">3. WEB ACCESS &amp; TLS</div>
+                <div className="truncate font-semibold mt-0.5">Browser URL &amp; Certificates</div>
+              </button>
+            </div>
+
+            {setupError && (
+              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 font-mono text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{setupError}</span>
+              </div>
+            )}
+
+            {/* STEP 1: Unit Identity & Local Domain */}
+            {wizardStep === 1 && (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="space-y-1.5">
+                  <label className="block text-slate-200 font-semibold">
+                    Appliance Local Domain &amp; Unit FQDN (<code className="text-purple-300">BRAINSOS_LOCAL_DOMAIN</code>)
+                  </label>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    Gives this brainsOS unit a coherent identity across OS hostname (<code className="font-mono">hostname -f</code>), Postfix/Dovecot/SOGo mailboxes, and Langfuse traces—even when accessed via a raw AWS EC2 URL.
+                  </p>
+                  <input
+                    type="text"
+                    value={setupLocalDomain}
+                    onChange={(e) => setSetupLocalDomain(e.target.value)}
+                    placeholder="e.g. jsm.cloud.aws.brainsos.ai or dgx.local.brainsos.ai"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                  />
+                </div>
+
+                {/* Live Identity Preview */}
+                {(() => {
+                  const previewDom = (setupLocalDomain.trim() || 'local.brainsos.ai').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+                  const shortHost = previewDom.split('.')[0] || 'brainsos';
+                  const previewUser = setupAdminUsername.trim() || 'admin';
+                  const mailboxes = [
+                    `${previewUser}@${previewDom}`,
+                    `terrastella@${previewDom}`,
+                    `bawtford@${previewDom}`,
+                    `marvin@${previewDom}`,
+                    `ping@${previewDom}`,
+                    `claude@${previewDom}`,
+                    `gpt@${previewDom}`,
+                  ];
+                  return (
+                    <div className="p-4 rounded-xl bg-[#07090E]/90 border border-white/10 space-y-3">
+                      <div className="text-[11px] uppercase tracking-wider text-purple-300 font-semibold">
+                        Live Coherent Identity Preview
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                        <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                          <span className="text-slate-500 block">OS Hostname (/etc/hosts &amp; cloud-init):</span>
+                          <span className="text-white font-semibold">{previewDom}</span>
+                          <span className="text-emerald-400 block text-[10px] mt-0.5">short: {shortHost} • preserve_hostname: true</span>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                          <span className="text-slate-500 block">Langfuse Trace Telemetry Tag:</span>
+                          <span className="text-[#00f2fe] font-semibold">local_domain = {previewDom}</span>
+                          <span className="text-slate-400 block text-[10px] mt-0.5">OTel resource host.name: {previewDom}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[11px] block mb-1.5">Provisioned Postfix / Dovecot / SOGo Mailboxes:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {mailboxes.map((mb, i) => (
+                            <span
+                              key={mb}
+                              className={`px-2 py-0.5 rounded-md text-[10px] border ${
+                                i === 0
+                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-semibold'
+                                  : 'bg-white/5 border-white/10 text-slate-300'
+                              }`}
+                            >
+                              {mb}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* STEP 2: Primary Administrator Account */}
+            {wizardStep === 2 && (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="space-y-1.5">
+                  <label className="block text-slate-200 font-semibold">
+                    Primary Administrator Username (<code className="text-purple-300">BRAINSOS_ADMIN_USERNAME</code>)
+                  </label>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    Creates or updates your primary Authentik superuser and provisions <code className="font-mono text-emerald-300">{setupAdminUsername.trim() || 'admin'}@{setupLocalDomain.trim() || 'local.brainsos.ai'}</code> with full Dovecot/SOGo shared oversight over all agent mailboxes.
+                  </p>
+                  <input
+                    type="text"
+                    value={setupAdminUsername}
+                    onChange={(e) => setSetupAdminUsername(e.target.value)}
+                    placeholder="admin (or e.g. jsm)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                      <span>New Administrator Password</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={setupAdminPassword}
+                      onChange={(e) => setSetupAdminPassword(e.target.value)}
+                      placeholder={status?.firstboot_wizard_completed ? 'Leave blank to keep current password' : 'Enter new password (min 8 chars)'}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold">
+                      Confirm Administrator Password
+                    </label>
+                    <input
+                      type="password"
+                      value={setupAdminPasswordConfirm}
+                      onChange={(e) => setSetupAdminPasswordConfirm(e.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-slate-300 space-y-1">
+                  <div className="text-amber-300 font-semibold">Unified Credential Rotation (Zero Data Loss)</div>
+                  <p className="font-sans text-slate-400">
+                    Setting a password here atomically rotates the initial EC2 <code className="font-mono text-slate-200">instance-id</code> bootstrap password across Authentik SSO (<code className="font-mono text-slate-200">{setupAdminUsername.trim() || 'admin'}</code> &amp; <code className="font-mono text-slate-200">admin</code>), SOGo Webmail, Dovecot IMAP/SMTP, Langfuse, and Operator IDE.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: External Web Access & TLS Mode */}
+            {wizardStep === 3 && (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="space-y-1.5">
+                  <label className="block text-slate-200 font-semibold">
+                    External Web Access URL / Hostname (<code className="text-[#00f2fe]">BRAINSOS_URL</code>)
+                  </label>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    The browser-facing hostname or URL used to reach the Portal, Authentik SSO, LiteLLM, and Langfuse (for example, your AWS EC2 public DNS name or a custom domain).
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={setupUrl}
+                      onChange={(e) => {
+                        setSetupUrl(e.target.value);
+                        setDnsCheckResult(null);
+                      }}
+                      placeholder="e.g. ec2-32-192-215-107.compute-1.amazonaws.com or portal.example.com"
+                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyDns}
+                      disabled={dnsChecking || !setupUrl.trim()}
+                      className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-mono text-[#00f2fe] transition-all shrink-0 disabled:opacity-50"
+                    >
+                      {dnsChecking ? 'Checking...' : 'Verify DNS'}
+                    </button>
+                  </div>
+                </div>
+
+                {dnsCheckResult && (
+                  <div
+                    className={`p-3 rounded-xl border text-[11px] ${
+                      dnsCheckResult.matches_appliance
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+                        : 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                    }`}
+                  >
+                    <div>{dnsCheckResult.message}</div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="block text-slate-200 font-semibold">
+                    TLS Certificate Mode
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSetupTlsMode('internal')}
+                      className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
+                        setupTlsMode === 'internal'
+                          ? 'bg-[#00f2fe]/15 border-[#00f2fe] text-white'
+                          : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-[#00f2fe]" />
+                        <span>Internal CA</span>
+                      </div>
+                      <p className="text-[10px] font-sans text-slate-400">
+                        Self-signed Caddy CA. Best for raw EC2 <code className="font-mono">.amazonaws.com</code> URLs, VPN, or LAN.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSetupTlsMode('acme')}
+                      className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
+                        setupTlsMode === 'acme'
+                          ? 'bg-emerald-500/15 border-emerald-400 text-white'
+                          : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Public ACME</span>
+                      </div>
+                      <p className="text-[10px] font-sans text-slate-400">
+                        Automatic Let&apos;s Encrypt / ZeroSSL HTTP-01 cert (requires DNS A record → {status?.public_ipv4 || 'appliance IP'}).
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSetupTlsMode('route53')}
+                      className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
+                        setupTlsMode === 'route53'
+                          ? 'bg-purple-500/15 border-purple-400 text-white'
+                          : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Route 53 DNS-01</span>
+                      </div>
+                      <p className="text-[10px] font-sans text-slate-400">
+                        Automatic Let&apos;s Encrypt DNS-01 cert via AWS Route 53 IAM role.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {(setupTlsMode === 'acme' || setupTlsMode === 'route53') && (
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold">
+                      ACME Contact Email (<code className="text-emerald-300">ACME_EMAIL</code>)
+                    </label>
+                    <input
+                      type="email"
+                      value={setupAcmeEmail}
+                      onChange={(e) => setSetupAcmeEmail(e.target.value)}
+                      placeholder={`e.g. ${setupAdminUsername.trim() || 'admin'}@${setupLocalDomain.trim() || 'brainsos.ai'}`}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Wizard Footer Navigation */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+              <div>
+                {status?.firstboot_wizard_completed === false && (
+                  <button
+                    type="button"
+                    onClick={handleDismissWizard}
+                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[11px] font-mono text-slate-400 hover:text-white transition-colors"
+                  >
+                    Skip &amp; Keep Defaults
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                {wizardStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setWizardStep((prev) => (prev === 3 ? 2 : 1))}
+                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-mono text-slate-300 hover:text-white transition-colors"
+                  >
+                    ← Back
+                  </button>
+                )}
+
+                {wizardStep < 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => setWizardStep((prev) => (prev === 1 ? 2 : 3))}
+                    className="px-5 py-2 rounded-xl bg-purple-500/30 hover:bg-purple-500/40 border border-purple-400/50 text-white font-mono text-xs font-bold transition-all"
+                  >
+                    Next Step →
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleApplySetup}
+                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-[#00f2fe] hover:opacity-95 text-slate-950 font-mono text-xs font-bold transition-all shadow-[0_0_18px_rgba(0,242,254,0.3)] flex items-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Apply Identity &amp; Complete Setup</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

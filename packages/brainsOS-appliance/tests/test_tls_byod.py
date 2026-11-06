@@ -194,3 +194,74 @@ def test_trust_caddy_ca_export_flag():
     )
     assert proc.returncode == 0
     assert "--export" in proc.stdout
+
+
+def test_firstboot_separates_url_and_local_domain(tmp_path: Path):
+    """Verify firstboot.sh separates BRAINSOS_URL from BRAINSOS_LOCAL_DOMAIN (#332)."""
+    user_data = tmp_path / "user-data"
+    user_data.write_text(
+        """#cloud-config
+brainsos:
+  url: https://ec2-32-192-215-107.compute-1.amazonaws.com/
+  local_domain: jsm.cloud.aws.brainsos.ai
+  admin_username: jsm
+  tls_mode: internal
+""",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["BRAINSOS_FIRSTBOOT_USER_DATA_FILE"] = str(user_data)
+
+    proc = subprocess.run(
+        [str(FIRSTBOOT), "--dry-run"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc.returncode == 0
+    assert "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com" in proc.stdout
+    assert "BRAINSOS_LOCAL_DOMAIN=jsm.cloud.aws.brainsos.ai" in proc.stdout
+    assert "BRAINSOS_MAIL_DOMAIN=jsm.cloud.aws.brainsos.ai" in proc.stdout
+    assert "BRAINSOS_ADMIN_USERNAME=jsm" in proc.stdout
+    assert "mail.ec2-" not in proc.stdout
+
+
+def test_set_domain_local_domain_admin_and_hostname(tmp_path: Path):
+    """Verify set-domain.sh supports --url, --local-domain, --admin-username, and redacts password (#332)."""
+    dummy_env = tmp_path / ".env"
+    dummy_env.write_text("BRAINSOS_DOMAIN=\"local.brainsos.ai\"\n", encoding="utf-8")
+
+    env = os.environ.copy()
+    env["BRAINSOS_ENV_FILE"] = str(dummy_env)
+    env["BRAINSOS_NEW_ADMIN_PASSWORD"] = "SuperSecretPass123!"
+
+    proc = subprocess.run(
+        [
+            str(SET_DOMAIN),
+            "--url",
+            "https://ec2-32-192-215-107.compute-1.amazonaws.com/",
+            "--local-domain",
+            "jsm.cloud.aws.brainsos.ai",
+            "--admin-username",
+            "jsm",
+            "--internal",
+            "--mark-wizard-completed",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc.returncode == 0
+    assert "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com" in proc.stdout
+    assert "BRAINSOS_LOCAL_DOMAIN=jsm.cloud.aws.brainsos.ai" in proc.stdout
+    assert "BRAINSOS_MAIL_DOMAIN=jsm.cloud.aws.brainsos.ai" in proc.stdout
+    assert "BRAINSOS_ADMIN_USERNAME=jsm" in proc.stdout
+    assert "BRAINSOS_ADMIN_EMAIL=jsm@jsm.cloud.aws.brainsos.ai" in proc.stdout
+    assert "BRAINSOS_ADMIN_PASSWORD=[REDACTED]" in proc.stdout
+    assert "SuperSecretPass123!" not in proc.stdout
+    assert "preserve_hostname: true" in proc.stdout
+    assert "127.0.1.1 jsm.cloud.aws.brainsos.ai jsm" in proc.stdout

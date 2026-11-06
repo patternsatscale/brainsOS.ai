@@ -283,6 +283,33 @@ class TestBrainsOSMailClientThreadingAndSync(unittest.TestCase):
         html_part = [p for p in sent_msg.walk() if p.get_content_type() == "text/html"][0]
         self.assertIn("<strong>HTML</strong>", html_part.get_content())
 
+    @patch("smtplib.SMTP")
+    @patch("imaplib.IMAP4")
+    def test_send_mail_prefers_brainsos_local_domain_for_msgid_and_internal_routing(
+        self, mock_imap_cls, mock_smtp_cls
+    ):
+        """Verify BRAINSOS_LOCAL_DOMAIN is used for Message-ID and internal Postfix routing (#332)."""
+        mock_smtp = MagicMock()
+        mock_smtp_cls.return_value.__enter__.return_value = mock_smtp
+        mock_imap = MagicMock()
+        mock_imap.append.return_value = ("OK", [b"Append completed"])
+        mock_imap_cls.return_value.__enter__.return_value = mock_imap
+
+        with patch.dict(
+            "os.environ",
+            {
+                "BRAINSOS_DOMAIN": "ec2-32-192-215-107.compute-1.amazonaws.com",
+                "BRAINSOS_LOCAL_DOMAIN": "jsm.cloud.aws.brainsos.ai",
+            },
+        ):
+            msg_id = self.client.send_mail(
+                to="jsm@jsm.cloud.aws.brainsos.ai",
+                subject="Local Domain Check",
+                body="Testing coherent local domain routing.",
+            )
+            self.assertIn("@jsm.cloud.aws.brainsos.ai>", msg_id)
+            mock_smtp.send_message.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

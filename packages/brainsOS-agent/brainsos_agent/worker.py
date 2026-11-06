@@ -541,11 +541,13 @@ class AgentQueueWorkerDaemon:
         # Internal emails on dgx use @dgx.local.brainsos.ai; external destinations use configured public domain
         sender_email = profile.email
         to_domain = outbound.to.split("@")[-1].lower() if "@" in outbound.to else ""
+        local_domain_env = os.getenv("BRAINSOS_LOCAL_DOMAIN", "").strip().lower()
         is_internal_dest = (
             to_domain.endswith(".local")
             or to_domain == "localhost"
             or "local.brainsos.ai" in to_domain
             or to_domain == "brainsos.local"
+            or (bool(local_domain_env) and to_domain == local_domain_env)
             or to_domain == os.getenv("BRAINSOS_DOMAIN", "").lower()
             or to_domain == os.getenv("BRAINSOS_MAIL_DOMAIN", "").lower()
         )
@@ -556,10 +558,13 @@ class AgentQueueWorkerDaemon:
         ):
             sender_email = f"{profile.id}@dgx.local.brainsos.ai"
         elif is_internal_dest and to_domain and to_domain in (
+            local_domain_env,
             os.getenv("BRAINSOS_DOMAIN", "").lower(),
             os.getenv("BRAINSOS_MAIL_DOMAIN", "").lower(),
         ):
             sender_email = f"{profile.id}@{to_domain}"
+        elif is_internal_dest and local_domain_env:
+            sender_email = f"{profile.id}@{local_domain_env}"
         elif is_external_dest:
             configured_public_domain = (
                 os.getenv("BRAINSOS_EMAIL_DOMAIN", "").split(",")[0].strip()

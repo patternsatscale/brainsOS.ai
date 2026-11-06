@@ -182,14 +182,19 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
   # Synchronize user account passwords in sogo_users table
   ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
   OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  MAIL_DOM="${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}"
+  MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
+  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
   docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local');
-    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
     INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', 'admin@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', 'admin@${MAIL_DOM}')
-    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password;
+      ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   log_success "SOGo fleet accounts and passwords synchronized in sogo_users table."
 else
@@ -359,9 +364,11 @@ if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
   done
 
   log_info "Synchronizing Authentik identity and master credentials..."
-  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.ai}"
+  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+  LOCAL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-brainsos.ai}}"
+  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-${ADMIN_USER}@${LOCAL_DOM}}"
   if [[ "${ADMIN_EMAIL}" == *.local ]]; then
-    ADMIN_EMAIL="admin@brainsos.ai"
+    ADMIN_EMAIL="${ADMIN_USER}@brainsos.ai"
   fi
   ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
@@ -375,6 +382,15 @@ admin_u.is_active = True
 if admin_group:
     admin_u.ak_groups.add(admin_group)
 admin_u.save()
+
+if '${ADMIN_USER}' and '${ADMIN_USER}' != 'admin':
+    custom_u, _ = User.objects.get_or_create(username='${ADMIN_USER}', defaults={'name': 'Appliance Administrator (${ADMIN_USER})', 'email': '${ADMIN_EMAIL}'})
+    custom_u.email = '${ADMIN_EMAIL}'
+    custom_u.set_password('${ADMIN_PASS}')
+    custom_u.is_active = True
+    if admin_group:
+        custom_u.ak_groups.add(admin_group)
+    custom_u.save()
 
 ak_u = User.objects.filter(username='akadmin').first()
 if ak_u:
@@ -391,10 +407,11 @@ if admin_group:
     op_u.ak_groups.add(admin_group)
 op_u.save()
 " >/dev/null 2>&1 || true
-  log_success "Authentik accounts (admin, akadmin, operator) synchronized with master credentials."
+  log_success "Authentik accounts (${ADMIN_USER}, admin, akadmin, operator) synchronized with master credentials."
 
   # Synchronize Authentik Outpost, Proxy Provider & OAuth2 OIDC secrets/domains
-  EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
+  RAW_URL="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"
+  EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}"
   LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}"
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
@@ -473,9 +490,9 @@ if [ "${ACME_DNS_PROVIDER:-}" = "route53" ] && [ -z "${BRAINSOS_INFRA_AWS_ACCESS
   fi
 fi
 
-# Dynamically render config/caddy/tls_policy.caddy based on ACME_DNS_PROVIDER
+# Dynamically render config/caddy/tls_policy.caddy based on ACME_DNS_PROVIDER and BRAINSOS_TLS_MODE
 TLS_POLICY_FILE="${REPO_ROOT}/config/caddy/tls_policy.caddy"
-if [ "${ACME_DNS_PROVIDER:-}" = "route53" ]; then
+if [ "${ACME_DNS_PROVIDER:-}" = "route53" ] || [ "${BRAINSOS_TLS_MODE:-}" = "route53" ]; then
   cat << EOF > "${TLS_POLICY_FILE}"
 # ==============================================================================
 # brainsOS: TLS Policy Snippet (AWS Route 53 ACME DNS-01 Challenge)
@@ -501,6 +518,24 @@ if [ "${ACME_DNS_PROVIDER:-}" = "route53" ]; then
 }
 EOF
   log_success "Configured Caddy TLS policy for Route 53 ACME DNS-01 wildcard certificates (${ACME_EMAIL:-admin@brainsos.ai})."
+elif [ "${BRAINSOS_TLS_MODE:-}" = "acme" ] || [ "${BRAINSOS_TLS_MODE:-}" = "public_acme" ]; then
+  cat << EOF > "${TLS_POLICY_FILE}"
+# ==============================================================================
+# brainsOS: TLS Policy Snippet (Public ACME HTTP-01 / TLS-ALPN-01)
+# Auto-generated by scripts/control/reload-env.sh from environment configuration.
+# DO NOT EDIT DIRECTLY. Make changes in .env and re-run make reload-env.
+# ==============================================================================
+(brainsos_tls) {
+	tls ${ACME_EMAIL:-admin@brainsos.ai}
+}
+
+(route53_tls) {
+	tls ${ACME_EMAIL:-admin@brainsos.ai} {
+		dns route53
+	}
+}
+EOF
+  log_success "Configured Caddy TLS policy for Public ACME (Let's Encrypt / ZeroSSL) certificates (${ACME_EMAIL:-admin@brainsos.ai})."
 else
   cat << EOF > "${TLS_POLICY_FILE}"
 # ==============================================================================

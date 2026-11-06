@@ -73,6 +73,16 @@ export function App() {
       .catch(() => {
         // Fallback gracefully on local preview or connection error
       });
+
+    // Automatically route to System Manager if First-Boot Setup Wizard has not been completed (#333)
+    fetch('/api/v1/system/status', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.firstboot_wizard_completed === false) {
+          setActiveKey('system');
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const showToast = useCallback((msg: string) => {

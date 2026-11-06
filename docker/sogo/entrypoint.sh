@@ -51,7 +51,8 @@ echo "[BRAINSOS-SOGO] Database server reachable and authenticated. Ensuring data
 psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" 2>/dev/null | grep -q 1 || \
 psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || true
 
-MAIL_DOMAIN="${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}"
+MAIL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
+ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
 
 # 2. Initialize sogo_users table and seed fleet accounts if missing
 echo "[BRAINSOS-SOGO] Ensuring sogo_users schema and seeding accounts..."
@@ -74,8 +75,9 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
         ('claude@brainsos.local', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@brainsos.local'),
         ('gpt@brainsos.local', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@brainsos.local'),
         ('akadmin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@brainsos.local'),
-        ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
-        ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
+        ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
+        ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
+        ('${ADMIN_USER}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
         ('operator', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
         ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
         ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
@@ -89,7 +91,8 @@ EOSQL
     if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
         psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR_STOP=1 <<-EOSQL
             INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-                ('admin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}'),
+                ('admin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
+                ('${ADMIN_USER}@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
                 ('operator@${MAIL_DOMAIN}', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
                 ('terrastella@${MAIL_DOMAIN}', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
                 ('bawtford@${MAIL_DOMAIN}', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
@@ -97,7 +100,7 @@ EOSQL
                 ('ping@${MAIL_DOMAIN}', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
                 ('claude@${MAIL_DOMAIN}', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
                 ('gpt@${MAIL_DOMAIN}', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
-                ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@${MAIL_DOMAIN}')
+                ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
             ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
     fi

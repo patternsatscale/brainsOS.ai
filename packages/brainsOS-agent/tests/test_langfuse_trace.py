@@ -106,6 +106,20 @@ def test_io_recorded_once_not_at_trace_level() -> None:
     assert attrs["langfuse.trace.name"] == "brainsos: email: Hello"
 
 
+def test_local_domain_recorded_in_trace_metadata_and_resource(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BRAINSOS_LOCAL_DOMAIN", "jsm.cloud.aws.brainsos.ai")
+    payload = build_email_run_otlp(**_kwargs())
+    span = _span(payload)
+    attrs = _attrs(span)
+    assert attrs["langfuse.trace.metadata.local_domain"] == "jsm.cloud.aws.brainsos.ai"
+    assert attrs["langfuse.observation.metadata.local_domain"] == "jsm.cloud.aws.brainsos.ai"
+    res_attrs = {
+        kv["key"]: next(iter(kv["value"].values()))
+        for kv in payload["resourceSpans"][0]["resource"]["attributes"]
+    }
+    assert res_attrs["host.name"] == "jsm.cloud.aws.brainsos.ai"
+
+
 def test_trace_name_fallback_to_agent_id_when_subject_empty() -> None:
     attrs = _attrs(_span(build_email_run_otlp(**_kwargs(subject=""))))
     assert attrs["langfuse.trace.name"] == "brainsos: email: bawtford"

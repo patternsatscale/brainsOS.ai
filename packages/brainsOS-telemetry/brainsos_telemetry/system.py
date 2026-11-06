@@ -6,8 +6,10 @@ import platform
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import time
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import urlparse
@@ -159,7 +161,12 @@ class JobManager:
             "logs": logs,
         }
 
-    async def start_job(self, job_type: str, cmd: list[str]) -> Dict[str, Any]:
+    async def start_job(
+        self,
+        job_type: str,
+        cmd: list[str],
+        extra_env: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
         """Attempt to start a single-flight job. Returns 409 conflict if already busy."""
         async with self._lock:
             if self.active_job is not None:
@@ -182,6 +189,7 @@ class JobManager:
                 "id": job_id,
                 "type": job_type,
                 "cmd": cmd,
+                "extra_env": extra_env or {},
                 "status": "running",
                 "exit_code": None,
                 "started_at": datetime.now(timezone.utc).isoformat(),
@@ -198,6 +206,7 @@ class JobManager:
         """Runs the subprocess decoupled from any HTTP request/client lifecycle."""
         log_file = job_record["log_file"]
         cmd = job_record["cmd"]
+        extra_env = job_record.get("extra_env") or {}
         meta_file = os.path.join(self.jobs_dir, f"{job_record['id']}.json")
 
         try:
@@ -206,7 +215,7 @@ class JobManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=self.repo_root,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                env={**os.environ, "PYTHONUNBUFFERED": "1", **extra_env},
             )
 
             assert proc.stdout is not None
@@ -415,10 +424,182 @@ def detect_appliance_platform(repo_root: str) -> tuple[str, str]:
     return f"Linux Host ({arch})", f"{sys_name} {arch}"
 
 
+_IMDS_CACHE: Dict[str, Any] = {"ts": 0.0, "data": {}}
+
+
+def parse_env_file_only(repo_root: str) -> Dict[str, str]:
+    """Read key-value pairs strictly from .env on disk."""
+    parsed: Dict[str, str] = {}
+    env_path = os.path.join(repo_root, ".env")
+    if os.path.isfile(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8", errors="ignore") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    parsed[k] = v
+        except Exception:
+            pass
+    return parsed
+
+
+def parse_env_file(repo_root: str) -> Dict[str, str]:
+    """Read key-value pairs from .env on disk, falling back to os.environ."""
+    merged: Dict[str, str] = dict(os.environ)
+    merged.update(parse_env_file_only(repo_root))
+    return merged
+
+
+def normalize_url_host(raw: str) -> str:
+    """Normalize an input URL or hostname (e.g. 'https://host:443/path' -> 'host')."""
+    v = (raw or "").strip()
+    v = re.sub(r"^https?://", "", v, flags=re.IGNORECASE)
+    v = v.split("/")[0]
+    v = re.sub(r":[0-9]+$", "", v)
+    return v.strip().lower()
+
+
+def _query_imds_metadata() -> Dict[str, str]:
+    """Query EC2 IMDSv2 for instance-id, public-ipv4, local-ipv4, and public-hostname (cached 60s)."""
+    now = time.time()
+    if now - _IMDS_CACHE["ts"] < 60.0 and _IMDS_CACHE["data"]:
+        return _IMDS_CACHE["data"]
+
+    if os.environ.get("BRAINSOS_STAGE") == "test":
+        return {
+            "instance_id": os.environ.get("BRAINSOS_TEST_INSTANCE_ID", ""),
+            "public_ipv4": os.environ.get("BRAINSOS_TEST_PUBLIC_IPV4", ""),
+            "local_ipv4": os.environ.get("BRAINSOS_TEST_LOCAL_IPV4", "127.0.0.1"),
+            "public_hostname": os.environ.get("BRAINSOS_TEST_PUBLIC_HOSTNAME", ""),
+        }
+
+    result = {"instance_id": "", "public_ipv4": "", "local_ipv4": "", "public_hostname": ""}
+    try:
+        req = urllib.request.Request(
+            "http://169.254.169.254/latest/api/token",
+            method="PUT",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "60"},
+        )
+        with urllib.request.urlopen(req, timeout=0.4) as resp:
+            token = resp.read().decode("utf-8", errors="ignore").strip()
+        if token:
+            for key, path in (
+                ("instance_id", "instance-id"),
+                ("public_ipv4", "public-ipv4"),
+                ("local_ipv4", "local-ipv4"),
+                ("public_hostname", "public-hostname"),
+            ):
+                try:
+                    mreq = urllib.request.Request(
+                        f"http://169.254.169.254/latest/meta-data/{path}",
+                        headers={"X-aws-ec2-metadata-token": token},
+                    )
+                    with urllib.request.urlopen(mreq, timeout=0.4) as mresp:
+                        result[key] = mresp.read().decode("utf-8", errors="ignore").strip()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    if not result["local_ipv4"]:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("10.255.255.255", 1))
+                result["local_ipv4"] = s.getsockname()[0]
+        except Exception:
+            result["local_ipv4"] = "127.0.0.1"
+
+    _IMDS_CACHE["ts"] = now
+    _IMDS_CACHE["data"] = result
+    return result
+
+
+def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
+    """Assemble live Appliance Identity, Custom Domain, TLS & First-Boot Wizard state (#332/#333)."""
+    file_env = parse_env_file_only(repo_root)
+    env = parse_env_file(repo_root)
+    imds = _query_imds_metadata()
+
+    local_domain = (
+        file_env.get("BRAINSOS_LOCAL_DOMAIN")
+        or env.get("BRAINSOS_LOCAL_DOMAIN")
+        or file_env.get("BRAINSOS_MAIL_DOMAIN")
+        or file_env.get("BRAINSOS_DOMAIN")
+        or env.get("BRAINSOS_DOMAIN")
+        or "local.brainsos.ai"
+    )
+    url = normalize_url_host(
+        file_env.get("BRAINSOS_URL")
+        or env.get("BRAINSOS_URL")
+        or file_env.get("BRAINSOS_DOMAIN")
+        or env.get("BRAINSOS_DOMAIN")
+        or imds.get("public_hostname")
+        or imds.get("public_ipv4")
+        or "local.brainsos.ai"
+    )
+    admin_username = file_env.get("BRAINSOS_ADMIN_USERNAME") or env.get("BRAINSOS_ADMIN_USERNAME") or "admin"
+    if "BRAINSOS_ADMIN_EMAIL" in file_env and file_env["BRAINSOS_ADMIN_EMAIL"]:
+        admin_email = file_env["BRAINSOS_ADMIN_EMAIL"]
+    elif "BRAINSOS_LOCAL_DOMAIN" in file_env or "BRAINSOS_ADMIN_USERNAME" in file_env:
+        admin_email = f"{admin_username}@{local_domain}"
+    else:
+        admin_email = env.get("BRAINSOS_ADMIN_EMAIL") or f"{admin_username}@{local_domain}"
+    tls_mode = env.get("BRAINSOS_TLS_MODE") or (
+        "route53" if env.get("ACME_DNS_PROVIDER") == "route53" else "internal"
+    )
+    acme_email = env.get("ACME_EMAIL") or ""
+
+    cloud_cfg_dir = env.get("BRAINSOS_CLOUD_CFG_DIR") or "/etc/cloud/cloud.cfg.d"
+    preserve_cfg_path = os.path.join(cloud_cfg_dir, "99-brainsos-hostname.cfg")
+    preserve_hostname = False
+    if os.path.isfile(preserve_cfg_path):
+        try:
+            with open(preserve_cfg_path, "r", encoding="utf-8", errors="ignore") as f:
+                preserve_hostname = "preserve_hostname: true" in f.read()
+        except Exception:
+            pass
+
+    wizard_flag = os.path.join(repo_root, ".brainsos-wizard-completed")
+    init_flag = os.path.join(repo_root, ".brainsos-initialized")
+    force_wizard = env.get("BRAINSOS_APPLIANCE_FORCE_WIZARD", "").lower() == "true"
+
+    if os.path.isfile(wizard_flag):
+        firstboot_wizard_completed = True
+    elif force_wizard or os.path.isfile(init_flag):
+        firstboot_wizard_completed = False
+    else:
+        firstboot_wizard_completed = True
+
+    try:
+        os_hostname = socket.getfqdn() or socket.gethostname()
+    except Exception:
+        os_hostname = local_domain
+
+    return {
+        "firstboot_wizard_completed": firstboot_wizard_completed,
+        "url": url,
+        "local_domain": local_domain,
+        "admin_username": admin_username,
+        "admin_email": admin_email,
+        "tls_mode": tls_mode,
+        "acme_email": acme_email,
+        "hostname": os_hostname,
+        "preserve_hostname": preserve_hostname,
+        "public_ipv4": imds.get("public_ipv4", ""),
+        "local_ipv4": imds.get("local_ipv4", ""),
+        "instance_id": imds.get("instance_id", ""),
+    }
+
+
 def get_system_status() -> Dict[str, Any]:
     """Query current platform status and available updates via scripts/control/update.sh."""
     repo_root = get_repo_root()
     update_script = os.path.join(repo_root, "scripts/control/update.sh")
+    identity = get_appliance_identity(repo_root)
 
     if os.path.isfile(update_script) and os.access(update_script, os.X_OK):
         try:
@@ -436,6 +617,8 @@ def get_system_status() -> Dict[str, Any]:
                         pname, pdetail = detect_appliance_platform(repo_root)
                         status["platform_name"] = pname
                         status["platform_detail"] = pdetail
+                    status.update(identity)
+                    status["identity"] = identity
                     return status
         except Exception as e:
             logger.warning(f"Error querying update.sh: {e}")
@@ -459,7 +642,7 @@ def get_system_status() -> Dict[str, Any]:
         }
 
     platform_name, platform_detail = detect_appliance_platform(repo_root)
-    return {
+    base_status: Dict[str, Any] = {
         "platform": "brainsOS",
         "platform_name": platform_name,
         "platform_detail": platform_detail,
@@ -474,7 +657,10 @@ def get_system_status() -> Dict[str, Any]:
         "services": {},
         "disk": disk_info,
         "overall_update_available": False,
+        "identity": identity,
     }
+    base_status.update(identity)
+    return base_status
 
 
 def verify_internal_auth(request: Request):
@@ -525,11 +711,16 @@ def verify_state_change_security(request: Request):
         parsed = urlparse(origin)
         origin_host = parsed.hostname or ""
         req_host = request.headers.get("Host", "").split(":")[0]
-        domain = os.environ.get("BRAINSOS_DOMAIN", "localhost")
+        env = parse_env_file(get_repo_root())
+        domain = normalize_url_host(env.get("BRAINSOS_DOMAIN", "localhost"))
+        url_host = normalize_url_host(env.get("BRAINSOS_URL", domain))
+        local_dom = normalize_url_host(env.get("BRAINSOS_LOCAL_DOMAIN", domain))
         allowed_hosts = {
             "localhost",
             "127.0.0.1",
             domain.lower(),
+            url_host.lower(),
+            local_dom.lower(),
             f"proxy.{domain.lower()}",
             req_host.lower(),
         }
@@ -572,6 +763,21 @@ def create_system_api_app():
         check: bool = Field(False, description="Audit disk and log usage only")
         retention_days: Optional[int] = Field(None, description="Retention days")
 
+    class DnsCheckRequest(BaseModel):
+        domain: str = Field(..., description="Domain or URL to verify DNS resolution against this appliance")
+
+    class SetupRequest(BaseModel):
+        local_domain: Optional[str] = Field(None, description="Coherent unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN)")
+        admin_username: Optional[str] = Field(None, description="Primary administrator username (BRAINSOS_ADMIN_USERNAME)")
+        admin_password: Optional[str] = Field(None, description="New primary administrator password (never logged)")
+        url: Optional[str] = Field(None, description="External web access URL or hostname (BRAINSOS_URL)")
+        tls_mode: Optional[str] = Field("internal", description="TLS mode: internal, acme, public_acme, or route53")
+        acme_email: Optional[str] = Field(None, description="ACME contact email for Let's Encrypt / Route 53")
+        mark_wizard_completed: bool = Field(True, description="Mark First-Boot Setup Wizard as completed")
+        dismiss_only: bool = Field(False, description="Only dismiss the First-Boot Setup Wizard without reconfiguring")
+        dry_run: bool = Field(False, description="Simulate configuration without modifying disk or restarting services")
+        force: bool = Field(True, description="Proceed even if DNS pre-flight check warns")
+
     @app.get("/health")
     @app.get("/api/v1/system/health")
     async def health():
@@ -593,6 +799,188 @@ def create_system_api_app():
     @app.get("/api/v1/system/status", dependencies=[Depends(verify_internal_auth)])
     async def status():
         return JSONResponse(content=get_system_status())
+
+    @app.get("/api/v1/system/identity", dependencies=[Depends(verify_internal_auth)])
+    async def identity():
+        return JSONResponse(content=get_appliance_identity(repo_root))
+
+    @app.post("/api/v1/system/dns-check", dependencies=[Depends(verify_internal_auth)])
+    async def dns_check(req: DnsCheckRequest):
+        host = normalize_url_host(req.domain)
+        fqdn_re = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+        valid_syntax = bool(fqdn_re.match(host))
+        ident = get_appliance_identity(repo_root)
+        pub_ip = ident.get("public_ipv4") or ""
+        loc_ip = ident.get("local_ipv4") or ""
+
+        if not valid_syntax:
+            return JSONResponse(
+                content={
+                    "domain": host,
+                    "valid_syntax": False,
+                    "resolved_ip": None,
+                    "public_ipv4": pub_ip,
+                    "matches_appliance": False,
+                    "message": f"Invalid fully qualified domain name: '{host}'",
+                }
+            )
+
+        resolved_ip: Optional[str] = None
+        try:
+            resolved_ip = socket.gethostbyname(host)
+        except Exception:
+            resolved_ip = None
+
+        if not resolved_ip:
+            return JSONResponse(
+                content={
+                    "domain": host,
+                    "valid_syntax": True,
+                    "resolved_ip": None,
+                    "public_ipv4": pub_ip,
+                    "matches_appliance": False,
+                    "message": f"Domain '{host}' does not resolve to an IPv4 address yet.",
+                }
+            )
+
+        matches = bool((pub_ip and resolved_ip == pub_ip) or (loc_ip and resolved_ip == loc_ip))
+        if matches:
+            msg = f"DNS verified: {host} resolves to this appliance ({resolved_ip})."
+        elif pub_ip:
+            msg = f"{host} resolves to {resolved_ip} (appliance public IPv4 is {pub_ip})."
+        else:
+            msg = f"{host} resolves to {resolved_ip}."
+
+        return JSONResponse(
+            content={
+                "domain": host,
+                "valid_syntax": True,
+                "resolved_ip": resolved_ip,
+                "public_ipv4": pub_ip,
+                "matches_appliance": matches,
+                "message": msg,
+            }
+        )
+
+    @app.post(
+        "/api/v1/system/setup",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    @app.post(
+        "/api/v1/system/domain",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def trigger_setup(req: SetupRequest):
+        if req.dismiss_only:
+            wizard_flag = os.path.join(repo_root, ".brainsos-wizard-completed")
+            try:
+                with open(wizard_flag, "w", encoding="utf-8") as f:
+                    f.write(datetime.now(timezone.utc).isoformat() + "\n")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed writing wizard completion flag: {e}")
+            return JSONResponse(content={"status": "dismissed", "firstboot_wizard_completed": True})
+
+        fqdn_re = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+        ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
+
+        local_domain: Optional[str] = None
+        if req.local_domain is not None and req.local_domain.strip():
+            local_domain = normalize_url_host(req.local_domain)
+            if not fqdn_re.match(local_domain):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid local_domain '{req.local_domain}'. Must be a valid FQDN (e.g. jsm.cloud.aws.brainsos.ai).",
+                )
+
+        admin_username: Optional[str] = None
+        if req.admin_username is not None and req.admin_username.strip():
+            admin_username = req.admin_username.strip()
+            if not re.match(r"^[a-zA-Z0-9._-]{2,64}$", admin_username):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid admin_username '{req.admin_username}'. Use 2-64 alphanumeric, dot, underscore, or hyphen characters.",
+                )
+
+        if req.admin_password is not None and req.admin_password != "":
+            if len(req.admin_password) < 8 or "\n" in req.admin_password or "\r" in req.admin_password:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Administrator password must be at least 8 characters long.",
+                )
+
+        ident = get_appliance_identity(repo_root)
+        target_url = normalize_url_host(req.url) if (req.url and req.url.strip()) else ident["url"]
+        if not (fqdn_re.match(target_url) or ipv4_re.match(target_url) or target_url == "localhost"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid external URL / hostname '{req.url}'.",
+            )
+
+        tls_mode = (req.tls_mode or "internal").strip().lower()
+        if tls_mode == "public_acme":
+            tls_mode = "acme"
+        if tls_mode not in ("internal", "acme", "route53"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid tls_mode '{req.tls_mode}'. Must be one of: internal, acme, public_acme, route53.",
+            )
+
+        acme_email = (req.acme_email or "").strip()
+        if tls_mode in ("acme", "route53"):
+            if not acme_email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", acme_email):
+                raise HTTPException(
+                    status_code=400,
+                    detail="A valid ACME contact email address is required for public ACME or Route 53 TLS modes.",
+                )
+
+        set_domain_script = os.path.join(repo_root, "scripts/control/set-domain.sh")
+        if not os.path.isfile(set_domain_script):
+            raise HTTPException(status_code=500, detail="scripts/control/set-domain.sh not found")
+
+        cmd = [set_domain_script, "--url", target_url]
+        if local_domain:
+            cmd.extend(["--local-domain", local_domain])
+        if admin_username:
+            cmd.extend(["--admin-username", admin_username])
+        if tls_mode == "internal":
+            cmd.append("--internal")
+        elif tls_mode == "route53":
+            cmd.extend(["--dns", "route53", "--email", acme_email])
+        else:
+            cmd.extend(["--email", acme_email])
+
+        if req.mark_wizard_completed:
+            cmd.append("--mark-wizard-completed")
+        if req.force:
+            cmd.append("--force")
+        if req.dry_run:
+            cmd.append("--dry-run")
+
+        extra_env: Dict[str, str] = {}
+        if req.admin_password:
+            extra_env["BRAINSOS_NEW_ADMIN_PASSWORD"] = req.admin_password
+
+        job = await job_manager.start_job("setup", cmd, extra_env=extra_env)
+        if "error" in job and job["error"] == "conflict":
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": "A system job is already in progress",
+                    "active_job_id": job["active_job_id"],
+                    "type": job["type"],
+                },
+            )
+
+        return StreamingResponse(
+            stream_job_logs(job),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Job-ID": job["id"],
+            },
+        )
 
     @app.get("/api/v1/system/jobs/{job_id}", dependencies=[Depends(verify_internal_auth)])
     async def get_job_status(job_id: str):

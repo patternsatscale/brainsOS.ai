@@ -309,3 +309,109 @@ def test_update_passes_version_and_rejects_invalid_version(tmp_path):
         assert ok_branch.status_code == 200
         assert "--branch task/320-appliance-rehearsal" in ok_branch.text
 
+
+def test_identity_and_firstboot_wizard_status(tmp_path):
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
+        "BRAINSOS_LOCAL_DOMAIN=jsm.cloud.aws.brainsos.ai\n"
+        "BRAINSOS_ADMIN_USERNAME=jsm\n"
+        "BRAINSOS_TLS_MODE=internal\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-initialized").write_text("2026-11-06T00:00:00Z\n", encoding="utf-8")
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
+
+        res = client.get("/api/v1/system/identity", headers=headers)
+        assert res.status_code == 200
+        ident = res.json()
+        assert ident["firstboot_wizard_completed"] is False
+        assert ident["url"] == "ec2-32-192-215-107.compute-1.amazonaws.com"
+        assert ident["local_domain"] == "jsm.cloud.aws.brainsos.ai"
+        assert ident["admin_username"] == "jsm"
+        assert ident["admin_email"] == "jsm@jsm.cloud.aws.brainsos.ai"
+
+        # Dismiss wizard via POST /api/v1/system/setup
+        csrf_tok = issue_csrf_token()
+        post_headers = {
+            **headers,
+            "X-Authentik-Username": "jsm",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+        dismiss_res = client.post(
+            "/api/v1/system/setup",
+            json={"dismiss_only": True},
+            headers=post_headers,
+        )
+        assert dismiss_res.status_code == 200
+        assert dismiss_res.json()["firstboot_wizard_completed"] is True
+        assert (tmp_path / ".brainsos-wizard-completed").is_file()
+
+
+def test_dns_check_and_setup_password_never_logged(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAINSOS_TEST_PUBLIC_IPV4", "32.192.215.107")
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text(
+        "#!/usr/bin/env bash\n"
+        "echo \"SET_DOMAIN_ARGS: $*\"\n"
+        "if [ -n \"${BRAINSOS_NEW_ADMIN_PASSWORD:-}\" ]; then echo \"PASS_ENV_RECEIVED=yes\"; fi\n",
+        encoding="utf-8",
+    )
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "admin",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        with patch("socket.gethostbyname", return_value="32.192.215.107"):
+            dns_res = client.post(
+                "/api/v1/system/dns-check",
+                json={"domain": "https://portal.brainsos.ai/"},
+                headers=headers,
+            )
+            assert dns_res.status_code == 200
+            dns_data = dns_res.json()
+            assert dns_data["domain"] == "portal.brainsos.ai"
+            assert dns_data["valid_syntax"] is True
+            assert dns_data["matches_appliance"] is True
+
+        # Reject invalid local_domain
+        bad_setup = client.post(
+            "/api/v1/system/setup",
+            json={"local_domain": "not_a_fqdn"},
+            headers=headers,
+        )
+        assert bad_setup.status_code == 400
+
+        # Valid setup streams SSE and passes password via env var (never in command args)
+        ok_setup = client.post(
+            "/api/v1/system/setup",
+            json={
+                "local_domain": "jsm.cloud.aws.brainsos.ai",
+                "admin_username": "jsm",
+                "admin_password": "UltraSecretPassword99!",
+                "url": "https://ec2-32-192-215-107.compute-1.amazonaws.com/",
+                "tls_mode": "internal",
+            },
+            headers=headers,
+        )
+        assert ok_setup.status_code == 200
+        assert "--local-domain jsm.cloud.aws.brainsos.ai" in ok_setup.text
+        assert "--admin-username jsm" in ok_setup.text
+        assert "PASS_ENV_RECEIVED=yes" in ok_setup.text
+        assert "UltraSecretPassword99!" not in ok_setup.text
+
+

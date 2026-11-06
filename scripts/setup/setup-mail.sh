@@ -42,7 +42,9 @@ CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_claude_
 GPT_PASS="${GPT_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_gpt_mail_secret_change_me}}"
 
 echo "[INFO] Generating account directory in $CONFIG_DIR/users..."
+ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
 SETUP_DOMAINS=("brainsos.local" "local.brainsos.ai")
+if [[ -n "${BRAINSOS_LOCAL_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_LOCAL_DOMAIN}"); fi
 if [[ -n "${BRAINSOS_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_DOMAIN}"); fi
 if [[ -n "${BRAINSOS_MAIL_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_MAIL_DOMAIN}"); fi
 if [[ -n "${BRAINSOS_EMAIL_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_EMAIL_DOMAIN}"); fi
@@ -98,6 +100,10 @@ root@${d} admin@${d}
 akadmin@${d} admin@${d}
 cindy@${d} bawtford@${d}
 EOF
+if [[ -n "${ADMIN_USER}" && "${ADMIN_USER}" != "admin" ]]; then
+    echo "${ADMIN_USER}@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::" >> "$CONFIG_DIR/users"
+    echo "${ADMIN_USER}@${d} admin" >> "$CONFIG_DIR/vmailbox"
+fi
 done
 
 # Scaffold mailbox folders for all accounts

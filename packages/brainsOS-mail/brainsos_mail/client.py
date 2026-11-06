@@ -247,7 +247,7 @@ class BrainsOSMailClient:
 
         Returns the generated Message-ID.
         """
-        domain = os.getenv("BRAINSOS_DOMAIN", "brainsos.local")
+        domain = os.getenv("BRAINSOS_LOCAL_DOMAIN") or os.getenv("BRAINSOS_DOMAIN", "brainsos.local")
         sender = from_addr or self.username or f"agent@{domain}"
         msg = EmailMessage()
         msg_id = make_msgid(domain=domain)
@@ -297,6 +297,7 @@ class BrainsOSMailClient:
             or to_domain.endswith(".local")
             or to_domain == "localhost"
             or "local.brainsos.ai" in to_domain
+            or to_domain == os.getenv("BRAINSOS_LOCAL_DOMAIN", "").lower()
             or to_domain == os.getenv("BRAINSOS_DOMAIN", "").lower()
             or to_domain == os.getenv("BRAINSOS_MAIL_DOMAIN", "").lower()
         )

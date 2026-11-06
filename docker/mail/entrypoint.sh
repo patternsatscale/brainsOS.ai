@@ -25,7 +25,10 @@ CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
 GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
 # Collect and deduplicate domains
+ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+PRIMARY_LOCAL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-local.brainsos.ai}}"
 RAW_DOMAINS=("brainsos.local" "local.brainsos.ai")
+if [ -n "${BRAINSOS_LOCAL_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_LOCAL_DOMAIN}"); fi
 if [ -n "${BRAINSOS_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_DOMAIN}"); fi
 if [ -n "${BRAINSOS_MAIL_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_MAIL_DOMAIN}"); fi
 if [ -n "${BRAINSOS_EMAIL_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_EMAIL_DOMAIN}"); fi
@@ -78,10 +81,16 @@ postmaster@${d} admin@brainsos.local
 root@${d} admin@brainsos.local
 cindy@${d} bawtford@${d}
 EOF
+if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ]; then
+    echo "${ADMIN_USER}@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::" >> /etc/mail-brainsos/users
+    echo "${ADMIN_USER}@${d} admin" >> /etc/mail-brainsos/vmailbox
+fi
 done
 
-# Configure Postfix virtual mailbox domains
+# Configure Postfix hostname, domain & virtual mailbox domains
 DOMAINS_STR=$(IFS=', '; echo "${UNIQUE_DOMAINS[*]}")
+postconf -e "myhostname = ${PRIMARY_LOCAL_DOMAIN}"
+postconf -e "mydomain = ${PRIMARY_LOCAL_DOMAIN}"
 postconf -e "virtual_mailbox_domains = ${DOMAINS_STR}"
 
 # Compile Postfix lookup databases
@@ -135,12 +144,15 @@ sleep 1
 # 2. Administrator gets full management access (including write-deleted and expunge)
 for user in $(cut -d: -f1 /etc/mail-brainsos/users); do
     base_user=$(echo "$user" | cut -d@ -f1)
-    if [ "$base_user" != "admin" ]; then
+    if [ "$base_user" != "admin" ] && [ "$base_user" != "${ADMIN_USER}" ]; then
         # Restrict agent owner: no write-deleted (t), no expunge (e), no admin (a)
         doveadm acl set -u "$user" INBOX owner lookup read write write-seen insert post 2>/dev/null || true
         # Grant admin full oversight & expunge capabilities across all domains
         for d in "${UNIQUE_DOMAINS[@]}"; do
             doveadm acl set -u "$user" INBOX user=admin@${d} lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+            if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ]; then
+                doveadm acl set -u "$user" INBOX user=${ADMIN_USER}@${d} lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+            fi
         done
     fi
 done

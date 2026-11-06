@@ -421,10 +421,25 @@ disk_info = {
 overall_update = git_info.get("update_available", False) or any(s["update_available"] for s in services.values())
 platform_name, platform_detail = get_platform_info()
 
+import socket
+local_dom = os.environ.get("BRAINSOS_LOCAL_DOMAIN") or os.environ.get("BRAINSOS_MAIL_DOMAIN") or os.environ.get("BRAINSOS_DOMAIN") or "local.brainsos.ai"
+ext_url = os.environ.get("BRAINSOS_URL") or os.environ.get("BRAINSOS_DOMAIN") or "local.brainsos.ai"
+admin_user = os.environ.get("BRAINSOS_ADMIN_USERNAME") or "admin"
+admin_email = os.environ.get("BRAINSOS_ADMIN_EMAIL") or f"{admin_user}@{local_dom}"
+tls_mode = os.environ.get("BRAINSOS_TLS_MODE") or ("route53" if os.environ.get("ACME_DNS_PROVIDER") == "route53" else "internal")
+wizard_done = os.path.isfile(os.path.join(repo_root, ".brainsos-wizard-completed")) or not os.path.isfile(os.path.join(repo_root, ".brainsos-initialized"))
+
 status_data = {
     "platform": "brainsOS",
     "platform_name": platform_name,
     "platform_detail": platform_detail,
+    "firstboot_wizard_completed": wizard_done,
+    "url": ext_url,
+    "local_domain": local_dom,
+    "admin_username": admin_user,
+    "admin_email": admin_email,
+    "tls_mode": tls_mode,
+    "hostname": socket.getfqdn(),
     "git": git_info,
     "services": services,
     "disk": disk_info,
@@ -546,12 +561,20 @@ if [ "${DRY_RUN}" = true ]; then
   log_warn "DRY-RUN mode enabled: No files or containers will be modified."
 fi
 
-# C5: Refuse to update dirty git repository in unattended mode
-if [ "${FULL_UPDATE}" = true ] && [ "${UNATTENDED}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+# C5: Clean auto-generated runtime files and handle dirty git working tree
+if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  # Always restore auto-generated Caddy TLS policy snippet modified by reload-env.sh
+  git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
+
   DIRTY_CHECK="$(git status --porcelain --untracked-files=no)"
   if [ -n "${DIRTY_CHECK}" ]; then
-    log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
-    exit 1
+    if [ -n "${TARGET_BRANCH}" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+      log_warn "Working tree has local modifications on appliance; stashing/resetting before branch sync..."
+      git stash push -m "brainsos-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+    elif [ "${UNATTENDED}" = true ]; then
+      log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
+      exit 1
+    fi
   fi
 fi
 
@@ -714,9 +737,14 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
   if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would fetch and sync branch origin/${EFFECTIVE_BRANCH}"
   else
+    git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-      log_error "Tracked files have local modifications. Commit or revert them before updating."
-      exit 1
+      if [ -n "${TARGET_BRANCH}" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+        git stash push -m "brainsos-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+      else
+        log_error "Tracked files have local modifications. Commit or revert them before updating."
+        exit 1
+      fi
     fi
 
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" 2>/dev/null || true
@@ -940,7 +968,7 @@ else
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
     log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
     docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
-    if [ "${TARGET_SERVICE}" = "caddy" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
+    if [ "${TARGET_SERVICE}" = "caddy" ]; then
       docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
     fi
     if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
@@ -956,7 +984,6 @@ else
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
     fi
-    docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
   fi
   log_success "Containers recreated with latest images and parameters."
 fi

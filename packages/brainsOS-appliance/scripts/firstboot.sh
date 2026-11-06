@@ -160,20 +160,56 @@ fi
 #       BRAINSOS_TLS_MODE=acme        # or route53
 # ------------------------------------------------------------------------------
 strip_value() { local v="${1%%#*}"; printf '%s' "${v}" | tr -d "\"' \r"; }
+normalize_url_host() {
+  local raw="$1"
+  raw="${raw#http://}"
+  raw="${raw#https://}"
+  raw="${raw%%/*}"
+  raw="${raw%%:*}"
+  printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]' | tr -d ' '
+}
+
 UD_DOMAIN=""
+UD_URL=""
+UD_LOCAL_DOMAIN=""
+UD_ADMIN_USERNAME=""
 UD_ACME_EMAIL=""
 UD_TLS_MODE=""
 if [ -n "${USER_DATA}" ]; then
   while IFS= read -r ud_line; do
     ud_trimmed="${ud_line#"${ud_line%%[![:space:]]*}"}"
     case "${ud_trimmed}" in
+      BRAINSOS_URL=*|BRAINSOS_URL:*)
+        val="${ud_trimmed#BRAINSOS_URL[=:]}"
+        UD_URL="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      url:*)
+        val="${ud_trimmed#url:}"
+        UD_URL="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      BRAINSOS_LOCAL_DOMAIN=*|BRAINSOS_LOCAL_DOMAIN:*)
+        val="${ud_trimmed#BRAINSOS_LOCAL_DOMAIN[=:]}"
+        UD_LOCAL_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      local_domain:*)
+        val="${ud_trimmed#local_domain:}"
+        UD_LOCAL_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      BRAINSOS_ADMIN_USERNAME=*|BRAINSOS_ADMIN_USERNAME:*)
+        val="${ud_trimmed#BRAINSOS_ADMIN_USERNAME[=:]}"
+        UD_ADMIN_USERNAME="$(strip_value "${val}")"
+        ;;
+      admin_username:*)
+        val="${ud_trimmed#admin_username:}"
+        UD_ADMIN_USERNAME="$(strip_value "${val}")"
+        ;;
       BRAINSOS_DOMAIN=*|BRAINSOS_DOMAIN:*)
         val="${ud_trimmed#BRAINSOS_DOMAIN[=:]}"
-        UD_DOMAIN="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        UD_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
         ;;
       domain:*)
         val="${ud_trimmed#domain:}"
-        UD_DOMAIN="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        UD_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
         ;;
       ACME_EMAIL=*|ACME_EMAIL:*)
         val="${ud_trimmed#ACME_EMAIL[=:]}"
@@ -214,13 +250,35 @@ fi
 
 APPLIANCE_REGION="${AWS_REGION_DETECTED:-${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}}"
 
-# Primary hostname: operator domain from user-data, else EC2 public DNS / IP
+# Primary external URL hostname: BRAINSOS_URL or BRAINSOS_DOMAIN from user-data, else EC2 public DNS / IP
+EFFECTIVE_UD_URL="${UD_URL:-${UD_DOMAIN}}"
 APPLIANCE_DOMAIN="${PUBLIC_HOSTNAME}"
-if [ -n "${UD_DOMAIN}" ]; then
-  if is_fqdn "${UD_DOMAIN}"; then
-    APPLIANCE_DOMAIN="${UD_DOMAIN}"
+if [ -n "${EFFECTIVE_UD_URL}" ]; then
+  if is_fqdn "${EFFECTIVE_UD_URL}" || is_ipv4 "${EFFECTIVE_UD_URL}"; then
+    APPLIANCE_DOMAIN="${EFFECTIVE_UD_URL}"
   else
-    log_warn "Ignoring invalid BRAINSOS_DOMAIN in user-data: '${UD_DOMAIN}'"
+    log_warn "Ignoring invalid BRAINSOS_URL/BRAINSOS_DOMAIN in user-data: '${EFFECTIVE_UD_URL}'"
+  fi
+fi
+
+# Internal unit local domain & hostname (#332): never default to ec2-*.compute-1.amazonaws.com
+APPLIANCE_LOCAL_DOMAIN="local.brainsos.ai"
+if [ -n "${UD_LOCAL_DOMAIN}" ]; then
+  if is_fqdn "${UD_LOCAL_DOMAIN}"; then
+    APPLIANCE_LOCAL_DOMAIN="${UD_LOCAL_DOMAIN}"
+  else
+    log_warn "Ignoring invalid BRAINSOS_LOCAL_DOMAIN in user-data: '${UD_LOCAL_DOMAIN}'"
+  fi
+elif [ -n "${UD_DOMAIN}" ] && is_fqdn "${UD_DOMAIN}" && [[ "${UD_DOMAIN}" != *.amazonaws.com ]]; then
+  APPLIANCE_LOCAL_DOMAIN="${UD_DOMAIN}"
+fi
+
+APPLIANCE_ADMIN_USERNAME="admin"
+if [ -n "${UD_ADMIN_USERNAME}" ]; then
+  if [[ "${UD_ADMIN_USERNAME}" =~ ^[a-zA-Z0-9._-]{2,64}$ ]]; then
+    APPLIANCE_ADMIN_USERNAME="${UD_ADMIN_USERNAME}"
+  else
+    log_warn "Ignoring invalid BRAINSOS_ADMIN_USERNAME in user-data: '${UD_ADMIN_USERNAME}'"
   fi
 fi
 
@@ -230,8 +288,8 @@ ACME_EMAIL_VALUE=""
 case "${UD_TLS_MODE}" in
   ""|internal) ;;
   acme|route53)
-    if [ "${APPLIANCE_DOMAIN}" != "${UD_DOMAIN}" ] || [ -z "${UD_DOMAIN}" ]; then
-      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid BRAINSOS_DOMAIN in user-data; using internal CA."
+    if [ "${APPLIANCE_DOMAIN}" != "${EFFECTIVE_UD_URL}" ] || [ -z "${EFFECTIVE_UD_URL}" ]; then
+      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid BRAINSOS_URL or BRAINSOS_DOMAIN in user-data; using internal CA."
     elif [[ ! "${UD_ACME_EMAIL}" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
       log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid ACME_EMAIL in user-data; using internal CA."
     else
@@ -255,7 +313,9 @@ done
 
 log_info "Instance ID:     ${INSTANCE_ID}"
 log_info "Public Hostname: ${PUBLIC_HOSTNAME}"
-log_info "Primary Domain:  ${APPLIANCE_DOMAIN}"
+log_info "External URL:    ${APPLIANCE_DOMAIN}"
+log_info "Local Domain:    ${APPLIANCE_LOCAL_DOMAIN}"
+log_info "Admin Username:  ${APPLIANCE_ADMIN_USERNAME}"
 log_info "TLS Mode:        ${TLS_MODE}"
 log_info "IP Sites:        ${IP_SITES}"
 log_info "Local IPv4:      ${LOCAL_IPV4:-unknown}"
@@ -270,9 +330,13 @@ case "${APPLIANCE_REGION}" in
 esac
 
 if [ "${DRY_RUN}" = true ]; then
-  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
+  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --mail-domain ${APPLIANCE_LOCAL_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
   log_info "[DRY-RUN] Would write appliance overrides to ${TARGET_ENV}:"
+  log_info "[DRY-RUN] BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
   log_info "[DRY-RUN] BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
+  log_info "[DRY-RUN] BRAINSOS_URL=${APPLIANCE_DOMAIN}"
+  log_info "[DRY-RUN] BRAINSOS_LOCAL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
+  log_info "[DRY-RUN] BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
   log_info "[DRY-RUN] BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
   log_info "[DRY-RUN] CADDYFILE=Caddyfile.appliance BRAINSOS_TLS_MODE=${TLS_MODE} BRAINSOS_IP_SITES=${IP_SITES}"
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
@@ -298,6 +362,7 @@ else
   log_info "Generating unique per-instance secrets via scripts/control/generate-env.sh..."
   "${GENERATE_ENV}" --non-interactive \
     --domain "${APPLIANCE_DOMAIN}" \
+    --mail-domain "${APPLIANCE_LOCAL_DOMAIN}" \
     --data-dir "${REPO_ROOT}/data" \
     --force-passwords \
     --no-rebuild </dev/null
@@ -307,15 +372,21 @@ else
   # --------------------------------------------------------------------------
   gen_secret() { python3 -c "import secrets; print(secrets.token_hex(${1:-20}))"; }
 
+  ADMIN_EMAIL_DEFAULT="${APPLIANCE_ADMIN_USERNAME}@${APPLIANCE_LOCAL_DOMAIN}"
+  if [[ "${ADMIN_EMAIL_DEFAULT}" == *.local ]]; then
+    ADMIN_EMAIL_DEFAULT="${APPLIANCE_ADMIN_USERNAME}@brainsos.ai"
+  fi
+
   APPLIANCE_OVERRIDES=(
     "BRAINSOS_APPLIANCE=true"
     "BRAINSOS_STAGE=aws"
     # Operator login (Authentik admin/akadmin/operator) - AWS Marketplace convention, rotate at first login
-    "BRAINSOS_ADMIN_EMAIL=admin@brainsos.ai"
+    "BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
+    "BRAINSOS_ADMIN_EMAIL=${ADMIN_EMAIL_DEFAULT}"
     "BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
     "AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
-    "AUTHENTIK_BOOTSTRAP_EMAIL=admin@brainsos.ai"
-    "LANGFUSE_INIT_USER_EMAIL=admin@brainsos.ai"
+    "AUTHENTIK_BOOTSTRAP_EMAIL=${ADMIN_EMAIL_DEFAULT}"
+    "LANGFUSE_INIT_USER_EMAIL=${ADMIN_EMAIL_DEFAULT}"
     # Independent service credentials (never derived from the instance-id)
     "CODE_SERVER_PASSWORD=$(gen_secret 16)"
     "TOOL_EGRESS_WEB_PASSWORD=$(gen_secret 16)"
@@ -334,7 +405,10 @@ else
     "OLLAMA_ENABLED=false"
     "AWS_REGION=${APPLIANCE_REGION}"
     "AWS_DEFAULT_REGION=${APPLIANCE_REGION}"
-    # Ingress (#323): appliance Caddyfile, self-signed by default, BYOD via user-data or set-domain.sh
+    # Ingress (#323 / #332): BRAINSOS_URL for external web access, BRAINSOS_LOCAL_DOMAIN for internal identity & mail
+    "BRAINSOS_URL=${APPLIANCE_DOMAIN}"
+    "BRAINSOS_LOCAL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
+    "BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
     "BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
     "AUTHENTIK_COOKIE_DOMAIN="
     "CADDYFILE=Caddyfile.appliance"

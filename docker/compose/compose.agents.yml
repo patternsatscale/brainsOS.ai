@@ -59,6 +59,9 @@ services:
       - BRAINSOS_DATA_DIR=/data
       - BRAINSOS_AGENTS_DIR=/data/agents
       - BRAINSOS_MEMORIES_DIR=/data/agents
+      - BRAINSOS_LOCAL_DOMAIN=${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
+      - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
+      - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
     volumes:
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/data/agents
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/memories
