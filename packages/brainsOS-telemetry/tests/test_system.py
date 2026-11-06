@@ -284,3 +284,28 @@ def test_update_passes_version_and_rejects_invalid_version(tmp_path):
         )
         assert ok_res.status_code == 200
         assert "--version 1.108.0" in ok_res.text
+
+        # Reject invalid branch with path traversal or leading dash
+        bad_branch = client.post(
+            "/api/v1/system/update",
+            json={"branch": "../evil"},
+            headers=headers,
+        )
+        assert bad_branch.status_code == 400
+
+        bad_branch_dash = client.post(
+            "/api/v1/system/update",
+            json={"branch": "--evil-flag"},
+            headers=headers,
+        )
+        assert bad_branch_dash.status_code == 400
+
+        # Valid branch is forwarded to update.sh --branch
+        ok_branch = client.post(
+            "/api/v1/system/update",
+            json={"branch": "task/320-appliance-rehearsal"},
+            headers=headers,
+        )
+        assert ok_branch.status_code == 200
+        assert "--branch task/320-appliance-rehearsal" in ok_branch.text
+

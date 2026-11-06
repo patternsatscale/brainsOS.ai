@@ -225,6 +225,15 @@
 		}
 	}
 
+	@litellm_api_subpaths path /api/plugins /api/plugins/* /api/event_logging/*
+	handle @litellm_api_subpaths {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
 	handle /api/* {
 		reverse_proxy authentik-server:9000
 	}
@@ -296,6 +305,7 @@
 		}
 	}
 	handle /sso/* {
+		uri path_regexp ^(/sso/.+?)(?:\.(?:txt|rsc)|/)$ $1
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -304,6 +314,7 @@
 	}
 	handle /proxy/sso/* {
 		uri strip_prefix /proxy
+		uri path_regexp ^(/sso/.+?)(?:\.(?:txt|rsc)|/)$ $1
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -417,6 +428,36 @@
  /realtime /realtime/* \
  /a2a /a2a/* \
  /scim /scim/* \
+ /management /management/* \
+ /login \
+ /active /active/* \
+ /adaptive_router /adaptive_router/* \
+ /apply_guardrail \
+ /config_overrides /config_overrides/* \
+ /containers /containers/* \
+ /decisions \
+ /end_user /end_user/* \
+ /fine_tuning /fine_tuning/* \
+ /interactions /interactions/* \
+ /jwt /jwt/* \
+ /lens /lens/* \
+ /liteadmin /liteadmin/* \
+ /live /live/* \
+ /mcp /mcp/* \
+ /model-insights /model-insights/* \
+ /moderations \
+ /ocr \
+ /otel-spans \
+ /plugin-proxy /plugin-proxy/* \
+ /provider /provider/* \
+ /rerank \
+ /search /search/* \
+ /telemetry /telemetry/* \
+ /toolset /toolset/* \
+ /upload /upload/* \
+ /usage /usage/* \
+ /vector_stores /vector_stores/* \
+ /videos /videos/* \
  /openapi.json /get_favicon /get_image /get_logo_url /get_cache_settings
 	handle @litellm_api {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
@@ -425,79 +466,21 @@
 			flush_interval -1
 		}
 	}
-	@proxy_litellm_api path \
- /proxy/key /proxy/key/* \
- /proxy/model /proxy/model/* /proxy/models /proxy/models* /proxy/model_group /proxy/model_group/* /proxy/model_hub /proxy/model_hub/* \
- /proxy/user /proxy/user/* \
- /proxy/team /proxy/team/* \
- /proxy/customer /proxy/customer/* \
- /proxy/spend /proxy/spend/* \
- /proxy/global /proxy/global/* \
- /proxy/health /proxy/health/* \
- /proxy/routes /proxy/routes* \
- /proxy/config /proxy/config/* \
- /proxy/service_account /proxy/service_account/* \
- /proxy/public /proxy/public/* \
- /proxy/settings /proxy/settings/* \
- /proxy/get /proxy/get/* \
- /proxy/update /proxy/update/* \
- /proxy/add /proxy/add/* \
- /proxy/delete /proxy/delete/* \
- /proxy/tag /proxy/tag/* \
- /proxy/gateway /proxy/gateway/* \
- /proxy/audit /proxy/audit/* \
- /proxy/router /proxy/router/* \
- /proxy/cache /proxy/cache/* \
- /proxy/coordination_redis /proxy/coordination_redis/* \
- /proxy/cost /proxy/cost/* /proxy/cost_optimization /proxy/cost_optimization/* \
- /proxy/email /proxy/email/* \
- /proxy/project /proxy/project/* \
- /proxy/budget /proxy/budget/* \
- /proxy/invitation /proxy/invitation/* \
- /proxy/alerting /proxy/alerting/* \
- /proxy/organization /proxy/organization/* \
- /proxy/auto_router /proxy/auto_router/* \
- /proxy/access_group /proxy/access_group/* \
- /proxy/guardrails /proxy/guardrails/* \
- /proxy/policies /proxy/policies/* /proxy/policy /proxy/policy/* \
- /proxy/prompts /proxy/prompts/* \
- /proxy/search_tools /proxy/search_tools/* \
- /proxy/mcp-rest /proxy/mcp-rest/* \
- /proxy/vector_store /proxy/vector_store/* \
- /proxy/rag /proxy/rag/* \
- /proxy/callbacks /proxy/callbacks/* \
- /proxy/credentials /proxy/credentials/* \
- /proxy/fallback /proxy/fallback/* \
- /proxy/activity /proxy/activity/* \
- /proxy/agent /proxy/agent/* \
- /proxy/onboarding /proxy/onboarding/* \
- /proxy/session /proxy/session/* \
- /proxy/utils /proxy/utils/* \
- /proxy/compliance /proxy/compliance/* \
- /proxy/claude-code /proxy/claude-code/* \
- /proxy/reload /proxy/reload/* \
- /proxy/schedule /proxy/schedule/* \
- /proxy/v1 /proxy/v1/* \
- /proxy/v2 /proxy/v2/* \
- /proxy/v3 /proxy/v3/* \
- /proxy/v1beta /proxy/v1beta/* \
- /proxy/openai /proxy/openai/* /proxy/openai_passthrough /proxy/openai_passthrough/* \
- /proxy/chat /proxy/chat/* \
- /proxy/completions /proxy/completions/* \
- /proxy/embeddings /proxy/embeddings/* \
- /proxy/batches /proxy/batches/* \
- /proxy/files /proxy/files/* \
- /proxy/threads /proxy/threads/* \
- /proxy/assistants /proxy/assistants/* \
- /proxy/audio /proxy/audio/* \
- /proxy/images /proxy/images/* \
- /proxy/responses /proxy/responses/* \
- /proxy/realtime /proxy/realtime/* \
- /proxy/a2a /proxy/a2a/* \
- /proxy/scim /proxy/scim/* \
- /proxy/openapi.json /proxy/get_favicon /proxy/get_image /proxy/get_logo_url /proxy/get_cache_settings
-	handle @proxy_litellm_api {
+	handle /proxy/* {
 		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# Future-proof catch-all for any new endpoint called by the LiteLLM Admin UI (/ui/*)
+	@litellm_ui_referer {
+		header_regexp Referer ^https?://[^/]+/(proxy/)?ui(/|$|\?)
+		not path /ui/* /proxy/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
+	}
+	handle @litellm_ui_referer {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy

@@ -448,6 +448,23 @@ def test_shallow_clone_unshallows_and_reports_zero_commits_behind(tmp_path: Path
     data = json.loads(proc.stdout)
     assert data["git"]["commits_behind"] == 0
     assert data["git"]["update_available"] is False
+    assert "main" in data["git"]["available_branches"]
+    assert "task/rehearsal" in data["git"]["available_branches"]
+
+
+def test_update_branch_selection_dry_run():
+    """Verify --branch <name> --dry-run plans branch switch and pull from origin/<branch>."""
+    proc = subprocess.run(
+        [str(UPDATE_SCRIPT), "--branch", "task/320-appliance-rehearsal", "--dry-run"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "task/320-appliance-rehearsal" in proc.stdout
+    assert "origin/task/320-appliance-rehearsal" in proc.stdout
+
 
 
 

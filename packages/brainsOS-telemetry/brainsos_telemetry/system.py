@@ -305,6 +305,7 @@ async def stream_system_update(
     reset_version: bool = False,
     containers_only: bool = False,
     full: bool = False,
+    branch: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Execute update.sh and stream output lines as Server-Sent Events (SSE)."""
     repo_root = get_repo_root()
@@ -326,6 +327,8 @@ async def stream_system_update(
         cmd.append("--containers-only")
     elif full:
         cmd.append("--full")
+        if branch:
+            cmd.extend(["--branch", branch.strip()])
 
     manager = JobManager(repo_root)
     job = await manager.start_job("update", cmd)
@@ -562,6 +565,7 @@ def create_system_api_app():
         reset_version: bool = Field(False, description="Remove .env version override and restore default image tag")
         containers_only: bool = Field(False, description="Update upstream containers only without pulling git source")
         full: bool = Field(True, description="Full update including git source code and containers")
+        branch: Optional[str] = Field(None, description="Optional target git branch name (e.g. main, task/320-appliance-rehearsal)")
 
     class PruneRequest(BaseModel):
         dry_run: bool = Field(False, description="Simulate actions without deleting")
@@ -640,6 +644,14 @@ def create_system_api_app():
                     detail=f"Invalid version tag '{req.version}'. Must be a valid alphanumeric version identifier.",
                 )
 
+        if req.branch is not None:
+            br = req.branch.strip()
+            if not br or br.startswith("-") or ".." in br or not re.match(r"^[A-Za-z0-9._/-]+$", br):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid branch name '{req.branch}'. Must be a valid git branch identifier.",
+                )
+
         update_script = os.path.join(repo_root, "scripts/control/update.sh")
         if not os.path.isfile(update_script):
             raise HTTPException(status_code=500, detail="scripts/control/update.sh not found")
@@ -655,6 +667,8 @@ def create_system_api_app():
             cmd.append("--containers-only")
         elif req.full:
             cmd.append("--full")
+            if req.branch:
+                cmd.extend(["--branch", req.branch.strip()])
 
         job = await job_manager.start_job("update", cmd)
         if "error" in job and job["error"] == "conflict":

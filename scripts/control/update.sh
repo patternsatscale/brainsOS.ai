@@ -77,6 +77,7 @@ CONTAINERS_ONLY=false
 FULL_UPDATE=true
 TARGET_SERVICE=""
 TARGET_VERSION=""
+TARGET_BRANCH=""
 RESET_VERSION=false
 UNATTENDED=false
 NO_BACKUP=false
@@ -94,6 +95,7 @@ show_help() {
   echo "  --json                Output version status and check results in JSON format"
   echo "  --containers-only     Update upstream container images only (do not pull git code)"
   echo "  --full                Update both git source code and container images (default)"
+  echo "  --branch <name>       Switch to and pull a specific remote git branch (e.g. main, task/320-appliance-rehearsal)"
   echo "  --service <name>      Target a specific service (e.g. litellm, langfuse, caddy)"
   echo "  --version <tag>       Target a specific upstream image version tag (litellm and langfuse only)"
   echo "  --target-version <tag> Alias for --version"
@@ -131,6 +133,12 @@ while [[ $# -gt 0 ]]; do
       FULL_UPDATE=true
       CONTAINERS_ONLY=false
       shift
+      ;;
+    --branch)
+      TARGET_BRANCH="$2"
+      FULL_UPDATE=true
+      CONTAINERS_ONLY=false
+      shift 2
       ;;
     --service)
       TARGET_SERVICE="$2"
@@ -238,15 +246,40 @@ def get_platform_info():
 def get_git_info():
     is_git = os.path.isdir(os.path.join(repo_root, ".git"))
     if not is_git:
-        return {"is_git": False}
+        return {"is_git": False, "available_branches": ["main"]}
     branch = run_cmd("git rev-parse --abbrev-ref HEAD")
     current_commit = run_cmd("git rev-parse --short HEAD")
     remote_commit = ""
     commits_behind = 0
-    
-    ls_out = run_cmd(f"git ls-remote origin -h refs/heads/{branch}")
-    if ls_out:
-        remote_commit = ls_out.split()[0][:7] if ls_out.split() else ""
+    available_branches = []
+
+    ls_heads = run_cmd("git ls-remote --heads origin")
+    if ls_heads:
+        for line in ls_heads.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].startswith("refs/heads/"):
+                b_name = parts[1][len("refs/heads/"):]
+                available_branches.append(b_name)
+                if b_name == branch:
+                    remote_commit = parts[0][:7]
+
+    if not available_branches:
+        local_branches = run_cmd("git branch -a --format='%(refname:short)'")
+        for line in local_branches.splitlines():
+            b_name = line.strip().strip("'")
+            if b_name.startswith("origin/"):
+                b_name = b_name[len("origin/"):]
+            if b_name and b_name != "HEAD" and b_name not in available_branches:
+                available_branches.append(b_name)
+
+    ordered_branches = []
+    for preferred in ("main", branch):
+        if preferred and preferred not in ordered_branches:
+            ordered_branches.append(preferred)
+    for b_name in sorted(available_branches):
+        if b_name not in ordered_branches:
+            ordered_branches.append(b_name)
+
     if remote_commit and remote_commit != current_commit:
         if os.path.isfile(os.path.join(repo_root, ".git", "shallow")):
             run_cmd("git fetch --unshallow origin --quiet || git fetch origin --quiet")
@@ -261,6 +294,7 @@ def get_git_info():
     return {
         "is_git": True,
         "branch": branch,
+        "available_branches": ordered_branches,
         "current_commit": current_commit,
         "remote_commit": remote_commit or current_commit,
         "commits_behind": commits_behind,
@@ -610,6 +644,7 @@ fi
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   PRE_UPDATE_GIT_REF="$(git rev-parse HEAD)"
+  PRE_UPDATE_GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 fi
 
 # Rollback trap on failure (C4)
@@ -628,7 +663,11 @@ rollback_handler() {
     # 2. Rollback Git without reset --hard (safe git handling)
     if [ -n "${PRE_UPDATE_GIT_REF}" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       CURRENT_REF="$(git rev-parse HEAD)"
-      if [ "${CURRENT_REF}" != "${PRE_UPDATE_GIT_REF}" ]; then
+      CURRENT_BR="$(git rev-parse --abbrev-ref HEAD)"
+      if [ -n "${PRE_UPDATE_GIT_BRANCH:-}" ] && [ "${CURRENT_BR}" != "${PRE_UPDATE_GIT_BRANCH}" ]; then
+        log_info "Restoring git branch to ${PRE_UPDATE_GIT_BRANCH} (${PRE_UPDATE_GIT_REF})..."
+        git checkout -B "${PRE_UPDATE_GIT_BRANCH}" "${PRE_UPDATE_GIT_REF}" || log_error "git checkout rollback failed"
+      elif [ "${CURRENT_REF}" != "${PRE_UPDATE_GIT_REF}" ]; then
         log_info "Restoring git branch pointer to ${PRE_UPDATE_GIT_REF}..."
         git reset --keep "${PRE_UPDATE_GIT_REF}" || log_error "git reset --keep failed; repository left at $(git rev-parse --short HEAD)"
       fi
@@ -664,26 +703,45 @@ PRE_PULL_HEAD=""
 if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   log_info "Step 1/5: Pulling latest source code from remote tracking branch..."
   CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  EFFECTIVE_BRANCH="${TARGET_BRANCH:-${CURRENT_BRANCH}}"
   PRE_PULL_HEAD="$(git rev-parse HEAD)"
+
+  if [[ -n "${TARGET_BRANCH}" ]] && { [[ "${TARGET_BRANCH}" == -* ]] || [[ "${TARGET_BRANCH}" == *".."* ]] || ! [[ "${TARGET_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]]; }; then
+    log_error "Invalid branch name: '${TARGET_BRANCH}'"
+    exit 1
+  fi
   
   if [ "${DRY_RUN}" = true ]; then
-    log_info "[DRY-RUN] Would fetch and pull origin/${CURRENT_BRANCH}"
+    log_info "[DRY-RUN] Would fetch and sync branch origin/${EFFECTIVE_BRANCH}"
   else
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
       log_error "Tracked files have local modifications. Commit or revert them before updating."
       exit 1
     fi
 
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" 2>/dev/null || true
     if [ -f "${REPO_ROOT}/.git/shallow" ]; then
       git fetch --unshallow origin --quiet || git fetch origin --quiet
     else
       git fetch origin --quiet
     fi
-    if git merge-base --is-ancestor "origin/${CURRENT_BRANCH}" HEAD 2>/dev/null; then
-      log_success "Source code is already at the latest commit (${CURRENT_BRANCH})."
+
+    if ! git rev-parse --verify --quiet "origin/${EFFECTIVE_BRANCH}" >/dev/null; then
+      log_error "Remote branch 'origin/${EFFECTIVE_BRANCH}' does not exist."
+      exit 1
+    fi
+
+    if [ "${EFFECTIVE_BRANCH}" != "${CURRENT_BRANCH}" ]; then
+      log_info "Switching active branch from ${CURRENT_BRANCH} to ${EFFECTIVE_BRANCH} (origin/${EFFECTIVE_BRANCH})..."
+      git checkout -B "${EFFECTIVE_BRANCH}" "origin/${EFFECTIVE_BRANCH}"
+      git branch --set-upstream-to="origin/${EFFECTIVE_BRANCH}" "${EFFECTIVE_BRANCH}" >/dev/null 2>&1 || true
+      log_success "Switched to branch ${EFFECTIVE_BRANCH} at commit $(git rev-parse --short HEAD)."
+    elif [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/${EFFECTIVE_BRANCH}")" ]; then
+      log_success "Source code is already at the latest commit (${EFFECTIVE_BRANCH})."
     else
-      log_info "Fast-forwarding ${CURRENT_BRANCH} to origin/${CURRENT_BRANCH}..."
-      git pull --ff-only origin "${CURRENT_BRANCH}"
+      log_info "Syncing ${EFFECTIVE_BRANCH} to origin/${EFFECTIVE_BRANCH}..."
+      git pull --ff-only origin "${EFFECTIVE_BRANCH}" 2>/dev/null || git checkout -B "${EFFECTIVE_BRANCH}" "origin/${EFFECTIVE_BRANCH}"
+      git branch --set-upstream-to="origin/${EFFECTIVE_BRANCH}" "${EFFECTIVE_BRANCH}" >/dev/null 2>&1 || true
       log_success "Source code updated to commit $(git rev-parse --short HEAD)."
     fi
   fi
@@ -882,6 +940,9 @@ else
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
     log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
     docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
+    if [ "${TARGET_SERVICE}" = "caddy" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
+      docker exec brainsos-ingress-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
+    fi
     if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
       "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
     fi
@@ -895,6 +956,7 @@ else
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
     fi
+    docker exec brainsos-ingress-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
   fi
   log_success "Containers recreated with latest images and parameters."
 fi

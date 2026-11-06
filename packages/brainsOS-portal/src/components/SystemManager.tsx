@@ -27,6 +27,7 @@ import {
 interface GitStatus {
   is_git: boolean;
   branch: string;
+  available_branches?: string[];
   current_commit: string;
   remote_commit: string;
   commits_behind: number;
@@ -73,6 +74,7 @@ const DEFAULT_STATUS: SystemStatus = {
   git: {
     is_git: true,
     branch: "main",
+    available_branches: ["main", "task/320-appliance-rehearsal"],
     current_commit: "8e2513c",
     remote_commit: "8e2513c",
     commits_behind: 0,
@@ -118,6 +120,7 @@ interface UpdateTarget {
   service?: string;
   containersOnly?: boolean;
   full?: boolean;
+  branch?: string;
 }
 
 interface LogEntry {
@@ -162,6 +165,7 @@ export const SystemManager: React.FC = () => {
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [lastChecked, setLastChecked] = useState<string>('Just now');
   const [confirmTarget, setConfirmTarget] = useState<UpdateTarget | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
 
   // Terminal & SSE Log Drawer State
   const [terminalOpen, setTerminalOpen] = useState<boolean>(false);
@@ -202,6 +206,9 @@ export const SystemManager: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
+        if (data?.git?.branch) {
+          setSelectedBranch((prev) => prev || data.git.branch);
+        }
         setStatusError(null);
       } else {
         if (!import.meta.env.DEV) {
@@ -270,7 +277,8 @@ export const SystemManager: React.FC = () => {
           service: target.service,
           version: target.targetVersion,
           containers_only: target.containersOnly,
-          full: target.full
+          full: target.full,
+          branch: target.branch
         })
       });
 
@@ -542,7 +550,8 @@ export const SystemManager: React.FC = () => {
             onClick={() => setConfirmTarget({
               id: 'full',
               name: 'brainsOS Platform (Full Stack & Containers)',
-              full: true
+              full: true,
+              branch: selectedBranch || status?.git?.branch || 'main'
             })}
             disabled={!status}
             className={`px-4 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
@@ -888,9 +897,13 @@ export const SystemManager: React.FC = () => {
                       <GitBranch className="w-5 h-5" />
                     </div>
                 <div>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <h3 className="font-headline font-bold text-white text-base">brainsOS.ai Platform Core</h3>
-                    {status.git.commits_behind > 0 || status.git.update_available ? (
+                    {selectedBranch && selectedBranch !== (status.git.branch || 'main') ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono text-[10px] font-semibold">
+                        BRANCH SWITCH TARGET: {selectedBranch}
+                      </span>
+                    ) : status.git.commits_behind > 0 || status.git.update_available ? (
                       <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[10px] font-semibold animate-pulse">
                         SOURCE UPDATE AVAILABLE ({status.git.commits_behind || 1} COMMITS)
                       </span>
@@ -903,10 +916,25 @@ export const SystemManager: React.FC = () => {
                   <p className="font-mono text-xs text-slate-400 mt-0.5">
                     Git Source Code • Python Packages &amp; Topology Orchestration
                   </p>
-                  <div className="flex flex-wrap items-center gap-4 mt-2 font-mono text-xs text-slate-400">
-                    <div>
-                      <span className="text-slate-500">Branch: </span>
-                      <span className="text-white font-medium">{status.git.branch || 'main'}</span>
+                  <div className="flex flex-wrap items-center gap-4 mt-2.5 font-mono text-xs text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="branch-selector" className="text-slate-500">Branch:</label>
+                      <select
+                        id="branch-selector"
+                        value={selectedBranch || status.git.branch || 'main'}
+                        onChange={(e) => setSelectedBranch(e.target.value)}
+                        className="px-2.5 py-1 rounded-lg bg-[#0B0E14] border border-purple-500/40 hover:border-purple-400 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-xs transition-colors cursor-pointer"
+                        title="Select target remote branch to pull or switch to"
+                      >
+                        {(status.git.available_branches && status.git.available_branches.length > 0
+                          ? status.git.available_branches
+                          : [status.git.branch || 'main']
+                        ).map((br) => (
+                          <option key={br} value={br} className="bg-[#0B0E14] text-white">
+                            {br}{br === (status.git.branch || 'main') ? ' (active)' : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <span className="text-slate-500">Local Commit: </span>
@@ -915,8 +943,8 @@ export const SystemManager: React.FC = () => {
                     <div>
                       <span className="text-slate-500">Remote Tracking: </span>
                       <span className="text-purple-400 font-medium">
-                        origin/{status.git.branch || 'main'}
-                        {status.git.remote_commit && ` (${status.git.remote_commit.substring(0, 7)})`}
+                        origin/{selectedBranch || status.git.branch || 'main'}
+                        {(!selectedBranch || selectedBranch === status.git.branch) && status.git.remote_commit && ` (${status.git.remote_commit.substring(0, 7)})`}
                       </span>
                     </div>
                   </div>
@@ -925,7 +953,7 @@ export const SystemManager: React.FC = () => {
 
               <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0">
                 <a
-                  href={`https://github.com/patternsatscale/brainsOS.ai/commits/${status.git.branch || 'main'}`}
+                  href={`https://github.com/patternsatscale/brainsOS.ai/commits/${selectedBranch || status.git.branch || 'main'}`}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs font-mono text-slate-400 hover:text-purple-400 flex items-center gap-1 transition-colors"
@@ -935,15 +963,26 @@ export const SystemManager: React.FC = () => {
                 </a>
 
                 <button
-                  onClick={() => setConfirmTarget({
-                    id: 'git-source',
-                    name: 'brainsOS.ai Platform Source Code (git pull origin & rebuild)',
-                    full: true
-                  })}
+                  onClick={() => {
+                    const targetBranch = selectedBranch || status.git.branch || 'main';
+                    const isSwitch = targetBranch !== (status.git.branch || 'main');
+                    setConfirmTarget({
+                      id: 'git-source',
+                      name: isSwitch
+                        ? `Switch Branch & Sync Source -> ${targetBranch}`
+                        : `brainsOS.ai Platform Source Code (git pull origin/${targetBranch} & rebuild)`,
+                      full: true,
+                      branch: targetBranch
+                    });
+                  }}
                   className="px-3.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
                 >
                   <Play className="w-3 h-3 fill-current" />
-                  <span>Pull Latest Source</span>
+                  <span>
+                    {selectedBranch && selectedBranch !== (status.git.branch || 'main')
+                      ? `Switch & Sync (${selectedBranch})`
+                      : 'Pull Latest Source'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -1314,6 +1353,12 @@ export const SystemManager: React.FC = () => {
                 <div className="flex items-center justify-between pb-2 border-b border-white/5">
                   <span className="text-slate-400">Target Version:</span>
                   <span className="text-amber-400 font-semibold">{confirmTarget.targetVersion}</span>
+                </div>
+              )}
+              {confirmTarget.branch && (
+                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                  <span className="text-slate-400">Target Git Branch:</span>
+                  <span className="text-purple-400 font-semibold">origin/{confirmTarget.branch}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">

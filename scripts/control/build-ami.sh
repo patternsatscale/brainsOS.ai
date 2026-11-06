@@ -313,15 +313,20 @@ log_info "Publish Public:  ${PUBLISH_COMMUNITY}"
 # 4. Stage a clean artifact from git (with commit ancestry so git rev-list/pull work cleanly)
 STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/brainsos-ami-stage.XXXXXX")"
 STAGE_DIR="${STAGE_PARENT}/brainsos"
-log_info "Staging clean artifact from ${BUILD_REF} into ${STAGE_DIR}..."
-git init --quiet --initial-branch=main "${STAGE_DIR}"
+STAGE_BRANCH="main"
+if git -C "${REPO_ROOT}" show-ref --verify --quiet "refs/heads/${BUILD_REF}" || \
+   git -C "${REPO_ROOT}" show-ref --verify --quiet "refs/remotes/origin/${BUILD_REF}"; then
+  STAGE_BRANCH="${BUILD_REF}"
+fi
+log_info "Staging clean artifact from ${BUILD_REF} (branch: ${STAGE_BRANCH}) into ${STAGE_DIR}..."
+git init --quiet --initial-branch="${STAGE_BRANCH}" "${STAGE_DIR}"
 git -C "${STAGE_DIR}" fetch --quiet \
   --upload-pack="git -c uploadpack.allowAnySHA1InWant=true upload-pack" \
   "file://${REPO_ROOT}" "${BUILD_COMMIT}"
-git -C "${STAGE_DIR}" checkout --quiet -B main FETCH_HEAD
+git -C "${STAGE_DIR}" checkout --quiet -B "${STAGE_BRANCH}" FETCH_HEAD
 git -C "${STAGE_DIR}" remote add origin "${PUBLIC_REMOTE_URL}"
-git -C "${STAGE_DIR}" update-ref refs/remotes/origin/main "${BUILD_COMMIT}"
-git -C "${STAGE_DIR}" branch --quiet --set-upstream-to=origin/main main
+git -C "${STAGE_DIR}" update-ref "refs/remotes/origin/${STAGE_BRANCH}" "${BUILD_COMMIT}"
+git -C "${STAGE_DIR}" branch --quiet --set-upstream-to="origin/${STAGE_BRANCH}" "${STAGE_BRANCH}"
 if git -C "${REPO_ROOT}" rev-parse --verify --quiet "refs/tags/${BUILD_REF}" >/dev/null; then
   git -C "${STAGE_DIR}" tag "${BUILD_REF}" "${BUILD_COMMIT}"
 fi
