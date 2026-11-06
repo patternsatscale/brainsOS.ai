@@ -1066,3 +1066,13 @@ echo ""
 echo -e "All services are running target versions with health checks verified."
 echo -e "You can inspect active service URLs at any time with: ${BOLD}make urls${NC}"
 echo ""
+
+# If running on a systemd host with brainsos-system-api active, schedule a delayed
+# restart of brainsos-system-api after this script exits so newly pulled API routes take effect
+# without interrupting the active SSE stream completion event.
+if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ] && command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active --quiet brainsos-system-api 2>/dev/null; then
+    nohup sh -c "sleep 2 && systemctl restart brainsos-system-api" >/dev/null 2>&1 &
+  fi
+fi
+
