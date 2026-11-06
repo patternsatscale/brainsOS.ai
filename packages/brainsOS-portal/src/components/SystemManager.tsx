@@ -212,6 +212,7 @@ export const SystemManager: React.FC = () => {
   const [wizardOpen, setWizardOpen] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [wizardAutoOpened, setWizardAutoOpened] = useState<boolean>(false);
+  const [setupBootstrapToken, setSetupBootstrapToken] = useState<string>('');
   const [setupLocalDomain, setSetupLocalDomain] = useState<string>('local.brainsos.ai');
   const [setupAdminUsername, setSetupAdminUsername] = useState<string>('admin');
   const [setupAdminPassword, setSetupAdminPassword] = useState<string>('');
@@ -697,14 +698,35 @@ export const SystemManager: React.FC = () => {
   };
 
   const handleDismissWizard = async () => {
+    setSetupError(null);
+    if (status?.firstboot_wizard_completed === false && !setupBootstrapToken.trim()) {
+      setSetupError('Please enter your EC2 Instance ID (i-...) in Step 1 to verify ownership before skipping first-boot setup.');
+      setWizardStep(1);
+      return;
+    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
     try {
-      await fetch('/api/v1/system/setup', {
+      const res = await fetch('/api/v1/system/setup', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ dismiss_only: true }),
+        body: JSON.stringify({
+          dismiss_only: true,
+          bootstrap_token: setupBootstrapToken.trim() || undefined,
+        }),
       });
+      if (!res.ok) {
+        let errorDetail = res.statusText;
+        try {
+          const errData = await res.json();
+          if (errData && errData.detail) errorDetail = errData.detail;
+        } catch {
+          // fallback
+        }
+        setSetupError(errorDetail);
+        if (res.status === 403) setWizardStep(1);
+        return;
+      }
     } catch {
       // Ignore dismiss error in preview
     }
@@ -718,27 +740,32 @@ export const SystemManager: React.FC = () => {
     const cleanUser = setupAdminUsername.trim();
     const cleanUrl = setupUrl.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
 
-    if (!cleanLocal || !/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(cleanLocal)) {
-      setSetupError('Please enter a valid fully-qualified local domain (e.g. jsm.cloud.aws.brainsos.ai).');
+    if (status?.firstboot_wizard_completed === false && !setupBootstrapToken.trim()) {
+      setSetupError('Please enter the EC2 Instance ID (i-...) of this appliance to authorize first-boot setup.');
       setWizardStep(1);
       return;
     }
     if (!cleanUser || !/^[a-zA-Z0-9._-]{2,64}$/.test(cleanUser)) {
       setSetupError('Administrator username must be 2–64 alphanumeric characters.');
-      setWizardStep(2);
+      setWizardStep(1);
       return;
     }
     if (setupAdminPassword || status?.firstboot_wizard_completed === false) {
       if (setupAdminPassword && setupAdminPassword.length < 8) {
         setSetupError('Administrator password must be at least 8 characters long.');
-        setWizardStep(2);
+        setWizardStep(1);
         return;
       }
       if (setupAdminPassword !== setupAdminPasswordConfirm) {
         setSetupError('Password and confirmation do not match.');
-        setWizardStep(2);
+        setWizardStep(1);
         return;
       }
+    }
+    if (!cleanLocal || !/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(cleanLocal)) {
+      setSetupError('Please enter a valid fully-qualified local domain (e.g. jsm.cloud.aws.brainsos.ai).');
+      setWizardStep(2);
+      return;
     }
     if (!cleanUrl) {
       setSetupError('Please enter a valid external web URL or hostname.');
@@ -752,6 +779,48 @@ export const SystemManager: React.FC = () => {
     }
 
     const previousUrl = status?.url || '';
+    const wasFirstBoot = status?.firstboot_wizard_completed === false;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    let res: Response;
+    try {
+      res = await fetch('/api/v1/system/setup', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          bootstrap_token: setupBootstrapToken.trim() || undefined,
+          local_domain: cleanLocal,
+          admin_username: cleanUser,
+          admin_password: setupAdminPassword || undefined,
+          url: cleanUrl,
+          tls_mode: setupTlsMode,
+          acme_email: setupAcmeEmail.trim() || undefined,
+          mark_wizard_completed: true,
+          force: true,
+        }),
+      });
+    } catch (netErr: unknown) {
+      const errMsg = netErr instanceof Error ? netErr.message : String(netErr);
+      setSetupError(`Failed connecting to System API: ${errMsg}`);
+      return;
+    }
+
+    if (!res.ok) {
+      let errorDetail = res.statusText;
+      try {
+        const errData = await res.json();
+        if (errData && errData.detail) errorDetail = errData.detail;
+      } catch {
+        // fallback
+      }
+      setSetupError(errorDetail);
+      if (res.status === 403) {
+        setWizardStep(1);
+      }
+      return;
+    }
+
     setWizardOpen(false);
     setTerminalOpen(true);
     setExecutionStatus('running');
@@ -778,36 +847,7 @@ export const SystemManager: React.FC = () => {
       setLogs((prev) => [...prev, { id: logCounter++, timestamp: ts, text, type }]);
     };
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-
     try {
-      const res = await fetch('/api/v1/system/setup', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          local_domain: cleanLocal,
-          admin_username: cleanUser,
-          admin_password: setupAdminPassword || undefined,
-          url: cleanUrl,
-          tls_mode: setupTlsMode,
-          acme_email: setupAcmeEmail.trim() || undefined,
-          mark_wizard_completed: true,
-          force: true,
-        }),
-      });
-
-      if (!res.ok) {
-        let errorDetail = res.statusText;
-        try {
-          const errData = await res.json();
-          if (errData && errData.detail) errorDetail = errData.detail;
-        } catch {
-          // fallback
-        }
-        throw new Error(`HTTP ${res.status}: ${errorDetail}`);
-      }
-
       if (!res.body) throw new Error('Response body is null');
 
       const activeJobId = res.headers.get('X-Job-ID') || '';
@@ -838,7 +878,7 @@ export const SystemManager: React.FC = () => {
                   if (payload.exit_code === 0) {
                     addLog(`✅ Appliance identity, hostname, mailboxes, and TLS configured!`, 'success');
                     setExecutionStatus('success');
-                    if (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase()) {
+                    if (wasFirstBoot || (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase())) {
                       setNewConfiguredUrl(`https://${cleanUrl}/`);
                     }
                   } else {
@@ -859,7 +899,7 @@ export const SystemManager: React.FC = () => {
       } catch (streamErr: unknown) {
         if (activeJobId && !completedCleanly) {
           await pollJobUntilComplete(activeJobId, addLog, () => {
-            if (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase()) {
+            if (wasFirstBoot || (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase())) {
               setNewConfiguredUrl(`https://${cleanUrl}/`);
             }
           });
@@ -1161,10 +1201,10 @@ export const SystemManager: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-headline font-semibold text-sm text-emerald-300">
-                  External Web Access URL Updated
+                  Appliance Identity &amp; SSO Ready — Proceed to Sign In
                 </h3>
                 <p className="font-mono text-xs text-slate-300 mt-0.5">
-                  Caddy and Authentik SSO are now serving on <a href={newConfiguredUrl} className="text-[#00f2fe] underline">{newConfiguredUrl}</a>.
+                  Caddy and Authentik SSO are now serving on <a href={newConfiguredUrl} className="text-[#00f2fe] underline">{newConfiguredUrl}</a> with your configured administrator account.
                 </p>
               </div>
             </div>
@@ -1172,7 +1212,7 @@ export const SystemManager: React.FC = () => {
               href={newConfiguredUrl}
               className="px-4 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-200 hover:text-white text-xs font-mono font-semibold transition-all flex items-center gap-1.5 shrink-0"
             >
-              <span>Open {newConfiguredUrl}</span>
+              <span>Proceed to Sign In ({newConfiguredUrl})</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
@@ -2039,8 +2079,8 @@ export const SystemManager: React.FC = () => {
                     : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
                 }`}
               >
-                <div className="text-[10px] text-purple-300 font-bold">1. UNIT IDENTITY</div>
-                <div className="truncate font-semibold mt-0.5">Local Domain &amp; Hostname</div>
+                <div className="text-[10px] text-purple-300 font-bold">1. ADMIN &amp; VERIFY</div>
+                <div className="truncate font-semibold mt-0.5">Instance ID &amp; Credentials</div>
               </button>
               <button
                 type="button"
@@ -2051,8 +2091,8 @@ export const SystemManager: React.FC = () => {
                     : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
                 }`}
               >
-                <div className="text-[10px] text-purple-300 font-bold">2. ADMIN ACCOUNT</div>
-                <div className="truncate font-semibold mt-0.5">Username &amp; Password</div>
+                <div className="text-[10px] text-purple-300 font-bold">2. UNIT IDENTITY</div>
+                <div className="truncate font-semibold mt-0.5">Local Domain &amp; Hostname</div>
               </button>
               <button
                 type="button"
@@ -2075,8 +2115,83 @@ export const SystemManager: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 1: Unit Identity & Local Domain */}
+            {/* STEP 1: Primary Administrator Account & Pre-Sign-In Instance ID Verification */}
             {wizardStep === 1 && (
+              <div className="space-y-4 font-mono text-xs">
+                {status?.firstboot_wizard_completed === false && (
+                  <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/40 space-y-2">
+                    <label className="block text-purple-200 font-semibold flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-[#00f2fe]" />
+                      <span>EC2 Instance ID Verification Key (Required for Pre-Sign-In Setup)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-300 font-sans">
+                      Because you are configuring this appliance before your first sign-in, enter the AWS EC2 Instance ID (<code className="font-mono text-[#00f2fe]">i-...</code>) from your AWS Console to verify ownership.
+                    </p>
+                    <input
+                      type="password"
+                      value={setupBootstrapToken}
+                      onChange={(e) => setSetupBootstrapToken(e.target.value)}
+                      placeholder="e.g. i-0123456789abcdef0"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-purple-500/40 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="block text-slate-200 font-semibold">
+                    Primary Administrator Username (<code className="text-purple-300">BRAINSOS_ADMIN_USERNAME</code>)
+                  </label>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    Creates or updates your primary Authentik superuser and provisions <code className="font-mono text-emerald-300">{setupAdminUsername.trim() || 'admin'}@{setupLocalDomain.trim() || 'local.brainsos.ai'}</code> with full Dovecot/SOGo shared oversight over all agent mailboxes.
+                  </p>
+                  <input
+                    type="text"
+                    value={setupAdminUsername}
+                    onChange={(e) => setSetupAdminUsername(e.target.value)}
+                    placeholder="admin (or e.g. jsm)"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                      <span>New Administrator Password</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={setupAdminPassword}
+                      onChange={(e) => setSetupAdminPassword(e.target.value)}
+                      placeholder={status?.firstboot_wizard_completed ? 'Leave blank to keep current password' : 'Enter new password (min 8 chars)'}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold">
+                      Confirm Administrator Password
+                    </label>
+                    <input
+                      type="password"
+                      value={setupAdminPasswordConfirm}
+                      onChange={(e) => setSetupAdminPasswordConfirm(e.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-slate-300 space-y-1">
+                  <div className="text-amber-300 font-semibold">Unified Credential Rotation (Zero Data Loss)</div>
+                  <p className="font-sans text-slate-400">
+                    Setting a password here atomically rotates the initial EC2 <code className="font-mono text-slate-200">instance-id</code> bootstrap password across Authentik SSO (<code className="font-mono text-slate-200">{setupAdminUsername.trim() || 'admin'}</code> &amp; <code className="font-mono text-slate-200">admin</code>), SOGo Webmail, Dovecot IMAP/SMTP, Langfuse, and Operator IDE.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 2: Unit Identity & Local Domain */}
+            {wizardStep === 2 && (
               <div className="space-y-4 font-mono text-xs">
                 <div className="space-y-1.5">
                   <label className="block text-slate-200 font-semibold">
@@ -2145,62 +2260,6 @@ export const SystemManager: React.FC = () => {
                     </div>
                   );
                 })()}
-              </div>
-            )}
-
-            {/* STEP 2: Primary Administrator Account */}
-            {wizardStep === 2 && (
-              <div className="space-y-4 font-mono text-xs">
-                <div className="space-y-1.5">
-                  <label className="block text-slate-200 font-semibold">
-                    Primary Administrator Username (<code className="text-purple-300">BRAINSOS_ADMIN_USERNAME</code>)
-                  </label>
-                  <p className="text-[11px] text-slate-400 font-sans">
-                    Creates or updates your primary Authentik superuser and provisions <code className="font-mono text-emerald-300">{setupAdminUsername.trim() || 'admin'}@{setupLocalDomain.trim() || 'local.brainsos.ai'}</code> with full Dovecot/SOGo shared oversight over all agent mailboxes.
-                  </p>
-                  <input
-                    type="text"
-                    value={setupAdminUsername}
-                    onChange={(e) => setSetupAdminUsername(e.target.value)}
-                    placeholder="admin (or e.g. jsm)"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-slate-200 font-semibold flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                      <span>New Administrator Password</span>
-                    </label>
-                    <input
-                      type="password"
-                      value={setupAdminPassword}
-                      onChange={(e) => setSetupAdminPassword(e.target.value)}
-                      placeholder={status?.firstboot_wizard_completed ? 'Leave blank to keep current password' : 'Enter new password (min 8 chars)'}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-slate-200 font-semibold">
-                      Confirm Administrator Password
-                    </label>
-                    <input
-                      type="password"
-                      value={setupAdminPasswordConfirm}
-                      onChange={(e) => setSetupAdminPasswordConfirm(e.target.value)}
-                      placeholder="Re-enter password"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-slate-300 space-y-1">
-                  <div className="text-amber-300 font-semibold">Unified Credential Rotation (Zero Data Loss)</div>
-                  <p className="font-sans text-slate-400">
-                    Setting a password here atomically rotates the initial EC2 <code className="font-mono text-slate-200">instance-id</code> bootstrap password across Authentik SSO (<code className="font-mono text-slate-200">{setupAdminUsername.trim() || 'admin'}</code> &amp; <code className="font-mono text-slate-200">admin</code>), SOGo Webmail, Dovecot IMAP/SMTP, Langfuse, and Operator IDE.
-                  </p>
-                </div>
               </div>
             )}
 

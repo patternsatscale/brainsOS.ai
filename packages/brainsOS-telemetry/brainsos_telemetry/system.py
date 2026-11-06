@@ -566,10 +566,11 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     wizard_flag = os.path.join(repo_root, ".brainsos-wizard-completed")
     init_flag = os.path.join(repo_root, ".brainsos-initialized")
     force_wizard = env.get("BRAINSOS_APPLIANCE_FORCE_WIZARD", "").lower() == "true"
+    env_wizard = file_env.get("BRAINSOS_WIZARD_COMPLETED", "").strip().lower()
 
-    if os.path.isfile(wizard_flag):
+    if os.path.isfile(wizard_flag) or env_wizard == "true":
         firstboot_wizard_completed = True
-    elif force_wizard or os.path.isfile(init_flag):
+    elif force_wizard or env_wizard == "false" or os.path.isfile(init_flag):
         firstboot_wizard_completed = False
     else:
         firstboot_wizard_completed = True
@@ -578,6 +579,10 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         os_hostname = socket.getfqdn() or socket.gethostname()
     except Exception:
         os_hostname = local_domain
+
+    masked_instance_id = imds.get("instance_id", "")
+    if not firstboot_wizard_completed and masked_instance_id:
+        masked_instance_id = ""
 
     return {
         "firstboot_wizard_completed": firstboot_wizard_completed,
@@ -591,7 +596,7 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "preserve_hostname": preserve_hostname,
         "public_ipv4": imds.get("public_ipv4", ""),
         "local_ipv4": imds.get("local_ipv4", ""),
-        "instance_id": imds.get("instance_id", ""),
+        "instance_id": masked_instance_id,
     }
 
 
@@ -739,6 +744,60 @@ def verify_state_change_security(request: Request):
         )
 
 
+def verify_setup_security(request: Request):
+    """Enforce CSRF token, Origin check, and either Authentik SSO identity or Pre-Login First-Boot Wizard mode."""
+    repo_root = get_repo_root()
+    ident = get_appliance_identity(repo_root)
+    username = (
+        request.headers.get("X-Authentik-Username")
+        or request.headers.get("X-Authentik-Email")
+        or request.headers.get("Remote-User")
+    )
+    if not username and ident.get("firstboot_wizard_completed", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: missing authenticated identity header (X-Authentik-Username)",
+        )
+
+    sec_fetch_site = request.headers.get("Sec-Fetch-Site")
+    if sec_fetch_site and sec_fetch_site.lower() == "cross-site":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: cross-site requests rejected",
+        )
+
+    origin = request.headers.get("Origin")
+    if origin:
+        parsed = urlparse(origin)
+        origin_host = parsed.hostname or ""
+        req_host = request.headers.get("Host", "").split(":")[0]
+        env = parse_env_file(repo_root)
+        domain = normalize_url_host(env.get("BRAINSOS_DOMAIN", "localhost"))
+        url_host = normalize_url_host(env.get("BRAINSOS_URL", domain))
+        local_dom = normalize_url_host(env.get("BRAINSOS_LOCAL_DOMAIN", domain))
+        allowed_hosts = {
+            "localhost",
+            "127.0.0.1",
+            domain.lower(),
+            url_host.lower(),
+            local_dom.lower(),
+            f"proxy.{domain.lower()}",
+            req_host.lower(),
+        }
+        if origin_host.lower() not in allowed_hosts:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Forbidden: Origin '{origin}' is not permitted",
+            )
+
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not validate_csrf_token(csrf_token):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: missing or invalid CSRF token",
+        )
+
+
 def create_system_api_app():
     """Create a hardened FastAPI application exposing system telemetry & update management endpoints."""
     repo_root = get_repo_root()
@@ -767,6 +826,7 @@ def create_system_api_app():
         domain: str = Field(..., description="Domain or URL to verify DNS resolution against this appliance")
 
     class SetupRequest(BaseModel):
+        bootstrap_token: Optional[str] = Field(None, description="EC2 Instance ID / initial bootstrap password for pre-login first-boot verification")
         local_domain: Optional[str] = Field(None, description="Coherent unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN)")
         admin_username: Optional[str] = Field(None, description="Primary administrator username (BRAINSOS_ADMIN_USERNAME)")
         admin_password: Optional[str] = Field(None, description="New primary administrator password (never logged)")
@@ -864,18 +924,50 @@ def create_system_api_app():
 
     @app.post(
         "/api/v1/system/setup",
-        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+        dependencies=[Depends(verify_internal_auth), Depends(verify_setup_security)],
     )
     @app.post(
         "/api/v1/system/domain",
-        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+        dependencies=[Depends(verify_internal_auth), Depends(verify_setup_security)],
     )
-    async def trigger_setup(req: SetupRequest):
+    async def trigger_setup(req: SetupRequest, request: Request):
+        ident = get_appliance_identity(repo_root)
+        env = parse_env_file(repo_root)
+        has_sso = bool(
+            request.headers.get("X-Authentik-Username")
+            or request.headers.get("X-Authentik-Email")
+            or request.headers.get("Remote-User")
+        )
+
+        # In pre-login First-Boot Setup Wizard mode (or whenever bootstrap_token is provided),
+        # verify the EC2 Instance ID / initial bootstrap password before allowing any changes.
+        if not has_sso or (req.bootstrap_token is not None and req.bootstrap_token.strip() != ""):
+            provided_token = (req.bootstrap_token or "").strip()
+            expected_pw = env.get("BRAINSOS_ADMIN_PASSWORD", "").strip()
+            raw_imds = _query_imds_metadata()
+            expected_iid = (raw_imds.get("instance_id") or "").strip()
+            matched = bool(
+                provided_token
+                and (
+                    (expected_pw and secrets.compare_digest(provided_token, expected_pw))
+                    or (expected_iid and secrets.compare_digest(provided_token, expected_iid))
+                )
+            )
+            if not matched:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Invalid EC2 Instance ID bootstrap token. Enter the exact Instance ID (i-...) of this EC2 appliance to authorize initial setup.",
+                )
+
         if req.dismiss_only:
             wizard_flag = os.path.join(repo_root, ".brainsos-wizard-completed")
             try:
                 with open(wizard_flag, "w", encoding="utf-8") as f:
                     f.write(datetime.now(timezone.utc).isoformat() + "\n")
+                env_upsert = os.path.join(repo_root, "scripts/control/env-upsert.sh")
+                env_file = os.path.join(repo_root, ".env")
+                if os.path.isfile(env_upsert) and os.path.isfile(env_file):
+                    subprocess.run([env_upsert, "--file", env_file, "BRAINSOS_WIZARD_COMPLETED=true"], check=False, timeout=5)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed writing wizard completion flag: {e}")
             return JSONResponse(content={"status": "dismissed", "firstboot_wizard_completed": True})

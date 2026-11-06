@@ -58,6 +58,26 @@
 	}
 }
 
+(firstboot_portal_auth_true) {
+	import authentik_forward_auth
+}
+
+(firstboot_portal_auth_false) {
+	forward_auth authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
+		trusted_proxies private_ranges
+		@outpost_warming status 404 502 503 504
+		handle_response @outpost_warming {
+			error 503
+		}
+		@firstboot_prelogin status 302 401 403
+		handle_response @firstboot_prelogin {
+			request_header X-BrainsOS-Prelogin-Wizard "true"
+		}
+	}
+}
+
 (authentik_backend) {
 	encode gzip zstd
 	log {
@@ -218,7 +238,7 @@
 
 	# Subsystem: System Telemetry & Universal Update Engine API (Ticket #310 / #311)
 	handle /api/v1/system/* {
-		import authentik_forward_auth
+		import firstboot_portal_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
 			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
 			flush_interval -1
@@ -628,9 +648,9 @@
 	}
 
 	# Subsystem 9a: Internal CA root certificate download for operator trust (#323).
-	# Public certificate material only; gated by SSO to avoid anonymous probing.
+	# Public certificate material only; gated by SSO (or pre-login firstboot wizard).
 	handle /system/ca.crt {
-		import authentik_forward_auth
+		import firstboot_portal_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		root * /data/caddy/pki/authorities/local
 		rewrite * /root.crt
 		header Content-Type application/x-x509-ca-cert
@@ -641,13 +661,13 @@
 	# Subsystem 9: System Manager & Update Center Web Subsystem (Ticket #311)
 	@system_path path /system /system/*
 	handle @system_path {
-		import authentik_forward_auth
+		import firstboot_portal_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		import portal_content
 	}
 
 	# J. Default Handler: BrainsOS Thin-Spine React Portal SPA
 	handle {
-		import authentik_forward_auth
+		import firstboot_portal_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		import portal_content
 	}
 

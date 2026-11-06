@@ -369,6 +369,10 @@ else
   ENV_CHANGES+=("ACME_DNS_PROVIDER=")
 fi
 
+if [ "${MARK_WIZARD_COMPLETED}" = true ]; then
+  ENV_CHANGES+=("BRAINSOS_WIZARD_COMPLETED=true")
+fi
+
 CLOUD_CFG_DIR="${BRAINSOS_CLOUD_CFG_DIR:-/etc/cloud/cloud.cfg.d}"
 HOSTS_FILE="${BRAINSOS_HOSTS_FILE:-/etc/hosts}"
 WIZARD_FLAG="${REPO_ROOT}/.brainsos-wizard-completed"

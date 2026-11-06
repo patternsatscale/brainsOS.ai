@@ -156,6 +156,13 @@ for attempt in $(seq 1 120); do
       READY=true
       break
     fi
+  elif [ "${HTTP_CODE}" = "200" ]; then
+    EDITOR_CODE="$(curl -sk -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "https://${PUBLIC_DNS}/editor/" 2>/dev/null || true)"
+    if [ "${EDITOR_CODE}" = "302" ]; then
+      log_success "[Attempt ${attempt}] HTTPS endpoint returned HTTP 200 (Pre-Sign-In First-Boot Setup Wizard) and /editor/ returned HTTP 302 to Authentik SSO!"
+      READY=true
+      break
+    fi
   else
     log_info "[Attempt ${attempt}] HTTP status: ${HTTP_CODE} (waiting for cold-boot initialization...)"
   fi

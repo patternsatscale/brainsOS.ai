@@ -415,3 +415,73 @@ def test_dns_check_and_setup_password_never_logged(tmp_path, monkeypatch):
         assert "UltraSecretPassword99!" not in ok_setup.text
 
 
+def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "i-0abc123456789def0")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
+        "BRAINSOS_LOCAL_DOMAIN=local.brainsos.ai\n"
+        "BRAINSOS_ADMIN_USERNAME=admin\n"
+        "BRAINSOS_ADMIN_PASSWORD=i-0abc123456789def0\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-initialized").write_text("2026-11-06T00:00:00Z\n", encoding="utf-8")
+
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text("#!/usr/bin/env bash\necho \"PRELOGIN_SETUP_OK: $*\"\n", encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        # No X-Authentik-Username header (pre-sign-in wizard state)
+        prelogin_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        # 1. GET /api/v1/system/identity masks instance_id before wizard completion
+        ident_res = client.get("/api/v1/system/identity", headers=prelogin_headers)
+        assert ident_res.status_code == 200
+        assert ident_res.json()["firstboot_wizard_completed"] is False
+        assert ident_res.json()["instance_id"] == ""
+
+        # 2. Missing or wrong bootstrap_token is rejected with HTTP 403
+        bad_token_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": "i-wrongtoken999",
+                "local_domain": "jsm.cloud.aws.brainsos.ai",
+                "admin_username": "jsm",
+                "admin_password": "NewStrongPassword123!",
+                "url": "ec2-32-192-215-107.compute-1.amazonaws.com",
+                "tls_mode": "internal",
+            },
+            headers=prelogin_headers,
+        )
+        assert bad_token_res.status_code == 403
+        assert "Instance ID" in bad_token_res.json().get("detail", "")
+
+        # 3. Valid EC2 Instance ID bootstrap_token succeeds pre-login
+        ok_token_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": "i-0abc123456789def0",
+                "local_domain": "jsm.cloud.aws.brainsos.ai",
+                "admin_username": "jsm",
+                "admin_password": "NewStrongPassword123!",
+                "url": "ec2-32-192-215-107.compute-1.amazonaws.com",
+                "tls_mode": "internal",
+            },
+            headers=prelogin_headers,
+        )
+        assert ok_token_res.status_code == 200
+        assert "PRELOGIN_SETUP_OK:" in ok_token_res.text
+        assert "--admin-username jsm" in ok_token_res.text
+
+
+
