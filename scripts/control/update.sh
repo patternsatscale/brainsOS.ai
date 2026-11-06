@@ -564,6 +564,7 @@ fi
 # C5: Clean auto-generated runtime files and handle dirty git working tree
 if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   # Always restore auto-generated Caddy TLS policy snippet modified by reload-env.sh
+  git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
   git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
 
   DIRTY_CHECK="$(git status --porcelain --untracked-files=no)"
@@ -737,6 +738,7 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
   if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would fetch and sync branch origin/${EFFECTIVE_BRANCH}"
   else
+    git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
     git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
       if [ -n "${TARGET_BRANCH}" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then

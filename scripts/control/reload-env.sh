@@ -555,6 +555,8 @@ else
 EOF
   log_info "Configured Caddy TLS policy for internal private CA."
 fi
+git -C "${REPO_ROOT}" update-index --assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
+
 
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(ingress-|net-)?caddy$'; then
   docker compose restart caddy >/dev/null 2>&1
