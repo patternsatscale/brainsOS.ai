@@ -110,6 +110,45 @@ set +a
 cd "${REPO_ROOT}"
 
 # ------------------------------------------------------------------------------
+# 0a. Optional Boot-Time Source Auto-Pull (Appliance Mode)
+# ------------------------------------------------------------------------------
+if [[ "${BRAINSOS_AUTO_PULL_ON_BOOT:-false}" =~ ^(true|1|yes)$ ]] && [ "${RELOAD_ENV_SKIP_PULL:-false}" != "true" ]; then
+  if [ -d "${REPO_ROOT}/.git" ] && command -v git >/dev/null 2>&1; then
+    git config --system --add safe.directory "${REPO_ROOT}" 2>/dev/null || true
+    ACTIVE_GIT_BRANCH="${BRAINSOS_GIT_BRANCH:-$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")}"
+    [ "${ACTIVE_GIT_BRANCH}" = "HEAD" ] && ACTIVE_GIT_BRANCH="main"
+    BEFORE_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || true)"
+    log_info "Checking origin/${ACTIVE_GIT_BRANCH} for latest source updates..."
+    if timeout 20 git -C "${REPO_ROOT}" fetch --quiet origin "${ACTIVE_GIT_BRANCH}" 2>/dev/null; then
+      REMOTE_SHA="$(git -C "${REPO_ROOT}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+      if [ -n "${REMOTE_SHA}" ] && [ "${REMOTE_SHA}" != "${BEFORE_SHA}" ]; then
+        log_info "Auto-pulling latest source on boot (${BEFORE_SHA:0:12} -> ${REMOTE_SHA:0:12} on ${ACTIVE_GIT_BRANCH})..."
+        CHANGED_FILES="$(git -C "${REPO_ROOT}" diff --name-only "${BEFORE_SHA}" "${REMOTE_SHA}" 2>/dev/null || true)"
+        git -C "${REPO_ROOT}" checkout --quiet -B "${ACTIVE_GIT_BRANCH}" FETCH_HEAD 2>/dev/null || true
+        git -C "${REPO_ROOT}" reset --hard FETCH_HEAD >/dev/null 2>&1 || true
+        git -C "${REPO_ROOT}" update-ref "refs/remotes/origin/${ACTIVE_GIT_BRANCH}" "${REMOTE_SHA}" 2>/dev/null || true
+        git -C "${REPO_ROOT}" branch --quiet --set-upstream-to="origin/${ACTIVE_GIT_BRANCH}" "${ACTIVE_GIT_BRANCH}" 2>/dev/null || true
+        chmod +x "${REPO_ROOT}"/scripts/*/*.sh "${REPO_ROOT}"/packages/brainsOS-appliance/scripts/*.sh "${REPO_ROOT}"/docker/*/*.sh 2>/dev/null || true
+        if echo "${CHANGED_FILES}" | grep -q "^packages/brainsOS-portal/" && [ -x "${REPO_ROOT}/scripts/setup/setup-portal.sh" ]; then
+          log_info "Portal source updated; rebuilding Portal SPA bundle..."
+          "${REPO_ROOT}/scripts/setup/setup-portal.sh" || log_warn "Portal rebuild encountered a warning."
+        fi
+        if echo "${CHANGED_FILES}" | grep -q "^packages/brainsOS-telemetry/" && command -v systemctl >/dev/null 2>&1; then
+          systemctl restart brainsos-system-api.service 2>/dev/null || true
+        fi
+        log_success "Updated source tree to ${ACTIVE_GIT_BRANCH}@${REMOTE_SHA:0:12}; re-executing reload-env.sh..."
+        export RELOAD_ENV_SKIP_PULL=true
+        exec "${REPO_ROOT}/scripts/control/reload-env.sh" "${URLS_ARGS[@]}" $([ "${SKIP_URLS}" = true ] && echo "--no-urls")
+      else
+        log_success "Source tree is already at latest ${ACTIVE_GIT_BRANCH}@${BEFORE_SHA:0:12}."
+      fi
+    else
+      log_warn "Could not reach origin/${ACTIVE_GIT_BRANCH} (offline); continuing with local source."
+    fi
+  fi
+fi
+
+# ------------------------------------------------------------------------------
 # 0. Ensure Persistence Stores & Databases Are Running
 # ------------------------------------------------------------------------------
 log_info "Ensuring persistence stores and database engines are running..."

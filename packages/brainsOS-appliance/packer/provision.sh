@@ -242,6 +242,7 @@ fi
 log_info "4. Configuring brainsOS systemd units..."
 mkdir -p "${APP_DIR}/data/"{settings,souls,agents,agent_memories,agent_workspaces,agent_apps}
 chown -R root:root "${APP_DIR}"
+git config --system --add safe.directory "${APP_DIR}" 2>/dev/null || true
 
 for unit in brainsos.service brainsos-firstboot.service brainsos-system-api.service; do
   if [ ! -f "${CONFIGS_DIR}/${unit}" ]; then

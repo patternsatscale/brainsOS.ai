@@ -979,7 +979,7 @@ else
   else
     log_info "Recreating all active compose services..."
     if [ -f "${REPO_ROOT}/scripts/control/reload-env.sh" ]; then
-      "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
+      RELOAD_ENV_SKIP_PULL=true "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
     else
       docker compose up -d
       if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then

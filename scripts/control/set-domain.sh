@@ -491,7 +491,7 @@ fi
 
 # Reload environment and restart Caddy ingress
 log_info "Reloading Caddy ingress gateway & synchronizing credentials..."
-"${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
+RELOAD_ENV_SKIP_PULL=true "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
 
 if [ "${MARK_WIZARD_COMPLETED}" = true ]; then
   date -u +"%Y-%m-%dT%H:%M:%SZ" > "${WIZARD_FLAG}"

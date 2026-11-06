@@ -175,6 +175,8 @@ UD_LOCAL_DOMAIN=""
 UD_ADMIN_USERNAME=""
 UD_ACME_EMAIL=""
 UD_TLS_MODE=""
+UD_AUTO_PULL=""
+UD_GIT_BRANCH=""
 if [ -n "${USER_DATA}" ]; then
   while IFS= read -r ud_line; do
     ud_trimmed="${ud_line#"${ud_line%%[![:space:]]*}"}"
@@ -227,8 +229,71 @@ if [ -n "${USER_DATA}" ]; then
         val="${ud_trimmed#tls_mode:}"
         UD_TLS_MODE="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
         ;;
+      BRAINSOS_AUTO_PULL=*|BRAINSOS_AUTO_PULL:*)
+        val="${ud_trimmed#BRAINSOS_AUTO_PULL[=:]}"
+        UD_AUTO_PULL="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      auto_pull:*)
+        val="${ud_trimmed#auto_pull:}"
+        UD_AUTO_PULL="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      BRAINSOS_GIT_BRANCH=*|BRAINSOS_GIT_BRANCH:*)
+        val="${ud_trimmed#BRAINSOS_GIT_BRANCH[=:]}"
+        UD_GIT_BRANCH="$(strip_value "${val}")"
+        ;;
+      git_branch:*)
+        val="${ud_trimmed#git_branch:}"
+        UD_GIT_BRANCH="$(strip_value "${val}")"
+        ;;
     esac
   done <<< "${USER_DATA}"
+fi
+
+# ------------------------------------------------------------------------------
+# 1c. Auto-Pull Latest Source from GitHub on Boot
+#     Enabled by default on EC2 appliances so launched instances automatically
+#     pick up post-bake fixes on their active branch (or BRAINSOS_GIT_BRANCH)
+#     before generating .env, seeding data/, or building the Portal SPA.
+# ------------------------------------------------------------------------------
+AUTO_PULL="true"
+if [[ "${UD_AUTO_PULL}" =~ ^(false|0|no)$ ]] || [[ "${BRAINSOS_FIRSTBOOT_SKIP_GIT_PULL:-false}" =~ ^(true|1|yes)$ ]]; then
+  AUTO_PULL="false"
+fi
+
+CURRENT_GIT_BRANCH="$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
+[ "${CURRENT_GIT_BRANCH}" = "HEAD" ] && CURRENT_GIT_BRANCH="main"
+TARGET_GIT_BRANCH="${UD_GIT_BRANCH:-${CURRENT_GIT_BRANCH}}"
+
+if [ "${AUTO_PULL}" = "true" ] && [ "${DRY_RUN}" = false ] && { [ "${SKIP_IMDS}" != true ] || [ "${BRAINSOS_FIRSTBOOT_FORCE_PULL:-false}" = true ]; }; then
+  if [ -d "${REPO_ROOT}/.git" ] && command -v git >/dev/null 2>&1; then
+    git config --system --add safe.directory "${REPO_ROOT}" 2>/dev/null || true
+    BEFORE_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || true)"
+    log_info "Checking origin/${TARGET_GIT_BRANCH} for latest source updates (current: ${BEFORE_SHA:0:12})..."
+    if timeout 20 git -C "${REPO_ROOT}" fetch --quiet origin "${TARGET_GIT_BRANCH}" 2>/dev/null; then
+      REMOTE_SHA="$(git -C "${REPO_ROOT}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+      if [ -n "${REMOTE_SHA}" ] && [ "${REMOTE_SHA}" != "${BEFORE_SHA}" ]; then
+        log_info "Updating /opt/brainsos from ${BEFORE_SHA:0:12} -> ${REMOTE_SHA:0:12} (${TARGET_GIT_BRANCH})..."
+        git -C "${REPO_ROOT}" checkout --quiet -B "${TARGET_GIT_BRANCH}" FETCH_HEAD 2>/dev/null || true
+        git -C "${REPO_ROOT}" reset --hard FETCH_HEAD >/dev/null 2>&1 || true
+        git -C "${REPO_ROOT}" update-ref "refs/remotes/origin/${TARGET_GIT_BRANCH}" "${REMOTE_SHA}" 2>/dev/null || true
+        git -C "${REPO_ROOT}" branch --quiet --set-upstream-to="origin/${TARGET_GIT_BRANCH}" "${TARGET_GIT_BRANCH}" 2>/dev/null || true
+        chmod +x "${REPO_ROOT}"/scripts/*/*.sh "${REPO_ROOT}"/packages/brainsOS-appliance/scripts/*.sh "${REPO_ROOT}"/docker/*/*.sh 2>/dev/null || true
+        log_success "Updated appliance source tree to ${TARGET_GIT_BRANCH}@${REMOTE_SHA:0:12}."
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl restart brainsos-system-api.service 2>/dev/null || true
+        fi
+        if [ "${BRAINSOS_FIRSTBOOT_REEXEC:-false}" != "true" ]; then
+          log_info "Re-executing updated firstboot.sh from ${REMOTE_SHA:0:12}..."
+          export BRAINSOS_FIRSTBOOT_REEXEC=true
+          exec "${REPO_ROOT}/packages/brainsOS-appliance/scripts/firstboot.sh" "$@"
+        fi
+      else
+        log_success "Appliance source tree is already up to date (${TARGET_GIT_BRANCH}@${BEFORE_SHA:0:12})."
+      fi
+    else
+      log_warn "Could not reach origin to fetch ${TARGET_GIT_BRANCH} (offline or air-gapped); continuing with baked source."
+    fi
+  fi
 fi
 
 is_fqdn() { [[ "$1" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; }
@@ -418,6 +483,8 @@ else
     "BRAINSOS_IP_SITES=${IP_SITES}"
     "NEXTAUTH_URL=https://${APPLIANCE_DOMAIN}"
     "BRAINSOS_SYSTEM_API_PORT=8010"
+    "BRAINSOS_AUTO_PULL_ON_BOOT=${AUTO_PULL}"
+    "BRAINSOS_GIT_BRANCH=${TARGET_GIT_BRANCH}"
   )
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
     APPLIANCE_OVERRIDES+=("ACME_EMAIL=${ACME_EMAIL_VALUE}")
