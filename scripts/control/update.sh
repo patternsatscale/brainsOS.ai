@@ -941,7 +941,7 @@ else
     log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
     docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
     if [ "${TARGET_SERVICE}" = "caddy" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
-      docker exec brainsos-ingress-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
+      docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
     fi
     if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
       "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
@@ -956,7 +956,7 @@ else
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
     fi
-    docker exec brainsos-ingress-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
+    docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
   fi
   log_success "Containers recreated with latest images and parameters."
 fi

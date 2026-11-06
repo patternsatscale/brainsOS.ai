@@ -597,37 +597,70 @@ export const SystemManager: React.FC = () => {
         )}
 
         {/* 2. Update Available Alert Banner */}
-        {status?.overall_update_available && (
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Sparkles className="w-5 h-5" />
+        {status?.overall_update_available && (() => {
+          const pendingServices = Object.values(status.services || {}).filter((s) => s.update_available);
+          const pendingNames = pendingServices.map((s) =>
+            s.name.replace(' Control Plane Gateway', ' Gateway').replace(' Session Observability', ' Observability')
+          );
+          const gitPending = Boolean(status.git?.update_available);
+          let bannerDesc = '';
+          if (pendingServices.length > 0 && gitPending) {
+            bannerDesc = `${pendingNames.join(' and ')} (${pendingServices.map(s => `${s.current_version} → ${s.latest_version}`).join(', ')}) and ${status.git.commits_behind} Git commit(s) are ready to install.`;
+          } else if (pendingServices.length === 1) {
+            const svc = pendingServices[0];
+            bannerDesc = `${pendingNames[0]} has a newer upstream container release available (${svc.current_version} → ${svc.latest_version}).`;
+          } else if (pendingServices.length > 1) {
+            bannerDesc = `${pendingNames.join(' and ')} have newer upstream container releases available (${pendingServices.map(s => `${s.current_version} → ${s.latest_version}`).join(', ')}).`;
+          } else if (gitPending) {
+            bannerDesc = `brainsOS.ai Platform Core is ${status.git.commits_behind} commit(s) behind origin/${status.git.branch || 'main'}.`;
+          }
+          return (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-headline font-semibold text-sm text-amber-300">
+                    Upstream Software Updates Available
+                  </h3>
+                  <p className="font-mono text-xs text-slate-400 mt-0.5">
+                    {bannerDesc}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-headline font-semibold text-sm text-amber-300">
-                  Upstream Software Updates Available
-                </h3>
-                <p className="font-mono text-xs text-slate-400 mt-0.5">
-                  LiteLLM Gateway and Langfuse Observability have newer upstream container releases available.
-                </p>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setConfirmTarget({
-                  id: 'containers',
-                  name: 'All Upstream Containers (LiteLLM & Langfuse)',
-                  containersOnly: true
-                })}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
-              >
-                <ArrowUpCircle className="w-3.5 h-3.5" />
-                <span>Update Containers Only</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {pendingServices.length > 0 ? (
+                  <button
+                    onClick={() => setConfirmTarget({
+                      id: 'containers',
+                      name: `Upstream Containers (${pendingNames.join(' & ')})`,
+                      containersOnly: true
+                    })}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
+                  >
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    <span>Update Containers Only</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmTarget({
+                      id: 'git',
+                      name: 'brainsOS.ai Platform Core (Git Pull)',
+                      full: true,
+                      branch: selectedBranch || status.git.branch || 'main'
+                    })}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
+                  >
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    <span>Pull Latest Source</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 3. System Hardware & Telemetry Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
