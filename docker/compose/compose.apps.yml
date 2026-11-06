@@ -168,6 +168,7 @@ services:
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/email/vmail:/var/mail/vmail
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/email/config:/etc/mail-brainsos
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/spool:/var/spool/brainsos/inbound
+      - ../../docker/mail/entrypoint.sh:/entrypoint.sh:ro
       - ../../docker/mail/dovecot/dovecot.conf:/etc/dovecot/dovecot.conf:ro
       - ../../docker/mail/agent-webhook.sh:/usr/lib/dovecot/sieve-pipe/agent-webhook.sh:ro
     extra_hosts:

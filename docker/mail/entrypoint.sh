@@ -57,6 +57,7 @@ for d in "${UNIQUE_DOMAINS[@]}"; do
 cat << EOF >> /etc/mail-brainsos/users
 admin@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
 operator@${d}:{PLAIN}${OPERATOR_PASS}:5000:5000::/var/mail/vmail/operator::
+akadmin@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
 terrastella@${d}:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastella::
 bawtford@${d}:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
 marvin@${d}:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
@@ -68,6 +69,7 @@ EOF
 cat << EOF >> /etc/mail-brainsos/vmailbox
 admin@${d} admin
 operator@${d} operator
+akadmin@${d} admin
 terrastella@${d} terrastella
 bawtford@${d} bawtford
 marvin@${d} marvin
@@ -77,11 +79,12 @@ gpt@${d} gpt
 EOF
 
 cat << EOF >> /etc/mail-brainsos/virtual
-postmaster@${d} admin@brainsos.local
-root@${d} admin@brainsos.local
+postmaster@${d} admin@${d}
+root@${d} admin@${d}
+akadmin@${d} admin@${d}
 cindy@${d} bawtford@${d}
 EOF
-if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ]; then
+if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
     echo "${ADMIN_USER}@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::" >> /etc/mail-brainsos/users
     echo "${ADMIN_USER}@${d} admin" >> /etc/mail-brainsos/vmailbox
 fi

@@ -56,7 +56,7 @@ ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
 
 # 2. Initialize sogo_users table and seed fleet accounts if missing
 echo "[BRAINSOS-SOGO] Ensuring sogo_users schema and seeding accounts..."
-psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR_STOP=1 <<-EOSQL
+psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || echo "[BRAINSOS-SOGO] WARNING: Primary sogo_users seed returned non-zero; continuing..."
     CREATE TABLE IF NOT EXISTS sogo_users (
         c_uid VARCHAR(128) PRIMARY KEY,
         c_name VARCHAR(128) NOT NULL,
@@ -77,7 +77,6 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
         ('akadmin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@brainsos.local'),
         ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
         ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-        ('${ADMIN_USER}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
         ('operator', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
         ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
         ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
@@ -88,22 +87,37 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
 
-    if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
-        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" -v ON_ERROR_STOP=1 <<-EOSQL
+if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+        INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+            ('${ADMIN_USER}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
+            ('${ADMIN_USER}@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
+        ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+fi
+
+if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+        INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+            ('admin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
+            ('operator@${MAIL_DOMAIN}', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
+            ('terrastella@${MAIL_DOMAIN}', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
+            ('bawtford@${MAIL_DOMAIN}', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
+            ('marvin@${MAIL_DOMAIN}', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
+            ('ping@${MAIL_DOMAIN}', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
+            ('claude@${MAIL_DOMAIN}', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
+            ('gpt@${MAIL_DOMAIN}', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
+            ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
+        ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+    if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
             INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-                ('admin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-                ('${ADMIN_USER}@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-                ('operator@${MAIL_DOMAIN}', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
-                ('terrastella@${MAIL_DOMAIN}', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
-                ('bawtford@${MAIL_DOMAIN}', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
-                ('marvin@${MAIL_DOMAIN}', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
-                ('ping@${MAIL_DOMAIN}', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
-                ('claude@${MAIL_DOMAIN}', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
-                ('gpt@${MAIL_DOMAIN}', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
-                ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
+                ('${ADMIN_USER}@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
             ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
     fi
+fi
 echo "[BRAINSOS-SOGO] sogo_users verification complete."
 
 # 3. Start local memcached daemon

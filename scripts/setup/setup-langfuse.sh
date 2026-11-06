@@ -193,7 +193,7 @@ with open(file_path, 'w') as f:
   # Native Authentik OIDC Single Sign-On & Ingress Callback URL
   DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
   if [ -z "${NEXTAUTH_URL:-}" ] || [[ "${NEXTAUTH_URL}" == *"localhost"* ]]; then
-    NEXTAUTH_URL="https://langfuse.${DOMAIN}"
+    NEXTAUTH_URL="https://${DOMAIN}"
   fi
   AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse}"
   update_env_var "NEXTAUTH_URL" "${NEXTAUTH_URL}" "${LANGFUSE_ENV_FILE}"
@@ -208,7 +208,7 @@ with open(file_path, 'w') as f:
 
   # Synchronize database role password if DB container is already running
   local lf_db_c
-  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
+  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?db$' | head -n 1 || true)"
   if [ -n "${lf_db_c}" ]; then
     docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
       -c "ALTER USER \"${LANGFUSE_DB_USER:-langfuse}\" WITH PASSWORD '${SEC_DB_PASS}';" >/dev/null 2>&1 || true
@@ -228,67 +228,153 @@ with open(file_path, 'w') as f:
 # ------------------------------------------------------------------------------
 sync_user_password() {
   local lf_web_c lf_db_c
-  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?web$' | head -n 1 || true)"
-  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
-  if [ -n "${LANGFUSE_INIT_USER_PASSWORD:-}" ] && [ -n "${LANGFUSE_INIT_USER_EMAIL:-}" ] && \
-     [ -n "${lf_web_c}" ] && [ -n "${lf_db_c}" ]; then
-    log_info "Synchronizing Langfuse admin users, organization, and project memberships in database..."
-    local user_hash
-    user_hash=$(docker exec -i "${lf_web_c}" node -e "
-      const p = process.argv[1];
-      const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
-      console.log(bcrypt.hashSync(p, 12));
-    " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
-    if [ -n "${user_hash}" ]; then
-      docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
-        -c "
-          -- 1. Ensure brainsOS organization and project exist
+  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?web$' | head -n 1 || true)"
+  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?db$' | head -n 1 || true)"
+  if [ -n "${lf_db_c}" ]; then
+    # Wait up to 30s for Prisma schema tables ('organizations', 'projects', 'users') to exist in langfuse-db
+    local schema_ready=false
+    for _i in $(seq 1 30); do
+      if docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+          -tc "SELECT 1 FROM information_schema.tables WHERE table_name = 'projects'" 2>/dev/null | grep -q 1; then
+        schema_ready=true
+        break
+      fi
+      sleep 1
+    done
+
+    if [ "${schema_ready}" = true ]; then
+      log_info "Synchronizing Langfuse admin users, organization 'brainsos', project memberships, and OIDC auto-membership triggers..."
+      local user_hash=""
+      if [ -n "${lf_web_c}" ] && [ -n "${LANGFUSE_INIT_USER_PASSWORD:-}" ]; then
+        user_hash=$(docker exec -i "${lf_web_c}" node -e "
+          const p = process.argv[1];
+          const fs = require('fs');
+          let bcrypt = null;
+          try { bcrypt = require('bcryptjs'); } catch (_) {}
+          if (!bcrypt) {
+            try {
+              const pnpmDir = '/app/node_modules/.pnpm';
+              const match = fs.readdirSync(pnpmDir).find(d => d.startsWith('bcryptjs@'));
+              if (match) bcrypt = require(pnpmDir + '/' + match + '/node_modules/bcryptjs');
+            } catch (_) {}
+          }
+          if (bcrypt) console.log(bcrypt.hashSync(p, 12));
+        " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
+      fi
+
+      local admin_email="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@local.brainsos.ai}}"
+      local admin_name="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
+
+      docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" <<-EOSQL >/dev/null 2>&1 || true
+        -- 1. Ensure brainsOS organization and project exist
+        INSERT INTO organizations (id, name, created_at, updated_at)
+        VALUES ('brainsos', 'brainsOS', NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET name = 'brainsOS', updated_at = NOW();
+
+        INSERT INTO projects (id, name, org_id, created_at, updated_at)
+        VALUES ('brainsos', 'brainsOS Fleet', 'brainsos', NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET name = 'brainsOS Fleet', org_id = 'brainsos', updated_at = NOW();
+
+        -- 2. Reassign primary API key to brainsos project
+        UPDATE api_keys SET project_id = 'brainsos' WHERE public_key = '${SEC_PUBLIC_KEY:-${LANGFUSE_PUBLIC_KEY:-}}';
+
+        -- 3. Wipe out legacy Titan tech debt
+        DELETE FROM organization_memberships WHERE org_id = 'titan';
+        DELETE FROM api_keys WHERE project_id = 'titan';
+        DELETE FROM projects WHERE id = 'titan';
+        DELETE FROM organizations WHERE id = 'titan';
+        DELETE FROM users WHERE email LIKE '%@titan.local';
+
+        -- 4. Install PostgreSQL triggers so any user created or linked via Authentik OIDC
+        --    is immediately granted admin=true, OWNER on org 'brainsos', and ADMIN on project 'brainsos'
+        --    within the exact same transaction (before NextAuth builds the session JWT).
+        CREATE OR REPLACE FUNCTION brainsos_users_before_ins_upd()
+        RETURNS TRIGGER AS \$\$
+        BEGIN
+          NEW.admin := true;
+          RETURN NEW;
+        END;
+        \$\$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS trg_brainsos_users_before ON users;
+        CREATE TRIGGER trg_brainsos_users_before
+        BEFORE INSERT OR UPDATE ON users
+        FOR EACH ROW
+        EXECUTE FUNCTION brainsos_users_before_ins_upd();
+
+        CREATE OR REPLACE FUNCTION brainsos_users_after_ins_upd()
+        RETURNS TRIGGER AS \$\$
+        DECLARE
+          v_om_id TEXT;
+        BEGIN
           INSERT INTO organizations (id, name, created_at, updated_at)
           VALUES ('brainsos', 'brainsOS', NOW(), NOW())
-          ON CONFLICT (id) DO UPDATE SET name = 'brainsOS', updated_at = NOW();
+          ON CONFLICT (id) DO NOTHING;
 
           INSERT INTO projects (id, name, org_id, created_at, updated_at)
           VALUES ('brainsos', 'brainsOS Fleet', 'brainsos', NOW(), NOW())
-          ON CONFLICT (id) DO UPDATE SET name = 'brainsOS Fleet', org_id = 'brainsos', updated_at = NOW();
+          ON CONFLICT (id) DO NOTHING;
 
-          -- 2. Reassign primary API key to brainsos project
-          UPDATE api_keys SET project_id = 'brainsos' WHERE public_key = '${SEC_PUBLIC_KEY}';
+          v_om_id := 'om_' || substr(md5(NEW.id || 'brainsos'), 1, 20);
 
-          -- 3. Wipe out legacy Titan tech debt
-          DELETE FROM organization_memberships WHERE org_id = 'titan';
-          DELETE FROM api_keys WHERE project_id = 'titan';
-          DELETE FROM projects WHERE id = 'titan';
-          DELETE FROM organizations WHERE id = 'titan';
-          DELETE FROM users WHERE email LIKE '%@titan.local';
+          INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
+          VALUES (v_om_id, NEW.id, 'brainsos', 'OWNER', NOW(), NOW())
+          ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW()
+          RETURNING id INTO v_om_id;
 
-          -- 4. Update or create primary admin user
-          DO \$\$
-          BEGIN
-            IF EXISTS (SELECT 1 FROM users WHERE email = '${LANGFUSE_INIT_USER_EMAIL}') THEN
-              UPDATE users SET password = '${user_hash}', updated_at = NOW(), admin = true WHERE email = '${LANGFUSE_INIT_USER_EMAIL}';
+          INSERT INTO project_memberships (project_id, user_id, org_membership_id, role, created_at, updated_at)
+          VALUES ('brainsos', NEW.id, v_om_id, 'ADMIN', NOW(), NOW())
+          ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', org_membership_id = EXCLUDED.org_membership_id, updated_at = NOW();
+
+          RETURN NEW;
+        END;
+        \$\$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS trg_brainsos_users_after ON users;
+        CREATE TRIGGER trg_brainsos_users_after
+        AFTER INSERT OR UPDATE ON users
+        FOR EACH ROW
+        EXECUTE FUNCTION brainsos_users_after_ins_upd();
+
+        -- 5. Ensure primary admin user exists and matches current configured identity
+        DO \$\$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM users WHERE email = '${admin_email}') THEN
+            IF '${user_hash}' <> '' THEN
+              UPDATE users SET password = '${user_hash}', name = '${admin_name}', admin = true, updated_at = NOW() WHERE email = '${admin_email}';
             ELSE
-              UPDATE users SET email = '${LANGFUSE_INIT_USER_EMAIL}', name = '${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}', password = '${user_hash}', updated_at = NOW(), admin = true
+              UPDATE users SET name = '${admin_name}', admin = true, updated_at = NOW() WHERE email = '${admin_email}';
+            END IF;
+          ELSIF EXISTS (SELECT 1 FROM users) THEN
+            IF '${user_hash}' <> '' THEN
+              UPDATE users SET email = '${admin_email}', name = '${admin_name}', password = '${user_hash}', admin = true, updated_at = NOW()
+              WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
+            ELSE
+              UPDATE users SET email = '${admin_email}', name = '${admin_name}', admin = true, updated_at = NOW()
               WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
             END IF;
-          END \$\$;
+          ELSE
+            INSERT INTO users (id, name, email, password, admin, created_at, updated_at)
+            VALUES ('usr_brainsos_admin', '${admin_name}', '${admin_email}', NULLIF('${user_hash}', ''), true, NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING;
+          END IF;
+        END \$\$;
 
-          -- 5. Grant OWNER role on brainsos organization to all operator & admin accounts
-          INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
-          SELECT 'om_' || substr(md5(u.id || 'brainsos'), 1, 20), u.id, 'brainsos', 'OWNER', NOW(), NOW()
-          FROM users u
-          WHERE u.email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}')
-          ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW();
+        -- 6. Grant OWNER on 'brainsos' organization and ADMIN on 'brainsos' project to ALL users in DB
+        UPDATE users SET admin = true WHERE admin IS DISTINCT FROM true;
 
-          -- 6. Grant ADMIN role on brainsos project to all members
-          INSERT INTO project_memberships (project_id, user_id, org_membership_id, role, created_at, updated_at)
-          SELECT 'brainsos', om.user_id, om.id, 'ADMIN', NOW(), NOW()
-          FROM organization_memberships om
-          WHERE om.org_id = 'brainsos'
-          ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', updated_at = NOW();
+        INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
+        SELECT 'om_' || substr(md5(u.id || 'brainsos'), 1, 20), u.id, 'brainsos', 'OWNER', NOW(), NOW()
+        FROM users u
+        ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW();
 
-          UPDATE users SET admin = true WHERE email IN ('${LANGFUSE_INIT_USER_EMAIL}', 'operator@brainsos.ai', '${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}');
-        " >/dev/null 2>&1 || true
-      log_success "Langfuse organization 'brainsos' and admin permissions synchronized in PostgreSQL."
+        INSERT INTO project_memberships (project_id, user_id, org_membership_id, role, created_at, updated_at)
+        SELECT 'brainsos', om.user_id, om.id, 'ADMIN', NOW(), NOW()
+        FROM organization_memberships om
+        WHERE om.org_id = 'brainsos'
+        ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', org_membership_id = EXCLUDED.org_membership_id, updated_at = NOW();
+EOSQL
+      log_success "Langfuse organization 'brainsos', project memberships, and OIDC auto-grant triggers synchronized in PostgreSQL."
     fi
   fi
   sync_llm_connection
@@ -299,8 +385,8 @@ sync_user_password() {
 # ------------------------------------------------------------------------------
 sync_llm_connection() {
   local lf_web_c lf_db_c
-  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?web$' | head -n 1 || true)"
-  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-|langfuse-)?db$' | head -n 1 || true)"
+  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?web$' | head -n 1 || true)"
+  lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?db$' | head -n 1 || true)"
   if [ -n "${lf_web_c}" ] && [ -n "${lf_db_c}" ]; then
     log_info "Synchronizing preconfigured LLM & Agent connections in Langfuse project 'brainsos'..."
     local litellm_key="${LITELLM_MASTER_KEY:-sk-supergr00vyd00d!!!}"
@@ -462,9 +548,13 @@ seed_initial_session() {
   if [ -z "${LANGFUSE_PUBLIC_KEY:-}" ] || [ -z "${LANGFUSE_SECRET_KEY:-}" ]; then
     return 0
   fi
-  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "^brainsos-(telemetry-|langfuse-)?web$"; then
+  local lf_web_c
+  lf_web_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?web$' | head -n 1 || true)"
+  if [ -z "${lf_web_c}" ]; then
     return 0
   fi
+  local lf_ip
+  lf_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${lf_web_c}" 2>/dev/null | awk '{print $1}' || true)"
 
   local python_bin="${REPO_ROOT}/.venv/bin/python"
   [ ! -x "${python_bin}" ] && python_bin="python3"
@@ -477,7 +567,13 @@ import os, sys, requests, json, time, uuid
 pub = '${LANGFUSE_PUBLIC_KEY}'
 sec = '${LANGFUSE_SECRET_KEY}'
 port = '${LANGFUSE_PORT:-3001}'
+lf_ip = '${lf_ip}'
 host = f'http://127.0.0.1:{port}'
+try:
+    requests.get(f'{host}/api/public/health', timeout=2)
+except Exception:
+    if lf_ip:
+        host = f'http://{lf_ip}:3000'
 
 try:
     r = requests.get(f'{host}/api/public/sessions?limit=5', auth=(pub, sec), timeout=5)

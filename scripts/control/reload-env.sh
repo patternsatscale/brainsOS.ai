@@ -191,19 +191,25 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
       ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
       ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
       ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
+  if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+      INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+  fi
   log_success "SOGo fleet accounts and passwords synchronized in sogo_users table."
 else
-  log_info "SOGo database container is not running (skipping)."
+  log_info "SOGo database container is not running (skipping pre-up check)."
 fi
 
 # Synchronize Dovecot mail accounts and credentials
 if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
-  "${SCRIPT_DIR}/../setup/setup-mail.sh" >/dev/null 2>&1 || true
+  "${SCRIPT_DIR}/../setup/setup-mail.sh" --accounts-only >/dev/null 2>&1 || true
   MAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || true)"
   if [ -n "${MAIL_CONTAINER}" ]; then
     docker exec "${MAIL_CONTAINER}" doveadm reload 2>/dev/null || true
@@ -253,34 +259,23 @@ if [ -n "${LF_DB_CONTAINER}" ]; then
     log_success "Langfuse database password synchronized."
   fi
 
-    # Synchronize Langfuse Web admin user password if updated
-    LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
-    LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}}"
-    LF_ADMIN_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
-    if [ -n "${LF_ADMIN_PASS}" ] && [ -n "${LF_WEB_CONTAINER}" ]; then
-      LF_HASH=$(docker exec -i "${LF_WEB_CONTAINER}" node -e "
-        const p = process.argv[1];
-        const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
-        console.log(bcrypt.hashSync(p, 12));
-      " "${LF_ADMIN_PASS}" 2>/dev/null || true)
-      if [ -n "${LF_HASH}" ]; then
-        docker exec -i "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
-          -c "
-            DO \$\$
-            BEGIN
-              IF EXISTS (SELECT 1 FROM users WHERE email = '${LF_ADMIN_EMAIL}') THEN
-                UPDATE users SET password = '${LF_HASH}', updated_at = NOW() WHERE email = '${LF_ADMIN_EMAIL}';
-              ELSE
-                UPDATE users SET email = '${LF_ADMIN_EMAIL}', name = '${LF_ADMIN_NAME}', password = '${LF_HASH}', updated_at = NOW()
-                WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
-              END IF;
-            END \$\$;
-          " >/dev/null 2>&1 || true
-        log_success "Langfuse admin user password synchronized."
-      fi
-    fi
+  # Check if any existing Langfuse user is missing membership in project 'brainsos'.
+  # If so, rotate NEXTAUTH_SECRET before 'docker compose up -d' so any stale browser
+  # NextAuth JWT cookie (cached with organizations=[]) is invalidated and refreshed via OIDC.
+  UNLINKED_LF_USERS=$(docker exec -i "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" -tc "
+    SELECT COUNT(*) FROM users u
+    WHERE NOT EXISTS (
+      SELECT 1 FROM project_memberships pm WHERE pm.user_id = u.id AND pm.project_id = 'brainsos'
+    );
+  " 2>/dev/null | tr -d '[:space:]' || echo "0")
+  if [ -n "${UNLINKED_LF_USERS}" ] && [ "${UNLINKED_LF_USERS}" != "0" ]; then
+    log_info "Detected ${UNLINKED_LF_USERS} Langfuse user(s) missing 'brainsos' project membership; rotating NEXTAUTH_SECRET to refresh SSO sessions..."
+    NEW_NEXTAUTH_SECRET="$(python3 -c 'import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())' 2>/dev/null || openssl rand -base64 32)"
+    "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "NEXTAUTH_SECRET=${NEW_NEXTAUTH_SECRET}" >/dev/null 2>&1 || true
+    export NEXTAUTH_SECRET="${NEW_NEXTAUTH_SECRET}"
+  fi
 else
-  log_info "Step 3/6: Langfuse database is not running locally (skipping)."
+  log_info "Step 3/6: Langfuse database is not running locally (skipping pre-up check)."
 fi
 
 # Synchronize Caddy Operator IDE Basic Auth Password Hash
@@ -344,6 +339,71 @@ docker compose up -d
 log_success "Docker services updated with current .env configurations."
 if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
   "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
+fi
+
+# ------------------------------------------------------------------------------
+# 4b. Post-Up SOGo & Mail Synchronization (ensures live containers match .env)
+# ------------------------------------------------------------------------------
+SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?sogo-db$' | head -n 1 || true)"
+if [ -n "${SOGO_DB_CONTAINER}" ]; then
+  SOGO_DB_USER="${SOGO_DB_USER:-sogo}"
+  SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
+  ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
+  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    CREATE TABLE IF NOT EXISTS sogo_users (
+        c_uid VARCHAR(128) PRIMARY KEY,
+        c_name VARCHAR(128) NOT NULL,
+        c_password VARCHAR(128) NOT NULL,
+        c_cn VARCHAR(128) NOT NULL,
+        mail VARCHAR(128) NOT NULL
+    );
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+      ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+  if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+      INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+  fi
+fi
+
+if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
+  "${SCRIPT_DIR}/../setup/setup-mail.sh" --accounts-only >/dev/null 2>&1 || true
+  MAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || true)"
+  if [ -n "${MAIL_CONTAINER}" ]; then
+    docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/vmailbox 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/virtual 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" doveadm reload 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" postfix reload 2>/dev/null || true
+  fi
+fi
+
+# Ensure SOGo daemon and nginx dispatcher on port 20000 are active inside brainsos-app-sogo
+SOGO_CONTAINER="$(docker ps -a --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?sogo$' | head -n 1 || true)"
+if [ -n "${SOGO_CONTAINER}" ]; then
+  if ! docker exec "${SOGO_CONTAINER}" pgrep -f sogod >/dev/null 2>&1; then
+    log_info "Restarting SOGo container (${SOGO_CONTAINER}) to initialize sogod & nginx..."
+    docker compose restart sogo >/dev/null 2>&1 || docker restart "${SOGO_CONTAINER}" >/dev/null 2>&1 || true
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 4c. Post-Up Langfuse Organization, Project, Membership & Trigger Sync
+# ------------------------------------------------------------------------------
+if [ -x "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" sync || log_warn "Langfuse post-up sync encountered a warning."
 fi
 
 # Synchronize Authentik Identity & Master Credentials

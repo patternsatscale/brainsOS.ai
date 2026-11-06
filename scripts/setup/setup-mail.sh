@@ -15,6 +15,15 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
     source "$REPO_ROOT/.env"
 fi
 
+ACCOUNTS_ONLY=false
+for arg in "$@"; do
+    case "$arg" in
+        --accounts-only)
+            ACCOUNTS_ONLY=true
+            ;;
+    esac
+done
+
 echo "[INFO] ======================================================================"
 echo "[INFO] brainsOS: Provisioning Internal Email & Webmail Subsystem"
 echo "[INFO] ======================================================================"
@@ -27,7 +36,10 @@ SNAPPY_DIR="$MAIL_DIR/snappymail"
 
 echo "[INFO] Target mail storage root: $MAIL_DIR"
 if [ -d "$MAIL_DIR" ]; then
-    docker run --rm -v "$MAIL_DIR:/mail" alpine chmod -R 777 /mail 2>/dev/null || chmod -R 777 "$MAIL_DIR" 2>/dev/null || true
+    chmod -R 777 "$MAIL_DIR" 2>/dev/null || true
+    if docker image inspect alpine:latest >/dev/null 2>&1; then
+        docker run --rm -v "$MAIL_DIR:/mail" alpine chmod -R 777 /mail 2>/dev/null || true
+    fi
 fi
 mkdir -p "$VMAIL_DIR" "$CONFIG_DIR" "$SNAPPY_DIR"
 
@@ -175,11 +187,16 @@ echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/default.json"
 
 # 3. Ensure Container Permissions
 # Postfix/Dovecot container runs as UID 5000; SnappyMail runs as www-data (UID 82 on Alpine)
-docker run --rm -v "$MAIL_DIR:/mail" alpine sh -c "chmod -R 777 /mail && chown -R 82:82 /mail/snappymail" 2>/dev/null || true
+chmod -R 777 "$MAIL_DIR" 2>/dev/null || true
+if docker image inspect alpine:latest >/dev/null 2>&1; then
+    docker run --rm -v "$MAIL_DIR:/mail" alpine sh -c "chmod -R 777 /mail && chown -R 82:82 /mail/snappymail" 2>/dev/null || true
+fi
 
-# 4. Build Mail Server Image
-echo "[INFO] Building brainsos-mail-server container image..."
-docker build -t brainsos-mail-server:latest "$REPO_ROOT/docker/mail"
+# 4. Build Mail Server Image (skipped during fast --accounts-only credential sync if image exists)
+if [ "$ACCOUNTS_ONLY" = false ] || ! docker image inspect brainsos-mail-server:latest >/dev/null 2>&1; then
+    echo "[INFO] Building brainsos-mail-server container image..."
+    docker build -t brainsos-mail-server:latest "$REPO_ROOT/docker/mail"
+fi
 
 # 5. External Email Ingress Daemon (Optional)
 if [[ -n "${INGRESS_QUEUE_URL:-}" ]]; then

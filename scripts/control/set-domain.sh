@@ -342,10 +342,12 @@ if [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ]; then
   if [[ "${TARGET_ADMIN_EMAIL}" == *.local ]]; then
     TARGET_ADMIN_EMAIL="${EFFECTIVE_ADMIN_USER}@brainsos.ai"
   fi
+  NEW_NEXTAUTH_SECRET="$(python3 -c 'import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())' 2>/dev/null || openssl rand -base64 32)"
   ENV_CHANGES+=(
     "BRAINSOS_ADMIN_EMAIL=${TARGET_ADMIN_EMAIL}"
     "AUTHENTIK_BOOTSTRAP_EMAIL=${TARGET_ADMIN_EMAIL}"
     "LANGFUSE_INIT_USER_EMAIL=${TARGET_ADMIN_EMAIL}"
+    "NEXTAUTH_SECRET=${NEW_NEXTAUTH_SECRET}"
   )
 fi
 
