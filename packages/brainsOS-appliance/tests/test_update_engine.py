@@ -404,5 +404,69 @@ def test_version_rejected_for_caddy():
     assert "not supported" in proc.stderr
 
 
+def test_shallow_clone_unshallows_and_reports_zero_commits_behind(tmp_path: Path):
+    """Shallow repo staged with --depth 1 ahead of origin/main unshallows and reports 0 commits behind."""
+    origin_repo = tmp_path / "origin_repo"
+    origin_repo.mkdir()
+    _git(origin_repo, "init", "--quiet", "--initial-branch=main")
+    for idx in range(5):
+        (origin_repo / f"f{idx}.txt").write_text(f"{idx}\n", encoding="utf-8")
+        _git(origin_repo, "add", "-A")
+        _git(origin_repo, "commit", "--quiet", "-m", f"commit {idx}")
+
+    # Create a rehearsal branch 1 commit ahead of main
+    _git(origin_repo, "checkout", "--quiet", "-b", "task/rehearsal")
+    (origin_repo / "scripts" / "control").mkdir(parents=True)
+    shutil.copy2(UPDATE_SCRIPT, origin_repo / "scripts" / "control")
+    shutil.copy2(ENV_UPSERT, origin_repo / "scripts" / "control")
+    shutil.copy2(BACKUP_SCRIPT, origin_repo / "scripts" / "control")
+    shutil.copy2(REPO_ROOT / ".gitignore", origin_repo / ".gitignore")
+    _git(origin_repo, "add", "-A")
+    _git(origin_repo, "commit", "--quiet", "-m", "rehearsal commit")
+    rehearsal_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=origin_repo, text=True).strip()
+    _git(origin_repo, "checkout", "--quiet", "main")
+
+    # Stage shallow clone of rehearsal_sha checked out as main
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    _git(staged, "init", "--quiet", "--initial-branch=main")
+    _git(staged, "fetch", "--quiet", "--depth", "1", f"file://{origin_repo}", rehearsal_sha)
+    _git(staged, "checkout", "--quiet", "-B", "main", "FETCH_HEAD")
+    _git(staged, "remote", "add", "origin", f"file://{origin_repo}")
+    (staged / ".env").write_text("BRAINSOS_DATA_DIR=./data\n", encoding="utf-8")
+
+    env = {**os.environ, "BRAINSOS_REPO_ROOT": str(staged)}
+    proc = subprocess.run(
+        [str(staged / "scripts" / "control" / "update.sh"), "--check", "--json"],
+        cwd=staged,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["git"]["commits_behind"] == 0
+    assert data["git"]["update_available"] is False
+    assert "main" in data["git"]["available_branches"]
+    assert "task/rehearsal" in data["git"]["available_branches"]
+
+
+def test_update_branch_selection_dry_run():
+    """Verify --branch <name> --dry-run plans branch switch and pull from origin/<branch>."""
+    proc = subprocess.run(
+        [str(UPDATE_SCRIPT), "--branch", "task/320-appliance-rehearsal", "--dry-run"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    assert "task/320-appliance-rehearsal" in proc.stdout
+    assert "origin/task/320-appliance-rehearsal" in proc.stdout
+
+
+
+
 
 

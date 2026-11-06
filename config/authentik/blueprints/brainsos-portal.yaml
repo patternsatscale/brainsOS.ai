@@ -13,7 +13,7 @@ entries:
     attrs:
       username: "admin"
       name: "Appliance Administrator"
-      email: "admin@brainsos.local"
+      email: "admin@brainsos.ai"
       is_active: true
       groups:
         - !Find [authentik_core.group, [name, "authentik Admins"]]
@@ -41,7 +41,7 @@ entries:
       external_host: !Format ["https://%s", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
       internal_host: "http://brainsos-caddy:80"
       mode: "forward_domain"
-      cookie_domain: !Env [AUTHENTIK_COOKIE_DOMAIN, "local.brainsos.ai"]
+      cookie_domain: !Env [AUTHENTIK_COOKIE_DOMAIN, ""]
       redirect_uris: |
         https://.*
         http://.*
@@ -109,7 +109,7 @@ entries:
       name: "LiteLLM Gateway OIDC"
       client_type: "confidential"
       client_id: "litellm-proxy"
-      client_secret: "brainsos_litellm_secret"
+      client_secret: !Env [AUTH_LITELLM_CLIENT_SECRET, "brainsos_litellm_secret"]
       redirect_uris: |
         https://.*\.local\.brainsos\.ai/sso/callback
         https://.*\.local\.brainsos\.ai/proxy/ui/sso/callback
@@ -137,7 +137,7 @@ entries:
       name: "LiteLLM Gateway"
       slug: "litellm"
       provider: !KeyOf litellm_oidc_provider
-      meta_launch_url: !Format ["https://%s/ui/", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
+      meta_launch_url: !Format ["https://%s/proxy/ui/", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
 
   # 9. Langfuse Observability OIDC Provider
   - identifiers:
@@ -148,8 +148,9 @@ entries:
       name: "Langfuse Observability OIDC"
       client_type: "confidential"
       client_id: "langfuse-trace"
-      client_secret: "brainsos_langfuse_secret"
+      client_secret: !Env [AUTH_LANGFUSE_CLIENT_SECRET, "brainsos_langfuse_secret"]
       redirect_uris: |
+        https://.*/api/auth/callback/custom
         https://langfuse\..*/api/auth/callback/custom
         https://.*\.brainsos\.ai/api/auth/callback/custom
         http://localhost:3001/api/auth/callback/custom
@@ -173,5 +174,5 @@ entries:
       name: "Langfuse Observability"
       slug: "langfuse"
       provider: !KeyOf langfuse_oidc_provider
-      meta_launch_url: !Format ["https://langfuse.%s/", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
+      meta_launch_url: !Format ["https://%s/project/brainsos/sessions", !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]]
 

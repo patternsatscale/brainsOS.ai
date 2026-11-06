@@ -43,8 +43,13 @@ RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/pack
 COPY packages/brainsOS-agent /opt/hermes/packages/brainsOS-agent
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/packages/brainsOS-agent
 
-# Install Langfuse SDK for native observability plugin
+# Install Langfuse SDK for native observability plugin and bake brainsOS Hermes plugins
+# into the image so they remain present even across upstream nousresearch/hermes-agent
+# left-core migrations (Ticket #320).
 RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv langfuse
+COPY docker/hermes/plugins/model-providers /opt/data/plugins/model-providers
+COPY docker/hermes/plugins/model-providers /opt/hermes/plugins/model-providers
+COPY docker/hermes/plugins/observability/langfuse /opt/hermes/plugins/observability/langfuse
 
 # Install GitHub CLI (gh), Git tooling, and configure safe container defaults
 RUN apt-get update -qq && \

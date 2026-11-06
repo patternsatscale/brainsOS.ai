@@ -23,6 +23,8 @@ def test_get_system_status_schema():
     status = get_system_status()
     assert isinstance(status, dict)
     assert status.get("platform") == "brainsOS"
+    assert "platform_name" in status
+    assert "platform_detail" in status
     assert "git" in status
     assert "services" in status
     assert "disk" in status
@@ -34,6 +36,16 @@ def test_get_system_status_schema():
     assert "free_gb" in status["disk"]
     assert "free_pct" in status["disk"]
     assert "warning" in status["disk"]
+
+
+def test_detect_appliance_platform_aws_ami(tmp_path, monkeypatch):
+    from brainsos_telemetry.system import detect_appliance_platform
+
+    (tmp_path / ".brainsos-initialized").write_text("2026-11-05\n", encoding="utf-8")
+    monkeypatch.setenv("COMPOSE_FILE", "docker-compose.yml:docker/compose/compose.appliance.yml")
+    pname, pdetail = detect_appliance_platform(str(tmp_path))
+    assert pname == "AWS EC2 Appliance (AMI)"
+    assert "AWS" in pdetail
 
 
 def test_system_api_health_endpoint():
@@ -236,3 +248,64 @@ def test_get_job_endpoint(tmp_path):
         headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
         res = client.get("/api/v1/system/jobs/nonexistent-id", headers=headers)
         assert res.status_code == 404
+
+
+def test_update_passes_version_and_rejects_invalid_version(tmp_path):
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    update_sh = script_dir / "update.sh"
+    update_sh.write_text("#!/usr/bin/env bash\necho \"ARGS: $*\"\n", encoding="utf-8")
+    update_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "operator",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        # Reject invalid version with leading dash
+        bad_res = client.post(
+            "/api/v1/system/update",
+            json={"service": "litellm", "version": "--evil-flag"},
+            headers=headers,
+        )
+        assert bad_res.status_code == 400
+
+        # Valid version is forwarded to update.sh --version
+        ok_res = client.post(
+            "/api/v1/system/update",
+            json={"service": "litellm", "version": "1.108.0"},
+            headers=headers,
+        )
+        assert ok_res.status_code == 200
+        assert "--version 1.108.0" in ok_res.text
+
+        # Reject invalid branch with path traversal or leading dash
+        bad_branch = client.post(
+            "/api/v1/system/update",
+            json={"branch": "../evil"},
+            headers=headers,
+        )
+        assert bad_branch.status_code == 400
+
+        bad_branch_dash = client.post(
+            "/api/v1/system/update",
+            json={"branch": "--evil-flag"},
+            headers=headers,
+        )
+        assert bad_branch_dash.status_code == 400
+
+        # Valid branch is forwarded to update.sh --branch
+        ok_branch = client.post(
+            "/api/v1/system/update",
+            json={"branch": "task/320-appliance-rehearsal"},
+            headers=headers,
+        )
+        assert ok_branch.status_code == 200
+        assert "--branch task/320-appliance-rehearsal" in ok_branch.text
+

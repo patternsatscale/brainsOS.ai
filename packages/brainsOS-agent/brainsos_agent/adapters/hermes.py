@@ -19,6 +19,8 @@ import asyncio
 import logging
 import os
 import re
+import socket
+import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -92,6 +94,43 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def resolve_runner_endpoint(
+    explicit_url: str | None,
+    env_var: str,
+    loopback_port: int,
+    container_names: tuple[str, ...],
+    container_port: int,
+    path_suffix: str = "",
+) -> str:
+    """Resolve runner endpoint on host loopback or container bridge IP (when compose.appliance.yml unpublishes ports)."""
+    if explicit_url:
+        return explicit_url.rstrip("/")
+    env_val = os.getenv(env_var)
+    if env_val:
+        return env_val.rstrip("/")
+    try:
+        with socket.create_connection(("127.0.0.1", loopback_port), timeout=0.15):
+            return f"http://127.0.0.1:{loopback_port}{path_suffix}"
+    except OSError:
+        pass
+    for name in container_names:
+        try:
+            proc = subprocess.run(
+                ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", name],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                ip = proc.stdout.strip().split()[0]
+                if ip:
+                    return f"http://{ip}:{container_port}{path_suffix}"
+        except Exception:
+            continue
+    return f"http://127.0.0.1:{loopback_port}{path_suffix}"
+
+
 class HermesMailAdapter(AgentRuntime):
     """Asynchronous run-based adapter routing inbound email through the shared warm Hermes runner."""
 
@@ -108,7 +147,14 @@ class HermesMailAdapter(AgentRuntime):
         clock: Callable[[], float] | None = None,
         use_envelope: bool | None = None,
     ) -> None:
-        self.runner_url = (runner_url or os.getenv("HERMES_RUNNER_URL") or "http://127.0.0.1:8642/v1").rstrip("/")
+        self.runner_url = resolve_runner_endpoint(
+            runner_url,
+            "HERMES_RUNNER_URL",
+            int(os.getenv("HERMES_RUNNER_PORT", "8642")),
+            ("brainsos-agent-runner-hermes", "brainsos-runner-hermes"),
+            8642,
+            "/v1",
+        )
         self.poll_interval = poll_interval if poll_interval is not None else _env_float("HERMES_RUN_POLL_SEC", 5.0)
         self.max_run_sec = max_run_sec if max_run_sec is not None else _env_float("HERMES_RUN_MAX_SEC", 14400.0)
         self.http_timeout = http_timeout if http_timeout is not None else _env_float("HERMES_HTTP_TIMEOUT_SEC", 30.0)

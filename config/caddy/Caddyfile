@@ -16,6 +16,10 @@ import tls_policy.caddy
 		uri /outpost.goauthentik.io/auth/caddy
 		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
 		trusted_proxies private_ranges
+		@outpost_warming status 404 502 503 504
+		handle_response @outpost_warming {
+			error 503
+		}
 	}
 }
 
@@ -38,6 +42,14 @@ import tls_policy.caddy
 	root * /srv/portal
 	try_files {path} /index.html
 	file_server
+}
+
+(langfuse_proxy) {
+	reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
+		header_down -x-frame-options
+		header_down -content-security-policy
+		flush_interval -1
+	}
 }
 
 # ==============================================================================
@@ -166,8 +178,17 @@ import tls_policy.caddy
 	# Subsystem 9: System Telemetry & Universal Update Engine API
 	handle /api/v1/system/* {
 		import authentik_forward_auth
-		reverse_proxy host.docker.internal:8000 {
+		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
 			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
+			flush_interval -1
+		}
+	}
+
+	@litellm_api_subpaths path /api/plugins /api/plugins/* /api/event_logging/*
+	handle @litellm_api_subpaths {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
@@ -243,6 +264,7 @@ import tls_policy.caddy
 		}
 	}
 	handle /sso/* {
+		uri path_regexp ^(/sso/.+?)(?:\.(?:txt|rsc)|/)$ $1
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -251,6 +273,7 @@ import tls_policy.caddy
 	}
 	handle /proxy/sso/* {
 		uri strip_prefix /proxy
+		uri path_regexp ^(/sso/.+?)(?:\.(?:txt|rsc)|/)$ $1
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -320,11 +343,11 @@ import tls_policy.caddy
 		/coordination_redis /coordination_redis/* \
 		/cost /cost/* /cost_optimization /cost_optimization/* \
 		/email /email/* \
-		/project /project/* \
+		/project/new /project/update /project/delete /project/info /project/list \
 		/budget /budget/* \
 		/invitation /invitation/* \
 		/alerting /alerting/* \
-		/organization /organization/* \
+		/organization/new /organization/update /organization/delete /organization/info /organization/list /organization/member_add /organization/member_update /organization/member_delete \
 		/auto_router /auto_router/* \
 		/access_group /access_group/* \
 		/guardrails /guardrails/* \
@@ -364,6 +387,36 @@ import tls_policy.caddy
 		/realtime /realtime/* \
 		/a2a /a2a/* \
 		/scim /scim/* \
+		/management /management/* \
+		/login \
+		/active /active/* \
+		/adaptive_router /adaptive_router/* \
+		/apply_guardrail \
+		/config_overrides /config_overrides/* \
+		/containers /containers/* \
+		/decisions \
+		/end_user /end_user/* \
+		/fine_tuning /fine_tuning/* \
+		/interactions /interactions/* \
+		/jwt /jwt/* \
+		/lens /lens/* \
+		/liteadmin /liteadmin/* \
+		/live /live/* \
+		/mcp /mcp/* \
+		/model-insights /model-insights/* \
+		/moderations \
+		/ocr \
+		/otel-spans \
+		/plugin-proxy /plugin-proxy/* \
+		/provider /provider/* \
+		/rerank \
+		/search /search/* \
+		/telemetry /telemetry/* \
+		/toolset /toolset/* \
+		/upload /upload/* \
+		/usage /usage/* \
+		/vector_stores /vector_stores/* \
+		/videos /videos/* \
 		/openapi.json /get_favicon /get_image /get_logo_url /get_cache_settings
 	handle @litellm_api {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
@@ -372,79 +425,21 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	@proxy_litellm_api path \
-		/proxy/key /proxy/key/* \
-		/proxy/model /proxy/model/* /proxy/models /proxy/models* /proxy/model_group /proxy/model_group/* /proxy/model_hub /proxy/model_hub/* \
-		/proxy/user /proxy/user/* \
-		/proxy/team /proxy/team/* \
-		/proxy/customer /proxy/customer/* \
-		/proxy/spend /proxy/spend/* \
-		/proxy/global /proxy/global/* \
-		/proxy/health /proxy/health/* \
-		/proxy/routes /proxy/routes* \
-		/proxy/config /proxy/config/* \
-		/proxy/service_account /proxy/service_account/* \
-		/proxy/public /proxy/public/* \
-		/proxy/settings /proxy/settings/* \
-		/proxy/get /proxy/get/* \
-		/proxy/update /proxy/update/* \
-		/proxy/add /proxy/add/* \
-		/proxy/delete /proxy/delete/* \
-		/proxy/tag /proxy/tag/* \
-		/proxy/gateway /proxy/gateway/* \
-		/proxy/audit /proxy/audit/* \
-		/proxy/router /proxy/router/* \
-		/proxy/cache /proxy/cache/* \
-		/proxy/coordination_redis /proxy/coordination_redis/* \
-		/proxy/cost /proxy/cost/* /proxy/cost_optimization /proxy/cost_optimization/* \
-		/proxy/email /proxy/email/* \
-		/proxy/project /proxy/project/* \
-		/proxy/budget /proxy/budget/* \
-		/proxy/invitation /proxy/invitation/* \
-		/proxy/alerting /proxy/alerting/* \
-		/proxy/organization /proxy/organization/* \
-		/proxy/auto_router /proxy/auto_router/* \
-		/proxy/access_group /proxy/access_group/* \
-		/proxy/guardrails /proxy/guardrails/* \
-		/proxy/policies /proxy/policies/* /proxy/policy /proxy/policy/* \
-		/proxy/prompts /proxy/prompts/* \
-		/proxy/search_tools /proxy/search_tools/* \
-		/proxy/mcp-rest /proxy/mcp-rest/* \
-		/proxy/vector_store /proxy/vector_store/* \
-		/proxy/rag /proxy/rag/* \
-		/proxy/callbacks /proxy/callbacks/* \
-		/proxy/credentials /proxy/credentials/* \
-		/proxy/fallback /proxy/fallback/* \
-		/proxy/activity /proxy/activity/* \
-		/proxy/agent /proxy/agent/* \
-		/proxy/onboarding /proxy/onboarding/* \
-		/proxy/session /proxy/session/* \
-		/proxy/utils /proxy/utils/* \
-		/proxy/compliance /proxy/compliance/* \
-		/proxy/claude-code /proxy/claude-code/* \
-		/proxy/reload /proxy/reload/* \
-		/proxy/schedule /proxy/schedule/* \
-		/proxy/v1 /proxy/v1/* \
-		/proxy/v2 /proxy/v2/* \
-		/proxy/v3 /proxy/v3/* \
-		/proxy/v1beta /proxy/v1beta/* \
-		/proxy/openai /proxy/openai/* /proxy/openai_passthrough /proxy/openai_passthrough/* \
-		/proxy/chat /proxy/chat/* \
-		/proxy/completions /proxy/completions/* \
-		/proxy/embeddings /proxy/embeddings/* \
-		/proxy/batches /proxy/batches/* \
-		/proxy/files /proxy/files/* \
-		/proxy/threads /proxy/threads/* \
-		/proxy/assistants /proxy/assistants/* \
-		/proxy/audio /proxy/audio/* \
-		/proxy/images /proxy/images/* \
-		/proxy/responses /proxy/responses/* \
-		/proxy/realtime /proxy/realtime/* \
-		/proxy/a2a /proxy/a2a/* \
-		/proxy/scim /proxy/scim/* \
-		/proxy/openapi.json /proxy/get_favicon /proxy/get_image /proxy/get_logo_url /proxy/get_cache_settings
-	handle @proxy_litellm_api {
+	handle /proxy/* {
 		uri strip_prefix /proxy
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
+	# Future-proof catch-all for any new endpoint called by the LiteLLM Admin UI (/ui/*)
+	@litellm_ui_referer {
+		header_regexp Referer ^https?://[^/]+/(proxy/)?ui(/|$|\?)
+		not path /ui/* /proxy/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
+	}
+	handle @litellm_ui_referer {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -466,17 +461,102 @@ import tls_policy.caddy
 		}
 	}
 
-	# F. Subsystem 5: Observability Plane (Langfuse)
-	# Redirect /langfuse* to dedicated subdomain langfuse.{host} with subpath preserved
-	# Default target is /project/brainsos/sessions
+	# F. Subsystem 5: Observability Plane (Langfuse Single-Origin & Subdomain Ingress)
 	@langfuse_root path /langfuse /langfuse/
 	handle @langfuse_root {
-		redir https://langfuse.{host}/project/brainsos/sessions 302
+		redir /project/brainsos/sessions 302
 	}
 	@langfuse_subpath path /langfuse/*
 	handle @langfuse_subpath {
 		uri strip_prefix /langfuse
-		redir https://langfuse.{host}{uri} 302
+		redir {uri} 302
+	}
+	handle /_next/* {
+		import langfuse_proxy
+	}
+	handle /icon.svg {
+		import langfuse_proxy
+	}
+	handle /icon256.png {
+		import langfuse_proxy
+	}
+	handle /icon512.png {
+		import langfuse_proxy
+	}
+	handle /wordart-black.svg {
+		import langfuse_proxy
+	}
+	handle /wordart-white.svg {
+		import langfuse_proxy
+	}
+	handle /fonts/* {
+		import langfuse_proxy
+	}
+	handle /generated/* {
+		import langfuse_proxy
+	}
+	handle /trace/* {
+		import langfuse_proxy
+	}
+	handle /project/brainsos* {
+		import langfuse_proxy
+	}
+	handle /project/~* {
+		import langfuse_proxy
+	}
+	handle /organization/brainsos* {
+		import langfuse_proxy
+	}
+	handle /api/trpc/* {
+		import langfuse_proxy
+	}
+	handle /api/auth/* {
+		import langfuse_proxy
+	}
+	handle /api/public/* {
+		import langfuse_proxy
+	}
+	handle /api/project/* {
+		import langfuse_proxy
+	}
+	handle /api/traces/* {
+		import langfuse_proxy
+	}
+	handle /api/dashboard/* {
+		import langfuse_proxy
+	}
+	handle /api/chatCompletion* {
+		import langfuse_proxy
+	}
+	handle /api/admin/* {
+		import langfuse_proxy
+	}
+	handle /api/internal/* {
+		import langfuse_proxy
+	}
+	handle /auth/sign-in* {
+		import langfuse_proxy
+	}
+	handle /auth/error* {
+		import langfuse_proxy
+	}
+	handle /auth/sso-initiate* {
+		import langfuse_proxy
+	}
+	handle /auth/reset-password* {
+		import langfuse_proxy
+	}
+	handle /auth/setup-password* {
+		import langfuse_proxy
+	}
+	handle /auth/sign-up* {
+		import langfuse_proxy
+	}
+	handle /auth/enterprise-sso-required* {
+		import langfuse_proxy
+	}
+	handle /account/settings* {
+		import langfuse_proxy
 	}
 
 	# G. Subsystem 6: Agent Plane (Hermes Runner WebUI)
@@ -517,6 +597,41 @@ import tls_policy.caddy
 	handle {
 		import authentik_forward_auth
 		import portal_content
+	}
+
+	# Cold-Boot Splash Page: Shown while authentik-server / control plane containers
+	# complete initial database migrations on first boot (replaces raw 502/503/504).
+	handle_errors 502 503 504 {
+		header Content-Type "text/html; charset=utf-8"
+		header Cache-Control "no-store, no-cache, must-revalidate"
+		respond <<HTML
+			<!DOCTYPE html>
+			<html lang="en">
+			<head>
+			  <meta charset="utf-8" />
+			  <meta name="viewport" content="width=device-width, initial-scale=1" />
+			  <meta http-equiv="refresh" content="4" />
+			  <title>brainsOS Appliance • Initializing</title>
+			  <style>
+			    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #090d16; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+			    .card { max-width: 460px; padding: 32px; border-radius: 12px; background: #111827; border: 1px solid #1e293b; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+			    .spinner { width: 36px; height: 36px; margin: 0 auto 20px; border: 3px solid #1e293b; border-top-color: #14b8a6; border-radius: 50%; animation: spin 1s linear infinite; }
+			    @keyframes spin { to { transform: rotate(360deg); } }
+			    h1 { font-size: 18px; margin: 0 0 10px; color: #f8fafc; letter-spacing: 0.02em; }
+			    p { font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 0; }
+			    .badge { display: inline-block; margin-top: 16px; padding: 4px 10px; font-size: 11px; border-radius: 9999px; background: rgba(20,184,166,0.12); color: #2dd4bf; border: 1px solid rgba(20,184,166,0.3); }
+			  </style>
+			</head>
+			<body>
+			  <div class="card">
+			    <div class="spinner"></div>
+			    <h1>brainsOS Appliance Initializing</h1>
+			    <p>First-boot identity &amp; control plane services are starting up.<br/>This page will automatically redirect to Sign In in a few seconds...</p>
+			    <div class="badge">Auto-refreshing every 4s</div>
+			  </div>
+			</body>
+			</html>
+			HTML 503
 	}
 }
 

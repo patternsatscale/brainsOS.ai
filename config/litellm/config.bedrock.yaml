@@ -48,6 +48,37 @@ model_list:
       aws_region_name: os.environ/AWS_DEFAULT_REGION
       timeout: 120
 
+  # Compatibility Aliases for Default Agent & Runner Manifests on Bedrock Appliances
+  - model_name: "qwen3.8:latest"
+    litellm_params:
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 300
+
+  - model_name: cindy-active-coding-model
+    litellm_params:
+      model: bedrock/us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 300
+
+  - model_name: "llama3.2:3b"
+    litellm_params:
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 120
+
+  - model_name: "gemma2:2b"
+    litellm_params:
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 120
+
+  - model_name: "qwen2.5:latest"
+    litellm_params:
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+      aws_region_name: os.environ/AWS_DEFAULT_REGION
+      timeout: 120
+
 litellm_settings:
   drop_params: true
   set_verbose: false

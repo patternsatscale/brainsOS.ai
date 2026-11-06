@@ -116,6 +116,12 @@ mcp_servers:
 plugins:
   enabled:
     - "observability/langfuse"
+    - "model-providers/brainsos-litellm-session"
+
+# Marks left-core plugins pre-installed in the brainsOS runner image (#320) so
+# hermes_cli.left_core_migration does not warn or attempt a catalog git clone.
+_left_core_installed:
+  - "langfuse"
 
 platforms:
   api_server:

@@ -77,11 +77,12 @@ CONTAINERS_ONLY=false
 FULL_UPDATE=true
 TARGET_SERVICE=""
 TARGET_VERSION=""
+TARGET_BRANCH=""
 RESET_VERSION=false
 UNATTENDED=false
 NO_BACKUP=false
 DRY_RUN=false
-HEALTH_TIMEOUT=30
+HEALTH_TIMEOUT=90
 
 show_help() {
   echo -e "${BOLD}brainsOS Universal Appliance & Platform Update Engine${NC}"
@@ -94,12 +95,13 @@ show_help() {
   echo "  --json                Output version status and check results in JSON format"
   echo "  --containers-only     Update upstream container images only (do not pull git code)"
   echo "  --full                Update both git source code and container images (default)"
+  echo "  --branch <name>       Switch to and pull a specific remote git branch (e.g. main, task/320-appliance-rehearsal)"
   echo "  --service <name>      Target a specific service (e.g. litellm, langfuse, caddy)"
   echo "  --version <tag>       Target a specific upstream image version tag (litellm and langfuse only)"
   echo "  --target-version <tag> Alias for --version"
   echo "  --reset-version       Remove .env version override for --service and restore pinned default"
   echo "  --reset               Alias for --reset-version"
-  echo "  --health-timeout <s>  Timeout in seconds for post-update health verification (default: 30)"
+  echo "  --health-timeout <s>  Timeout in seconds for post-update health verification (default: 90)"
   echo "  -y, --unattended      Non-interactive mode (bypass confirmation prompts)"
   echo "  --no-backup           Skip pre-flight data snapshot"
   echo "  --dry-run             Simulate update actions without altering disk or containers"
@@ -131,6 +133,12 @@ while [[ $# -gt 0 ]]; do
       FULL_UPDATE=true
       CONTAINERS_ONLY=false
       shift
+      ;;
+    --branch)
+      TARGET_BRANCH="$2"
+      FULL_UPDATE=true
+      CONTAINERS_ONLY=false
+      shift 2
       ;;
     --service)
       TARGET_SERVICE="$2"
@@ -195,20 +203,88 @@ def run_cmd(cmd, cwd=repo_root):
     except Exception:
         return ""
 
+def get_platform_info():
+    import platform as py_platform
+    arch = py_platform.machine() or "ARM64"
+    sys_name = py_platform.system()
+    if sys_name == "Darwin":
+        return "macOS Workstation", f"Apple Silicon • {arch}"
+
+    def read_dmi(field):
+        for base in ("/sys/class/dmi/id", "/sys/devices/virtual/dmi/id"):
+            p = os.path.join(base, field)
+            if os.path.isfile(p):
+                try:
+                    with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                        val = f.read().strip()
+                        if val:
+                            return val
+                except Exception:
+                    pass
+        return ""
+
+    vendor = read_dmi("sys_vendor")
+    product = read_dmi("product_name")
+    board = read_dmi("board_name")
+
+    is_aws = (
+        "amazon" in vendor.lower()
+        or os.path.isfile(os.path.join(repo_root, ".brainsos-initialized"))
+        or "compose.appliance.yml" in os.environ.get("COMPOSE_FILE", "")
+    )
+    if is_aws:
+        inst_type = product if product and "amazon" not in product.lower() and "gx10" not in product.lower() else ""
+        arch_label = "ARM64 Graviton" if arch in ("aarch64", "arm64") else arch
+        detail = f"AWS {arch_label} • {inst_type}" if inst_type else f"AWS {arch_label} • EC2"
+        return "AWS EC2 Appliance (AMI)", detail
+
+    if "gx10" in product.lower() or ("asus" in vendor.lower() and "gx10" in board.lower()):
+        return "ASUS Ascent GX10", "NVIDIA GB10 ARM64 • 273 GB/s"
+
+    return f"Linux Host ({arch})", f"{sys_name} {arch}"
+
 def get_git_info():
     is_git = os.path.isdir(os.path.join(repo_root, ".git"))
     if not is_git:
-        return {"is_git": False}
+        return {"is_git": False, "available_branches": ["main"]}
     branch = run_cmd("git rev-parse --abbrev-ref HEAD")
     current_commit = run_cmd("git rev-parse --short HEAD")
     remote_commit = ""
     commits_behind = 0
-    
-    ls_out = run_cmd(f"git ls-remote origin -h refs/heads/{branch}")
-    if ls_out:
-        remote_commit = ls_out.split()[0][:7] if ls_out.split() else ""
+    available_branches = []
+
+    ls_heads = run_cmd("git ls-remote --heads origin")
+    if ls_heads:
+        for line in ls_heads.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].startswith("refs/heads/"):
+                b_name = parts[1][len("refs/heads/"):]
+                available_branches.append(b_name)
+                if b_name == branch:
+                    remote_commit = parts[0][:7]
+
+    if not available_branches:
+        local_branches = run_cmd("git branch -a --format='%(refname:short)'")
+        for line in local_branches.splitlines():
+            b_name = line.strip().strip("'")
+            if b_name.startswith("origin/"):
+                b_name = b_name[len("origin/"):]
+            if b_name and b_name != "HEAD" and b_name not in available_branches:
+                available_branches.append(b_name)
+
+    ordered_branches = []
+    for preferred in ("main", branch):
+        if preferred and preferred not in ordered_branches:
+            ordered_branches.append(preferred)
+    for b_name in sorted(available_branches):
+        if b_name not in ordered_branches:
+            ordered_branches.append(b_name)
+
     if remote_commit and remote_commit != current_commit:
-        run_cmd("git fetch origin --quiet")
+        if os.path.isfile(os.path.join(repo_root, ".git", "shallow")):
+            run_cmd("git fetch --unshallow origin --quiet || git fetch origin --quiet")
+        else:
+            run_cmd("git fetch origin --quiet")
         behind_out = run_cmd(f"git rev-list --count HEAD..origin/{branch}")
         try:
             commits_behind = int(behind_out)
@@ -218,6 +294,7 @@ def get_git_info():
     return {
         "is_git": True,
         "branch": branch,
+        "available_branches": ordered_branches,
         "current_commit": current_commit,
         "remote_commit": remote_commit or current_commit,
         "commits_behind": commits_behind,
@@ -299,6 +376,7 @@ services = {
         "current_version": litellm_curr,
         "latest_version": litellm_latest,
         "update_available": litellm_update,
+        "changelog_url": "https://github.com/BerriAI/litellm/releases",
         "plane": "control"
     },
     "langfuse": {
@@ -307,6 +385,7 @@ services = {
         "current_version": langfuse_curr,
         "latest_version": langfuse_latest,
         "update_available": langfuse_update,
+        "changelog_url": "https://github.com/langfuse/langfuse/releases",
         "plane": "telemetry"
     },
     "caddy": {
@@ -315,6 +394,7 @@ services = {
         "current_version": caddy_curr,
         "latest_version": caddy_latest,
         "update_available": caddy_update,
+        "changelog_url": "https://github.com/caddyserver/caddy/releases",
         "plane": "ingress"
     },
     "runner-hermes": {
@@ -323,6 +403,7 @@ services = {
         "current_version": hermes_curr,
         "latest_version": hermes_latest,
         "update_available": hermes_update,
+        "changelog_url": "https://github.com/patternsatscale/brainsOS.ai/releases",
         "plane": "agent"
     }
 }
@@ -338,9 +419,12 @@ disk_info = {
 }
 
 overall_update = git_info.get("update_available", False) or any(s["update_available"] for s in services.values())
+platform_name, platform_detail = get_platform_info()
 
 status_data = {
     "platform": "brainsOS",
+    "platform_name": platform_name,
+    "platform_detail": platform_detail,
     "git": git_info,
     "services": services,
     "disk": disk_info,
@@ -385,6 +469,7 @@ YELLOW = "\033[1;33m"
 DIM = "\033[2m"
 NC = "\033[0m"
 
+print(f"{BOLD}Appliance Platform:{NC} {CYAN}{data.get('platform_name', 'brainsOS')}{NC} ({DIM}{data.get('platform_detail', '')}{NC})")
 print(f"{BOLD}Core Platform (Git Repository):{NC}")
 if git.get("is_git"):
     curr = git.get("current_commit", "unknown")
@@ -559,6 +644,7 @@ fi
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   PRE_UPDATE_GIT_REF="$(git rev-parse HEAD)"
+  PRE_UPDATE_GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 fi
 
 # Rollback trap on failure (C4)
@@ -577,7 +663,11 @@ rollback_handler() {
     # 2. Rollback Git without reset --hard (safe git handling)
     if [ -n "${PRE_UPDATE_GIT_REF}" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       CURRENT_REF="$(git rev-parse HEAD)"
-      if [ "${CURRENT_REF}" != "${PRE_UPDATE_GIT_REF}" ]; then
+      CURRENT_BR="$(git rev-parse --abbrev-ref HEAD)"
+      if [ -n "${PRE_UPDATE_GIT_BRANCH:-}" ] && [ "${CURRENT_BR}" != "${PRE_UPDATE_GIT_BRANCH}" ]; then
+        log_info "Restoring git branch to ${PRE_UPDATE_GIT_BRANCH} (${PRE_UPDATE_GIT_REF})..."
+        git checkout -B "${PRE_UPDATE_GIT_BRANCH}" "${PRE_UPDATE_GIT_REF}" || log_error "git checkout rollback failed"
+      elif [ "${CURRENT_REF}" != "${PRE_UPDATE_GIT_REF}" ]; then
         log_info "Restoring git branch pointer to ${PRE_UPDATE_GIT_REF}..."
         git reset --keep "${PRE_UPDATE_GIT_REF}" || log_error "git reset --keep failed; repository left at $(git rev-parse --short HEAD)"
       fi
@@ -613,22 +703,45 @@ PRE_PULL_HEAD=""
 if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   log_info "Step 1/5: Pulling latest source code from remote tracking branch..."
   CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  EFFECTIVE_BRANCH="${TARGET_BRANCH:-${CURRENT_BRANCH}}"
   PRE_PULL_HEAD="$(git rev-parse HEAD)"
+
+  if [[ -n "${TARGET_BRANCH}" ]] && { [[ "${TARGET_BRANCH}" == -* ]] || [[ "${TARGET_BRANCH}" == *".."* ]] || ! [[ "${TARGET_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]]; }; then
+    log_error "Invalid branch name: '${TARGET_BRANCH}'"
+    exit 1
+  fi
   
   if [ "${DRY_RUN}" = true ]; then
-    log_info "[DRY-RUN] Would fetch and pull origin/${CURRENT_BRANCH}"
+    log_info "[DRY-RUN] Would fetch and sync branch origin/${EFFECTIVE_BRANCH}"
   else
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
       log_error "Tracked files have local modifications. Commit or revert them before updating."
       exit 1
     fi
 
-    git fetch origin --quiet
-    if git merge-base --is-ancestor "origin/${CURRENT_BRANCH}" HEAD 2>/dev/null; then
-      log_success "Source code is already at the latest commit (${CURRENT_BRANCH})."
+    git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" 2>/dev/null || true
+    if [ -f "${REPO_ROOT}/.git/shallow" ]; then
+      git fetch --unshallow origin --quiet || git fetch origin --quiet
     else
-      log_info "Fast-forwarding ${CURRENT_BRANCH} to origin/${CURRENT_BRANCH}..."
-      git pull --ff-only origin "${CURRENT_BRANCH}"
+      git fetch origin --quiet
+    fi
+
+    if ! git rev-parse --verify --quiet "origin/${EFFECTIVE_BRANCH}" >/dev/null; then
+      log_error "Remote branch 'origin/${EFFECTIVE_BRANCH}' does not exist."
+      exit 1
+    fi
+
+    if [ "${EFFECTIVE_BRANCH}" != "${CURRENT_BRANCH}" ]; then
+      log_info "Switching active branch from ${CURRENT_BRANCH} to ${EFFECTIVE_BRANCH} (origin/${EFFECTIVE_BRANCH})..."
+      git checkout -B "${EFFECTIVE_BRANCH}" "origin/${EFFECTIVE_BRANCH}"
+      git branch --set-upstream-to="origin/${EFFECTIVE_BRANCH}" "${EFFECTIVE_BRANCH}" >/dev/null 2>&1 || true
+      log_success "Switched to branch ${EFFECTIVE_BRANCH} at commit $(git rev-parse --short HEAD)."
+    elif [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/${EFFECTIVE_BRANCH}")" ]; then
+      log_success "Source code is already at the latest commit (${EFFECTIVE_BRANCH})."
+    else
+      log_info "Syncing ${EFFECTIVE_BRANCH} to origin/${EFFECTIVE_BRANCH}..."
+      git pull --ff-only origin "${EFFECTIVE_BRANCH}" 2>/dev/null || git checkout -B "${EFFECTIVE_BRANCH}" "origin/${EFFECTIVE_BRANCH}"
+      git branch --set-upstream-to="origin/${EFFECTIVE_BRANCH}" "${EFFECTIVE_BRANCH}" >/dev/null 2>&1 || true
       log_success "Source code updated to commit $(git rev-parse --short HEAD)."
     fi
   fi
@@ -663,6 +776,20 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 3/5: Reconciling service image versions and pulling containers..."
 
+resolve_latest_github_release() {
+  local repo="$1"
+  python3 -c "
+import json, urllib.request
+try:
+    req = urllib.request.Request('https://api.github.com/repos/${repo}/releases/latest', headers={'User-Agent': 'brainsOS-Updater'})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.loads(resp.read().decode())
+        print(data.get('tag_name', '').lstrip('v'))
+except Exception:
+    pass
+" 2>/dev/null || true
+}
+
 COMPOSE_TARGETS=()
 if [ -n "${TARGET_SERVICE}" ]; then
   case "${TARGET_SERVICE}" in
@@ -670,26 +797,39 @@ if [ -n "${TARGET_SERVICE}" ]; then
       TARGET_SERVICE="litellm"
       COMPOSE_TARGETS=("litellm")
       OVERRIDE_VAR="LITELLM_IMAGE_TAG"
+      UPSTREAM_REPO="berriai/litellm"
       ;;
     langfuse|langfuse-web)
       TARGET_SERVICE="langfuse-web"
       COMPOSE_TARGETS=("langfuse-web" "langfuse-worker")
       OVERRIDE_VAR="LANGFUSE_IMAGE_TAG"
+      UPSTREAM_REPO="langfuse/langfuse"
       ;;
     caddy|ingress)
       TARGET_SERVICE="caddy"
       COMPOSE_TARGETS=("caddy")
       OVERRIDE_VAR=""
+      UPSTREAM_REPO=""
       ;;
     *)
       COMPOSE_TARGETS=("${TARGET_SERVICE}")
       OVERRIDE_VAR=""
+      UPSTREAM_REPO=""
       ;;
   esac
 
   if [ -n "${TARGET_VERSION}" ] && [ -z "${OVERRIDE_VAR}" ]; then
     log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse."
     exit 1
+  fi
+
+  # Auto-resolve latest upstream release tag if --version was omitted for a versioned upstream service
+  if [ -z "${TARGET_VERSION}" ] && [ "${RESET_VERSION}" = false ] && [ -n "${OVERRIDE_VAR}" ] && [ -n "${UPSTREAM_REPO}" ]; then
+    RESOLVED_VER="$(resolve_latest_github_release "${UPSTREAM_REPO}")"
+    if [ -n "${RESOLVED_VER}" ]; then
+      TARGET_VERSION="${RESOLVED_VER}"
+      log_info "Resolved latest upstream release for ${TARGET_SERVICE}: ${BOLD}${TARGET_VERSION}${NC}"
+    fi
   fi
 
   # Apply or reset version override in .env
@@ -715,6 +855,32 @@ if [ -n "${TARGET_SERVICE}" ]; then
     else
       log_info "Persisting ${OVERRIDE_VAR}=${TAG_VAL} in .env..."
       "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "${OVERRIDE_VAR}=${TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+else
+  # Full or containers-only update: resolve latest upstream tags for LiteLLM & Langfuse
+  LATEST_LITELLM="$(resolve_latest_github_release "berriai/litellm")"
+  if [ -n "${LATEST_LITELLM}" ]; then
+    LITELLM_TAG_VAL="${LATEST_LITELLM}"
+    [[ "${LITELLM_TAG_VAL}" =~ ^[0-9] ]] && LITELLM_TAG_VAL="v${LITELLM_TAG_VAL}"
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set LITELLM_IMAGE_TAG=${LITELLM_TAG_VAL} in .env"
+    elif [ "${LITELLM_IMAGE_TAG:-v1.105.0}" != "${LITELLM_TAG_VAL}" ]; then
+      log_info "Updating LITELLM_IMAGE_TAG=${LITELLM_TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "LITELLM_IMAGE_TAG=${LITELLM_TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+
+  LATEST_LANGFUSE="$(resolve_latest_github_release "langfuse/langfuse")"
+  if [ -n "${LATEST_LANGFUSE}" ]; then
+    LANGFUSE_TAG_VAL="${LATEST_LANGFUSE#v}"
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL} in .env"
+    elif [ "${LANGFUSE_IMAGE_TAG:-4.58.0}" != "${LANGFUSE_TAG_VAL}" ]; then
+      log_info "Updating LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL}"
       set -a; . "${REPO_ROOT}/.env"; set +a
     fi
   fi
@@ -774,6 +940,9 @@ else
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
     log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
     docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
+    if [ "${TARGET_SERVICE}" = "caddy" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
+      docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
+    fi
     if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
       "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
     fi
@@ -787,6 +956,7 @@ else
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
     fi
+    docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
   fi
   log_success "Containers recreated with latest images and parameters."
 fi

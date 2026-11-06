@@ -208,11 +208,16 @@ touch "${DATA_ROOT}/comms/maildir/.gitkeep" 2>/dev/null || true
 touch "${DATA_ROOT}/backups/.gitkeep" 2>/dev/null || true
 touch "${DATA_ROOT}/skills/.gitkeep" 2>/dev/null || true
 
+# Helper: returns 0 if directory contains at least one regular file other than .gitkeep
+has_non_gitkeep_files() {
+  [ -d "$1" ] && [ -n "$(find "$1" -type f ! -name '.gitkeep' -print -quit 2>/dev/null)" ]
+}
+
 # Check if data directory already has state from a previous install
 DATA_HAS_PREVIOUS_INSTALL=false
 if [ -d "${DATA_ROOT}" ]; then
   for chk in "agents" "settings" "control_plane" "comms"; do
-    if [ -d "${DATA_ROOT}/${chk}" ] && [ -n "$(ls -A "${DATA_ROOT}/${chk}" 2>/dev/null)" ]; then
+    if has_non_gitkeep_files "${DATA_ROOT}/${chk}"; then
       DATA_HAS_PREVIOUS_INSTALL=true
       break
     fi
@@ -225,23 +230,37 @@ fi
 
 # Seed default agents into agents if not already present
 if [ -d "${REPO_ROOT}/config/default_agents" ]; then
-  if [ ! -d "${DATA_ROOT}/agents" ] || [ -z "$(ls -A "${DATA_ROOT}/agents" 2>/dev/null)" ]; then
+  mkdir -p "${DATA_ROOT}/agents"
+  if ! has_non_gitkeep_files "${DATA_ROOT}/agents"; then
     log_info "Seeding default agent partitions into ${DATA_ROOT}/agents..."
-    mkdir -p "${DATA_ROOT}/agents"
     cp -R "${REPO_ROOT}/config/default_agents/"* "${DATA_ROOT}/agents/" 2>/dev/null || true
   else
-    log_info "Preserving existing agent partitions in ${DATA_ROOT}/agents."
+    log_info "Preserving existing agent partitions in ${DATA_ROOT}/agents (seeding any missing defaults)."
+    for agent_dir in "${REPO_ROOT}/config/default_agents/"*; do
+      [ -d "${agent_dir}" ] || continue
+      agent_name="$(basename "${agent_dir}")"
+      if [ ! -f "${DATA_ROOT}/agents/${agent_name}/SOUL.md" ]; then
+        mkdir -p "${DATA_ROOT}/agents/${agent_name}"
+        cp -n -R "${agent_dir}/"* "${DATA_ROOT}/agents/${agent_name}/" 2>/dev/null || true
+      fi
+    done
   fi
 fi
 
 # Seed default settings into settings if not already present
 if [ -d "${REPO_ROOT}/config/default_settings" ]; then
-  if [ ! -d "${DATA_ROOT}/settings" ] || [ -z "$(ls -A "${DATA_ROOT}/settings" 2>/dev/null)" ]; then
+  mkdir -p "${DATA_ROOT}/settings"
+  if ! has_non_gitkeep_files "${DATA_ROOT}/settings"; then
     log_info "Seeding default configuration manifests into ${DATA_ROOT}/settings..."
-    mkdir -p "${DATA_ROOT}/settings"
     cp -R "${REPO_ROOT}/config/default_settings/"* "${DATA_ROOT}/settings/" 2>/dev/null || true
   else
     log_info "Preserving existing fleet configurations in ${DATA_ROOT}/settings."
+    for cfg_file in agents.yaml runners.yaml README.md; do
+      if [ ! -f "${DATA_ROOT}/settings/${cfg_file}" ] && [ -f "${REPO_ROOT}/config/default_settings/${cfg_file}" ]; then
+        cp "${REPO_ROOT}/config/default_settings/${cfg_file}" "${DATA_ROOT}/settings/${cfg_file}"
+        log_info "Seeded missing ${DATA_ROOT}/settings/${cfg_file}"
+      fi
+    done
     # Ensure modular prompt hierarchies are seeded if not present
     if [ -d "${REPO_ROOT}/config/default_settings/prompts" ]; then
       mkdir -p "${DATA_ROOT}/settings/prompts"
@@ -257,10 +276,17 @@ fi
 
 # Seed default runner templates into runners if not already present
 if [ -d "${REPO_ROOT}/config/default_runners" ]; then
-  if [ ! -d "${DATA_ROOT}/runners" ] || [ -z "$(ls -A "${DATA_ROOT}/runners" 2>/dev/null)" ]; then
+  mkdir -p "${DATA_ROOT}/runners/hermes"
+  # Guard against Docker bind-mount creating directories when files were absent
+  for hfile in config.yaml config.json model_pool.json mcp.json; do
+    if [ -d "${DATA_ROOT}/runners/hermes/${hfile}" ]; then
+      rm -rf "${DATA_ROOT}/runners/hermes/${hfile}"
+    fi
+  done
+  if ! has_non_gitkeep_files "${DATA_ROOT}/runners" || [ ! -f "${DATA_ROOT}/runners/hermes/config.yaml" ]; then
     log_info "Seeding default runner templates into ${DATA_ROOT}/runners..."
-    mkdir -p "${DATA_ROOT}/runners"
-    cp -R "${REPO_ROOT}/config/default_runners/"* "${DATA_ROOT}/runners/" 2>/dev/null || true
+    cp -n -R "${REPO_ROOT}/config/default_runners/"* "${DATA_ROOT}/runners/" 2>/dev/null || \
+      cp -R "${REPO_ROOT}/config/default_runners/"* "${DATA_ROOT}/runners/" 2>/dev/null || true
   else
     log_info "Preserving existing runner templates in ${DATA_ROOT}/runners."
   fi
@@ -268,20 +294,21 @@ fi
 
 # Seed default agent skills into skills if not already present
 if [ -d "${REPO_ROOT}/config/default_skills" ]; then
-  if [ ! -d "${DATA_ROOT}/skills" ] || [ -z "$(ls -A "${DATA_ROOT}/skills" 2>/dev/null)" ]; then
+  mkdir -p "${DATA_ROOT}/skills"
+  if ! has_non_gitkeep_files "${DATA_ROOT}/skills"; then
     log_info "Seeding default agent skills into ${DATA_ROOT}/skills..."
-    mkdir -p "${DATA_ROOT}/skills"
     cp -R "${REPO_ROOT}/config/default_skills/"* "${DATA_ROOT}/skills/" 2>/dev/null || true
   else
     log_info "Preserving existing agent skills in ${DATA_ROOT}/skills."
+    cp -n -R "${REPO_ROOT}/config/default_skills/"* "${DATA_ROOT}/skills/" 2>/dev/null || true
   fi
 fi
 
 # Seed backup and restore harness into backups if not already present
 if [ -d "${REPO_ROOT}/config/templates/backups" ]; then
-  if [ ! -d "${DATA_ROOT}/backups" ] || [ -z "$(ls -A "${DATA_ROOT}/backups" 2>/dev/null)" ]; then
+  mkdir -p "${DATA_ROOT}/backups"
+  if ! has_non_gitkeep_files "${DATA_ROOT}/backups" || [ ! -f "${DATA_ROOT}/backups/backup.sh" ]; then
     log_info "Seeding standalone backup harness into ${DATA_ROOT}/backups..."
-    mkdir -p "${DATA_ROOT}/backups"
     cp -R "${REPO_ROOT}/config/templates/backups/"* "${DATA_ROOT}/backups/" 2>/dev/null || true
     chmod +x "${DATA_ROOT}/backups/"*.sh 2>/dev/null || true
   fi
@@ -300,6 +327,31 @@ mkdir -p "${DATA_ROOT}/.vscode"
 if [ ! -f "${DATA_ROOT}/.vscode/settings.json" ] && [ -f "${REPO_ROOT}/config/editor/settings.json" ]; then
   cp "${REPO_ROOT}/config/editor/settings.json" "${DATA_ROOT}/.vscode/settings.json"
   log_info "Seeded workspace settings into ${DATA_ROOT}/.vscode/settings.json"
+fi
+
+# When bootstrap-env.sh runs as root (e.g. brainsos-firstboot.service on EC2),
+# ensure non-database directories mounted by UID 1000 containers (code-server,
+# authentik-server, signal-cli, runner-hermes) are owned by PUID:PGID (1000:1000).
+if [ "$(id -u)" -eq 0 ]; then
+  TARGET_UID="${PUID:-1000}"
+  TARGET_GID="${PGID:-1000}"
+  chown "${TARGET_UID}:${TARGET_GID}" \
+    "${DATA_ROOT}" \
+    "${DATA_ROOT}/control_plane" \
+    "${DATA_ROOT}/comms" \
+    "${DATA_ROOT}/comms/sogo" \
+    "${REPO_ROOT}/packages/brainsOS-portal/dist" 2>/dev/null || true
+  for rel_dir in \
+    agents agent_memories agent_workspaces agent_apps souls \
+    comms/spool comms/maildir comms/sogo/spool comms/email comms/signal \
+    queue runners settings \
+    control_plane/authentik_media control_plane/vscode_config control_plane/vscode_data \
+    skills backups .vscode; do
+    if [ -e "${DATA_ROOT}/${rel_dir}" ]; then
+      chown -R "${TARGET_UID}:${TARGET_GID}" "${DATA_ROOT}/${rel_dir}" 2>/dev/null || true
+    fi
+  done
+  log_info "Synchronized non-DB data directory ownership to ${TARGET_UID}:${TARGET_GID}."
 fi
 
 # 2.5 Initialize Langfuse Distributed Observability Configuration

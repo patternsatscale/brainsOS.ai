@@ -27,6 +27,7 @@ import {
 interface GitStatus {
   is_git: boolean;
   branch: string;
+  available_branches?: string[];
   current_commit: string;
   remote_commit: string;
   commits_behind: number;
@@ -51,6 +52,8 @@ interface DiskStatus {
 
 interface SystemStatus {
   platform: string;
+  platform_name?: string;
+  platform_detail?: string;
   git: GitStatus;
   services: Record<string, ServiceStatus>;
   disk?: DiskStatus;
@@ -58,7 +61,9 @@ interface SystemStatus {
 }
 
 const DEFAULT_STATUS: SystemStatus = {
-  platform: "brainsOS Appliance (ARM64)",
+  platform: "brainsOS",
+  platform_name: "AWS EC2 Appliance (AMI)",
+  platform_detail: "AWS ARM64 Graviton • EC2",
   disk: {
     total_gb: 915.3,
     used_gb: 221.6,
@@ -69,6 +74,7 @@ const DEFAULT_STATUS: SystemStatus = {
   git: {
     is_git: true,
     branch: "main",
+    available_branches: ["main", "task/320-appliance-rehearsal"],
     current_commit: "8e2513c",
     remote_commit: "8e2513c",
     commits_behind: 0,
@@ -114,6 +120,7 @@ interface UpdateTarget {
   service?: string;
   containersOnly?: boolean;
   full?: boolean;
+  branch?: string;
 }
 
 interface LogEntry {
@@ -158,6 +165,7 @@ export const SystemManager: React.FC = () => {
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [lastChecked, setLastChecked] = useState<string>('Just now');
   const [confirmTarget, setConfirmTarget] = useState<UpdateTarget | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
 
   // Terminal & SSE Log Drawer State
   const [terminalOpen, setTerminalOpen] = useState<boolean>(false);
@@ -198,6 +206,9 @@ export const SystemManager: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
+        if (data?.git?.branch) {
+          setSelectedBranch((prev) => prev || data.git.branch);
+        }
         setStatusError(null);
       } else {
         if (!import.meta.env.DEV) {
@@ -264,8 +275,10 @@ export const SystemManager: React.FC = () => {
         headers,
         body: JSON.stringify({
           service: target.service,
+          version: target.targetVersion,
           containers_only: target.containersOnly,
-          full: target.full
+          full: target.full,
+          branch: target.branch
         })
       });
 
@@ -537,7 +550,8 @@ export const SystemManager: React.FC = () => {
             onClick={() => setConfirmTarget({
               id: 'full',
               name: 'brainsOS Platform (Full Stack & Containers)',
-              full: true
+              full: true,
+              branch: selectedBranch || status?.git?.branch || 'main'
             })}
             disabled={!status}
             className={`px-4 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-all flex items-center gap-2 ${
@@ -583,37 +597,70 @@ export const SystemManager: React.FC = () => {
         )}
 
         {/* 2. Update Available Alert Banner */}
-        {status?.overall_update_available && (
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Sparkles className="w-5 h-5" />
+        {status?.overall_update_available && (() => {
+          const pendingServices = Object.values(status.services || {}).filter((s) => s.update_available);
+          const pendingNames = pendingServices.map((s) =>
+            s.name.replace(' Control Plane Gateway', ' Gateway').replace(' Session Observability', ' Observability')
+          );
+          const gitPending = Boolean(status.git?.update_available);
+          let bannerDesc = '';
+          if (pendingServices.length > 0 && gitPending) {
+            bannerDesc = `${pendingNames.join(' and ')} (${pendingServices.map(s => `${s.current_version} → ${s.latest_version}`).join(', ')}) and ${status.git.commits_behind} Git commit(s) are ready to install.`;
+          } else if (pendingServices.length === 1) {
+            const svc = pendingServices[0];
+            bannerDesc = `${pendingNames[0]} has a newer upstream container release available (${svc.current_version} → ${svc.latest_version}).`;
+          } else if (pendingServices.length > 1) {
+            bannerDesc = `${pendingNames.join(' and ')} have newer upstream container releases available (${pendingServices.map(s => `${s.current_version} → ${s.latest_version}`).join(', ')}).`;
+          } else if (gitPending) {
+            bannerDesc = `brainsOS.ai Platform Core is ${status.git.commits_behind} commit(s) behind origin/${status.git.branch || 'main'}.`;
+          }
+          return (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-headline font-semibold text-sm text-amber-300">
+                    Upstream Software Updates Available
+                  </h3>
+                  <p className="font-mono text-xs text-slate-400 mt-0.5">
+                    {bannerDesc}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-headline font-semibold text-sm text-amber-300">
-                  Upstream Software Updates Available
-                </h3>
-                <p className="font-mono text-xs text-slate-400 mt-0.5">
-                  LiteLLM Gateway and Langfuse Observability have newer upstream container releases available.
-                </p>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setConfirmTarget({
-                  id: 'containers',
-                  name: 'All Upstream Containers (LiteLLM & Langfuse)',
-                  containersOnly: true
-                })}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
-              >
-                <ArrowUpCircle className="w-3.5 h-3.5" />
-                <span>Update Containers Only</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {pendingServices.length > 0 ? (
+                  <button
+                    onClick={() => setConfirmTarget({
+                      id: 'containers',
+                      name: `Upstream Containers (${pendingNames.join(' & ')})`,
+                      containersOnly: true
+                    })}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
+                  >
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    <span>Update Containers Only</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmTarget({
+                      id: 'git',
+                      name: 'brainsOS.ai Platform Core (Git Pull)',
+                      full: true,
+                      branch: selectedBranch || status.git.branch || 'main'
+                    })}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5"
+                  >
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    <span>Pull Latest Source</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 3. System Hardware & Telemetry Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -622,10 +669,12 @@ export const SystemManager: React.FC = () => {
               <span className="font-mono text-[10px] uppercase tracking-wider font-semibold">Appliance Platform</span>
               <Server className="w-4 h-4 text-[#00f2fe]" />
             </div>
-            <div className="font-headline font-bold text-base text-white">ASUS Ascent GX10</div>
+            <div className="font-headline font-bold text-base text-white">
+              {status?.platform_name || (status?.platform && status.platform !== 'brainsOS' ? status.platform : 'AWS EC2 Appliance (AMI)')}
+            </div>
             <div className="font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>NVIDIA GB10 ARM64 • 273 GB/s</span>
+              <span>{status?.platform_detail || 'AWS ARM64 Graviton • EC2'}</span>
             </div>
           </div>
 
@@ -881,9 +930,13 @@ export const SystemManager: React.FC = () => {
                       <GitBranch className="w-5 h-5" />
                     </div>
                 <div>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <h3 className="font-headline font-bold text-white text-base">brainsOS.ai Platform Core</h3>
-                    {status.git.commits_behind > 0 || status.git.update_available ? (
+                    {selectedBranch && selectedBranch !== (status.git.branch || 'main') ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 font-mono text-[10px] font-semibold">
+                        BRANCH SWITCH TARGET: {selectedBranch}
+                      </span>
+                    ) : status.git.commits_behind > 0 || status.git.update_available ? (
                       <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[10px] font-semibold animate-pulse">
                         SOURCE UPDATE AVAILABLE ({status.git.commits_behind || 1} COMMITS)
                       </span>
@@ -896,10 +949,25 @@ export const SystemManager: React.FC = () => {
                   <p className="font-mono text-xs text-slate-400 mt-0.5">
                     Git Source Code • Python Packages &amp; Topology Orchestration
                   </p>
-                  <div className="flex flex-wrap items-center gap-4 mt-2 font-mono text-xs text-slate-400">
-                    <div>
-                      <span className="text-slate-500">Branch: </span>
-                      <span className="text-white font-medium">{status.git.branch || 'main'}</span>
+                  <div className="flex flex-wrap items-center gap-4 mt-2.5 font-mono text-xs text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="branch-selector" className="text-slate-500">Branch:</label>
+                      <select
+                        id="branch-selector"
+                        value={selectedBranch || status.git.branch || 'main'}
+                        onChange={(e) => setSelectedBranch(e.target.value)}
+                        className="px-2.5 py-1 rounded-lg bg-[#0B0E14] border border-purple-500/40 hover:border-purple-400 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-xs transition-colors cursor-pointer"
+                        title="Select target remote branch to pull or switch to"
+                      >
+                        {(status.git.available_branches && status.git.available_branches.length > 0
+                          ? status.git.available_branches
+                          : [status.git.branch || 'main']
+                        ).map((br) => (
+                          <option key={br} value={br} className="bg-[#0B0E14] text-white">
+                            {br}{br === (status.git.branch || 'main') ? ' (active)' : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <span className="text-slate-500">Local Commit: </span>
@@ -908,8 +976,8 @@ export const SystemManager: React.FC = () => {
                     <div>
                       <span className="text-slate-500">Remote Tracking: </span>
                       <span className="text-purple-400 font-medium">
-                        origin/{status.git.branch || 'main'}
-                        {status.git.remote_commit && ` (${status.git.remote_commit.substring(0, 7)})`}
+                        origin/{selectedBranch || status.git.branch || 'main'}
+                        {(!selectedBranch || selectedBranch === status.git.branch) && status.git.remote_commit && ` (${status.git.remote_commit.substring(0, 7)})`}
                       </span>
                     </div>
                   </div>
@@ -918,7 +986,7 @@ export const SystemManager: React.FC = () => {
 
               <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 shrink-0">
                 <a
-                  href={`https://github.com/patternsatscale/brainsOS.ai/commits/${status.git.branch || 'main'}`}
+                  href={`https://github.com/patternsatscale/brainsOS.ai/commits/${selectedBranch || status.git.branch || 'main'}`}
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs font-mono text-slate-400 hover:text-purple-400 flex items-center gap-1 transition-colors"
@@ -928,15 +996,26 @@ export const SystemManager: React.FC = () => {
                 </a>
 
                 <button
-                  onClick={() => setConfirmTarget({
-                    id: 'git-source',
-                    name: 'brainsOS.ai Platform Source Code (git pull origin & rebuild)',
-                    full: true
-                  })}
+                  onClick={() => {
+                    const targetBranch = selectedBranch || status.git.branch || 'main';
+                    const isSwitch = targetBranch !== (status.git.branch || 'main');
+                    setConfirmTarget({
+                      id: 'git-source',
+                      name: isSwitch
+                        ? `Switch Branch & Sync Source -> ${targetBranch}`
+                        : `brainsOS.ai Platform Source Code (git pull origin/${targetBranch} & rebuild)`,
+                      full: true,
+                      branch: targetBranch
+                    });
+                  }}
                   className="px-3.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 hover:text-white text-xs font-mono font-medium transition-all flex items-center gap-1.5 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
                 >
                   <Play className="w-3 h-3 fill-current" />
-                  <span>Pull Latest Source</span>
+                  <span>
+                    {selectedBranch && selectedBranch !== (status.git.branch || 'main')
+                      ? `Switch & Sync (${selectedBranch})`
+                      : 'Pull Latest Source'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -1119,7 +1198,9 @@ export const SystemManager: React.FC = () => {
             )}
 
             {/* Card 4: Hermes Agent Runner */}
-            {status.services.hermes && (
+            {(status.services.hermes || status.services['runner-hermes']) && (() => {
+              const hermesSvc = status.services.hermes || status.services['runner-hermes'];
+              return (
               <div className="p-5 rounded-2xl bg-[#141a26]/80 border border-white/10 hover:border-purple-500/40 transition-all flex flex-col justify-between space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -1140,7 +1221,7 @@ export const SystemManager: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 py-2 border-y border-white/5 font-mono text-xs">
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">Current Version</span>
-                    <span className="text-white font-medium">{status.services.hermes.current_version}</span>
+                    <span className="text-white font-medium">{hermesSvc.current_version}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase">Release Line</span>
@@ -1150,7 +1231,7 @@ export const SystemManager: React.FC = () => {
 
                 <div className="flex items-center justify-between pt-1">
                   <a
-                    href={status.services.hermes.changelog_url}
+                    href={hermesSvc.changelog_url || 'https://github.com/patternsatscale/brainsOS.ai/releases'}
                     target="_blank"
                     rel="noreferrer"
                     className="text-xs font-mono text-slate-400 hover:text-purple-400 flex items-center gap-1 transition-colors"
@@ -1161,7 +1242,8 @@ export const SystemManager: React.FC = () => {
                   <span className="text-xs font-mono text-slate-500">Stateless Registry Active</span>
                 </div>
               </div>
-            )}
+              );
+            })()}
               </>
             )}
           </div>
@@ -1304,6 +1386,12 @@ export const SystemManager: React.FC = () => {
                 <div className="flex items-center justify-between pb-2 border-b border-white/5">
                   <span className="text-slate-400">Target Version:</span>
                   <span className="text-amber-400 font-semibold">{confirmTarget.targetVersion}</span>
+                </div>
+              )}
+              {confirmTarget.branch && (
+                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                  <span className="text-slate-400">Target Git Branch:</span>
+                  <span className="text-purple-400 font-semibold">origin/{confirmTarget.branch}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">

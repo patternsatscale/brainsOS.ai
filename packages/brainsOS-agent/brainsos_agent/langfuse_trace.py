@@ -63,9 +63,15 @@ def langfuse_settings() -> tuple[str, str, str] | None:
     secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
     if not public_key or not secret_key or os.getenv("BRAINSOS_MAIL_TRACE_ENABLED", "true").lower() == "false":
         return None
-    base_url = (
-        os.getenv("BRAINSOS_LANGFUSE_URL") or f"http://127.0.0.1:{os.getenv('LANGFUSE_PORT', '3001')}"
-    ).rstrip("/")
+    from brainsos_agent.adapters.hermes import resolve_runner_endpoint
+
+    base_url = resolve_runner_endpoint(
+        None,
+        "BRAINSOS_LANGFUSE_URL",
+        int(os.getenv("LANGFUSE_PORT", "3001")),
+        ("brainsos-telemetry-langfuse-web", "brainsos-langfuse-web"),
+        3000,
+    )
     return base_url, public_key, secret_key
 
 
