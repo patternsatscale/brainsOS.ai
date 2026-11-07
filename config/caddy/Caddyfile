@@ -20,6 +20,13 @@ import tls_policy.caddy
 		handle_response @outpost_warming {
 			error 503
 		}
+		@outpost_zero_host {
+			status 302
+			header Location *0.0.0.0*
+		}
+		handle_response @outpost_zero_host {
+			error 503
+		}
 	}
 }
 
@@ -28,19 +35,7 @@ import tls_policy.caddy
 }
 
 (firstboot_portal_auth_false) {
-	forward_auth authentik-server:9000 {
-		uri /outpost.goauthentik.io/auth/caddy
-		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
-		trusted_proxies private_ranges
-		@outpost_warming status 404 502 503 504
-		handle_response @outpost_warming {
-			error 503
-		}
-		@firstboot_prelogin status 302 401 403
-		handle_response @firstboot_prelogin {
-			request_header X-BrainsOS-Prelogin-Wizard "true"
-		}
-	}
+	request_header X-BrainsOS-Prelogin-Wizard "true"
 }
 
 (authentik_backend) {
@@ -166,7 +161,9 @@ import tls_policy.caddy
 
 	# A. Authentik SSO Endpoints & Outposts (Public & Internal Flow Routes)
 	handle /outpost.goauthentik.io/* {
-		reverse_proxy authentik-server:9000
+		reverse_proxy authentik-server:9000 {
+			header_down Location "^https?://0\.0\.0\.0(:[0-9]+)?(/.*)$" "https://{host}$2"
+		}
 	}
 	handle /auth/* {
 		uri strip_prefix /auth

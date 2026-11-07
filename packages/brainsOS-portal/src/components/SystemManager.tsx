@@ -199,7 +199,11 @@ const renderAnsiLine = (text: string) => {
   });
 };
 
-export const SystemManager: React.FC = () => {
+export interface SystemManagerProps {
+  standaloneWizard?: boolean;
+}
+
+export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard = false }) => {
   const [status, setStatus] = useState<SystemStatus | null>(import.meta.env.DEV ? DEFAULT_STATUS : null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
@@ -731,6 +735,10 @@ export const SystemManager: React.FC = () => {
       // Ignore dismiss error in preview
     }
     setWizardOpen(false);
+    if (standaloneWizard || status?.firstboot_wizard_completed === false) {
+      window.location.href = '/';
+      return;
+    }
     fetchStatus();
   };
 
@@ -915,6 +923,511 @@ export const SystemManager: React.FC = () => {
       addLog(`❌ Setup failed: ${errMsg}`, 'error');
     }
   };
+
+  const isStandaloneWizard = Boolean(standaloneWizard || status?.firstboot_wizard_completed === false);
+
+  const renderWizardCardContent = (standalone: boolean) => (
+    <div className="w-full max-w-2xl bg-[#0D111A] border border-white/15 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-5 animate-in zoom-in-95">
+      {/* Wizard Header */}
+      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500/20 to-[#00f2fe]/20 border border-purple-500/40 text-[#00f2fe]">
+            <Wand2 className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-headline font-bold text-lg text-white">
+                brainsOS Appliance Identity &amp; First-Boot Setup Wizard
+              </h3>
+              <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/40 font-mono text-[10px] text-purple-300 font-semibold">
+                STEP {wizardStep} OF 3
+              </span>
+            </div>
+            <p className="font-mono text-xs text-slate-400 mt-0.5">
+              Configure coherent unit hostname &amp; mail domain, administrator credentials, and HTTPS ingress
+            </p>
+          </div>
+        </div>
+        {!standalone && (
+          <button
+            onClick={() => setWizardOpen(false)}
+            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors shrink-0"
+            title="Close Wizard"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Step Progress Pills */}
+      <div className="grid grid-cols-3 gap-2 font-mono text-xs">
+        <button
+          type="button"
+          onClick={() => setWizardStep(1)}
+          className={`p-2.5 rounded-xl border text-left transition-all ${
+            wizardStep === 1
+              ? 'bg-purple-500/20 border-purple-400 text-white'
+              : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="text-[10px] text-purple-300 font-bold">1. ADMIN &amp; VERIFY</div>
+          <div className="truncate font-semibold mt-0.5">Instance ID &amp; Credentials</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setWizardStep(2)}
+          className={`p-2.5 rounded-xl border text-left transition-all ${
+            wizardStep === 2
+              ? 'bg-purple-500/20 border-purple-400 text-white'
+              : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="text-[10px] text-purple-300 font-bold">2. UNIT IDENTITY</div>
+          <div className="truncate font-semibold mt-0.5">Local Domain &amp; Hostname</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setWizardStep(3)}
+          className={`p-2.5 rounded-xl border text-left transition-all ${
+            wizardStep === 3
+              ? 'bg-purple-500/20 border-purple-400 text-white'
+              : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+          }`}
+        >
+          <div className="text-[10px] text-purple-300 font-bold">3. WEB ACCESS &amp; TLS</div>
+          <div className="truncate font-semibold mt-0.5">Browser URL &amp; Certificates</div>
+        </button>
+      </div>
+
+      {setupError && (
+        <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 font-mono text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+          <span>{setupError}</span>
+        </div>
+      )}
+
+      {/* STEP 1: Primary Administrator Account & Pre-Sign-In Instance ID Verification */}
+      {wizardStep === 1 && (
+        <div className="space-y-4 font-mono text-xs">
+          {(standalone || status?.firstboot_wizard_completed === false) && (
+            <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/40 space-y-2">
+              <label className="block text-purple-200 font-semibold flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#00f2fe]" />
+                <span>EC2 Instance ID Verification Key (Required for Pre-Sign-In Setup)</span>
+              </label>
+              <p className="text-[11px] text-slate-300 font-sans">
+                Because you are configuring this appliance before your first sign-in, enter the AWS EC2 Instance ID (<code className="font-mono text-[#00f2fe]">i-...</code>) from your AWS Console to verify ownership.
+              </p>
+              <input
+                type="password"
+                value={setupBootstrapToken}
+                onChange={(e) => setSetupBootstrapToken(e.target.value)}
+                placeholder="e.g. i-0123456789abcdef0"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-purple-500/40 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+              />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="block text-slate-200 font-semibold">
+              Primary Administrator Username (<code className="text-purple-300">BRAINSOS_ADMIN_USERNAME</code>)
+            </label>
+            <p className="text-[11px] text-slate-400 font-sans">
+              Creates or updates your primary Authentik superuser and provisions <code className="font-mono text-emerald-300">{setupAdminUsername.trim() || 'admin'}@{setupLocalDomain.trim() || 'local.brainsos.ai'}</code> with full Dovecot/SOGo shared oversight over all agent mailboxes.
+            </p>
+            <input
+              type="text"
+              value={setupAdminUsername}
+              onChange={(e) => setSetupAdminUsername(e.target.value)}
+              placeholder="admin (or e.g. jsm)"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-slate-200 font-semibold flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                <span>New Administrator Password</span>
+              </label>
+              <input
+                type="password"
+                value={setupAdminPassword}
+                onChange={(e) => setSetupAdminPassword(e.target.value)}
+                placeholder={status?.firstboot_wizard_completed && !standalone ? 'Leave blank to keep current password' : 'Enter new password (min 8 chars)'}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-slate-200 font-semibold">
+                Confirm Administrator Password
+              </label>
+              <input
+                type="password"
+                value={setupAdminPasswordConfirm}
+                onChange={(e) => setSetupAdminPasswordConfirm(e.target.value)}
+                placeholder="Re-enter password"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-slate-300 space-y-1">
+            <div className="text-amber-300 font-semibold">Unified Credential Rotation (Zero Data Loss)</div>
+            <p className="font-sans text-slate-400">
+              Setting a password here atomically rotates the initial EC2 <code className="font-mono text-slate-200">instance-id</code> bootstrap password across Authentik SSO (<code className="font-mono text-slate-200">{setupAdminUsername.trim() || 'admin'}</code> &amp; <code className="font-mono text-slate-200">admin</code>), SOGo Webmail, Dovecot IMAP/SMTP, Langfuse, and Operator IDE.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: Unit Identity & Local Domain */}
+      {wizardStep === 2 && (
+        <div className="space-y-4 font-mono text-xs">
+          <div className="space-y-1.5">
+            <label className="block text-slate-200 font-semibold">
+              Appliance Local Domain &amp; Unit FQDN (<code className="text-purple-300">BRAINSOS_LOCAL_DOMAIN</code>)
+            </label>
+            <p className="text-[11px] text-slate-400 font-sans">
+              Gives this brainsOS unit a coherent identity across OS hostname (<code className="font-mono">hostname -f</code>), Postfix/Dovecot/SOGo mailboxes, and Langfuse traces—even when accessed via a raw AWS EC2 URL.
+            </p>
+            <input
+              type="text"
+              value={setupLocalDomain}
+              onChange={(e) => setSetupLocalDomain(e.target.value)}
+              placeholder="e.g. jsm.cloud.aws.brainsos.ai or dgx.local.brainsos.ai"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+            />
+          </div>
+
+          {/* Live Identity Preview */}
+          {(() => {
+            const previewDom = (setupLocalDomain.trim() || 'local.brainsos.ai').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+            const shortHost = previewDom.split('.')[0] || 'brainsos';
+            const previewUser = setupAdminUsername.trim() || 'admin';
+            const mailboxes = [
+              `${previewUser}@${previewDom}`,
+              `terrastella@${previewDom}`,
+              `bawtford@${previewDom}`,
+              `marvin@${previewDom}`,
+              `ping@${previewDom}`,
+              `claude@${previewDom}`,
+              `gpt@${previewDom}`,
+            ];
+            return (
+              <div className="p-4 rounded-xl bg-[#07090E]/90 border border-white/10 space-y-3">
+                <div className="text-[11px] uppercase tracking-wider text-purple-300 font-semibold">
+                  Live Coherent Identity Preview
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span className="text-slate-500 block">OS Hostname (/etc/hosts &amp; cloud-init):</span>
+                    <span className="text-white font-semibold">{previewDom}</span>
+                    <span className="text-emerald-400 block text-[10px] mt-0.5">short: {shortHost} • preserve_hostname: true</span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+                    <span className="text-slate-500 block">Langfuse Trace Telemetry Tag:</span>
+                    <span className="text-[#00f2fe] font-semibold">local_domain = {previewDom}</span>
+                    <span className="text-slate-400 block text-[10px] mt-0.5">OTel resource host.name: {previewDom}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[11px] block mb-1.5">Provisioned Postfix / Dovecot / SOGo Mailboxes:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {mailboxes.map((mb, i) => (
+                      <span
+                        key={mb}
+                        className={`px-2 py-0.5 rounded-md text-[10px] border ${
+                          i === 0
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-semibold'
+                            : 'bg-white/5 border-white/10 text-slate-300'
+                        }`}
+                      >
+                        {mb}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* STEP 3: External Web Access & TLS Mode */}
+      {wizardStep === 3 && (
+        <div className="space-y-4 font-mono text-xs">
+          <div className="space-y-1.5">
+            <label className="block text-slate-200 font-semibold">
+              External Web Access URL / Hostname (<code className="text-[#00f2fe]">BRAINSOS_URL</code>)
+            </label>
+            <p className="text-[11px] text-slate-400 font-sans">
+              The browser-facing hostname or URL used to reach the Portal, Authentik SSO, LiteLLM, and Langfuse (for example, your AWS EC2 public DNS name or a custom domain).
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={setupUrl}
+                onChange={(e) => {
+                  setSetupUrl(e.target.value);
+                  setDnsCheckResult(null);
+                }}
+                placeholder="e.g. ec2-32-192-215-107.compute-1.amazonaws.com or portal.example.com"
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleVerifyDns}
+                disabled={dnsChecking || !setupUrl.trim()}
+                className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-mono text-[#00f2fe] transition-all shrink-0 disabled:opacity-50"
+              >
+                {dnsChecking ? 'Checking...' : 'Verify DNS'}
+              </button>
+            </div>
+          </div>
+
+          {dnsCheckResult && (
+            <div
+              className={`p-3 rounded-xl border text-[11px] ${
+                dnsCheckResult.matches_appliance
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+                  : 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+              }`}
+            >
+              <div>{dnsCheckResult.message}</div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="block text-slate-200 font-semibold">
+              TLS Certificate Mode
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSetupTlsMode('internal')}
+                className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
+                  setupTlsMode === 'internal'
+                    ? 'bg-[#00f2fe]/15 border-[#00f2fe] text-white'
+                    : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="font-bold text-xs flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-[#00f2fe]" />
+                  <span>Internal CA</span>
+                </div>
+                <p className="text-[10px] font-sans text-slate-400">
+                  Self-signed Caddy CA. Best for raw EC2 <code className="font-mono">.amazonaws.com</code> URLs, VPN, or LAN.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSetupTlsMode('acme')}
+                className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
+                  setupTlsMode === 'acme'
+                    ? 'bg-emerald-500/15 border-emerald-400 text-white'
+                    : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="font-bold text-xs flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Public ACME</span>
+                </div>
+                <p className="text-[10px] font-sans text-slate-400">
+                  Automatic Let&apos;s Encrypt / ZeroSSL HTTP-01 cert (requires DNS A record → {status?.public_ipv4 || 'appliance IP'}).
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSetupTlsMode('route53')}
+                className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
+                  setupTlsMode === 'route53'
+                    ? 'bg-purple-500/15 border-purple-400 text-white'
+                    : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                <div className="font-bold text-xs flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Route 53 DNS-01</span>
+                </div>
+                <p className="text-[10px] font-sans text-slate-400">
+                  Automatic Let&apos;s Encrypt DNS-01 cert via AWS Route 53 IAM role.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {(setupTlsMode === 'acme' || setupTlsMode === 'route53') && (
+            <div className="space-y-1.5">
+              <label className="block text-slate-200 font-semibold">
+                ACME Contact Email (<code className="text-emerald-300">ACME_EMAIL</code>)
+              </label>
+              <input
+                type="email"
+                value={setupAcmeEmail}
+                onChange={(e) => setSetupAcmeEmail(e.target.value)}
+                placeholder={`e.g. ${setupAdminUsername.trim() || 'admin'}@${setupLocalDomain.trim() || 'brainsos.ai'}`}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Wizard Footer Navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+        <div>
+          {(standalone || status?.firstboot_wizard_completed === false) && (
+            <button
+              type="button"
+              onClick={handleDismissWizard}
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[11px] font-mono text-slate-400 hover:text-white transition-colors"
+            >
+              Skip &amp; Keep Defaults
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          {wizardStep > 1 && (
+            <button
+              type="button"
+              onClick={() => setWizardStep((prev) => (prev === 3 ? 2 : 1))}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-mono text-slate-300 hover:text-white transition-colors"
+            >
+              ← Back
+            </button>
+          )}
+
+          {wizardStep < 3 ? (
+            <button
+              type="button"
+              onClick={() => setWizardStep((prev) => (prev === 1 ? 2 : 3))}
+              className="px-5 py-2 rounded-xl bg-purple-500/30 hover:bg-purple-500/40 border border-purple-400/50 text-white font-mono text-xs font-bold transition-all"
+            >
+              Next Step →
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleApplySetup}
+              className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-[#00f2fe] hover:opacity-95 text-slate-950 font-mono text-xs font-bold transition-all shadow-[0_0_18px_rgba(0,242,254,0.3)] flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>Apply Identity &amp; Complete Setup</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (isStandaloneWizard) {
+    return (
+      <div className="min-h-screen w-full bg-[#07090E] text-slate-200 flex flex-col items-center justify-center p-4 sm:p-8 font-sans antialiased selection:bg-[#00f2fe] selection:text-black">
+        {/* Standalone Top Bar */}
+        <div className="w-full max-w-2xl flex items-center justify-between mb-4 px-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#00f2fe] shadow-[0_0_10px_#00f2fe]" />
+            <span className="font-mono text-xs uppercase tracking-widest text-slate-300 font-bold">
+              brainsOS.ai • Appliance First-Boot Onboarding
+            </span>
+          </div>
+          <a
+            href="/system/ca.crt"
+            download="brainsos-caddy-root-ca.crt"
+            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-[11px] font-mono transition-all flex items-center gap-1.5"
+            title="Download Caddy Root CA certificate to trust self-signed HTTPS in your browser/OS"
+          >
+            <Download className="w-3.5 h-3.5 text-[#00f2fe]" />
+            <span>Download Root CA</span>
+          </a>
+        </div>
+
+        {executionStatus === 'idle' ? (
+          renderWizardCardContent(true)
+        ) : (
+          <div className="w-full max-w-2xl bg-[#0D111A] border border-white/15 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-5 animate-in fade-in">
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe]">
+                  {executionStatus === 'running' ? (
+                    <RefreshCw className="w-6 h-6 animate-spin" />
+                  ) : executionStatus === 'success' ? (
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  ) : (
+                    <AlertTriangle className="w-6 h-6 text-red-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-headline font-bold text-lg text-white">
+                    {executionStatus === 'running'
+                      ? 'Applying Appliance Identity & Provisioning Subsystems...'
+                      : executionStatus === 'success'
+                      ? 'Appliance Setup Complete — Ready for Sign-In'
+                      : 'Appliance Setup Encountered an Error'}
+                  </h3>
+                  <p className="font-mono text-xs text-slate-400 mt-0.5">
+                    {executionStatus === 'running'
+                      ? 'Configuring OS hostname, Postfix/Dovecot/SOGo mailboxes, Authentik SSO, Langfuse, and Caddy TLS'
+                      : executionStatus === 'success'
+                      ? 'All identity, mail, observability, and ingress planes are synchronized.'
+                      : 'Review the execution log below and return to the wizard to adjust settings.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-[#05070B] border border-white/10 font-mono text-[11.5px] leading-5 text-slate-300 max-h-80 min-h-48 overflow-y-auto space-y-1">
+              {logs.map((log) => (
+                <div key={log.id} className="flex items-start gap-2.5">
+                  <span className="text-slate-600 select-none text-[10px] shrink-0 font-mono">
+                    [{log.timestamp}]
+                  </span>
+                  <div className="break-all font-mono">
+                    {renderAnsiLine(log.text)}
+                  </div>
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+
+            {executionStatus === 'success' && (
+              <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="text-xs font-mono text-emerald-200">
+                  Sign in with <strong className="text-white">{setupAdminUsername.trim() || 'admin'}</strong> and your configured password.
+                </div>
+                <a
+                  href={newConfiguredUrl || '/'}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#00f2fe] text-slate-950 font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 shadow-[0_0_18px_rgba(16,185,129,0.35)]"
+                >
+                  <span>Proceed to Sign In</span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            )}
+
+            {executionStatus === 'failed' && (
+              <div className="flex items-center justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExecutionStatus('idle');
+                    setWizardOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-mono text-white transition-colors"
+                >
+                  ← Return to Setup Wizard
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-[#07090E] text-slate-200 overflow-y-auto font-sans antialiased selection:bg-[#00f2fe] selection:text-black">
@@ -2037,400 +2550,8 @@ export const SystemManager: React.FC = () => {
 
       {/* 7. 3-Step Guided First-Boot Setup & Appliance Identity Wizard Modal (#332 / #333) */}
       {wizardOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="w-full max-w-2xl bg-[#0D111A] border border-white/15 rounded-2xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500/20 to-[#00f2fe]/20 border border-purple-500/40 text-[#00f2fe]">
-                  <Wand2 className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-headline font-bold text-lg text-white">
-                      brainsOS Appliance Identity &amp; First-Boot Setup Wizard
-                    </h3>
-                    <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/40 font-mono text-[10px] text-purple-300 font-semibold">
-                      STEP {wizardStep} OF 3
-                    </span>
-                  </div>
-                  <p className="font-mono text-xs text-slate-400 mt-0.5">
-                    Configure coherent unit hostname &amp; mail domain, administrator credentials, and HTTPS ingress
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setWizardOpen(false)}
-                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors shrink-0"
-                title="Close Wizard"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Step Progress Pills */}
-            <div className="grid grid-cols-3 gap-2 font-mono text-xs">
-              <button
-                type="button"
-                onClick={() => setWizardStep(1)}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
-                  wizardStep === 1
-                    ? 'bg-purple-500/20 border-purple-400 text-white'
-                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-[10px] text-purple-300 font-bold">1. ADMIN &amp; VERIFY</div>
-                <div className="truncate font-semibold mt-0.5">Instance ID &amp; Credentials</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setWizardStep(2)}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
-                  wizardStep === 2
-                    ? 'bg-purple-500/20 border-purple-400 text-white'
-                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-[10px] text-purple-300 font-bold">2. UNIT IDENTITY</div>
-                <div className="truncate font-semibold mt-0.5">Local Domain &amp; Hostname</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setWizardStep(3)}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
-                  wizardStep === 3
-                    ? 'bg-purple-500/20 border-purple-400 text-white'
-                    : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-[10px] text-purple-300 font-bold">3. WEB ACCESS &amp; TLS</div>
-                <div className="truncate font-semibold mt-0.5">Browser URL &amp; Certificates</div>
-              </button>
-            </div>
-
-            {setupError && (
-              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 font-mono text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{setupError}</span>
-              </div>
-            )}
-
-            {/* STEP 1: Primary Administrator Account & Pre-Sign-In Instance ID Verification */}
-            {wizardStep === 1 && (
-              <div className="space-y-4 font-mono text-xs">
-                {status?.firstboot_wizard_completed === false && (
-                  <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/40 space-y-2">
-                    <label className="block text-purple-200 font-semibold flex items-center gap-1.5">
-                      <Shield className="w-3.5 h-3.5 text-[#00f2fe]" />
-                      <span>EC2 Instance ID Verification Key (Required for Pre-Sign-In Setup)</span>
-                    </label>
-                    <p className="text-[11px] text-slate-300 font-sans">
-                      Because you are configuring this appliance before your first sign-in, enter the AWS EC2 Instance ID (<code className="font-mono text-[#00f2fe]">i-...</code>) from your AWS Console to verify ownership.
-                    </p>
-                    <input
-                      type="password"
-                      value={setupBootstrapToken}
-                      onChange={(e) => setSetupBootstrapToken(e.target.value)}
-                      placeholder="e.g. i-0123456789abcdef0"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-purple-500/40 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="block text-slate-200 font-semibold">
-                    Primary Administrator Username (<code className="text-purple-300">BRAINSOS_ADMIN_USERNAME</code>)
-                  </label>
-                  <p className="text-[11px] text-slate-400 font-sans">
-                    Creates or updates your primary Authentik superuser and provisions <code className="font-mono text-emerald-300">{setupAdminUsername.trim() || 'admin'}@{setupLocalDomain.trim() || 'local.brainsos.ai'}</code> with full Dovecot/SOGo shared oversight over all agent mailboxes.
-                  </p>
-                  <input
-                    type="text"
-                    value={setupAdminUsername}
-                    onChange={(e) => setSetupAdminUsername(e.target.value)}
-                    placeholder="admin (or e.g. jsm)"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-slate-200 font-semibold flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                      <span>New Administrator Password</span>
-                    </label>
-                    <input
-                      type="password"
-                      value={setupAdminPassword}
-                      onChange={(e) => setSetupAdminPassword(e.target.value)}
-                      placeholder={status?.firstboot_wizard_completed ? 'Leave blank to keep current password' : 'Enter new password (min 8 chars)'}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-slate-200 font-semibold">
-                      Confirm Administrator Password
-                    </label>
-                    <input
-                      type="password"
-                      value={setupAdminPasswordConfirm}
-                      onChange={(e) => setSetupAdminPasswordConfirm(e.target.value)}
-                      placeholder="Re-enter password"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-slate-300 space-y-1">
-                  <div className="text-amber-300 font-semibold">Unified Credential Rotation (Zero Data Loss)</div>
-                  <p className="font-sans text-slate-400">
-                    Setting a password here atomically rotates the initial EC2 <code className="font-mono text-slate-200">instance-id</code> bootstrap password across Authentik SSO (<code className="font-mono text-slate-200">{setupAdminUsername.trim() || 'admin'}</code> &amp; <code className="font-mono text-slate-200">admin</code>), SOGo Webmail, Dovecot IMAP/SMTP, Langfuse, and Operator IDE.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 2: Unit Identity & Local Domain */}
-            {wizardStep === 2 && (
-              <div className="space-y-4 font-mono text-xs">
-                <div className="space-y-1.5">
-                  <label className="block text-slate-200 font-semibold">
-                    Appliance Local Domain &amp; Unit FQDN (<code className="text-purple-300">BRAINSOS_LOCAL_DOMAIN</code>)
-                  </label>
-                  <p className="text-[11px] text-slate-400 font-sans">
-                    Gives this brainsOS unit a coherent identity across OS hostname (<code className="font-mono">hostname -f</code>), Postfix/Dovecot/SOGo mailboxes, and Langfuse traces—even when accessed via a raw AWS EC2 URL.
-                  </p>
-                  <input
-                    type="text"
-                    value={setupLocalDomain}
-                    onChange={(e) => setSetupLocalDomain(e.target.value)}
-                    placeholder="e.g. jsm.cloud.aws.brainsos.ai or dgx.local.brainsos.ai"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                  />
-                </div>
-
-                {/* Live Identity Preview */}
-                {(() => {
-                  const previewDom = (setupLocalDomain.trim() || 'local.brainsos.ai').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
-                  const shortHost = previewDom.split('.')[0] || 'brainsos';
-                  const previewUser = setupAdminUsername.trim() || 'admin';
-                  const mailboxes = [
-                    `${previewUser}@${previewDom}`,
-                    `terrastella@${previewDom}`,
-                    `bawtford@${previewDom}`,
-                    `marvin@${previewDom}`,
-                    `ping@${previewDom}`,
-                    `claude@${previewDom}`,
-                    `gpt@${previewDom}`,
-                  ];
-                  return (
-                    <div className="p-4 rounded-xl bg-[#07090E]/90 border border-white/10 space-y-3">
-                      <div className="text-[11px] uppercase tracking-wider text-purple-300 font-semibold">
-                        Live Coherent Identity Preview
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                        <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
-                          <span className="text-slate-500 block">OS Hostname (/etc/hosts &amp; cloud-init):</span>
-                          <span className="text-white font-semibold">{previewDom}</span>
-                          <span className="text-emerald-400 block text-[10px] mt-0.5">short: {shortHost} • preserve_hostname: true</span>
-                        </div>
-                        <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
-                          <span className="text-slate-500 block">Langfuse Trace Telemetry Tag:</span>
-                          <span className="text-[#00f2fe] font-semibold">local_domain = {previewDom}</span>
-                          <span className="text-slate-400 block text-[10px] mt-0.5">OTel resource host.name: {previewDom}</span>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 text-[11px] block mb-1.5">Provisioned Postfix / Dovecot / SOGo Mailboxes:</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {mailboxes.map((mb, i) => (
-                            <span
-                              key={mb}
-                              className={`px-2 py-0.5 rounded-md text-[10px] border ${
-                                i === 0
-                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-semibold'
-                                  : 'bg-white/5 border-white/10 text-slate-300'
-                              }`}
-                            >
-                              {mb}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* STEP 3: External Web Access & TLS Mode */}
-            {wizardStep === 3 && (
-              <div className="space-y-4 font-mono text-xs">
-                <div className="space-y-1.5">
-                  <label className="block text-slate-200 font-semibold">
-                    External Web Access URL / Hostname (<code className="text-[#00f2fe]">BRAINSOS_URL</code>)
-                  </label>
-                  <p className="text-[11px] text-slate-400 font-sans">
-                    The browser-facing hostname or URL used to reach the Portal, Authentik SSO, LiteLLM, and Langfuse (for example, your AWS EC2 public DNS name or a custom domain).
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={setupUrl}
-                      onChange={(e) => {
-                        setSetupUrl(e.target.value);
-                        setDnsCheckResult(null);
-                      }}
-                      placeholder="e.g. ec2-32-192-215-107.compute-1.amazonaws.com or portal.example.com"
-                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleVerifyDns}
-                      disabled={dnsChecking || !setupUrl.trim()}
-                      className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-mono text-[#00f2fe] transition-all shrink-0 disabled:opacity-50"
-                    >
-                      {dnsChecking ? 'Checking...' : 'Verify DNS'}
-                    </button>
-                  </div>
-                </div>
-
-                {dnsCheckResult && (
-                  <div
-                    className={`p-3 rounded-xl border text-[11px] ${
-                      dnsCheckResult.matches_appliance
-                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
-                        : 'bg-amber-500/15 border-amber-500/40 text-amber-200'
-                    }`}
-                  >
-                    <div>{dnsCheckResult.message}</div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <label className="block text-slate-200 font-semibold">
-                    TLS Certificate Mode
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setSetupTlsMode('internal')}
-                      className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
-                        setupTlsMode === 'internal'
-                          ? 'bg-[#00f2fe]/15 border-[#00f2fe] text-white'
-                          : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <div className="font-bold text-xs flex items-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5 text-[#00f2fe]" />
-                        <span>Internal CA</span>
-                      </div>
-                      <p className="text-[10px] font-sans text-slate-400">
-                        Self-signed Caddy CA. Best for raw EC2 <code className="font-mono">.amazonaws.com</code> URLs, VPN, or LAN.
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSetupTlsMode('acme')}
-                      className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
-                        setupTlsMode === 'acme'
-                          ? 'bg-emerald-500/15 border-emerald-400 text-white'
-                          : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <div className="font-bold text-xs flex items-center gap-1.5">
-                        <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Public ACME</span>
-                      </div>
-                      <p className="text-[10px] font-sans text-slate-400">
-                        Automatic Let&apos;s Encrypt / ZeroSSL HTTP-01 cert (requires DNS A record → {status?.public_ipv4 || 'appliance IP'}).
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSetupTlsMode('route53')}
-                      className={`p-3 rounded-xl border text-left transition-all space-y-1 ${
-                        setupTlsMode === 'route53'
-                          ? 'bg-purple-500/15 border-purple-400 text-white'
-                          : 'bg-[#07090E] border-white/10 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <div className="font-bold text-xs flex items-center gap-1.5">
-                        <Globe className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Route 53 DNS-01</span>
-                      </div>
-                      <p className="text-[10px] font-sans text-slate-400">
-                        Automatic Let&apos;s Encrypt DNS-01 cert via AWS Route 53 IAM role.
-                      </p>
-                    </button>
-                  </div>
-                </div>
-
-                {(setupTlsMode === 'acme' || setupTlsMode === 'route53') && (
-                  <div className="space-y-1.5">
-                    <label className="block text-slate-200 font-semibold">
-                      ACME Contact Email (<code className="text-emerald-300">ACME_EMAIL</code>)
-                    </label>
-                    <input
-                      type="email"
-                      value={setupAcmeEmail}
-                      onChange={(e) => setSetupAcmeEmail(e.target.value)}
-                      placeholder={`e.g. ${setupAdminUsername.trim() || 'admin'}@${setupLocalDomain.trim() || 'brainsos.ai'}`}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Wizard Footer Navigation */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
-              <div>
-                {status?.firstboot_wizard_completed === false && (
-                  <button
-                    type="button"
-                    onClick={handleDismissWizard}
-                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[11px] font-mono text-slate-400 hover:text-white transition-colors"
-                  >
-                    Skip &amp; Keep Defaults
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                {wizardStep > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep((prev) => (prev === 3 ? 2 : 1))}
-                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-mono text-slate-300 hover:text-white transition-colors"
-                  >
-                    ← Back
-                  </button>
-                )}
-
-                {wizardStep < 3 ? (
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep((prev) => (prev === 1 ? 2 : 3))}
-                    className="px-5 py-2 rounded-xl bg-purple-500/30 hover:bg-purple-500/40 border border-purple-400/50 text-white font-mono text-xs font-bold transition-all"
-                  >
-                    Next Step →
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleApplySetup}
-                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-[#00f2fe] hover:opacity-95 text-slate-950 font-mono text-xs font-bold transition-all shadow-[0_0_18px_rgba(0,242,254,0.3)] flex items-center gap-1.5"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Apply Identity &amp; Complete Setup</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in overflow-y-auto">
+          {renderWizardCardContent(false)}
         </div>
       )}
     </div>

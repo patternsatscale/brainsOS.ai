@@ -448,9 +448,20 @@ fi
 # Synchronize Authentik Identity & Master Credentials
 AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
+  RAW_URL="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"
+  EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   log_info "Waiting for Authentik blueprint & Embedded Outpost readiness..."
   for i in $(seq 1 60); do
-    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "from authentik.outposts.models import Outpost; import sys; sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)" >/dev/null 2>&1; then
+    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
+from authentik.outposts.models import Outpost
+import sys
+for o in Outpost.objects.all():
+    if o._config.get('authentik_host') != 'https://${EFFECTIVE_DOMAIN}':
+        o._config['authentik_host'] = 'https://${EFFECTIVE_DOMAIN}'
+        o._config['authentik_host_browser'] = 'https://${EFFECTIVE_DOMAIN}'
+        o.save()
+sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
+" >/dev/null 2>&1; then
       break
     fi
     # On a fresh database, default blueprints (flows/certs) may still be applying when

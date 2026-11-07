@@ -968,6 +968,13 @@ def create_system_api_app():
                 env_file = os.path.join(repo_root, ".env")
                 if os.path.isfile(env_upsert) and os.path.isfile(env_file):
                     subprocess.run([env_upsert, "--file", env_file, "BRAINSOS_WIZARD_COMPLETED=true"], check=False, timeout=5)
+                if os.environ.get("BRAINSOS_STAGE") != "test":
+                    subprocess.Popen(
+                        ["docker", "compose", "up", "-d", "caddy"],
+                        cwd=repo_root,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed writing wizard completion flag: {e}")
             return JSONResponse(content={"status": "dismissed", "firstboot_wizard_completed": True})

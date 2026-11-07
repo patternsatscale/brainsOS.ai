@@ -301,6 +301,8 @@ services:
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
       AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN-local.brainsos.ai}
+      AUTHENTIK_HOST: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
+      AUTHENTIK_HOST_BROWSER: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
       BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
       AUTH_LITELLM_CLIENT_SECRET: ${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
       AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
@@ -348,6 +350,8 @@ services:
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
       AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN-local.brainsos.ai}
+      AUTHENTIK_HOST: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
+      AUTHENTIK_HOST_BROWSER: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
       BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
       AUTH_LITELLM_CLIENT_SECRET: ${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
       AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}

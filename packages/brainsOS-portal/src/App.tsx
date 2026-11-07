@@ -3,9 +3,10 @@ import { ThinSpine } from './components/ThinSpine';
 import { SubsystemsDrawer } from './components/SubsystemsDrawer';
 import { ViewportFrame } from './components/ViewportFrame';
 import { UserProfileModal } from './components/UserProfileModal';
+import { SystemManager } from './components/SystemManager';
 import { SUBSYSTEMS } from './data/subsystems';
 import { useHotkeys } from './hooks/useHotkeys';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, RefreshCw } from 'lucide-react';
 import { AuthenticatedUser, DEFAULT_USER } from './types/user';
 
 const getInitialKey = (): string => {
@@ -36,6 +37,9 @@ export function App() {
   // Mock mode is only active when explicitly requested via ?mock=true
   const isMockMode = typeof window !== 'undefined' && window.location.search.includes('mock=true');
   const isLiveHost = !isMockMode;
+  const [wizardGate, setWizardGate] = useState<'checking' | 'required' | 'completed'>(
+    isMockMode || import.meta.env.DEV ? 'completed' : 'checking'
+  );
 
   // Enforce obsidian dark theme across appliance and same-origin frames
   useEffect(() => {
@@ -47,8 +51,49 @@ export function App() {
     } catch {}
   }, []);
 
-  // Fetch real authenticated user identity from Authentik API immediately on load
+  // Gate the entire Portal on First-Boot Setup Wizard completion (#333)
   useEffect(() => {
+    if (isMockMode) {
+      setWizardGate('completed');
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+
+    const checkWizardState = async () => {
+      while (!cancelled && attempts < 15) {
+        attempts += 1;
+        try {
+          const res = await fetch('/api/v1/system/status', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            if (cancelled) return;
+            if (data && data.firstboot_wizard_completed === false) {
+              setWizardGate('required');
+            } else {
+              setWizardGate('completed');
+            }
+            return;
+          }
+        } catch {
+          // System API may still be warming up on first boot
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      if (!cancelled) {
+        setWizardGate('completed');
+      }
+    };
+
+    checkWizardState();
+    return () => {
+      cancelled = true;
+    };
+  }, [isMockMode]);
+
+  // Fetch real authenticated user identity from Authentik API once wizard is completed
+  useEffect(() => {
+    if (wizardGate !== 'completed') return;
     fetch('/api/v3/core/users/me/', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -73,17 +118,7 @@ export function App() {
       .catch(() => {
         // Fallback gracefully on local preview or connection error
       });
-
-    // Automatically route to System Manager if First-Boot Setup Wizard has not been completed (#333)
-    fetch('/api/v1/system/status', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && data.firstboot_wizard_completed === false) {
-          setActiveKey('system');
-        }
-      })
-      .catch(() => {});
-  }, []);
+  }, [wizardGate]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -155,6 +190,25 @@ export function App() {
   });
 
   const activeSubsystem = SUBSYSTEMS[activeKey] || SUBSYSTEMS.console;
+
+  if (wizardGate === 'checking') {
+    return (
+      <div className="w-screen h-screen flex flex-col items-center justify-center bg-[#07090E] text-slate-200 font-mono select-none">
+        <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-[#0D111A] border border-white/10 shadow-2xl">
+          <RefreshCw className="w-4 h-4 text-[#00f2fe] animate-spin" />
+          <span className="text-xs text-slate-300">Connecting to brainsOS Appliance...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (wizardGate === 'required') {
+    return (
+      <div className="w-screen h-screen bg-[#07090E] overflow-y-auto antialiased selection:bg-[#00f2fe] selection:text-black">
+        <SystemManager standaloneWizard={true} />
+      </div>
+    );
+  }
 
   return (
     <div className="w-screen h-screen flex relative antialiased selection:bg-[#00f2fe] selection:text-black overflow-hidden bg-[#07090E]">
