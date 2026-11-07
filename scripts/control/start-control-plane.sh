@@ -483,25 +483,24 @@ start_services() {
       local litellm_url
       litellm_url="$(get_litellm_url)"
 
-      local key_check
-      key_check=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X GET "${litellm_url}/key/info?key=${key}" \
-        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
+      local key_info
+      key_info=$(curl -s -X GET "${litellm_url}/key/info?key=${key}" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "")
 
-      if [ "${key_check}" = "200" ]; then
+      if echo "${key_info}" | grep -q "\"key_alias\"[[:space:]]*:[[:space:]]*\"${alias}\""; then
         log_info "LiteLLM virtual key '${alias}' is already active and verified."
         return 0
       fi
 
-      # If an older key exists under this alias (or legacy brainsos-operator), delete it first to satisfy unique key alias constraint
+      # If an older key exists under this alias (or legacy brainsos-operator / */editor/), delete it first to satisfy unique key alias constraint
       local del_aliases="[\"${alias}\"]"
-      if [[ "${alias}" == *"/editor/"* ]]; then
-        del_aliases="[\"${alias}\", \"brainsos-operator\"]"
+      if [ "${alias}" = "brainsOs.console" ] || [[ "${alias}" == *"/editor/"* ]]; then
+        del_aliases="[\"${alias}\", \"brainsos-operator\", \"${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/\", \"local.brainsos.ai/editor/\"]"
       fi
       curl -s -o /dev/null -X POST "${litellm_url}/key/delete" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
         -H "Content-Type: application/json" \
-        -d "{\"key_aliases\": ${del_aliases}}" || true
+        -d "{\"keys\": [\"${key}\"], \"key_aliases\": ${del_aliases}}" || true
 
       log_info "Registering LiteLLM virtual key '${alias}' in database..."
       local payload
@@ -523,7 +522,7 @@ start_services() {
       fi
     }
 
-    OPERATOR_KEY_ALIAS="${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/"
+    OPERATOR_KEY_ALIAS="brainsOs.console"
     provision_vkey "${OPERATOR_LITELLM_KEY}" "${OPERATOR_KEY_ALIAS}" 100.0
     provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella"
     provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin"

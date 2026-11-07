@@ -119,12 +119,103 @@ fi
 done
 
 # Scaffold mailbox folders for all accounts
-for user in admin operator terrastella bawtford marvin ping claude gpt; do
+MAIL_USERS=(admin operator terrastella bawtford marvin ping claude gpt)
+if [[ -n "${ADMIN_USER}" && "${ADMIN_USER}" != "admin" ]]; then
+    MAIL_USERS+=("${ADMIN_USER}")
+fi
+for user in "${MAIL_USERS[@]}"; do
     mkdir -p "$VMAIL_DIR/$user/Maildir/new" \
              "$VMAIL_DIR/$user/Maildir/cur" \
              "$VMAIL_DIR/$user/Maildir/tmp"
 done
 touch "$VMAIL_DIR/shared-mailboxes.db"
+
+# Seed / update Welcome Email in administrator mailbox(es) with active local domain
+PRIMARY_MAIL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}}"
+WELCOME_DATE="$(date -R 2>/dev/null || echo "Fri, 06 Nov 2026 12:00:00 +0000")"
+ADMIN_TARGETS=("admin")
+if [[ -n "${ADMIN_USER}" && "${ADMIN_USER}" != "admin" ]]; then
+    ADMIN_TARGETS+=("${ADMIN_USER}")
+fi
+
+for target_box in "${ADMIN_TARGETS[@]}"; do
+    EXISTING_CUR="$(find "$VMAIL_DIR/$target_box/Maildir/cur" -maxdepth 1 -name "1730937600.M000001P1.brainsos*" 2>/dev/null | head -n 1 || true)"
+    if [[ -n "${EXISTING_CUR}" ]]; then
+        WELCOME_PATH="${EXISTING_CUR}"
+        rm -f "$VMAIL_DIR/$target_box/Maildir/new/1730937600.M000001P1.brainsos"* 2>/dev/null || true
+    else
+        WELCOME_PATH="$VMAIL_DIR/$target_box/Maildir/new/1730937600.M000001P1.brainsos"
+    fi
+    cat <<EOF > "${WELCOME_PATH}"
+From: "brainsOS Appliance" <ping@${PRIMARY_MAIL_DOMAIN}>
+To: "${ADMIN_USER}" <${ADMIN_USER}@${PRIMARY_MAIL_DOMAIN}>
+Subject: Welcome to brainsOS — Your Autonomous Agent Fleet Directory
+Date: ${WELCOME_DATE}
+Message-ID: <welcome-fleet-directory@${PRIMARY_MAIL_DOMAIN}>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #e2e8f0; background-color: #0b0f19; padding: 24px; line-height: 1.6;">
+  <div style="max-width: 680px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 28px;">
+    <h2 style="margin-top: 0; color: #38bdf8;">Welcome to brainsOS (${PRIMARY_MAIL_DOMAIN})</h2>
+    <p>Hello <strong>${ADMIN_USER}</strong>,</p>
+    <p>
+      Your sovereign <strong>brainsOS</strong> appliance is online and your internal Postfix, Dovecot, and SOGo communications plane is active for <code>@${PRIMARY_MAIL_DOMAIN}</code>.
+    </p>
+    <p>
+      You can collaborate with your autonomous agents directly via email. Simply click <strong>New Message</strong>, type an agent's name in the <code>To</code> field (auto-completed from the <strong>brainsOS Directory</strong> address book), and send your task or question:
+    </p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+      <thead>
+        <tr style="border-bottom: 1px solid #374151; text-align: left; color: #94a3b8;">
+          <th style="padding: 10px 8px;">Agent</th>
+          <th style="padding: 10px 8px;">Email Address</th>
+          <th style="padding: 10px 8px;">Role &amp; Capabilities</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Ping</td>
+          <td style="padding: 10px 8px;"><a href="mailto:ping@${PRIMARY_MAIL_DOMAIN}" style="color: #38bdf8;">ping@${PRIMARY_MAIL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #cbd5e1;">Instant diagnostic echo &amp; end-to-end mail/queue latency probe.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Cindy Bawtford</td>
+          <td style="padding: 10px 8px;"><a href="mailto:bawtford@${PRIMARY_MAIL_DOMAIN}" style="color: #38bdf8;">bawtford@${PRIMARY_MAIL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #cbd5e1;">Creative Director &amp; full-stack web application orchestrator.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Terrastella</td>
+          <td style="padding: 10px 8px;"><a href="mailto:terrastella@${PRIMARY_MAIL_DOMAIN}" style="color: #38bdf8;">terrastella@${PRIMARY_MAIL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #cbd5e1;">Executive strategy, research synthesis &amp; operations coordinator.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Marvin</td>
+          <td style="padding: 10px 8px;"><a href="mailto:marvin@${PRIMARY_MAIL_DOMAIN}" style="color: #38bdf8;">marvin@${PRIMARY_MAIL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #cbd5e1;">Systems architecture, diagnostics &amp; security boundary auditor.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Claude Demo</td>
+          <td style="padding: 10px 8px;"><a href="mailto:claude@${PRIMARY_MAIL_DOMAIN}" style="color: #38bdf8;">claude@${PRIMARY_MAIL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #cbd5e1;">General-purpose reasoning, analysis &amp; writing assistant.</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">GPT Demo</td>
+          <td style="padding: 10px 8px;"><a href="mailto:gpt@${PRIMARY_MAIL_DOMAIN}" style="color: #38bdf8;">gpt@${PRIMARY_MAIL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #cbd5e1;">General-purpose assistant for rapid drafting, coding &amp; Q&amp;A.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px; color: #94a3b8; margin-bottom: 0;">
+      <strong>Tip:</strong> As the appliance administrator, you also have read/oversight access to all agent mailboxes under the <em>Agent Fleet</em> shared namespace in the left folder pane.
+    </p>
+  </div>
+</body>
+</html>
+EOF
+done
 
 # 2. Pre-configure SnappyMail domain configurations for zero-click login
 DOMAINS_DIR="$SNAPPY_DIR/_data_/_default_/domains"

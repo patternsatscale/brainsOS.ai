@@ -190,6 +190,9 @@ if [ -n "${DB_CONTAINER}" ]; then
       log_warn "Could not automatically alter LiteLLM password. Database may be initializing."
     fi
   fi
+  # Ensure the Operator Console virtual key alias is normalized to 'brainsOs.console'
+  docker exec "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
+    -c "UPDATE \"LiteLLM_VerificationToken\" SET key_alias = 'brainsOs.console' WHERE key_alias LIKE '%/editor/%' OR key_alias = 'brainsos-operator';" >/dev/null 2>&1 || true
 else
   log_info "LiteLLM database container is not running; will be started during control plane restart."
 fi
@@ -218,19 +221,33 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
     fi
   fi
 
-  # Synchronize user account passwords in sogo_users table
+  # Synchronize user account passwords and mail domain in sogo_users & sogo_addressbook
   ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
   OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+  BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+  MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+  PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+  CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+  GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
   MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
   ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
   docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
-    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_name = 'admin' OR c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_name = 'operator' OR c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOM}' WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
     INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
       ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
       ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
       ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('operator', 'operator', '${OPERATOR_MAIL_PASS}', 'Human Operator', 'operator@${MAIL_DOM}'),
+      ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOM}'),
+      ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOM}'),
+      ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOM}'),
+      ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOM}'),
+      ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOM}'),
+      ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOM}')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
@@ -241,6 +258,12 @@ EOSQL
       ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   fi
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    CREATE OR REPLACE VIEW sogo_addressbook AS
+    SELECT c_uid, c_name, c_password, c_cn, mail
+    FROM sogo_users
+    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+EOSQL
   log_success "SOGo fleet accounts and passwords synchronized in sogo_users table."
 else
   log_info "SOGo database container is not running (skipping pre-up check)."
@@ -389,6 +412,12 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
   SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
   ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
   OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+  BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+  MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+  PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+  CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+  GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
   MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
   ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
   docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
@@ -399,13 +428,21 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
         c_cn VARCHAR(128) NOT NULL,
         mail VARCHAR(128) NOT NULL
     );
-    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
-    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_name = 'admin' OR c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_name = 'operator' OR c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOM}' WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
     INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
       ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
       ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
       ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('operator', 'operator', '${OPERATOR_MAIL_PASS}', 'Human Operator', 'operator@${MAIL_DOM}'),
+      ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOM}'),
+      ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOM}'),
+      ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOM}'),
+      ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOM}'),
+      ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOM}'),
+      ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOM}')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
@@ -416,6 +453,13 @@ EOSQL
       ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   fi
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    CREATE OR REPLACE VIEW sogo_addressbook AS
+    SELECT c_uid, c_name, c_password, c_cn, mail
+    FROM sogo_users
+    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+    DELETE FROM sogo_user_profile WHERE c_defaults LIKE '%@brainsos.local%' OR c_defaults LIKE '%@local.brainsos.ai%';
+EOSQL
 fi
 
 if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
@@ -429,13 +473,11 @@ if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
   fi
 fi
 
-# Ensure SOGo daemon and nginx dispatcher on port 20000 are active inside brainsos-app-sogo
+# Restart SOGo container so sogod and memcached reload sogo.conf (SOGoMailDomain) and flush addressbook cache
 SOGO_CONTAINER="$(docker ps -a --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?sogo$' | head -n 1 || true)"
 if [ -n "${SOGO_CONTAINER}" ]; then
-  if ! docker exec "${SOGO_CONTAINER}" pgrep -f sogod >/dev/null 2>&1; then
-    log_info "Restarting SOGo container (${SOGO_CONTAINER}) to initialize sogod & nginx..."
-    docker compose restart sogo >/dev/null 2>&1 || docker restart "${SOGO_CONTAINER}" >/dev/null 2>&1 || true
-  fi
+  log_info "Restarting SOGo container (${SOGO_CONTAINER}) to refresh domain & addressbook cache..."
+  docker compose restart sogo >/dev/null 2>&1 || docker restart "${SOGO_CONTAINER}" >/dev/null 2>&1 || true
 fi
 
 # ------------------------------------------------------------------------------

@@ -66,15 +66,15 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL ||
     );
 
     INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-        ('admin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@brainsos.local'),
-        ('operator@brainsos.local', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@brainsos.local'),
-        ('terrastella@brainsos.local', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@brainsos.local'),
-        ('bawtford@brainsos.local', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@brainsos.local'),
-        ('marvin@brainsos.local', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@brainsos.local'),
-        ('ping@brainsos.local', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@brainsos.local'),
-        ('claude@brainsos.local', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@brainsos.local'),
-        ('gpt@brainsos.local', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@brainsos.local'),
-        ('akadmin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', 'admin@brainsos.local'),
+        ('admin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
+        ('operator@brainsos.local', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
+        ('terrastella@brainsos.local', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
+        ('bawtford@brainsos.local', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
+        ('marvin@brainsos.local', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
+        ('ping@brainsos.local', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
+        ('claude@brainsos.local', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
+        ('gpt@brainsos.local', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
+        ('akadmin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
         ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
         ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
         ('operator', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
@@ -85,6 +85,9 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL ||
         ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
         ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+
+    UPDATE sogo_users SET mail = '${ADMIN_USER}@${MAIL_DOMAIN}' WHERE c_name = 'admin';
+    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOMAIN}' WHERE c_name IN ('operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
 EOSQL
 
 if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
@@ -118,6 +121,13 @@ EOSQL
 EOSQL
     fi
 fi
+
+psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+    CREATE OR REPLACE VIEW sogo_addressbook AS
+    SELECT c_uid, c_name, c_password, c_cn, mail
+    FROM sogo_users
+    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+EOSQL
 echo "[BRAINSOS-SOGO] sogo_users verification complete."
 
 # 3. Start local memcached daemon
