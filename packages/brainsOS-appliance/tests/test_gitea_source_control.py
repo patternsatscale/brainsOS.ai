@@ -68,7 +68,7 @@ def test_compose_agents_hermes_webui_and_search_keys():
 
 def test_caddyfiles_route_git_and_hermes_runner():
     """Verify both Caddyfile and Caddyfile.appliance route /git/* to gitea:3000 and /runner* to runner-hermes:9119."""
-    for caddy_path in (Caddyfile := CADDYFILE, CADDYFILE_APPLIANCE):
+    for caddy_path in (CADDYFILE, CADDYFILE_APPLIANCE):
         content = caddy_path.read_text(encoding="utf-8")
         assert "@git_no_slash path /git" in content, f"Missing @git_no_slash in {caddy_path}"
         assert "redir @git_no_slash /git/ 308" in content, f"Missing /git/ redirect in {caddy_path}"

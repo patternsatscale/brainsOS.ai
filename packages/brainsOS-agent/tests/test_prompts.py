@@ -9,7 +9,6 @@ from pathlib import Path
 from brainsos_agent.models import AgentProfile
 from brainsos_agent.prompts import (
     assemble_system_prompt,
-    get_prompts_dirs,
     render_inbound_envelope,
     resolve_channel_prompt,
     resolve_global_prompts,

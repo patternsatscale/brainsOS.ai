@@ -1156,8 +1156,6 @@ def create_system_api_app():
         dry_run: bool = Field(False, description="Simulate configuration without modifying disk or restarting services")
         force: bool = Field(True, description="Proceed even if DNS pre-flight check warns")
 
-    IdentityUpdateRequest = SetupRequest
-
     class HermesConfigRequest(BaseModel):
         keys: Optional[Dict[str, str]] = Field(default=None, description="Map of tool API keys (e.g. FIRECRAWL_API_KEY)")
         firecrawl_api_key: Optional[str] = Field(None, description="Firecrawl API key for web scraping")

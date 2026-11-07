@@ -9,7 +9,7 @@ from pathlib import Path
 from brainsos_mail.models import ParsedInboundEmail
 
 from brainsos_agent.models import AgentProfile
-from brainsos_agent.souls import resolve_soul
+from brainsos_agent.souls import resolve_soul  # noqa: F401
 
 
 def sanitize_thread_filename(thread_id: str) -> str:

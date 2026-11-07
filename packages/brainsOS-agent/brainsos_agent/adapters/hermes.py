@@ -44,7 +44,7 @@ from brainsos_agent.mail_runs import (
 )
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime
-from brainsos_agent.souls import resolve_soul
+from brainsos_agent.souls import resolve_soul  # noqa: F401
 
 logger = logging.getLogger("brainsos_agent.hermes")
 
