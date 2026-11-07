@@ -268,6 +268,7 @@ if [ "${VALIDATE_ONLY}" = true ]; then
   STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/brainsos-ami-validate.XXXXXX")"
   mapfile -t VARS < <(packer_vars "${STAGE_PARENT}" "validate" "0000000")
   log_info "Validating Packer templates..."
+  "${PACKER_BIN}" init "${PACKER_DIR}" >/dev/null
   "${PACKER_BIN}" validate "${VARS[@]}" "${PACKER_DIR}"
   log_success "Validation complete (--validate-only). Exiting."
   exit 0
@@ -359,6 +360,7 @@ fi
 mapfile -t VARS < <(packer_vars "${STAGE_DIR}" "${BUILD_REF}" "${BUILD_COMMIT}")
 if [ -n "${PACKER_BIN}" ]; then
   log_info "Validating Packer templates..."
+  "${PACKER_BIN}" init "${PACKER_DIR}" >/dev/null
   "${PACKER_BIN}" validate "${VARS[@]}" "${PACKER_DIR}"
   log_success "Packer templates are valid."
 fi

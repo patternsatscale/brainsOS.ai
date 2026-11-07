@@ -24,6 +24,21 @@ def _git(cwd: Path, *args: str) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _ensure_repo_env():
+    """Ensure REPO_ROOT/.env exists in CI runners where .env is not present."""
+    env_file = REPO_ROOT / ".env"
+    created = False
+    if not env_file.exists():
+        shutil.copy2(REPO_ROOT / ".env.example", env_file)
+        created = True
+    try:
+        yield
+    finally:
+        if created and env_file.exists():
+            env_file.unlink()
+
+
 @pytest.fixture()
 def scratch_repo(tmp_path: Path) -> Path:
     """Disposable git repository that update.sh can run in safely via BRAINSOS_REPO_ROOT."""

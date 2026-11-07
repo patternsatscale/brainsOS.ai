@@ -53,6 +53,13 @@ def validate_packer_templates(packer_dir: Optional[Path] = None) -> Tuple[bool, 
         return False, f"Packer template directory not found: {target_dir}"
 
     try:
+        subprocess.run(
+            [packer_bin, "init", str(target_dir)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
         with tempfile.TemporaryDirectory(prefix="brainsos-ami-validate-") as stage:
             cmd = [packer_bin, "validate", f"-var=source_dir={stage}", str(target_dir)]
             proc = subprocess.run(
