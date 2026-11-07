@@ -63,9 +63,20 @@ export function App() {
     let attempts = 0;
 
     const checkWizardState = async () => {
-      while (!cancelled && attempts < 15) {
+      while (!cancelled && attempts < 30) {
         attempts += 1;
         try {
+          const identRes = await fetch('/api/v1/system/identity', { credentials: 'include' });
+          if (identRes.ok) {
+            const ident = await identRes.json();
+            if (cancelled) return;
+            if (ident && ident.firstboot_wizard_completed === false) {
+              setWizardGate('required');
+            } else {
+              setWizardGate('completed');
+            }
+            return;
+          }
           const res = await fetch('/api/v1/system/status', { credentials: 'include' });
           if (res.ok) {
             const data = await res.json();
@@ -83,7 +94,7 @@ export function App() {
         } catch {
           // System API may still be warming up on first boot
         }
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1000));
       }
       if (!cancelled) {
         setWizardGate('completed');

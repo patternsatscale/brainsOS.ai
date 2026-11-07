@@ -23,7 +23,7 @@ packer {
 }
 
 source "amazon-ebs" "brainsos" {
-  ami_name             = "${var.ami_name_prefix}-${formatdate("YYYYMMDD-hhmm", timestamp())}"
+  ami_name             = var.ami_name != "" ? var.ami_name : "${var.ami_name_prefix}-${formatdate("YYYYMMDD-hhmm", timestamp())}"
   ami_description      = "brainsOS turnkey appliance (ARM64) built from ${var.brainsos_ref}"
   instance_type        = var.instance_type
   region               = var.aws_region
@@ -104,7 +104,7 @@ source "amazon-ebs" "brainsos" {
   ami_groups = var.publish_community ? ["all"] : []
 
   tags = {
-    Name           = "brainsOS Turnkey Appliance (ARM64)"
+    Name           = var.ami_display_name
     OS             = "Ubuntu 24.04 LTS"
     Arch           = "arm64"
     ManagedBy      = "Packer"

@@ -1,9 +1,10 @@
 [Unit]
 Description=brainsOS System Management & Telemetry API Daemon
 Documentation=https://brainsos.ai
-After=network-online.target docker.service brainsos.service
+After=network-online.target docker.service brainsos-firstboot.service
+Before=brainsos.service
 Wants=network-online.target docker.service
-Requires=docker.service
+Requires=docker.service brainsos-firstboot.service
 ConditionPathExists=/opt/brainsos/.env
 
 [Service]

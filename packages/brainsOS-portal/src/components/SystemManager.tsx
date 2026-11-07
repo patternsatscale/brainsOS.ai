@@ -2405,7 +2405,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                   1. Unit Identity (Logical Display Name &amp; Hardware Unit ID)
                 </span>
                 <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] text-slate-300">
-                  Hardware Unit ID: <strong className="text-white">{status?.identity?.instance_id || status?.instance_id || 'local-dev'}</strong>
+                  Hardware Unit ID: <strong className="text-white">{setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev'}</strong>
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
@@ -2430,7 +2430,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-0.5">
                   <span className="text-[10px] uppercase text-slate-500 block">Immutable Hardware ID</span>
                   <span className="text-white font-semibold block truncate">
-                    {status?.identity?.instance_id || status?.instance_id || 'local-dev'}
+                    {setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev'}
                   </span>
                   <span className="text-[10px] text-emerald-400 block">Read-only cloud/hardware binding</span>
                 </div>
@@ -2504,7 +2504,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                       <span className="text-slate-500 block">Unit Identity:</span>
                       <span className="text-white font-semibold truncate block">{setupUnitName.trim() || 'Enterprise Agent Box'}</span>
                       <span className="text-emerald-400 block text-[10px] mt-0.5">
-                        ID: {status?.identity?.instance_id || status?.instance_id || 'local-dev'}
+                        ID: {setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev'}
                       </span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
