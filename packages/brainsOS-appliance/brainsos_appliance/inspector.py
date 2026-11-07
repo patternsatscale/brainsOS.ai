@@ -91,7 +91,7 @@ def query_imdsv2_metadata(timeout: float = 1.0) -> Dict[str, Any]:
 
 def audit_host_hardening() -> Dict[str, Any]:
     """Audit local host hardening status (Docker logging, Journald, UFW)."""
-    checks = {}
+    checks: Dict[str, Any] = {}
 
     # Check Docker daemon logging
     docker_conf = Path("/etc/docker/daemon.json")
