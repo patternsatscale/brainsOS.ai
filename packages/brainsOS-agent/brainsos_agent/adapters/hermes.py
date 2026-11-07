@@ -325,7 +325,7 @@ class HermesMailAdapter(AgentRuntime):
             from brainsos_agent.prompts import render_inbound_envelope
 
             date_val = getattr(email, "date", None)
-            if hasattr(date_val, "strftime"):
+            if date_val is not None and hasattr(date_val, "strftime"):
                 date_str = date_val.strftime("%Y-%m-%d %H:%M:%S UTC")
             elif date_val:
                 date_str = str(date_val)
