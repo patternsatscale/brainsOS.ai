@@ -416,12 +416,13 @@ def test_dns_check_and_setup_password_never_logged(tmp_path, monkeypatch):
 
 
 def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, monkeypatch):
-    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "i-0abc123456789def0")
+    mock_iid = "i-0" + ("a" * 16)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
     (tmp_path / ".env").write_text(
         "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
         "BRAINSOS_LOCAL_DOMAIN=local.brainsos.ai\n"
         "BRAINSOS_ADMIN_USERNAME=admin\n"
-        "BRAINSOS_ADMIN_PASSWORD=i-0abc123456789def0\n"
+        f"BRAINSOS_ADMIN_PASSWORD={mock_iid}\n"
         "BRAINSOS_WIZARD_COMPLETED=false\n",
         encoding="utf-8",
     )
@@ -470,7 +471,7 @@ def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, mo
         ok_token_res = client.post(
             "/api/v1/system/setup",
             json={
-                "bootstrap_token": "i-0abc123456789def0",
+                "bootstrap_token": mock_iid,
                 "local_domain": "jsm.cloud.aws.brainsos.ai",
                 "admin_username": "jsm",
                 "admin_password": "NewStrongPassword123!",
@@ -487,21 +488,22 @@ def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, mo
 def test_superuser_setup_and_password_complexity(tmp_path, monkeypatch):
     from brainsos_telemetry.system import validate_password_complexity
 
+    mock_iid = "i-0" + ("a" * 16)
     assert validate_password_complexity("short1!") is not None
     assert validate_password_complexity("alllowercase123!") is not None
     assert validate_password_complexity("ALLUPPERCASE123!") is not None
     assert validate_password_complexity("NoDigitsHere!") is not None
     assert validate_password_complexity("NoSpecialChars123") is not None
-    assert validate_password_complexity("i-0abc123456789def0", instance_id="i-0abc123456789def0") is not None
-    assert validate_password_complexity("ValidSuperPass99!", username="jsm", instance_id="i-0abc123456789def0") is None
+    assert validate_password_complexity(mock_iid, instance_id=mock_iid) is not None
+    assert validate_password_complexity("ValidSuperPass99!", username="jsm", instance_id=mock_iid) is None
 
-    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "i-0abc123456789def0")
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
     (tmp_path / ".env").write_text(
         "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
         "BRAINSOS_LOCAL_DOMAIN=local.brainsos.ai\n"
         "BRAINSOS_ADMIN_USERNAME=admin\n"
-        "BRAINSOS_ADMIN_PASSWORD=i-0abc123456789def0\n"
-        "BRAINSOS_INSTANCE_ID=i-0abc123456789def0\n"
+        f"BRAINSOS_ADMIN_PASSWORD={mock_iid}\n"
+        f"BRAINSOS_INSTANCE_ID={mock_iid}\n"
         "BRAINSOS_WIZARD_COMPLETED=false\n",
         encoding="utf-8",
     )
@@ -583,7 +585,7 @@ def test_runners_status_and_hermes_firecrawl_config(tmp_path):
         assert r1.json()["hermes"]["firecrawl_configured"] is False
 
         # Save FIRECRAWL_API_KEY
-        raw_key = "fc-9876543210abcdefSECRET"
+        raw_key = "fc-9" + ("0" * 16)  # gitleaks:allow
         r2 = client.post(
             "/api/v1/system/runners/hermes/config",
             json={"firecrawl_api_key": raw_key, "restart_runner": False},

@@ -1,16 +1,14 @@
 """Regression tests for System API identity, unit_name, superuser_username, and Hermes config payloads."""
 
-import os
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
 import pytest
-
 from brainsos_telemetry.system import (
     create_system_api_app,
     get_appliance_identity,
     issue_csrf_token,
 )
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)
@@ -129,13 +127,14 @@ def test_hermes_config_keys_dict_payload(tmp_path):
             "Origin": "http://localhost",
         }
 
-        raw_key = "fc-dictpayload9876543210SECRET"
+        raw_key = "fc-" + ("0" * 16)  # gitleaks:allow
+        tavily_mock = "tvly-" + ("1" * 12)  # gitleaks:allow
         res = client.post(
             "/api/v1/system/runners/hermes/config",
             json={
                 "keys": {
                     "FIRECRAWL_API_KEY": raw_key,
-                    "TAVILY_API_KEY": "tvly-testkey123456",
+                    "TAVILY_API_KEY": tavily_mock,
                 },
                 "restart_runner": False,
             },

@@ -13,7 +13,7 @@ from brainsos_runner import AgentTurnRequest, ChatMessage, WarmHttpRunnerClient
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile, OutboundEmail
 from brainsos_agent.runtime import AgentRuntime
-from brainsos_agent.souls import resolve_soul
+from brainsos_agent.souls import resolve_soul  # noqa: F401
 
 logger = logging.getLogger("brainsos_agent.adapters.runner")
 
