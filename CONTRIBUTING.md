@@ -94,6 +94,19 @@ docker compose up -d
 
 ---
 
-## 5. Code of Conduct
+## 5. COHUMAIN Community PR Drive
+
+We actively welcome community pull requests advancing **brainsOS** toward **COHUMAIN Tier 1 (Foundational — 8 controls)** and **Tier 2 (Managed — 18 cumulative controls)** certification:
+
+- **Conformance Board**: Check the live **[COHUMAIN Conformance Tracker in `README.md`](README.md#5-cohumain-acsg-conformance-roadmap--community-pr-drive)** for controls marked `🟡 In Progress` or `⚪ Seeking PRs`.
+- **Issue Template**: Open or claim a control issue using [`.github/ISSUE_TEMPLATE/cohumain_control.md`](.github/ISSUE_TEMPLATE/cohumain_control.md).
+- **Community Contribution Labels**:
+  - `cohumain:tier1`: Core safety, autonomy boundary, and security controls (`SAF-01`..`03`, `ALN-01`..`02`, `SEC-02`..`04`).
+  - `cohumain:tier2`: Governance, provenance, evaluation, and red-team controls (`SAF-04`..`05`, `ALN-05`, `GOV-01`..`02`, `GOV-05`, `SEC-01`, `SEC-05`..`07`).
+  - `good-first-issue`: Self-contained verification scripts (`scripts/verify/`), unit test suites, or guardrail configs ideal for first-time contributors.
+
+---
+
+## 6. Code of Conduct
 
 All contributors and maintainers are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md). Please report unacceptable behavior to `community@patternsatscale.com`.
