@@ -49,9 +49,11 @@ To maintain absolute engineering integrity, we track implementation across three
 
 | Status Tier | Definition | brainsOS Implementation Examples Today |
 |---|---|---|
-| 🟢 **Implemented & Verified** | Codified in repository; covered by automated verification scripts. | • `SAF-02` (Emergency Stop / Kill Switch via `scripts/control/emergency-stop.sh`)<br>• `SEC-02` (Least-Privilege Authorization via `cap_drop: [ALL]` & proxy keys)<br>• `SEC-07` (Memory Lifecycle Security via `packages/brainsOS-memory` OKF purity engine) |
-| 🟡 **In Active Development** | Functional tooling in place; end-to-end integration or automated tests ongoing. | • `SAF-01` (Autonomous System Oversight via Langfuse v4 OpenTelemetry tracing)<br>• `GOV-08` (Environmental & Carbon Governance via `packages/brainsOS-queue` & telemetry)<br>• `SEC-04` (Observability & Anomaly Detection via mitmproxy egress flow audits) |
-| ⚪ **Aspirational / Roadmap** | Formal specification established; scheduled for future engineering phases. | • `SEC-06` (Automated Security Testing & Red-Teaming harness)<br>• `ALN-04` (Formal Model Explainability & Rationale validation)<br>• `ALN-05` (Cryptographic Action Attribution & Signature verification)<br>• `GOV-05` (Automated Continuous Model Evaluation pipeline) |
+| 🟢 **Operational** | Codified in repository; covered by automated verification scripts. | • `SAF-02` (Emergency Stop / Kill Switch via `scripts/control/emergency-stop.sh`)<br>• `ALN-01` (Autonomy Boundary Control via declarative `agents.yaml` & FastMCP scoping)<br>• `SEC-01` (Multi-Agent Coordination Security via decoupled souls & queue isolation)<br>• `SEC-02` (Least-Privilege Authorization via `cap_drop: [ALL]` & in-transit proxy keys)<br>• `SEC-07` (Memory Lifecycle Security via `packages/brainsOS-memory` OKF purity engine) |
+| 🟡 **In Progress** | Functional tooling in place; end-to-end integration or automated tests ongoing. | • `SAF-01` (Autonomous System Oversight via Langfuse v4 OpenTelemetry tracing)<br>• `ALN-02` (Human Oversight via async email/Gitea gates)<br>• `GOV-08` (Environmental & Carbon Governance via `packages/brainsOS-telemetry`)<br>• `SEC-03` & `SEC-04` (Prompt Injection Defense & Observability via mitmproxy egress audits) |
+| ⚪ **Seeking PRs** | Formal specification established; open for community PRs (`cohumain:tier1`, `cohumain:tier2`). | • `SAF-03` (Inline Content Safety & Misuse Prevention)<br>• `SAF-04` & `SAF-05` (Output Factual Accuracy & Runtime Output Safeguards)<br>• `GOV-05` (Pre-Deployment Local Model Evaluation Harness)<br>• `SEC-06` (Automated Security Testing & Red-Teaming Harness) |
+
+See the full **[Tier 1 & Tier 2 Conformance Tracker in `README.md`](../../README.md#5-cohumain-acsg-conformance-roadmap--community-pr-drive)** and use the **[COHUMAIN Control Issue Template](../../.github/ISSUE_TEMPLATE/cohumain_control.md)** to contribute.
 
 ---
 
@@ -119,7 +121,7 @@ Traditional cloud AI relies on financial billing ceilings. When an agent loops d
 
 ### 3. In-Transit Egress Credential Injection (`SEC-02`, `SEC-03`)
 * Containers never hold raw ambient secrets or GitHub tokens.
-* All outbound traffic passes through the Tool Egress Gateway (`titan-net-egress-proxy:8082`), which intercepts requests, verifies container IP identity on `titan-internal`, injects credentials in transit, and redacts sensitive tokens from flow inspection logs (`mitmweb`).
+* All outbound traffic passes through the Tool Egress Gateway (`brainsos-agent-egress-proxy:8082`), which intercepts requests, verifies container IP identity on `brainsos-internal-net`, injects credentials in transit, and redacts sensitive tokens from flow inspection logs (`mitmweb`).
 
 ### 4. Environmental & Carbon Governance (`GOV-08`)
 * In tandem with **Project Millijoule (mJ)**, brainsOS modulates compute workloads to track real-time solar generation and battery state-of-charge, scaling compute down during grid stress or thermal saturation.
