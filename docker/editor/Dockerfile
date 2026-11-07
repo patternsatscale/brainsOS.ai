@@ -4,7 +4,10 @@
 # Pre-configured with Multi-Root Workspace, Aider, Goose, and PKM extensions
 # ==============================================================================
 
-FROM codercom/code-server:latest
+ARG CODE_SERVER_IMAGE_TAG=latest
+FROM codercom/code-server:${CODE_SERVER_IMAGE_TAG}
+ARG CODE_SERVER_IMAGE_TAG=latest
+LABEL org.opencontainers.image.version="${CODE_SERVER_IMAGE_TAG}"
 
 USER root
 

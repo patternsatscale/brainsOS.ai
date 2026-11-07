@@ -15,6 +15,9 @@ services:
   code-server:
     ports: !reset []
 
+  gitea:
+    ports: !reset []
+
   langfuse-db:
     ports: !reset []
 

@@ -62,9 +62,9 @@ RUN apt-get update -qq && \
     usermod -u 1000 hermes && groupmod -g 1000 hermes && \
     chown -R hermes:hermes /home/hermes
 
-# Install Tool Egress Proxy CA trust boot hook
+# Install Tool Egress Proxy CA trust & Dashboard reverse-proxy boot hook
 COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca
-RUN chmod +x /etc/cont-init.d/01-tool-egress-ca
+RUN chmod +x /etc/cont-init.d/01-tool-egress-ca && /etc/cont-init.d/01-tool-egress-ca || true
 
 
 # Switch to /opt/data

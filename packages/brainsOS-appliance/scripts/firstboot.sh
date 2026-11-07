@@ -160,20 +160,58 @@ fi
 #       BRAINSOS_TLS_MODE=acme        # or route53
 # ------------------------------------------------------------------------------
 strip_value() { local v="${1%%#*}"; printf '%s' "${v}" | tr -d "\"' \r"; }
+normalize_url_host() {
+  local raw="$1"
+  raw="${raw#http://}"
+  raw="${raw#https://}"
+  raw="${raw%%/*}"
+  raw="${raw%%:*}"
+  printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]' | tr -d ' '
+}
+
 UD_DOMAIN=""
+UD_URL=""
+UD_LOCAL_DOMAIN=""
+UD_ADMIN_USERNAME=""
 UD_ACME_EMAIL=""
 UD_TLS_MODE=""
+UD_AUTO_PULL=""
+UD_GIT_BRANCH=""
 if [ -n "${USER_DATA}" ]; then
   while IFS= read -r ud_line; do
     ud_trimmed="${ud_line#"${ud_line%%[![:space:]]*}"}"
     case "${ud_trimmed}" in
+      BRAINSOS_URL=*|BRAINSOS_URL:*)
+        val="${ud_trimmed#BRAINSOS_URL[=:]}"
+        UD_URL="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      url:*)
+        val="${ud_trimmed#url:}"
+        UD_URL="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      BRAINSOS_LOCAL_DOMAIN=*|BRAINSOS_LOCAL_DOMAIN:*)
+        val="${ud_trimmed#BRAINSOS_LOCAL_DOMAIN[=:]}"
+        UD_LOCAL_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      local_domain:*)
+        val="${ud_trimmed#local_domain:}"
+        UD_LOCAL_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      BRAINSOS_ADMIN_USERNAME=*|BRAINSOS_ADMIN_USERNAME:*)
+        val="${ud_trimmed#BRAINSOS_ADMIN_USERNAME[=:]}"
+        UD_ADMIN_USERNAME="$(strip_value "${val}")"
+        ;;
+      admin_username:*)
+        val="${ud_trimmed#admin_username:}"
+        UD_ADMIN_USERNAME="$(strip_value "${val}")"
+        ;;
       BRAINSOS_DOMAIN=*|BRAINSOS_DOMAIN:*)
         val="${ud_trimmed#BRAINSOS_DOMAIN[=:]}"
-        UD_DOMAIN="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        UD_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
         ;;
       domain:*)
         val="${ud_trimmed#domain:}"
-        UD_DOMAIN="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        UD_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
         ;;
       ACME_EMAIL=*|ACME_EMAIL:*)
         val="${ud_trimmed#ACME_EMAIL[=:]}"
@@ -191,8 +229,75 @@ if [ -n "${USER_DATA}" ]; then
         val="${ud_trimmed#tls_mode:}"
         UD_TLS_MODE="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
         ;;
+      BRAINSOS_AUTO_PULL=*|BRAINSOS_AUTO_PULL:*)
+        val="${ud_trimmed#BRAINSOS_AUTO_PULL[=:]}"
+        UD_AUTO_PULL="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      auto_pull:*)
+        val="${ud_trimmed#auto_pull:}"
+        UD_AUTO_PULL="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      BRAINSOS_GIT_BRANCH=*|BRAINSOS_GIT_BRANCH:*)
+        val="${ud_trimmed#BRAINSOS_GIT_BRANCH[=:]}"
+        UD_GIT_BRANCH="$(strip_value "${val}")"
+        ;;
+      git_branch:*)
+        val="${ud_trimmed#git_branch:}"
+        UD_GIT_BRANCH="$(strip_value "${val}")"
+        ;;
     esac
   done <<< "${USER_DATA}"
+fi
+
+# ------------------------------------------------------------------------------
+# 1c. Offline-First Golden AMI Boot (Opt-In GitHub Auto-Pull)
+#     Disabled by default on Golden AMIs so launched instances boot 100%
+#     self-contained from baked source and pre-built Portal SPA assets without
+#     requiring outbound internet access to GitHub. Can be opted into via
+#     BRAINSOS_AUTO_PULL=true in EC2 user-data or BRAINSOS_FIRSTBOOT_FORCE_PULL=true.
+# ------------------------------------------------------------------------------
+AUTO_PULL="false"
+if [[ "${UD_AUTO_PULL}" =~ ^(true|1|yes)$ ]] || [[ "${BRAINSOS_FIRSTBOOT_FORCE_PULL:-false}" =~ ^(true|1|yes)$ ]]; then
+  AUTO_PULL="true"
+fi
+if [[ "${BRAINSOS_FIRSTBOOT_SKIP_GIT_PULL:-false}" =~ ^(true|1|yes)$ ]]; then
+  AUTO_PULL="false"
+fi
+
+CURRENT_GIT_BRANCH="$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")"
+[ "${CURRENT_GIT_BRANCH}" = "HEAD" ] && CURRENT_GIT_BRANCH="main"
+TARGET_GIT_BRANCH="${UD_GIT_BRANCH:-${CURRENT_GIT_BRANCH}}"
+
+if [ "${AUTO_PULL}" = "true" ] && [ "${DRY_RUN}" = false ] && { [ "${SKIP_IMDS}" != true ] || [ "${BRAINSOS_FIRSTBOOT_FORCE_PULL:-false}" = true ]; }; then
+  if [ -d "${REPO_ROOT}/.git" ] && command -v git >/dev/null 2>&1; then
+    git config --system --add safe.directory "${REPO_ROOT}" 2>/dev/null || true
+    BEFORE_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || true)"
+    log_info "Checking origin/${TARGET_GIT_BRANCH} for latest source updates (current: ${BEFORE_SHA:0:12})..."
+    if timeout 20 git -C "${REPO_ROOT}" fetch --quiet origin "${TARGET_GIT_BRANCH}" 2>/dev/null; then
+      REMOTE_SHA="$(git -C "${REPO_ROOT}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+      if [ -n "${REMOTE_SHA}" ] && [ "${REMOTE_SHA}" != "${BEFORE_SHA}" ]; then
+        log_info "Updating /opt/brainsos from ${BEFORE_SHA:0:12} -> ${REMOTE_SHA:0:12} (${TARGET_GIT_BRANCH})..."
+        git -C "${REPO_ROOT}" checkout --quiet -B "${TARGET_GIT_BRANCH}" FETCH_HEAD 2>/dev/null || true
+        git -C "${REPO_ROOT}" reset --hard FETCH_HEAD >/dev/null 2>&1 || true
+        git -C "${REPO_ROOT}" update-ref "refs/remotes/origin/${TARGET_GIT_BRANCH}" "${REMOTE_SHA}" 2>/dev/null || true
+        git -C "${REPO_ROOT}" branch --quiet --set-upstream-to="origin/${TARGET_GIT_BRANCH}" "${TARGET_GIT_BRANCH}" 2>/dev/null || true
+        chmod +x "${REPO_ROOT}"/scripts/*/*.sh "${REPO_ROOT}"/packages/brainsOS-appliance/scripts/*.sh "${REPO_ROOT}"/docker/*/*.sh 2>/dev/null || true
+        log_success "Updated appliance source tree to ${TARGET_GIT_BRANCH}@${REMOTE_SHA:0:12}."
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl restart brainsos-system-api.service 2>/dev/null || true
+        fi
+        if [ "${BRAINSOS_FIRSTBOOT_REEXEC:-false}" != "true" ]; then
+          log_info "Re-executing updated firstboot.sh from ${REMOTE_SHA:0:12}..."
+          export BRAINSOS_FIRSTBOOT_REEXEC=true
+          exec "${REPO_ROOT}/packages/brainsOS-appliance/scripts/firstboot.sh" "$@"
+        fi
+      else
+        log_success "Appliance source tree is already up to date (${TARGET_GIT_BRANCH}@${BEFORE_SHA:0:12})."
+      fi
+    else
+      log_warn "Could not reach origin to fetch ${TARGET_GIT_BRANCH} (offline or air-gapped); continuing with baked source."
+    fi
+  fi
 fi
 
 is_fqdn() { [[ "$1" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; }
@@ -214,13 +319,39 @@ fi
 
 APPLIANCE_REGION="${AWS_REGION_DETECTED:-${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}}"
 
-# Primary hostname: operator domain from user-data, else EC2 public DNS / IP
+# Primary external URL hostname: BRAINSOS_URL or BRAINSOS_DOMAIN from user-data, else EC2 public DNS / IP
+EFFECTIVE_UD_URL="${UD_URL:-${UD_DOMAIN}}"
 APPLIANCE_DOMAIN="${PUBLIC_HOSTNAME}"
-if [ -n "${UD_DOMAIN}" ]; then
-  if is_fqdn "${UD_DOMAIN}"; then
-    APPLIANCE_DOMAIN="${UD_DOMAIN}"
+if [ -n "${EFFECTIVE_UD_URL}" ]; then
+  if is_fqdn "${EFFECTIVE_UD_URL}" || is_ipv4 "${EFFECTIVE_UD_URL}"; then
+    APPLIANCE_DOMAIN="${EFFECTIVE_UD_URL}"
   else
-    log_warn "Ignoring invalid BRAINSOS_DOMAIN in user-data: '${UD_DOMAIN}'"
+    log_warn "Ignoring invalid BRAINSOS_URL/BRAINSOS_DOMAIN in user-data: '${EFFECTIVE_UD_URL}'"
+  fi
+fi
+
+# Internal unit local domain & hostname (#332): never default to ec2-*.compute-1.amazonaws.com
+APPLIANCE_LOCAL_DOMAIN="local.brainsos.ai"
+if [ -n "${UD_LOCAL_DOMAIN}" ]; then
+  if is_fqdn "${UD_LOCAL_DOMAIN}"; then
+    APPLIANCE_LOCAL_DOMAIN="${UD_LOCAL_DOMAIN}"
+  else
+    log_warn "Ignoring invalid BRAINSOS_LOCAL_DOMAIN in user-data: '${UD_LOCAL_DOMAIN}'"
+  fi
+elif [ -n "${UD_DOMAIN}" ] && is_fqdn "${UD_DOMAIN}" && [[ "${UD_DOMAIN}" != *.amazonaws.com ]]; then
+  APPLIANCE_LOCAL_DOMAIN="${UD_DOMAIN}"
+elif [ -n "${UD_ADMIN_USERNAME}" ] && [ "${UD_ADMIN_USERNAME}" != "admin" ] && [[ "${UD_ADMIN_USERNAME}" =~ ^[a-zA-Z0-9._-]{2,64}$ ]]; then
+  APPLIANCE_LOCAL_DOMAIN="$(printf '%s' "${UD_ADMIN_USERNAME}" | tr '[:upper:]' '[:lower:]').aws.cloud.brainsos.ai"
+elif [ -n "${IMDS_TOKEN}" ]; then
+  APPLIANCE_LOCAL_DOMAIN="admin.aws.cloud.brainsos.ai"
+fi
+
+APPLIANCE_ADMIN_USERNAME="admin"
+if [ -n "${UD_ADMIN_USERNAME}" ]; then
+  if [[ "${UD_ADMIN_USERNAME}" =~ ^[a-zA-Z0-9._-]{2,64}$ ]]; then
+    APPLIANCE_ADMIN_USERNAME="${UD_ADMIN_USERNAME}"
+  else
+    log_warn "Ignoring invalid BRAINSOS_ADMIN_USERNAME in user-data: '${UD_ADMIN_USERNAME}'"
   fi
 fi
 
@@ -230,8 +361,8 @@ ACME_EMAIL_VALUE=""
 case "${UD_TLS_MODE}" in
   ""|internal) ;;
   acme|route53)
-    if [ "${APPLIANCE_DOMAIN}" != "${UD_DOMAIN}" ] || [ -z "${UD_DOMAIN}" ]; then
-      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid BRAINSOS_DOMAIN in user-data; using internal CA."
+    if [ "${APPLIANCE_DOMAIN}" != "${EFFECTIVE_UD_URL}" ] || [ -z "${EFFECTIVE_UD_URL}" ]; then
+      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid BRAINSOS_URL or BRAINSOS_DOMAIN in user-data; using internal CA."
     elif [[ ! "${UD_ACME_EMAIL}" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
       log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid ACME_EMAIL in user-data; using internal CA."
     else
@@ -255,7 +386,9 @@ done
 
 log_info "Instance ID:     ${INSTANCE_ID}"
 log_info "Public Hostname: ${PUBLIC_HOSTNAME}"
-log_info "Primary Domain:  ${APPLIANCE_DOMAIN}"
+log_info "External URL:    ${APPLIANCE_DOMAIN}"
+log_info "Local Domain:    ${APPLIANCE_LOCAL_DOMAIN}"
+log_info "Admin Username:  ${APPLIANCE_ADMIN_USERNAME}"
 log_info "TLS Mode:        ${TLS_MODE}"
 log_info "IP Sites:        ${IP_SITES}"
 log_info "Local IPv4:      ${LOCAL_IPV4:-unknown}"
@@ -270,10 +403,18 @@ case "${APPLIANCE_REGION}" in
 esac
 
 if [ "${DRY_RUN}" = true ]; then
-  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
+  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --mail-domain ${APPLIANCE_LOCAL_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
   log_info "[DRY-RUN] Would write appliance overrides to ${TARGET_ENV}:"
+  log_info "[DRY-RUN] BRAINSOS_INSTANCE_ID=${INSTANCE_ID}"
+  log_info "[DRY-RUN] BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
   log_info "[DRY-RUN] BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
+  log_info "[DRY-RUN] AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
+  log_info "[DRY-RUN] BRAINSOS_AUTO_PULL_ON_BOOT=${AUTO_PULL}"
+  log_info "[DRY-RUN] BRAINSOS_URL=${APPLIANCE_DOMAIN}"
+  log_info "[DRY-RUN] BRAINSOS_LOCAL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
+  log_info "[DRY-RUN] BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
   log_info "[DRY-RUN] BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
+  log_info "[DRY-RUN] BRAINSOS_WIZARD_COMPLETED=false"
   log_info "[DRY-RUN] CADDYFILE=Caddyfile.appliance BRAINSOS_TLS_MODE=${TLS_MODE} BRAINSOS_IP_SITES=${IP_SITES}"
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
     log_info "[DRY-RUN] ACME_EMAIL=${ACME_EMAIL_VALUE}"
@@ -298,6 +439,7 @@ else
   log_info "Generating unique per-instance secrets via scripts/control/generate-env.sh..."
   "${GENERATE_ENV}" --non-interactive \
     --domain "${APPLIANCE_DOMAIN}" \
+    --mail-domain "${APPLIANCE_LOCAL_DOMAIN}" \
     --data-dir "${REPO_ROOT}/data" \
     --force-passwords \
     --no-rebuild </dev/null
@@ -307,15 +449,23 @@ else
   # --------------------------------------------------------------------------
   gen_secret() { python3 -c "import secrets; print(secrets.token_hex(${1:-20}))"; }
 
+  ADMIN_EMAIL_DEFAULT="${APPLIANCE_ADMIN_USERNAME}@${APPLIANCE_LOCAL_DOMAIN}"
+  if [[ "${ADMIN_EMAIL_DEFAULT}" == *.local ]]; then
+    ADMIN_EMAIL_DEFAULT="${APPLIANCE_ADMIN_USERNAME}@brainsos.ai"
+  fi
+
   APPLIANCE_OVERRIDES=(
     "BRAINSOS_APPLIANCE=true"
     "BRAINSOS_STAGE=aws"
-    # Operator login (Authentik admin/akadmin/operator) - AWS Marketplace convention, rotate at first login
-    "BRAINSOS_ADMIN_EMAIL=admin@brainsos.ai"
+    "BRAINSOS_INSTANCE_ID=${INSTANCE_ID}"
+    # Operator login (Authentik admin/akadmin) - permanently bound to EC2 instance-id
+    "BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
+    "BRAINSOS_ADMIN_EMAIL=${ADMIN_EMAIL_DEFAULT}"
     "BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
+    "BRAINSOS_INSTANCE_ADMIN_PASSWORD=${INSTANCE_ID}"
     "AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
-    "AUTHENTIK_BOOTSTRAP_EMAIL=admin@brainsos.ai"
-    "LANGFUSE_INIT_USER_EMAIL=admin@brainsos.ai"
+    "AUTHENTIK_BOOTSTRAP_EMAIL=${ADMIN_EMAIL_DEFAULT}"
+    "LANGFUSE_INIT_USER_EMAIL=${ADMIN_EMAIL_DEFAULT}"
     # Independent service credentials (never derived from the instance-id)
     "CODE_SERVER_PASSWORD=$(gen_secret 16)"
     "TOOL_EGRESS_WEB_PASSWORD=$(gen_secret 16)"
@@ -334,14 +484,20 @@ else
     "OLLAMA_ENABLED=false"
     "AWS_REGION=${APPLIANCE_REGION}"
     "AWS_DEFAULT_REGION=${APPLIANCE_REGION}"
-    # Ingress (#323): appliance Caddyfile, self-signed by default, BYOD via user-data or set-domain.sh
+    # Ingress (#323 / #332): BRAINSOS_URL for external web access, BRAINSOS_LOCAL_DOMAIN for internal identity & mail
+    "BRAINSOS_URL=${APPLIANCE_DOMAIN}"
+    "BRAINSOS_LOCAL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
+    "BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
     "BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
+    "BRAINSOS_WIZARD_COMPLETED=false"
     "AUTHENTIK_COOKIE_DOMAIN="
     "CADDYFILE=Caddyfile.appliance"
     "BRAINSOS_TLS_MODE=${TLS_MODE}"
     "BRAINSOS_IP_SITES=${IP_SITES}"
     "NEXTAUTH_URL=https://${APPLIANCE_DOMAIN}"
     "BRAINSOS_SYSTEM_API_PORT=8010"
+    "BRAINSOS_AUTO_PULL_ON_BOOT=${AUTO_PULL}"
+    "BRAINSOS_GIT_BRANCH=${TARGET_GIT_BRANCH}"
   )
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
     APPLIANCE_OVERRIDES+=("ACME_EMAIL=${ACME_EMAIL_VALUE}")
@@ -353,6 +509,60 @@ else
   chmod 600 "${TARGET_ENV}"
   log_success "Wrote appliance .env with unique secrets and strict 0600 permissions."
 fi
+
+# ------------------------------------------------------------------------------
+# 3b. Synchronize Host Linux OS 'admin' & Superuser Accounts (#332)
+# ------------------------------------------------------------------------------
+sync_linux_admin_accounts() {
+  if [ "$(uname -s)" != "Linux" ] || [ "$(id -u)" -ne 0 ]; then
+    return 0
+  fi
+
+  local inst_pass="${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-${INSTANCE_ID:-${BRAINSOS_ADMIN_PASSWORD:-}}}"
+  local su_user="${UD_ADMIN_USERNAME:-}"
+  local su_pass="${BRAINSOS_SUPERUSER_PASSWORD:-${inst_pass}}"
+
+  if ! id -u admin >/dev/null 2>&1; then
+    useradd -m -s /bin/bash admin 2>/dev/null || true
+  fi
+  usermod -aG sudo,docker admin 2>/dev/null || usermod -aG sudo admin 2>/dev/null || true
+  if [ -n "${inst_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+    printf 'admin:%s\n' "${inst_pass}" | chpasswd 2>/dev/null || true
+  fi
+  if [ -d /home/admin ]; then
+    grep -q "cd ${REPO_ROOT}" /home/admin/.bashrc 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" >> /home/admin/.bashrc
+    chown -R admin:admin /home/admin 2>/dev/null || true
+  fi
+
+  local sudoers_file="/etc/sudoers.d/90-brainsos-admin"
+  if [ -d /etc/sudoers.d ]; then
+    {
+      echo "# Managed by brainsOS firstboot.sh / set-domain.sh (#332)"
+      echo "admin ALL=(ALL:ALL) ALL"
+      if [ -n "${su_user}" ] && [ "${su_user}" != "admin" ] && [ "${su_user}" != "root" ]; then
+        echo "${su_user} ALL=(ALL:ALL) ALL"
+      fi
+    } > "${sudoers_file}" 2>/dev/null || true
+    chmod 0440 "${sudoers_file}" 2>/dev/null || true
+  fi
+
+  if [ -n "${su_user}" ] && [ "${su_user}" != "admin" ] && [ "${su_user}" != "root" ]; then
+    if ! id -u "${su_user}" >/dev/null 2>&1; then
+      useradd -m -s /bin/bash "${su_user}" 2>/dev/null || true
+    fi
+    usermod -aG sudo,docker "${su_user}" 2>/dev/null || usermod -aG sudo "${su_user}" 2>/dev/null || true
+    if [ -n "${su_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+      printf '%s:%s\n' "${su_user}" "${su_pass}" | chpasswd 2>/dev/null || true
+    fi
+    if [ -d "/home/${su_user}" ]; then
+      grep -q "cd ${REPO_ROOT}" "/home/${su_user}/.bashrc" 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" >> "/home/${su_user}/.bashrc"
+      chown -R "${su_user}:${su_user}" "/home/${su_user}" 2>/dev/null || true
+    fi
+  fi
+  log_success "Synchronized Linux OS 'admin' account (sudo,docker) with instance-id password."
+}
+
+sync_linux_admin_accounts
 
 # ------------------------------------------------------------------------------
 # 4. Per-Instance Data Tree & Python Environment
@@ -379,6 +589,14 @@ if [ "${SKIP_PORTAL}" != true ] && [ -x "${REPO_ROOT}/scripts/setup/setup-portal
   if ! "${REPO_ROOT}/scripts/setup/setup-portal.sh"; then
     log_warn "Portal rebuild failed; the pre-built bundle from the AMI remains in place."
   fi
+fi
+
+# ------------------------------------------------------------------------------
+# 5b. Seed Local Git Server (Gitea) & /data Repository (#339)
+# ------------------------------------------------------------------------------
+if [ "${BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP:-false}" != true ] && [ -x "${REPO_ROOT}/scripts/setup/setup-git.sh" ]; then
+  log_info "Seeding Gitea source control & /data repository..."
+  "${REPO_ROOT}/scripts/setup/setup-git.sh" || log_warn "Initial Gitea seeding deferred"
 fi
 
 # ------------------------------------------------------------------------------

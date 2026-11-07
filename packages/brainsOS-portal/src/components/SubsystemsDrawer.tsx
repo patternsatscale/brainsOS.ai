@@ -70,7 +70,7 @@ export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
           </div>
 
           {/* Subsystem Launch Cards */}
-          <div className="space-y-2">
+          <div className="space-y-1.5 max-h-[calc(100vh-12rem)] overflow-y-auto pr-0.5">
             {Object.values(SUBSYSTEMS).map((sub) => (
               <div
                 key={sub.id}
@@ -138,8 +138,10 @@ export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
           <div className="font-mono text-[10.5px] text-slate-400 space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Appliance Host:</span>
-              <span className="text-[#00f2fe] font-medium">
-                {import.meta.env.VITE_APPLIANCE_HOST || (typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai')}
+              <span className="text-[#00f2fe] font-medium truncate max-w-[165px]" title={typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai'}>
+                {(typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+                  ? window.location.hostname
+                  : (import.meta.env.VITE_APPLIANCE_HOST || (typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai'))}
               </span>
             </div>
             <div className="flex items-center justify-between">

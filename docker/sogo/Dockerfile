@@ -23,8 +23,13 @@ RUN mkdir -p /etc/sogo /var/spool/sogo /var/log/sogo /var/run/sogo && \
 
 COPY sogo.conf /etc/sogo/sogo.conf
 COPY nginx.conf /etc/nginx/sites-available/default
+COPY theme-brainsos.css /usr/lib/GNUstep/SOGo/WebServerResources/css/theme-brainsos.css
+COPY theme-brainsos.js /usr/lib/GNUstep/SOGo/WebServerResources/js/theme-brainsos.js
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod 644 /etc/sogo/sogo.conf /etc/nginx/sites-available/default && chmod 755 /entrypoint.sh
+RUN sed -i 's/delete e\.target\.attributes\.target/e.target.removeAttribute("target")/g' /usr/lib/GNUstep/SOGo/WebServerResources/js/Mailer.services.js 2>/dev/null || true && \
+    sed -i 's/delete \$event\.target\.attributes\.target/$event.target.removeAttribute("target")/g' /usr/lib/GNUstep/SOGo/WebServerResources/js/Mailer/MessageController.js 2>/dev/null || true && \
+    chmod 644 /etc/sogo/sogo.conf /etc/nginx/sites-available/default /usr/lib/GNUstep/SOGo/WebServerResources/css/theme-brainsos.css /usr/lib/GNUstep/SOGo/WebServerResources/js/theme-brainsos.js && \
+    chmod 755 /entrypoint.sh
 
 EXPOSE 20000
 

@@ -39,6 +39,19 @@ if [ -f .env ]; then
   set -a
   . ./.env
   set +a
+  if [ -z "${SYSTEM_API_TOKEN:-}" ]; then
+    SYSTEM_API_TOKEN="$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')"
+    export SYSTEM_API_TOKEN
+    if grep -q "^SYSTEM_API_TOKEN=" .env; then
+      sed -i.bak "s|^SYSTEM_API_TOKEN=.*|SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN}|" .env && rm -f .env.bak
+    else
+      echo "SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN}" >> .env
+    fi
+  fi
+  if ! grep -q "^BRAINSOS_UNIT_NAME=" .env; then
+    echo 'BRAINSOS_UNIT_NAME="Enterprise Agent Box"' >> .env
+    export BRAINSOS_UNIT_NAME="Enterprise Agent Box"
+  fi
   if [ -n "${GITHUB_TOKEN_CINDY:-}" ] && [ -z "${GITHUB_BASIC_AUTH_CINDY:-}" ]; then
     GITHUB_BASIC_AUTH_CINDY="$(printf 'x-access-token:%s' "${GITHUB_TOKEN_CINDY}" | base64 | tr -d '\r\n')"
     export GITHUB_BASIC_AUTH_CINDY
@@ -51,6 +64,7 @@ if [ -f .env ]; then
 fi
 
 PID_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
+LOG_DIR="${PID_DIR}"
 mkdir -p "${PID_DIR}"
 
 OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"
@@ -58,6 +72,12 @@ LITELLM_PID_FILE="${PID_DIR}/litellm.pid"
 DGX_BRIDGE_PID_FILE="${PID_DIR}/dgx_bridge.pid"
 QUEUE_WORKER_PID_FILE="${PID_DIR}/queue_worker.pid"
 QUEUE_WORKER_LOCK_FILE="${PID_DIR}/queue_worker.lock"
+SYSTEM_API_PID_FILE="${PID_DIR}/system_api.pid"
+BRAINSOS_SYSTEM_API_PORT="${BRAINSOS_SYSTEM_API_PORT:-8010}"
+VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
+if [ ! -x "${VENV_PYTHON}" ]; then
+  VENV_PYTHON="python3"
+fi
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_DB_PORT="${LITELLM_DB_PORT:-5432}"
 DGX_BRIDGE_PORT="${DGX_BRIDGE_PORT:-11001}"
@@ -165,10 +185,128 @@ is_gx10_hardware() {
 }
 
 # ------------------------------------------------------------------------------
+# Host System Management & Telemetry API Daemon (brainsos_telemetry.system)
+# ------------------------------------------------------------------------------
+start_system_api() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet brainsos-system-api.service 2>/dev/null; then
+    log_info "Host System API is managed by systemd (brainsos-system-api.service active)."
+    return 0
+  fi
+
+  local current_pid=""
+  if [ -f "${SYSTEM_API_PID_FILE}" ] && kill -0 "$(cat "${SYSTEM_API_PID_FILE}" 2>/dev/null)" 2>/dev/null; then
+    current_pid="$(cat "${SYSTEM_API_PID_FILE}")"
+  fi
+
+  if [ -n "${current_pid}" ] && curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
+    log_info "Host System API is already running and healthy (PID: ${current_pid}, port ${BRAINSOS_SYSTEM_API_PORT})."
+    return 0
+  fi
+
+  local stale_pids
+  stale_pids="$(pgrep -f "brainsos_telemetry.system" 2>/dev/null || true)"
+  if [ -n "${stale_pids}" ]; then
+    for p in ${stale_pids}; do
+      kill "${p}" 2>/dev/null || true
+    done
+    sleep 0.5
+    for p in ${stale_pids}; do
+      kill -9 "${p}" 2>/dev/null || true
+    done
+  fi
+  rm -f "${SYSTEM_API_PID_FILE}"
+
+  if command -v lsof >/dev/null 2>&1; then
+    local port_pids
+    port_pids=$(lsof -ti :"${BRAINSOS_SYSTEM_API_PORT}" 2>/dev/null || true)
+    if [ -n "${port_pids}" ]; then
+      for p in ${port_pids}; do kill -9 "${p}" 2>/dev/null || true; done
+    fi
+  fi
+
+  log_info "Starting Host System Management & Telemetry API (port ${BRAINSOS_SYSTEM_API_PORT})..."
+  BRAINSOS_SYSTEM_API_HOST="0.0.0.0" \
+  BRAINSOS_SYSTEM_API_PORT="${BRAINSOS_SYSTEM_API_PORT}" \
+  SYSTEM_API_TOKEN="${SYSTEM_API_TOKEN:-}" \
+  PYTHONPATH="${REPO_ROOT}/packages/brainsOS-telemetry:${REPO_ROOT}/packages/brainsOS-appliance:${REPO_ROOT}/packages/brainsOS-agent:${PYTHONPATH:-}" \
+  nohup ${SETSID_CMD} "${VENV_PYTHON}" -m brainsos_telemetry.system --host 0.0.0.0 --port "${BRAINSOS_SYSTEM_API_PORT}" </dev/null >"${LOG_DIR}/system_api.log" 2>&1 &
+  local sys_api_pid=$!
+  disown "${sys_api_pid}" 2>/dev/null || true
+  echo "${sys_api_pid}" > "${SYSTEM_API_PID_FILE}"
+
+  local ready=false
+  for i in {1..30}; do
+    if curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
+    sleep 0.5
+  done
+  if [ "${ready}" = true ]; then
+    log_success "Host System API started (PID: ${sys_api_pid}, http://0.0.0.0:${BRAINSOS_SYSTEM_API_PORT})."
+  else
+    log_warn "Host System API launched (PID: ${sys_api_pid}), health endpoint still initializing."
+  fi
+}
+
+stop_system_api() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet brainsos-system-api.service 2>/dev/null; then
+    log_info "Host System API is managed by systemd (brainsos-system-api.service); skipping manual PID stop."
+    return 0
+  fi
+
+  local pids
+  pids=$(pgrep -f "brainsos_telemetry.system" 2>/dev/null || true)
+  if [ -f "${SYSTEM_API_PID_FILE}" ]; then
+    local fpid
+    fpid=$(cat "${SYSTEM_API_PID_FILE}" 2>/dev/null || true)
+    [ -n "${fpid}" ] && pids="${pids} ${fpid}"
+    rm -f "${SYSTEM_API_PID_FILE}"
+  fi
+
+  if [ -n "${pids}" ]; then
+    log_info "Stopping Host System API process(es)..."
+    for p in ${pids}; do
+      kill "${p}" 2>/dev/null || true
+    done
+    sleep 0.5
+    for p in $(pgrep -f "brainsos_telemetry.system" 2>/dev/null || true); do
+      kill -9 "${p}" 2>/dev/null || true
+    done
+    log_success "Host System API stopped."
+  fi
+}
+
+status_system_api() {
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet brainsos-system-api.service 2>/dev/null; then
+    log_success "Host System API: RUNNING (systemd: brainsos-system-api.service on port ${BRAINSOS_SYSTEM_API_PORT})"
+    return 0
+  fi
+
+  local pid=""
+  if [ -f "${SYSTEM_API_PID_FILE}" ] && kill -0 "$(cat "${SYSTEM_API_PID_FILE}" 2>/dev/null)" 2>/dev/null; then
+    pid="$(cat "${SYSTEM_API_PID_FILE}")"
+  else
+    pid="$(pgrep -f "brainsos_telemetry.system" | head -n 1 || true)"
+    [ -n "${pid}" ] && echo "${pid}" > "${SYSTEM_API_PID_FILE}"
+  fi
+
+  if curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
+    log_success "Host System API: RUNNING (PID: ${pid:-unknown}, http://0.0.0.0:${BRAINSOS_SYSTEM_API_PORT})"
+  elif [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+    log_warn "Host System API: STARTING (PID: ${pid}, port ${BRAINSOS_SYSTEM_API_PORT})"
+  else
+    log_warn "Host System API: NOT RUNNING on port ${BRAINSOS_SYSTEM_API_PORT}"
+  fi
+}
+
+# ------------------------------------------------------------------------------
 # Action: Stop
 # ------------------------------------------------------------------------------
 stop_services() {
   log_info "Stopping brainsOS host control plane..."
+
+  stop_system_api
   
   # 1. Stop containerized LiteLLM gateway
   if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE "brainsos-(control-|infra-)?litellm"; then
@@ -371,6 +509,9 @@ status_services() {
   else
     log_info "Hermes Runner: NOT RUNNING (Run: docker compose up -d runner-hermes)"
   fi
+
+  # Host System Management & Telemetry API status
+  status_system_api
 }
 
 # ------------------------------------------------------------------------------
@@ -483,21 +624,24 @@ start_services() {
       local litellm_url
       litellm_url="$(get_litellm_url)"
 
-      local key_check
-      key_check=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X GET "${litellm_url}/key/info?key=${key}" \
-        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
+      local key_info
+      key_info=$(curl -s -X GET "${litellm_url}/key/info?key=${key}" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "")
 
-      if [ "${key_check}" = "200" ]; then
+      if echo "${key_info}" | grep -q "\"key_alias\"[[:space:]]*:[[:space:]]*\"${alias}\"" && ! echo "${key_info}" | grep -q "\"status\"[[:space:]]*:[[:space:]]*\"deleted\""; then
         log_info "LiteLLM virtual key '${alias}' is already active and verified."
         return 0
       fi
 
-      # If an older key exists under this alias (or legacy brainsos-operator), delete it first to satisfy unique key alias constraint
+      # If an older key exists under this alias (or legacy brainsos-operator / */editor/), delete it first to satisfy unique key alias constraint
       local del_aliases="[\"${alias}\"]"
-      if [[ "${alias}" == *"/editor/"* ]]; then
-        del_aliases="[\"${alias}\", \"brainsos-operator\"]"
+      if [ "${alias}" = "brainsOs.console" ] || [[ "${alias}" == *"/editor/"* ]]; then
+        del_aliases="[\"${alias}\", \"brainsOS.console\", \"brainsos-operator\", \"${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/\", \"local.brainsos.ai/editor/\"]"
       fi
+      curl -s -o /dev/null -X POST "${litellm_url}/key/delete" \
+        -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"keys\": [\"${key}\"]}" || true
       curl -s -o /dev/null -X POST "${litellm_url}/key/delete" \
         -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
         -H "Content-Type: application/json" \
@@ -523,7 +667,7 @@ start_services() {
       fi
     }
 
-    OPERATOR_KEY_ALIAS="${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/"
+    OPERATOR_KEY_ALIAS="brainsOs.console"
     provision_vkey "${OPERATOR_LITELLM_KEY}" "${OPERATOR_KEY_ALIAS}" 100.0
     provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella"
     provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin"
@@ -613,6 +757,9 @@ start_services() {
       fi
     fi
   fi
+
+  # 7. Start Host System Management & Telemetry API (port 8010)
+  start_system_api
 
   status_services
 }

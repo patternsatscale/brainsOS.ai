@@ -5,10 +5,25 @@
 # ==============================================================================
 set -eu
 
-# 1. Sync pre-installed extensions into user extensions directory if missing
+# 1. Sync pre-installed extensions into user extensions directory
 mkdir -p /home/coder/.local/share/code-server/extensions
 if [ -d "/opt/code-server/extensions" ]; then
+  # Remove stale older versions of bundled extensions before copying from /opt/code-server/extensions
+  for opt_ext in /opt/code-server/extensions/*; do
+    [ -d "${opt_ext}" ] || continue
+    ext_base="$(basename "${opt_ext}")"
+    ext_prefix="$(echo "${ext_base}" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+.*$//')"
+    for usr_ext in /home/coder/.local/share/code-server/extensions/${ext_prefix}-*; do
+      [ -d "${usr_ext}" ] || continue
+      if [ "$(basename "${usr_ext}")" != "${ext_base}" ]; then
+        rm -rf "${usr_ext}" 2>/dev/null || true
+      fi
+    done
+  done
   cp -rn /opt/code-server/extensions/* /home/coder/.local/share/code-server/extensions/ 2>/dev/null || true
+  if [ -f "/opt/code-server/extensions/extensions.json" ]; then
+    cp -f /opt/code-server/extensions/extensions.json /home/coder/.local/share/code-server/extensions/extensions.json 2>/dev/null || true
+  fi
   # Always ensure brainsOS custom system terminal is updated to the latest build
   cp -r /opt/code-server/extensions/brainsos.system-terminal-1.0.0 /home/coder/.local/share/code-server/extensions/ 2>/dev/null || true
 fi
@@ -122,6 +137,79 @@ except Exception:
     d = {}
 
 op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KEY") or "sk-brainsos-operator-virtual-key"
+master_key = os.environ.get("LITELLM_MASTER_KEY") or ""
+
+import urllib.request
+
+def key_works(k):
+    if not k:
+        return False
+    try:
+        req = urllib.request.Request(
+            "http://litellm:4000/model/info",
+            headers={"Authorization": f"Bearer {k}"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+# Preserve existing working key in chatLanguageModels.json if user configured one
+existing_key = ""
+if os.path.exists(lm_json_path):
+    try:
+        with open(lm_json_path, "r", encoding="utf-8") as f:
+            existing_lm = json.load(f)
+        if isinstance(existing_lm, list) and existing_lm and isinstance(existing_lm[0], dict):
+            existing_key = str(existing_lm[0].get("apiKey") or "").strip()
+    except Exception:
+        pass
+
+if existing_key and key_works(existing_key):
+    op_key = existing_key
+elif not key_works(op_key) and master_key:
+    # Auto-provision or reconcile operator virtual key in LiteLLM control plane
+    try:
+        for del_payload in (
+            {"keys": [op_key]},
+            {"key_aliases": ["brainsOs.console", "brainsOS.console", "brainsos-operator"]},
+        ):
+            req_del = urllib.request.Request(
+                "http://litellm:4000/key/delete",
+                data=json.dumps(del_payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {master_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                urllib.request.urlopen(req_del, timeout=3).read()
+            except Exception:
+                pass
+
+        gen_payload = {
+            "key": op_key,
+            "key_alias": "brainsOs.console",
+            "user_id": "admin",
+            "max_budget": 100.0,
+            "models": [],
+        }
+        req_gen = urllib.request.Request(
+            "http://litellm:4000/key/generate",
+            data=json.dumps(gen_payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {master_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req_gen, timeout=4) as resp:
+            gen_data = json.loads(resp.read().decode("utf-8"))
+            if gen_data.get("key"):
+                op_key = str(gen_data["key"])
+    except Exception:
+        pass
 
 # Core workbench and theme
 d["workbench.colorTheme"] = "Dark Modern"
@@ -154,9 +242,14 @@ d["litellm-connector.discoveryTimeoutMs"] = 5000
 d["litellm-connector.enableModelOverrides"] = False
 d["litellm-connector.displayPricingInPicker"] = False
 d["litellm-connector.modelCapabilitiesOverrides"] = {
-    "qwen3.8:latest": "toolCalling",
     "brainsos-core": "toolCalling",
-    "qwen2.5:latest": "toolCalling"
+    "qwen3.8": "toolCalling",
+    "qwen3.8:latest": "toolCalling",
+    "qwen2.5": "toolCalling",
+    "qwen2.5:latest": "toolCalling",
+    "llama3.2:3b": "toolCalling",
+    "muse-glimmer": "toolCalling",
+    "gemma4-MOE": "toolCalling"
 }
 
 # Security & telemetry
@@ -169,6 +262,16 @@ d["http.proxyStrictSSL"] = False
 d["telemetry.telemetryLevel"] = "off"
 d["workbench.startupEditor"] = "none"
 d["workbench.editor.restoreViewState"] = True
+
+# Git & Source Control integration (#340)
+d["github.gitAuthentication"] = False
+d["git.terminalAuthentication"] = False
+d["git.enabled"] = True
+d["git.path"] = "/usr/bin/git"
+d["git.autofetch"] = True
+d["git.confirmSync"] = False
+d["git.enableSmartCommit"] = True
+d["scm.alwaysShowRepositories"] = True
 
 # Pruned Explorer View & Outline / Timeline exclusions
 d["explorer.autoReveal"] = True
@@ -195,12 +298,21 @@ d["search.exclude"] = {
     "**/node_modules": True,
     "**/bower_components": True,
     "**/*.code-search": True,
+    "**/control_plane": True,
+    "**/comms": True,
+    "**/telemetry": True,
+    "**/backups": True,
+    "**/litellm_db": True,
+    "**/postgres": True,
+    "**/langfuse_*": True,
     "**/data/litellm_db": True,
     "**/data/postgres": True,
     "**/data/langfuse_*": True,
     "**/data/langfuse_clickhouse": True,
     "**/data/langfuse_postgres": True,
     "**/data/telemetry": True,
+    "**/data/git": True,
+    "**/git": True,
     "**/data/control_plane/litellm_db": True
 }
 d["files.watcherExclude"] = {
@@ -208,6 +320,15 @@ d["files.watcherExclude"] = {
     "**/.git/subtree-cache/**": True,
     "**/node_modules/**": True,
     "**/.cache/**": True,
+    "**/control_plane/**": True,
+    "**/comms/**": True,
+    "**/telemetry/**": True,
+    "**/backups/**": True,
+    "**/litellm_db/**": True,
+    "**/postgres/**": True,
+    "**/langfuse_*/**": True,
+    "**/workspace/**": True,
+    "**/agent_workspaces/**": True,
     "**/data/litellm_db/**": True,
     "**/data/postgres/**": True,
     "**/data/langfuse_*/**": True,
@@ -219,6 +340,8 @@ d["files.watcherExclude"] = {
     "**/data/agent_workspaces/**": True,
     "**/data/comms/**": True,
     "**/data/telemetry/**": True,
+    "**/data/git/**": True,
+    "**/git/**": True,
     "**/.venv/**": True,
     "**/dist/**": True,
     "**/build/**": True
@@ -226,6 +349,28 @@ d["files.watcherExclude"] = {
 
 with open(settings_path, "w", encoding="utf-8") as f:
     json.dump(d, f, indent=2)
+
+ws_settings_path = "/data/.vscode/settings.json"
+if os.path.exists(ws_settings_path):
+    try:
+        with open(ws_settings_path, "r", encoding="utf-8") as f:
+            ws_d = json.load(f)
+        if isinstance(ws_d, dict):
+            ws_d["github.gitAuthentication"] = False
+            ws_d["git.terminalAuthentication"] = False
+            ws_d["git.enabled"] = True
+            ws_d["git.path"] = "/usr/bin/git"
+            ws_d["git.autofetch"] = True
+            ws_d["git.confirmSync"] = False
+            ws_d["git.enableSmartCommit"] = True
+            ws_d["scm.alwaysShowRepositories"] = True
+            ws_d["files.watcherExclude"] = d["files.watcherExclude"]
+            ws_d["search.exclude"] = d["search.exclude"]
+            ws_d["litellm-connector.modelCapabilitiesOverrides"] = d["litellm-connector.modelCapabilitiesOverrides"]
+            with open(ws_settings_path, "w", encoding="utf-8") as f:
+                json.dump(ws_d, f, indent=2)
+    except Exception:
+        pass
 
 # 3b. Dynamic chatLanguageModels.json with LiteLLM Connector (Zero hardcoded models)
 domain = os.environ.get("BRAINSOS_DOMAIN", "local.brainsos.ai")
@@ -241,6 +386,14 @@ chat_lm = [
 ]
 with open(lm_json_path, "w", encoding="utf-8") as f:
     json.dump(chat_lm, f, indent=2)
+
+# Keep Aider configuration synchronized with active operator key
+aider_path = "/home/coder/.aider.conf.yml"
+try:
+    with open(aider_path, "w", encoding="utf-8") as f:
+        f.write(f"openai-api-base: http://litellm:4000/v1\nopenai-api-key: {op_key}\nmodel: openai/brainsos-core\n")
+except Exception:
+    pass
 PYEOF
 
 # 3c. Seed workspace settings to /data/.vscode/settings.json if missing
@@ -253,6 +406,16 @@ fi
 if [ ! -f /etc/brainsos/system.mk ] && [ -f /etc/brainsos/editor/system.mk ]; then
   mkdir -p /etc/brainsos
   cp /etc/brainsos/editor/system.mk /etc/brainsos/system.mk 2>/dev/null || true
+fi
+
+# 3e. Configure global Git identity & safe workspace directory for VS Code SCM (#340)
+if command -v git >/dev/null 2>&1; then
+  git config --global --add safe.directory /data 2>/dev/null || true
+  git config --global init.defaultBranch main 2>/dev/null || true
+  git config --global user.name "${BRAINSOS_SUPERUSER_NAME:-${BRAINSOS_ADMIN_USERNAME:-brainsOS Operator}}" 2>/dev/null || true
+  git config --global user.email "${BRAINSOS_ADMIN_EMAIL:-operator@${BRAINSOS_LOCAL_DOMAIN:-local.brainsos.ai}}" 2>/dev/null || true
+  git config --global credential.helper "store --file=/data/.git/credentials" 2>/dev/null || true
+  git config --global push.default simple 2>/dev/null || true
 fi
 
 # 4. Scaffolding Aider CLI configuration

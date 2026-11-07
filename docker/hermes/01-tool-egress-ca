@@ -25,3 +25,44 @@ if [ -f "${MITMPROXY_CA_CERT}" ]; then
     chmod 644 "${TARGET_CERT}"
     update-ca-certificates >/dev/null 2>&1 || true
 fi
+
+# ==============================================================================
+# brainsOS: Hermes Dashboard Reverse-Proxy SSO Exemption (#334)
+# Caddy enforces Authentik forward_auth at the /runner/* ingress boundary and
+# host port 8787 is bound strictly to 127.0.0.1. Allow non-loopback container
+# binds (0.0.0.0:9119 on brainsos-ingress-net) when HERMES_TRUST_REVERSE_PROXY_AUTH=true.
+# ==============================================================================
+if [ -f /opt/hermes/hermes_cli/web_server.py ]; then
+    PYTHON_BIN="/opt/hermes/.venv/bin/python"
+    [ -x "${PYTHON_BIN}" ] || PYTHON_BIN="python3"
+    "${PYTHON_BIN}" - << 'PYEOF' 2>/dev/null || true
+from pathlib import Path
+
+path = Path("/opt/hermes/hermes_cli/web_server.py")
+text = path.read_text(encoding="utf-8")
+marker = 'os.environ.get("HERMES_TRUST_REVERSE_PROXY_AUTH"'
+if marker not in text:
+    old_fn = "def should_require_auth(host: str, allow_public: bool = False) -> bool:\n"
+    new_fn = (
+        "def should_require_auth(host: str, allow_public: bool = False) -> bool:\n"
+        '    if os.environ.get("HERMES_TRUST_REVERSE_PROXY_AUTH", "").lower() in ("1", "true", "yes"):\n'
+        "        return False\n"
+    )
+    old_dash = (
+        "def should_require_dashboard_auth(\n"
+        "    host: str,\n"
+        "    trusted_public_hosts: Optional[frozenset[str]] = None,\n"
+        ") -> bool:\n"
+    )
+    new_dash = (
+        old_dash
+        + '    if os.environ.get("HERMES_TRUST_REVERSE_PROXY_AUTH", "").lower() in ("1", "true", "yes"):\n'
+        + "        return False\n"
+    )
+    if old_fn in text:
+        text = text.replace(old_fn, new_fn, 1)
+    if old_dash in text:
+        text = text.replace(old_dash, new_dash, 1)
+    path.write_text(text, encoding="utf-8")
+PYEOF
+fi

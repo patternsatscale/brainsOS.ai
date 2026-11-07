@@ -103,25 +103,28 @@ fi
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
-OPERATOR_KEY_ALIAS="${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/"
+OPERATOR_KEY_ALIAS="brainsOs.console"
 
 if [ -n "${LITELLM_MASTER_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
   log_info "Checking operator virtual key '${OPERATOR_KEY_ALIAS}' in LiteLLM DB..."
-  KEY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${OPERATOR_LITELLM_KEY}" \
-    -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "000")
+  KEY_INFO=$(curl -s -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${OPERATOR_LITELLM_KEY}" \
+    -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "")
 
-  if [ "${KEY_STATUS}" != "200" ]; then
+  if ! echo "${KEY_INFO}" | grep -q "\"key_alias\"[[:space:]]*:[[:space:]]*\"${OPERATOR_KEY_ALIAS}\"" || echo "${KEY_INFO}" | grep -q "\"status\"[[:space:]]*:[[:space:]]*\"deleted\""; then
     log_info "Provisioning dedicated operator virtual key '${OPERATOR_KEY_ALIAS}' in LiteLLM DB..."
     curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"key_aliases\": [\"${OPERATOR_KEY_ALIAS}\", \"brainsos-operator\"]}" || true
+      -d "{\"keys\": [\"${OPERATOR_LITELLM_KEY}\"]}" || true
+    curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
+      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+      -H "Content-Type: application/json" \
+      -d "{\"key_aliases\": [\"${OPERATOR_KEY_ALIAS}\", \"brainsOS.console\", \"brainsos-operator\", \"${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/\", \"local.brainsos.ai/editor/\"]}" || true
     local_res=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
       -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"${OPERATOR_KEY_ALIAS}\", \"max_budget\": 100.0, \"models\": []}")
+      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"${OPERATOR_KEY_ALIAS}\", \"user_id\": \"admin\", \"max_budget\": 100.0, \"models\": []}")
     if echo "${local_res}" | grep -q "HTTP_STATUS:200"; then
       log_success "Operator virtual key '${OPERATOR_KEY_ALIAS}' provisioned in LiteLLM control plane."
     else

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # brainsOS: Golden AMI Provisioner (Packer Shell Provisioner)
-# Ticket #313 / #322 (Epic #309)
+# Ticket #313 / #322 / #338 (Epic #309)
 #
 # Configures a clean Ubuntu 24.04 ARM64 instance into a turnkey brainsOS appliance:
 #   1. Installs base packages, Docker CE + Compose, Node.js (portal), uv
@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do
       ;;
     -h|--help)
       cat <<EOF
-brainsOS Golden AMI Provisioner (Tickets #313 / #322)
+brainsOS Golden AMI Provisioner (Tickets #313 / #322 / #338)
 
 Usage:
   sudo ./packages/brainsOS-appliance/packer/provision.sh [OPTIONS]
@@ -136,13 +136,13 @@ fi
 
 if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Simulating AMI provisioner sequence (app dir: ${APP_DIR})..."
-  log_info "[DRY-RUN] 1. apt: curl, jq, ufw, logrotate, git, make, python3, nodejs, npm"
+  log_info "[DRY-RUN] 1. apt: dist-upgrade + noble-proposed linux-aws kernel + curl, jq, ufw, logrotate, git, make, python3, NodeSource nodejs 22 LTS (purge python3-pip*/python3-venv/node-lodash*)"
   log_info "[DRY-RUN] 2. Ensure a single AWS SSM Agent (reuse Canonical snap if present)"
-  log_info "[DRY-RUN] 3. Install Docker CE + Compose plugin; install uv"
+  log_info "[DRY-RUN] 3. Install Docker CE + Compose plugin; install latest uv"
   log_info "[DRY-RUN] 4. Install brainsos.service, brainsos-firstboot.service & brainsos-system-api.service"
   log_info "[DRY-RUN] 5. Execute ${SCRIPTS_DIR}/harden-host.sh"
-  log_info "[DRY-RUN] 6. make runner-base build; docker compose pull; verify images; portal build; .venv (bootstrap-env.sh)"
-  log_info "[DRY-RUN] 7. Sanitize: provisioning env, SSH keys, host keys, machine-id, cloud-init"
+  log_info "[DRY-RUN] 6. make runner-base build; docker compose pull (incl. gitea/gitea:1.22); verify images; portal build; .venv (bootstrap-env.sh)"
+  log_info "[DRY-RUN] 7. Sanitize: prune portal node_modules, uv/uvx binaries, superseded kernel packages, provisioning env, SSH keys, host keys, machine-id, cloud-init"
   log_info "[DRY-RUN] 8. Fail-closed snapshot scan"
   log_success "[DRY-RUN] Provisioning simulation complete."
   exit 0
@@ -162,10 +162,27 @@ export DEBIAN_FRONTEND=noninteractive
 export HOME=/root
 
 # ------------------------------------------------------------------------------
-# 1. Base System Packages
+# 1. Base System Packages & Security Upgrades (Ticket #338)
 # ------------------------------------------------------------------------------
-log_info "1. Updating package lists and installing foundational dependencies..."
+log_info "1. Updating package lists, applying security dist-upgrade, and installing foundational dependencies..."
 apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y \
+  -o Dpkg::Options::="--force-confdef" \
+  -o Dpkg::Options::="--force-confold"
+
+# Upgrade AWS kernel packages from noble-proposed when a newer linux-aws release is staged
+# (resolves all 2,732 pending linux-aws-7.0 / linux-image-aws CVEs tracked in Ubuntu OVAL)
+log_info "Upgrading AWS kernel packages from noble-proposed (if newer kernel is staged)..."
+echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://ports.ubuntu.com/ubuntu-ports noble-proposed main restricted" > /etc/apt/sources.list.d/noble-proposed-kernel.list
+apt-get update -y
+DEBIAN_FRONTEND=noninteractive apt-get install -y -t noble-proposed \
+  -o Dpkg::Options::="--force-confdef" \
+  -o Dpkg::Options::="--force-confold" \
+  linux-aws linux-image-aws linux-headers-aws || \
+  log_warn "noble-proposed kernel upgrade skipped; continuing with noble-security kernel."
+rm -f /etc/apt/sources.list.d/noble-proposed-kernel.list
+apt-get update -y
+
 apt-get install -y --no-install-recommends \
   apt-transport-https \
   ca-certificates \
@@ -180,12 +197,22 @@ apt-get install -y --no-install-recommends \
   logrotate \
   socat \
   python3 \
-  python3-pip \
-  python3-venv \
-  nodejs \
-  npm \
   tar \
   gzip
+
+log_info "Installing Node.js 22 LTS from NodeSource (bundles npm without Debian node-lodash packages)..."
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+chmod a+r /etc/apt/keyrings/nodesource.gpg
+echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | \
+  tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+apt-get update -y
+apt-get install -y --no-install-recommends nodejs
+
+# Purge legacy system pip/wheel/venv (uv creates .venv natively without python3-pip-whl) and any Debian node-lodash packages
+apt-get purge -y --auto-remove \
+  python3-pip python3-pip-whl python3-setuptools-whl python3-wheel \
+  python3-venv 'python3.*-venv' 'node-lodash*' 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # 2. AWS Systems Manager (SSM) Agent - exactly one instance
@@ -226,12 +253,25 @@ systemctl enable --now docker
 if id -u ubuntu >/dev/null 2>&1; then
   usermod -aG docker ubuntu
 fi
-log_success "Docker CE and Compose plugin installed."
+if ! id -u admin >/dev/null 2>&1; then
+  useradd -m -s /bin/bash -G sudo,docker admin 2>/dev/null || useradd -m -s /bin/bash admin 2>/dev/null || true
+fi
+usermod -aG sudo,docker admin 2>/dev/null || true
+if [ -d /home/admin ]; then
+  grep -q "cd ${APP_DIR}" /home/admin/.bashrc 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${APP_DIR}" >> /home/admin/.bashrc
+  chown -R admin:admin /home/admin 2>/dev/null || true
+fi
+if [ -d /etc/sudoers.d ]; then
+  printf "# Managed by brainsOS provision.sh (#332)\nadmin ALL=(ALL:ALL) ALL\n" > /etc/sudoers.d/90-brainsos-admin
+  chmod 0440 /etc/sudoers.d/90-brainsos-admin
+fi
+log_success "Docker CE, Compose plugin, and Linux 'admin' user configured."
 
 log_info "Installing Astral uv..."
 curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
 if [ -x "/usr/local/bin/uv" ]; then
-  log_success "uv installed at /usr/local/bin/uv."
+  /usr/local/bin/uv self update >/dev/null 2>&1 || true
+  log_success "uv installed at /usr/local/bin/uv ($(/usr/local/bin/uv --version 2>/dev/null || echo 'latest'))."
 else
   log_warn "uv not found at /usr/local/bin/uv after install."
 fi
@@ -290,8 +330,9 @@ make runner-base build
 
 # 6b. Upstream images (fail the build on any pull failure)
 docker compose pull --ignore-buildable
+docker pull gitea/gitea:1.22
 
-# 6c. Verify every image referenced by the appliance topology is present locally
+# 6c. Verify every image referenced by the appliance topology (including gitea/gitea:1.22) is present locally
 MISSING_IMAGES=0
 while IFS= read -r img; do
   [ -z "${img}" ] && continue
@@ -299,15 +340,14 @@ while IFS= read -r img; do
     log_error "Image not present after pre-build: ${img}"
     MISSING_IMAGES=$((MISSING_IMAGES + 1))
   fi
-done < <(docker compose config --images | sort -u)
+done < <({ docker compose config --images; echo "gitea/gitea:1.22"; } | sort -u)
 if [ "${MISSING_IMAGES}" -gt 0 ]; then
   log_error "${MISSING_IMAGES} image(s) missing; first boot would require network builds. Aborting."
   exit 1
 fi
 log_success "All appliance images are present locally."
 
-# 6d. Portal: install dependencies and validate a production build via the repo script.
-#     firstboot re-runs setup-portal.sh with the real hostname (offline, node_modules cached).
+# 6d. Portal: install dependencies and compile the production static bundle (dist/).
 "${APP_DIR}/scripts/setup/setup-portal.sh"
 
 # 6e. Python .venv with editable platform packages (host queue worker, CLIs).
@@ -327,6 +367,14 @@ trap - EXIT
 # ------------------------------------------------------------------------------
 log_info "7. Sanitizing host for AMI snapshot..."
 
+# Prune build-only portal node_modules and uv/uvx binaries after static dist/ and .venv are verified (Ticket #338)
+if [ -f "${APP_DIR}/packages/brainsOS-portal/dist/index.html" ]; then
+  rm -rf "${APP_DIR}/packages/brainsOS-portal/node_modules"
+fi
+if [ -x "${APP_DIR}/.venv/bin/python" ]; then
+  rm -f /usr/local/bin/uv /usr/local/bin/uvx
+fi
+
 # Repository runtime state that provisioning may have produced
 rm -f "${APP_DIR}/.env" "${APP_DIR}/.env.bak" "${APP_DIR}/.brainsos-initialized"
 find "${APP_DIR}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" -type f -exec rm -f {} + 2>/dev/null || true
@@ -338,8 +386,8 @@ git -C "${APP_DIR}" checkout -- data/ 2>/dev/null || true
 rm -f /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys
 rm -f /etc/ssh/ssh_host_*
 
-# AWS / tool credentials that must never persist
-rm -rf /root/.aws /home/ubuntu/.aws /root/.docker/config.json /root/.npm/_logs
+# AWS / tool credentials and build caches that must never persist
+rm -rf /root/.aws /home/ubuntu/.aws /root/.docker/config.json /root/.npm
 rm -rf /root/.cache/uv /root/.cache/pip
 rm -f "${APP_DIR}/.git/hooks/pre-commit"
 
@@ -351,6 +399,24 @@ ln -sf /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null || true
 # Reset cloud-init so per-instance modules (SSH keys, hostname) run on first boot
 if command -v cloud-init >/dev/null 2>&1; then
   cloud-init clean --logs --seed || true
+fi
+
+# Purge superseded AWS kernel packages so only the latest patched kernel remains in /var/lib/dpkg/status
+LATEST_IMAGE="$(dpkg-query -W -f='${Package}\t${Status}\n' 2>/dev/null | awk '$2=="install" && $3=="ok" && $4=="installed" && $1 ~ /^linux-image-[0-9]+.*-aws$/ {print $1}' | sort -V | tail -n 1)"
+if [ -n "${LATEST_IMAGE}" ]; then
+  LATEST_KVER="${LATEST_IMAGE#linux-image-}"
+  LATEST_KVER="${LATEST_KVER%-aws}"
+  mapfile -t OLD_KERNEL_PKGS < <(
+    dpkg-query -W -f='${Package}\t${Status}\n' 2>/dev/null | \
+      awk '$2=="install" && $3=="ok" && $4=="installed" {print $1}' | \
+      grep -E "^(linux-(image|modules|modules-extra|headers|tools|buildinfo)-[0-9].*-aws|linux-aws(-[0-9.]+)?-(headers|tools)-[0-9].*)$" | \
+      grep -vF "${LATEST_KVER}" || true
+  )
+  if [ "${#OLD_KERNEL_PKGS[@]}" -gt 0 ]; then
+    log_info "Purging superseded kernel packages (${OLD_KERNEL_PKGS[*]}), keeping ${LATEST_IMAGE}..."
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y --auto-remove "${OLD_KERNEL_PKGS[@]}" || true
+    command -v update-grub >/dev/null 2>&1 && update-grub >/dev/null 2>&1 || true
+  fi
 fi
 
 # Shell histories, temp files, package caches, logs

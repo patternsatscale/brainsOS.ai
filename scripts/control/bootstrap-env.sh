@@ -361,7 +361,9 @@ if [ -f "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
 fi
 
 # 3. Python Virtual Environment & Packages
-if command -v uv >/dev/null 2>&1; then
+if [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] && [ -x "${REPO_ROOT}/.venv/bin/python" ] && ! command -v uv >/dev/null 2>&1; then
+  log_info "Pre-built appliance Python virtual environment detected at ${REPO_ROOT}/.venv; skipping package re-installation."
+elif command -v uv >/dev/null 2>&1; then
   log_info "Found 'uv' package manager."
   if [ ! -d "${REPO_ROOT}/.venv" ]; then
     log_info "Creating virtual environment at .venv..."
@@ -379,6 +381,8 @@ if command -v uv >/dev/null 2>&1; then
   if [ ${#pkg_args[@]} -gt 0 ]; then
     uv pip install "${pkg_args[@]}" --python "${REPO_ROOT}/.venv/bin/python"
   fi
+elif [ -x "${REPO_ROOT}/.venv/bin/python" ] && [ ! -x "${REPO_ROOT}/.venv/bin/pip" ]; then
+  log_info "Existing uv-managed Python virtual environment detected at ${REPO_ROOT}/.venv; skipping pip bootstrap."
 elif command -v python3 >/dev/null 2>&1; then
   log_warn "'uv' not found. Falling back to python3 venv/pip."
   if [ ! -d "${REPO_ROOT}/.venv" ]; then

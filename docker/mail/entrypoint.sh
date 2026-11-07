@@ -25,7 +25,10 @@ CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
 GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
 # Collect and deduplicate domains
+ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+PRIMARY_LOCAL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-local.brainsos.ai}}"
 RAW_DOMAINS=("brainsos.local" "local.brainsos.ai")
+if [ -n "${BRAINSOS_LOCAL_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_LOCAL_DOMAIN}"); fi
 if [ -n "${BRAINSOS_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_DOMAIN}"); fi
 if [ -n "${BRAINSOS_MAIL_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_MAIL_DOMAIN}"); fi
 if [ -n "${BRAINSOS_EMAIL_DOMAIN:-}" ]; then RAW_DOMAINS+=("${BRAINSOS_EMAIL_DOMAIN}"); fi
@@ -54,6 +57,7 @@ for d in "${UNIQUE_DOMAINS[@]}"; do
 cat << EOF >> /etc/mail-brainsos/users
 admin@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
 operator@${d}:{PLAIN}${OPERATOR_PASS}:5000:5000::/var/mail/vmail/operator::
+akadmin@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
 terrastella@${d}:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastella::
 bawtford@${d}:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
 marvin@${d}:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
@@ -65,6 +69,7 @@ EOF
 cat << EOF >> /etc/mail-brainsos/vmailbox
 admin@${d} admin
 operator@${d} operator
+akadmin@${d} admin
 terrastella@${d} terrastella
 bawtford@${d} bawtford
 marvin@${d} marvin
@@ -74,14 +79,21 @@ gpt@${d} gpt
 EOF
 
 cat << EOF >> /etc/mail-brainsos/virtual
-postmaster@${d} admin@brainsos.local
-root@${d} admin@brainsos.local
+postmaster@${d} admin@${d}
+root@${d} admin@${d}
+akadmin@${d} admin@${d}
 cindy@${d} bawtford@${d}
 EOF
+if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    echo "${ADMIN_USER}@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::" >> /etc/mail-brainsos/users
+    echo "${ADMIN_USER}@${d} admin" >> /etc/mail-brainsos/vmailbox
+fi
 done
 
-# Configure Postfix virtual mailbox domains
+# Configure Postfix hostname, domain & virtual mailbox domains
 DOMAINS_STR=$(IFS=', '; echo "${UNIQUE_DOMAINS[*]}")
+postconf -e "myhostname = ${PRIMARY_LOCAL_DOMAIN}"
+postconf -e "mydomain = ${PRIMARY_LOCAL_DOMAIN}"
 postconf -e "virtual_mailbox_domains = ${DOMAINS_STR}"
 
 # Compile Postfix lookup databases
@@ -104,6 +116,95 @@ for user in $(cut -d: -f1 /etc/mail-brainsos/users); do
              "/var/mail/vmail/$name/Maildir/tmp"
     chown -R vmail:vmail "/var/mail/vmail/$name"
     chmod -R 770 "/var/mail/vmail/$name"
+done
+
+# Seed / update Welcome Email in administrator mailbox(es) with active local domain
+WELCOME_DATE="$(date -R 2>/dev/null || echo "Fri, 06 Nov 2026 12:00:00 +0000")"
+ADMIN_TARGETS=("admin")
+if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    ADMIN_TARGETS+=("${ADMIN_USER}")
+fi
+for target_box in "${ADMIN_TARGETS[@]}"; do
+    rm -f "/var/mail/vmail/$target_box/Maildir/cur/1730937600.M000001P1.brainsos"* "/var/mail/vmail/$target_box/Maildir/new/1730937600.M000001P1.brainsos"* 2>/dev/null || true
+    EXISTING_CUR="$(find "/var/mail/vmail/$target_box/Maildir/cur" -maxdepth 1 -name "1794074500.M000001P1.brainsos*" 2>/dev/null | head -n 1 || true)"
+    if [ -n "${EXISTING_CUR}" ]; then
+        WELCOME_PATH="${EXISTING_CUR}"
+        rm -f "/var/mail/vmail/$target_box/Maildir/new/1794074500.M000001P1.brainsos"* 2>/dev/null || true
+    else
+        WELCOME_PATH="/var/mail/vmail/$target_box/Maildir/new/1794074500.M000001P1.brainsos"
+    fi
+    cat <<EOF > "${WELCOME_PATH}"
+From: "brainsOS Appliance" <ping@${PRIMARY_LOCAL_DOMAIN}>
+To: "${ADMIN_USER}" <${ADMIN_USER}@${PRIMARY_LOCAL_DOMAIN}>
+Subject: Welcome to brainsOS — Your Autonomous Agent Fleet Directory
+Date: ${WELCOME_DATE}
+Message-ID: <welcome-fleet-directory@${PRIMARY_LOCAL_DOMAIN}>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; background-color: #0b0f19; padding: 24px; line-height: 1.65;">
+  <div style="max-width: 680px; margin: 0 auto; background-color: #111827; border: 1px solid #334155; border-radius: 12px; padding: 28px; color: #f8fafc;">
+    <h2 style="margin-top: 0; color: #38bdf8;">Welcome to brainsOS (${PRIMARY_LOCAL_DOMAIN})</h2>
+    <p style="color: #f8fafc; font-size: 15px; margin: 0 0 14px 0;">Hello <strong style="color: #ffffff;">${ADMIN_USER}</strong>,</p>
+    <p style="color: #f1f5f9; font-size: 14px; margin: 0 0 14px 0;">
+      Your sovereign <strong style="color: #ffffff;">brainsOS</strong> appliance is online and your internal Postfix, Dovecot, and SOGo communications plane is active for <code style="color: #7dd3fc; background-color: #1e293b; padding: 2px 6px; border-radius: 4px;">@${PRIMARY_LOCAL_DOMAIN}</code>.
+    </p>
+    <p style="color: #f1f5f9; font-size: 14px; margin: 0 0 16px 0;">
+      You can collaborate with your autonomous agents directly via email. Simply click <strong style="color: #ffffff;">New Message</strong>, type an agent's name in the <code style="color: #7dd3fc; background-color: #1e293b; padding: 2px 6px; border-radius: 4px;">To</code> field (auto-completed from the <strong style="color: #ffffff;">brainsOS Directory</strong> address book), and send your task or question:
+    </p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; color: #f8fafc;">
+      <thead>
+        <tr style="border-bottom: 1px solid #475569; text-align: left; color: #f8fafc;">
+          <th style="padding: 10px 8px; color: #f8fafc;">Agent</th>
+          <th style="padding: 10px 8px; color: #f8fafc;">Email Address</th>
+          <th style="padding: 10px 8px; color: #f8fafc;">Role &amp; Capabilities</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Ping</td>
+          <td style="padding: 10px 8px;"><a href="mailto:ping@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">ping@${PRIMARY_LOCAL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Instant diagnostic echo &amp; end-to-end mail/queue latency probe.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Cindy Bawtford</td>
+          <td style="padding: 10px 8px;"><a href="mailto:bawtford@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">bawtford@${PRIMARY_LOCAL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Creative Director &amp; full-stack web application orchestrator.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Terrastella</td>
+          <td style="padding: 10px 8px;"><a href="mailto:terrastella@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">terrastella@${PRIMARY_LOCAL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Executive strategy, research synthesis &amp; operations coordinator.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Marvin</td>
+          <td style="padding: 10px 8px;"><a href="mailto:marvin@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">marvin@${PRIMARY_LOCAL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Systems architecture, diagnostics &amp; security boundary auditor.</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #1f2937;">
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Claude Demo</td>
+          <td style="padding: 10px 8px;"><a href="mailto:claude@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">claude@${PRIMARY_LOCAL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">General-purpose reasoning, analysis &amp; writing assistant.</td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">GPT Demo</td>
+          <td style="padding: 10px 8px;"><a href="mailto:gpt@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">gpt@${PRIMARY_LOCAL_DOMAIN}</a></td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">General-purpose assistant for rapid drafting, coding &amp; Q&amp;A.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size: 13px; color: #e2e8f0; margin-bottom: 0;">
+      <strong style="color: #ffffff;">Tip:</strong> As the appliance administrator, you also have read/oversight access to all agent mailboxes under the <em style="color: #ffffff;">Agent Fleet</em> shared namespace in the left folder pane.
+    </p>
+  </div>
+</body>
+</html>
+EOF
+    chown vmail:vmail "${WELCOME_PATH}" 2>/dev/null || true
+    chmod 660 "${WELCOME_PATH}" 2>/dev/null || true
+    rm -f "/var/mail/vmail/$target_box/Maildir/dovecot.index.cache" 2>/dev/null || true
 done
 
 # Compile default Sieve script and ensure webhook dispatcher permissions
@@ -135,12 +236,15 @@ sleep 1
 # 2. Administrator gets full management access (including write-deleted and expunge)
 for user in $(cut -d: -f1 /etc/mail-brainsos/users); do
     base_user=$(echo "$user" | cut -d@ -f1)
-    if [ "$base_user" != "admin" ]; then
+    if [ "$base_user" != "admin" ] && [ "$base_user" != "${ADMIN_USER}" ]; then
         # Restrict agent owner: no write-deleted (t), no expunge (e), no admin (a)
         doveadm acl set -u "$user" INBOX owner lookup read write write-seen insert post 2>/dev/null || true
         # Grant admin full oversight & expunge capabilities across all domains
         for d in "${UNIQUE_DOMAINS[@]}"; do
             doveadm acl set -u "$user" INBOX user=admin@${d} lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+            if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ]; then
+                doveadm acl set -u "$user" INBOX user=${ADMIN_USER}@${d} lookup read write write-seen write-deleted insert post expunge admin 2>/dev/null || true
+            fi
         done
     fi
 done

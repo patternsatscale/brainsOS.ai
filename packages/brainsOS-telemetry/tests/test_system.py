@@ -309,3 +309,391 @@ def test_update_passes_version_and_rejects_invalid_version(tmp_path):
         assert ok_branch.status_code == 200
         assert "--branch task/320-appliance-rehearsal" in ok_branch.text
 
+
+def test_identity_and_firstboot_wizard_status(tmp_path):
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
+        "BRAINSOS_LOCAL_DOMAIN=jsm.cloud.aws.brainsos.ai\n"
+        "BRAINSOS_ADMIN_USERNAME=jsm\n"
+        "BRAINSOS_TLS_MODE=internal\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-initialized").write_text("2026-11-06T00:00:00Z\n", encoding="utf-8")
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
+
+        res = client.get("/api/v1/system/identity", headers=headers)
+        assert res.status_code == 200
+        ident = res.json()
+        assert ident["firstboot_wizard_completed"] is False
+        assert ident["url"] == "ec2-32-192-215-107.compute-1.amazonaws.com"
+        assert ident["local_domain"] == "jsm.cloud.aws.brainsos.ai"
+        assert ident["admin_username"] == "jsm"
+        assert ident["admin_email"] == "jsm@jsm.cloud.aws.brainsos.ai"
+
+        # Dismiss wizard via POST /api/v1/system/setup
+        csrf_tok = issue_csrf_token()
+        post_headers = {
+            **headers,
+            "X-Authentik-Username": "jsm",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+        dismiss_res = client.post(
+            "/api/v1/system/setup",
+            json={"dismiss_only": True},
+            headers=post_headers,
+        )
+        assert dismiss_res.status_code == 200
+        assert dismiss_res.json()["firstboot_wizard_completed"] is True
+        assert (tmp_path / ".brainsos-wizard-completed").is_file()
+
+
+def test_dns_check_and_setup_password_never_logged(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAINSOS_TEST_PUBLIC_IPV4", "32.192.215.107")
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text(
+        "#!/usr/bin/env bash\n"
+        "echo \"SET_DOMAIN_ARGS: $*\"\n"
+        "if [ -n \"${BRAINSOS_NEW_ADMIN_PASSWORD:-}\" ]; then echo \"PASS_ENV_RECEIVED=yes\"; fi\n",
+        encoding="utf-8",
+    )
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "admin",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        with patch("socket.gethostbyname", return_value="32.192.215.107"):
+            dns_res = client.post(
+                "/api/v1/system/dns-check",
+                json={"domain": "https://portal.brainsos.ai/"},
+                headers=headers,
+            )
+            assert dns_res.status_code == 200
+            dns_data = dns_res.json()
+            assert dns_data["domain"] == "portal.brainsos.ai"
+            assert dns_data["valid_syntax"] is True
+            assert dns_data["matches_appliance"] is True
+
+        # Reject invalid local_domain
+        bad_setup = client.post(
+            "/api/v1/system/setup",
+            json={"local_domain": "not_a_fqdn"},
+            headers=headers,
+        )
+        assert bad_setup.status_code == 400
+
+        # Valid setup streams SSE and passes password via env var (never in command args)
+        ok_setup = client.post(
+            "/api/v1/system/setup",
+            json={
+                "local_domain": "jsm.cloud.aws.brainsos.ai",
+                "admin_username": "jsm",
+                "admin_password": "UltraSecretPassword99!",
+                "url": "https://ec2-32-192-215-107.compute-1.amazonaws.com/",
+                "tls_mode": "internal",
+            },
+            headers=headers,
+        )
+        assert ok_setup.status_code == 200
+        assert "--local-domain jsm.cloud.aws.brainsos.ai" in ok_setup.text
+        assert "--admin-username jsm" in ok_setup.text
+        assert "PASS_ENV_RECEIVED=yes" in ok_setup.text
+        assert "UltraSecretPassword99!" not in ok_setup.text
+
+
+def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "i-0abc123456789def0")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
+        "BRAINSOS_LOCAL_DOMAIN=local.brainsos.ai\n"
+        "BRAINSOS_ADMIN_USERNAME=admin\n"
+        "BRAINSOS_ADMIN_PASSWORD=i-0abc123456789def0\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-initialized").write_text("2026-11-06T00:00:00Z\n", encoding="utf-8")
+
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text("#!/usr/bin/env bash\necho \"PRELOGIN_SETUP_OK: $*\"\n", encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        # No X-Authentik-Username header (pre-sign-in wizard state)
+        prelogin_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        # 1. GET /api/v1/system/identity masks instance_id before wizard completion
+        ident_res = client.get("/api/v1/system/identity", headers=prelogin_headers)
+        assert ident_res.status_code == 200
+        assert ident_res.json()["firstboot_wizard_completed"] is False
+        assert ident_res.json()["instance_id"] == ""
+
+        # 2. Missing or wrong bootstrap_token is rejected with HTTP 403
+        bad_token_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": "i-wrongtoken999",
+                "local_domain": "jsm.cloud.aws.brainsos.ai",
+                "admin_username": "jsm",
+                "admin_password": "NewStrongPassword123!",
+                "url": "ec2-32-192-215-107.compute-1.amazonaws.com",
+                "tls_mode": "internal",
+            },
+            headers=prelogin_headers,
+        )
+        assert bad_token_res.status_code == 403
+        assert "Instance ID" in bad_token_res.json().get("detail", "")
+
+        # 3. Valid EC2 Instance ID bootstrap_token succeeds pre-login
+        ok_token_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": "i-0abc123456789def0",
+                "local_domain": "jsm.cloud.aws.brainsos.ai",
+                "admin_username": "jsm",
+                "admin_password": "NewStrongPassword123!",
+                "url": "ec2-32-192-215-107.compute-1.amazonaws.com",
+                "tls_mode": "internal",
+            },
+            headers=prelogin_headers,
+        )
+        assert ok_token_res.status_code == 200
+        assert "PRELOGIN_SETUP_OK:" in ok_token_res.text
+        assert "--admin-username jsm" in ok_token_res.text
+
+
+def test_superuser_setup_and_password_complexity(tmp_path, monkeypatch):
+    from brainsos_telemetry.system import validate_password_complexity
+
+    assert validate_password_complexity("short1!") is not None
+    assert validate_password_complexity("alllowercase123!") is not None
+    assert validate_password_complexity("ALLUPPERCASE123!") is not None
+    assert validate_password_complexity("NoDigitsHere!") is not None
+    assert validate_password_complexity("NoSpecialChars123") is not None
+    assert validate_password_complexity("i-0abc123456789def0", instance_id="i-0abc123456789def0") is not None
+    assert validate_password_complexity("ValidSuperPass99!", username="jsm", instance_id="i-0abc123456789def0") is None
+
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "i-0abc123456789def0")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
+        "BRAINSOS_LOCAL_DOMAIN=local.brainsos.ai\n"
+        "BRAINSOS_ADMIN_USERNAME=admin\n"
+        "BRAINSOS_ADMIN_PASSWORD=i-0abc123456789def0\n"
+        "BRAINSOS_INSTANCE_ID=i-0abc123456789def0\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text("#!/usr/bin/env bash\necho \"SUPERUSER_SETUP_ARGS: $*\"\n", encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "admin",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        # Reject superuser_username == 'admin'
+        admin_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "superuser_name": "Admin User",
+                "superuser_username": "admin",
+                "superuser_password": "ValidSuperPass99!",
+            },
+            headers=headers,
+        )
+        assert admin_res.status_code == 400
+        assert "permanently bound" in admin_res.json().get("detail", "")
+
+        # Reject weak superuser_password
+        weak_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "superuser_name": "Jane Smith",
+                "superuser_username": "jsm",
+                "superuser_password": "weakpassword",
+            },
+            headers=headers,
+        )
+        assert weak_res.status_code == 400
+
+        # Valid named superuser setup auto-suggests jsm.aws.cloud.brainsos.ai when local_domain omitted
+        ok_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "superuser_name": "Jane Smith",
+                "superuser_username": "jsm",
+                "superuser_password": "ValidSuperPass99!",
+            },
+            headers=headers,
+        )
+        assert ok_res.status_code == 200
+        assert "--local-domain jsm.aws.cloud.brainsos.ai" in ok_res.text
+        assert "--superuser-name Jane Smith" in ok_res.text
+        assert "--admin-username jsm" in ok_res.text
+
+
+def test_runners_status_and_hermes_firecrawl_config(tmp_path):
+    (tmp_path / ".env").write_text("BRAINSOS_DATA_DIR=./data\n", encoding="utf-8")
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "jsm",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        # Initial runners status has firecrawl_configured == False
+        r1 = client.get("/api/v1/system/runners", headers=headers)
+        assert r1.status_code == 200
+        assert r1.json()["hermes"]["firecrawl_configured"] is False
+
+        # Save FIRECRAWL_API_KEY
+        raw_key = "fc-9876543210abcdefSECRET"
+        r2 = client.post(
+            "/api/v1/system/runners/hermes/config",
+            json={"firecrawl_api_key": raw_key, "restart_runner": False},
+            headers=headers,
+        )
+        assert r2.status_code == 200
+        body = r2.json()
+        assert body["status"] == "updated"
+        assert body["runners"]["hermes"]["firecrawl_configured"] is True
+        masked = body["runners"]["tool_keys"]["FIRECRAWL_API_KEY"]["masked"]
+        assert masked.startswith("fc-9")
+        assert raw_key not in r2.text
+
+
+def test_os_telemetry_upgrade_and_reboot_endpoints(tmp_path, monkeypatch):
+    updates_file = tmp_path / "updates-available"
+    updates_file.write_text(
+        "14 updates can be applied immediately.\n9 of these updates are standard security updates.\n",
+        encoding="utf-8",
+    )
+    reboot_file = tmp_path / "reboot-required"
+    reboot_file.write_text("*** System restart required ***\n", encoding="utf-8")
+    reboot_pkgs = tmp_path / "reboot-required.pkgs"
+    reboot_pkgs.write_text("linux-image-aws\nlibc6\n", encoding="utf-8")
+
+    monkeypatch.setenv("BRAINSOS_UPDATES_AVAILABLE_FILE", str(updates_file))
+    monkeypatch.setenv("BRAINSOS_REBOOT_REQUIRED_FILE", str(reboot_file))
+    monkeypatch.setenv("BRAINSOS_REBOOT_PACKAGES_FILE", str(reboot_pkgs))
+
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    update_sh = script_dir / "update.sh"
+    update_sh.write_text("#!/usr/bin/env bash\necho \"OS_UPGRADE_ARGS: $*\"\n", encoding="utf-8")
+    update_sh.chmod(0o755)
+    reboot_sh = script_dir / "reboot-appliance.sh"
+    reboot_sh.write_text("#!/usr/bin/env bash\necho \"REBOOT_ARGS: $*\"\n", encoding="utf-8")
+    reboot_sh.chmod(0o755)
+
+    from brainsos_telemetry.system import get_host_os_status
+
+    os_stat = get_host_os_status(str(tmp_path))
+    assert os_stat["pending_packages"] == 14
+    assert os_stat["security_packages"] == 9
+    assert os_stat["reboot_required"] is True
+    assert "linux-image-aws" in os_stat["reboot_packages"]
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "jsm",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        up_res = client.post("/api/v1/system/os-upgrade", json={"dry_run": True}, headers=headers)
+        assert up_res.status_code == 200
+        assert "--os-only --unattended --dry-run" in up_res.text
+
+        rb_res = client.post("/api/v1/system/reboot", json={"dry_run": True, "confirm": True}, headers=headers)
+        assert rb_res.status_code == 200
+        assert "REBOOT_ARGS: --unattended --dry-run" in rb_res.text
+
+
+def test_terminal_exec_and_websocket_pty(tmp_path):
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "jsm",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        # 1. HTTP exec endpoint
+        exec_res = client.post(
+            "/api/v1/system/terminal/exec",
+            json={"command": "echo hello-host-terminal"},
+            headers=headers,
+        )
+        assert exec_res.status_code == 200
+        data = exec_res.json()
+        assert "hello-host-terminal" in data["stdout"]
+        assert data["exit_code"] == 0
+
+        # 2. WebSocket PTY endpoint
+        with client.websocket_connect(
+            "/api/v1/system/terminal/ws",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "jsm",
+            },
+        ) as ws:
+            ready_msg = ws.receive_json()
+            assert ready_msg["type"] == "ready"
+            assert ready_msg["user"] == "jsm"
+            ws.send_json({"type": "ping"})
+            # Read until pong arrives
+            found_pong = False
+            for _ in range(5):
+                m = ws.receive_json()
+                if m.get("type") == "pong":
+                    found_pong = True
+                    break
+            assert found_pong is True
+
+
+
+

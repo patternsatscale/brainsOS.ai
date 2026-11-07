@@ -135,12 +135,69 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
               </div>
             </div>
             <div style="padding:10px 14px; color:#33ff33; line-height:19px; overflow-y:auto; user-select:text;">
-              <span style="color:#00f2fe;">operator@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ python3 -m pytest tests/ -q<br>
+              <span style="color:#00f2fe;">admin@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ python3 -m pytest tests/ -q<br>
               <span style="color:#fff;">................................................. [100%]</span><br>
               <span style="color:#10b981; font-weight:bold;">49 passed in 0.84s (All Architectural Guardrails Satisfied)</span><br>
-              <span style="color:#00f2fe;">operator@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ <span style="animation:pulse 1s infinite;">█</span>
+              <span style="color:#00f2fe;">admin@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ <span style="animation:pulse 1s infinite;">█</span>
             </div>
           </div>
+        </div>
+      </div>
+    `
+  },
+  git: {
+    id: "git",
+    title: "Source Control",
+    desc: "Local Git Server & Prompt Versioning",
+    route: "/git/",
+    hotkey: "⌘3",
+    color: "#f97316",
+    icon: "GitBranch",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="background:rgba(249,115,22,0.18); border:1px solid #f97316; color:#f97316; padding:3px 10px; border-radius:6px; font-size:11px; font-family:monospace; font-weight:700;">GITEA LOCAL SERVER</span>
+              <h1 style="font-size:20px; font-weight:700; margin:0; color:#fff;">brainsos / <span style="color:#f97316;">agent-box</span></h1>
+            </div>
+            <p style="font-size:12px; color:#94a3b8; margin:6px 0 0;">Rule 14 Private Fleet State Repository • Versioned Agent Souls, Settings &amp; OKF Markdown Memories</p>
+          </div>
+          <div style="display:flex; gap:10px; align-items:center; font-family:monospace; font-size:11px;">
+            <span style="background:#141a26; border:1px solid rgba(255,255,255,0.12); padding:6px 12px; border-radius:8px; color:#e2e8f0;">🌿 branch: <b style="color:#00f2fe;">main</b></span>
+            <span style="background:rgba(16,185,129,0.15); border:1px solid #10b981; color:#10b981; padding:6px 12px; border-radius:8px;">● Auto-Commit Daemon Active</span>
+          </div>
+        </div>
+
+        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; overflow:hidden; margin-bottom:20px;">
+          <div style="padding:12px 16px; background:#192132; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; font-size:12px; font-family:monospace;">
+            <div><b style="color:#00f2fe;">admin</b> committed <span style="color:#f97316;">feat(souls): tune terrastella executive synthesis prompt</span></div>
+            <div style="color:#94a3b8;">commit <span style="color:#f97316;">a94c21e</span> • 4 mins ago</div>
+          </div>
+          <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
+            <tbody>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:10px 16px; color:#f97316;">📁 souls/</td>
+                <td style="padding:10px 16px; color:#94a3b8;">Agent persona prompts &amp; sub-agent dot-namespaced directives (Rule 12)</td>
+                <td style="padding:10px 16px; text-align:right; color:#64748b;">4 mins ago</td>
+              </tr>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:10px 16px; color:#00f2fe;">📁 settings/agents.yaml</td>
+                <td style="padding:10px 16px; color:#94a3b8;">Authoritative declarative multi-tenant fleet registry (Rule 9)</td>
+                <td style="padding:10px 16px; text-align:right; color:#64748b;">1 hour ago</td>
+              </tr>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:10px 16px; color:#10b981;">📁 memories/</td>
+                <td style="padding:10px 16px; color:#94a3b8;">Pure human-auditable Open Knowledge Format (OKF) Markdown memory partitions (Rule 1)</td>
+                <td style="padding:10px 16px; text-align:right; color:#64748b;">12 mins ago</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px; color:#e2e8f0;">📄 README.md</td>
+                <td style="padding:10px 16px; color:#94a3b8;">Private Fleet Box Overview &amp; Rollback Instructions</td>
+                <td style="padding:10px 16px; text-align:right; color:#64748b;">1 day ago</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     `
@@ -150,7 +207,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
     title: "LiteLLM",
     desc: "LiteLLM Gateway & Virtual Keys",
     route: "/ui/",
-    hotkey: "⌘3",
+    hotkey: "⌘4",
     color: "#f59e0b",
     icon: "Shield",
     previewHtml: `
@@ -216,7 +273,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
     title: "Network",
     desc: "Egress Proxy & Tool Traffic",
     route: "/efw/",
-    hotkey: "⌘4",
+    hotkey: "⌘5",
     color: "#10b981",
     icon: "Network",
     previewHtml: `
@@ -242,7 +299,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
     title: "Trace",
     desc: "Session Tracing & Observability",
     route: "/langfuse/project/brainsos/sessions",
-    hotkey: "⌘5",
+    hotkey: "⌘6",
     color: "#3b82f6",
     icon: "Activity",
     previewHtml: `
@@ -274,43 +331,21 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
   },
   system: {
     id: "system",
-    title: "System",
-    desc: "Appliance Updates & Management",
+    title: "System OS",
+    desc: "Appliance Operating System & Console",
     route: "/system",
-    hotkey: "⌘6",
+    hotkey: "⌘0",
     color: "#00f2fe",
     icon: "Cpu",
     previewHtml: `
       <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
           <div>
-            <h1 style="font-size:20px; font-weight:700; margin:0; color:#00f2fe;">System Manager &amp; Update Center</h1>
-            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Universal Appliance Lifecycle • Upstream Container &amp; Git Engine</p>
+            <h1 style="font-size:20px; font-weight:700; margin:0; color:#00f2fe;">brainsOS Operating System Control Center</h1>
+            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Appliance Kernel, Host Console, Agent Runners, Security Patching &amp; Storage</p>
           </div>
           <div style="background:rgba(0,242,254,0.15); border:1px solid #00f2fe; color:#00f2fe; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
-            Auto-Rollback Active • ARM64
-          </div>
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:24px;">
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Host Appliance</div>
-            <div style="font-size:20px; font-weight:700; color:#fff; margin-top:6px;">ASUS Ascent GX10</div>
-            <div style="font-size:11px; color:#10b981; margin-top:4px;">● GB10 Unified Bus 273 GB/s</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">LiteLLM Gateway</div>
-            <div style="font-size:20px; font-weight:700; color:#f59e0b; margin-top:6px;">Update Available</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">v1.105.0 &rarr; 1.106.5</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Langfuse Tracing</div>
-            <div style="font-size:20px; font-weight:700; color:#3b82f6; margin-top:6px;">Update Available</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">4.58.0 &rarr; 4.71.0</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Core Ingress</div>
-            <div style="font-size:20px; font-weight:700; color:#10b981; margin-top:6px;">Caddy 2.8.4</div>
-            <div style="font-size:11px; color:#10b981; margin-top:4px;">● Up to Date (TLS Ready)</div>
+            OS Control Plane • ARM64
           </div>
         </div>
       </div>
@@ -376,8 +411,8 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
             </thead>
             <tbody>
               <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
-                <td style="padding:10px 8px; color:#00f2fe; font-weight:bold;">operator</td>
-                <td style="padding:10px 8px;">Appliance Operator</td>
+                <td style="padding:10px 8px; color:#00f2fe; font-weight:bold;">admin</td>
+                <td style="padding:10px 8px;">Appliance Admin</td>
                 <td style="padding:10px 8px;"><span style="background:rgba(0,242,254,0.15); color:#00f2fe; padding:2px 8px; border-radius:4px; font-size:10px;">authentik Admins</span></td>
                 <td style="padding:10px 8px;">Password / FIDO2</td>
                 <td style="padding:10px 8px; color:#10b981;">Active</td>

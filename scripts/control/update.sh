@@ -74,6 +74,7 @@ buildable_services() {
 CHECK_ONLY=false
 JSON_OUTPUT=false
 CONTAINERS_ONLY=false
+OS_ONLY=false
 FULL_UPDATE=true
 TARGET_SERVICE=""
 TARGET_VERSION=""
@@ -94,6 +95,7 @@ show_help() {
   echo "  --check               Check for available updates without applying them"
   echo "  --json                Output version status and check results in JSON format"
   echo "  --containers-only     Update upstream container images only (do not pull git code)"
+  echo "  --os-only             Apply host OS security & package upgrades (apt-get dist-upgrade)"
   echo "  --full                Update both git source code and container images (default)"
   echo "  --branch <name>       Switch to and pull a specific remote git branch (e.g. main, task/320-appliance-rehearsal)"
   echo "  --service <name>      Target a specific service (e.g. litellm, langfuse, caddy)"
@@ -127,6 +129,12 @@ while [[ $# -gt 0 ]]; do
     --containers-only)
       CONTAINERS_ONLY=true
       FULL_UPDATE=false
+      shift
+      ;;
+    --os-only)
+      OS_ONLY=true
+      FULL_UPDATE=false
+      CONTAINERS_ONLY=false
       shift
       ;;
     --full)
@@ -369,6 +377,29 @@ hermes_curr = parse_semver(hermes_img) or "local build"
 hermes_latest = hermes_curr
 hermes_update = False
 
+# Operator Studio (VS Code IDE / code-server)
+def get_code_server_version():
+    out = run_cmd("docker exec brainsos-app-code-server code-server --version")
+    if out:
+        first_tok = out.splitlines()[0].strip().split()[0].lstrip("v")
+        if re.match(r"^[0-9]+(\.[0-9]+)+", first_tok):
+            return first_tok
+    lbl = run_cmd("docker inspect --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}' brainsos-app-code-server")
+    if lbl and lbl not in ("latest", "<no value>"):
+        return lbl.lstrip("v")
+    env_tag = os.environ.get("CODE_SERVER_IMAGE_TAG", "").strip().lstrip("v")
+    if env_tag and env_tag != "latest":
+        return env_tag
+    return "local build"
+
+code_server_curr = get_code_server_version()
+code_server_latest = get_latest_github_release("coder/code-server") or code_server_curr
+code_server_update = (
+    code_server_latest != ""
+    and code_server_latest != code_server_curr
+    and code_server_curr != "local build"
+)
+
 services = {
     "litellm": {
         "name": "LiteLLM Control Plane Gateway",
@@ -387,6 +418,15 @@ services = {
         "update_available": langfuse_update,
         "changelog_url": "https://github.com/langfuse/langfuse/releases",
         "plane": "telemetry"
+    },
+    "code-server": {
+        "name": "Operator Studio (VS Code IDE)",
+        "container": "brainsos-app-code-server",
+        "current_version": code_server_curr,
+        "latest_version": code_server_latest,
+        "update_available": code_server_update,
+        "changelog_url": "https://github.com/coder/code-server/releases",
+        "plane": "apps"
     },
     "caddy": {
         "name": "Caddy Ingress Reverse Proxy",
@@ -421,13 +461,91 @@ disk_info = {
 overall_update = git_info.get("update_available", False) or any(s["update_available"] for s in services.values())
 platform_name, platform_detail = get_platform_info()
 
+def get_os_info():
+    import platform as py_platform
+    kernel = py_platform.release() or "unknown"
+    distro = f"{py_platform.system()} {py_platform.machine()}"
+    os_release_path = os.environ.get("BRAINSOS_OS_RELEASE_FILE", "/etc/os-release")
+    if os.path.isfile(os_release_path):
+        try:
+            with open(os_release_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        distro = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+    pending_packages = 0
+    security_packages = 0
+    updates_avail_path = os.environ.get(
+        "BRAINSOS_UPDATES_AVAILABLE_FILE", "/var/lib/update-notifier/updates-available"
+    )
+    if os.path.isfile(updates_avail_path):
+        try:
+            with open(updates_avail_path, "r", encoding="utf-8", errors="ignore") as f:
+                txt = f.read()
+            m_all = re.search(r"(\d+)\s+updates?\s+can\s+be\s+applied", txt, re.IGNORECASE)
+            if m_all:
+                pending_packages = int(m_all.group(1))
+            m_sec = re.search(
+                r"(\d+)\s+of\s+these\s+updates?\s+(?:are|is)\s+(?:standard\s+)?security",
+                txt,
+                re.IGNORECASE,
+            )
+            if m_sec:
+                security_packages = int(m_sec.group(1))
+        except Exception:
+            pass
+    reboot_req_path = os.environ.get("BRAINSOS_REBOOT_REQUIRED_FILE", "/var/run/reboot-required")
+    reboot_pkgs_path = os.environ.get(
+        "BRAINSOS_REBOOT_PACKAGES_FILE", "/var/run/reboot-required.pkgs"
+    )
+    reboot_required = os.path.isfile(reboot_req_path)
+    reboot_packages = []
+    if os.path.isfile(reboot_pkgs_path):
+        try:
+            with open(reboot_pkgs_path, "r", encoding="utf-8", errors="ignore") as f:
+                reboot_packages = [ln.strip() for ln in f.splitlines() if ln.strip()]
+        except Exception:
+            pass
+    unattended_active = os.path.isfile("/etc/apt/apt.conf.d/20auto-upgrades") or os.path.isfile(
+        "/etc/apt/apt.conf.d/50unattended-upgrades"
+    )
+    return {
+        "distro": distro,
+        "kernel": kernel,
+        "pending_packages": pending_packages,
+        "security_packages": security_packages,
+        "reboot_required": reboot_required,
+        "reboot_packages": reboot_packages,
+        "unattended_upgrades_active": unattended_active,
+    }
+
+os_info = get_os_info()
+
+import socket
+local_dom = os.environ.get("BRAINSOS_LOCAL_DOMAIN") or os.environ.get("BRAINSOS_MAIL_DOMAIN") or os.environ.get("BRAINSOS_DOMAIN") or "local.brainsos.ai"
+ext_url = os.environ.get("BRAINSOS_URL") or os.environ.get("BRAINSOS_DOMAIN") or "local.brainsos.ai"
+admin_user = os.environ.get("BRAINSOS_ADMIN_USERNAME") or "admin"
+admin_email = os.environ.get("BRAINSOS_ADMIN_EMAIL") or f"{admin_user}@{local_dom}"
+tls_mode = os.environ.get("BRAINSOS_TLS_MODE") or ("route53" if os.environ.get("ACME_DNS_PROVIDER") == "route53" else "internal")
+wizard_done = os.path.isfile(os.path.join(repo_root, ".brainsos-wizard-completed")) or not os.path.isfile(os.path.join(repo_root, ".brainsos-initialized"))
+
 status_data = {
     "platform": "brainsOS",
     "platform_name": platform_name,
     "platform_detail": platform_detail,
+    "firstboot_wizard_completed": wizard_done,
+    "url": ext_url,
+    "local_domain": local_dom,
+    "admin_username": admin_user,
+    "admin_email": admin_email,
+    "tls_mode": tls_mode,
+    "hostname": socket.getfqdn(),
     "git": git_info,
     "services": services,
     "disk": disk_info,
+    "os": os_info,
     "overall_update_available": overall_update
 }
 
@@ -536,6 +654,32 @@ if [ -n "${TARGET_SERVICE}" ]; then
   else
     log_info "Targeted service update selected: ${BOLD}${TARGET_SERVICE}${NC}"
   fi
+elif [ "${OS_ONLY}" = true ]; then
+  log_info "Host OS security & package upgrade selected (--os-only)."
+  if [ "${DRY_RUN}" = true ] || [ "$(uname -s)" != "Linux" ]; then
+    log_info "[DRY-RUN] Would hold docker-ce docker-ce-cli containerd.io via apt-mark hold"
+    log_info "[DRY-RUN] Would execute: DEBIAN_FRONTEND=noninteractive apt-get update -y && apt-get dist-upgrade -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
+    log_info "[DRY-RUN] Would unhold docker-ce docker-ce-cli containerd.io via apt-mark unhold"
+    log_success "[DRY-RUN] Host OS package upgrade simulation complete."
+    exit 0
+  fi
+  SUDO_CMD=""
+  if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+    SUDO_CMD="sudo -n"
+  fi
+  log_info "Pinning Docker daemon packages during online APT upgrade..."
+  ${SUDO_CMD} apt-mark hold docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || true
+  log_info "Updating APT package indices and applying non-interactive dist-upgrade..."
+  ${SUDO_CMD} env DEBIAN_FRONTEND=noninteractive apt-get update -y
+  ${SUDO_CMD} env DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold"
+  ${SUDO_CMD} apt-mark unhold docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || true
+  if [ -f /var/run/reboot-required ]; then
+    log_warn "Kernel or system library update requires a host reboot (/var/run/reboot-required present)."
+  fi
+  log_success "Host OS security & package upgrade completed successfully."
+  exit 0
 elif [ "${CONTAINERS_ONLY}" = true ]; then
   log_info "Container-only update selected (skipping git source pull)."
 else
@@ -546,12 +690,25 @@ if [ "${DRY_RUN}" = true ]; then
   log_warn "DRY-RUN mode enabled: No files or containers will be modified."
 fi
 
-# C5: Refuse to update dirty git repository in unattended mode
-if [ "${FULL_UPDATE}" = true ] && [ "${UNATTENDED}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+# C5: Clean auto-generated runtime files and handle dirty git working tree
+if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [ "${DRY_RUN}" = false ]; then
+    # Always restore auto-generated Caddy TLS policy snippet modified by reload-env.sh
+    git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
+    git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
+  fi
+
   DIRTY_CHECK="$(git status --porcelain --untracked-files=no)"
   if [ -n "${DIRTY_CHECK}" ]; then
-    log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
-    exit 1
+    if [ -n "${TARGET_BRANCH}" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+      if [ "${DRY_RUN}" = false ]; then
+        log_warn "Working tree has local modifications on appliance; resetting before branch sync..."
+        git reset --hard HEAD >/dev/null 2>&1 || true
+      fi
+    elif [ "${UNATTENDED}" = true ]; then
+      log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
+      exit 1
+    fi
   fi
 fi
 
@@ -673,18 +830,23 @@ rollback_handler() {
       fi
     fi
 
-    # 3. Restore pre-flight database & memories backup if available
-    if [ "${CONTAINERS_CHANGED}" = true ] && [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
+    # 3. Restore pre-flight database & memories backup if available (full updates only)
+    if [ "${CONTAINERS_CHANGED}" = true ] && [ -z "${TARGET_SERVICE}" ] && [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
       log_info "Restoring pre-flight logical database and memory planes from ${PRE_UPDATE_BACKUP}..."
       "${REPO_ROOT}/scripts/control/backup.sh" --restore "${PRE_UPDATE_BACKUP}" -f || true
     else
-      log_info "No containers were recreated; skipping database restore."
+      log_info "Targeted container update or no containers recreated; skipping database restore."
     fi
 
     # 4. Recreate Docker container stack with restored parameters
     if [ "${CONTAINERS_CHANGED}" = true ]; then
-      log_info "Re-aligning container stack (docker compose up -d)..."
-      docker compose up -d || true
+      if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
+        log_info "Re-aligning targeted container(s): ${COMPOSE_TARGETS[*]}..."
+        docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}" || true
+      else
+        log_info "Re-aligning container stack (docker compose up -d)..."
+        docker compose up -d || true
+      fi
       if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
@@ -714,9 +876,15 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
   if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would fetch and sync branch origin/${EFFECTIVE_BRANCH}"
   else
+    git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
+    git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-      log_error "Tracked files have local modifications. Commit or revert them before updating."
-      exit 1
+      if [ -n "${TARGET_BRANCH}" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+        git reset --hard HEAD >/dev/null 2>&1 || true
+      else
+        log_error "Tracked files have local modifications. Commit or revert them before updating."
+        exit 1
+      fi
     fi
 
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*" 2>/dev/null || true
@@ -805,6 +973,12 @@ if [ -n "${TARGET_SERVICE}" ]; then
       OVERRIDE_VAR="LANGFUSE_IMAGE_TAG"
       UPSTREAM_REPO="langfuse/langfuse"
       ;;
+    code-server|vscode|editor)
+      TARGET_SERVICE="code-server"
+      COMPOSE_TARGETS=("code-server")
+      OVERRIDE_VAR="CODE_SERVER_IMAGE_TAG"
+      UPSTREAM_REPO="coder/code-server"
+      ;;
     caddy|ingress)
       TARGET_SERVICE="caddy"
       COMPOSE_TARGETS=("caddy")
@@ -819,7 +993,7 @@ if [ -n "${TARGET_SERVICE}" ]; then
   esac
 
   if [ -n "${TARGET_VERSION}" ] && [ -z "${OVERRIDE_VAR}" ]; then
-    log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse."
+    log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse, code-server."
     exit 1
   fi
 
@@ -846,7 +1020,7 @@ if [ -n "${TARGET_SERVICE}" ]; then
     TAG_VAL="${TARGET_VERSION}"
     if [ "${OVERRIDE_VAR}" = "LITELLM_IMAGE_TAG" ] && [[ "${TAG_VAL}" =~ ^[0-9] ]]; then
       TAG_VAL="v${TAG_VAL}"
-    elif [ "${OVERRIDE_VAR}" = "LANGFUSE_IMAGE_TAG" ] && [[ "${TAG_VAL}" =~ ^v[0-9] ]]; then
+    elif { [ "${OVERRIDE_VAR}" = "LANGFUSE_IMAGE_TAG" ] || [ "${OVERRIDE_VAR}" = "CODE_SERVER_IMAGE_TAG" ]; } && [[ "${TAG_VAL}" =~ ^v[0-9] ]]; then
       TAG_VAL="${TAG_VAL#v}"
     fi
 
@@ -859,7 +1033,7 @@ if [ -n "${TARGET_SERVICE}" ]; then
     fi
   fi
 else
-  # Full or containers-only update: resolve latest upstream tags for LiteLLM & Langfuse
+  # Full or containers-only update: resolve latest upstream tags for LiteLLM, Langfuse & Code-Server
   LATEST_LITELLM="$(resolve_latest_github_release "berriai/litellm")"
   if [ -n "${LATEST_LITELLM}" ]; then
     LITELLM_TAG_VAL="${LATEST_LITELLM}"
@@ -881,6 +1055,18 @@ else
     elif [ "${LANGFUSE_IMAGE_TAG:-4.58.0}" != "${LANGFUSE_TAG_VAL}" ]; then
       log_info "Updating LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL} in .env..."
       "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+
+  LATEST_CODE_SERVER="$(resolve_latest_github_release "coder/code-server")"
+  if [ -n "${LATEST_CODE_SERVER}" ]; then
+    CODE_SERVER_TAG_VAL="${LATEST_CODE_SERVER#v}"
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set CODE_SERVER_IMAGE_TAG=${CODE_SERVER_TAG_VAL} in .env"
+    elif [ "${CODE_SERVER_IMAGE_TAG:-}" != "${CODE_SERVER_TAG_VAL}" ]; then
+      log_info "Updating CODE_SERVER_IMAGE_TAG=${CODE_SERVER_TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "CODE_SERVER_IMAGE_TAG=${CODE_SERVER_TAG_VAL}"
       set -a; . "${REPO_ROOT}/.env"; set +a
     fi
   fi
@@ -920,7 +1106,11 @@ else
     if [[ "${TARGET_SERVICE}" == runner-* ]]; then
       make -C "${REPO_ROOT}" runner-base
     fi
-    docker compose build "${COMPOSE_TARGETS[@]}"
+    if [ "${TARGET_SERVICE}" = "code-server" ]; then
+      docker compose build --pull "${COMPOSE_TARGETS[@]}"
+    else
+      docker compose build "${COMPOSE_TARGETS[@]}"
+    fi
   fi
 fi
 
@@ -940,7 +1130,7 @@ else
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
     log_info "Recreating container(s): ${COMPOSE_TARGETS[*]}..."
     docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}"
-    if [ "${TARGET_SERVICE}" = "caddy" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
+    if [ "${TARGET_SERVICE}" = "caddy" ]; then
       docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
     fi
     if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
@@ -949,14 +1139,13 @@ else
   else
     log_info "Recreating all active compose services..."
     if [ -f "${REPO_ROOT}/scripts/control/reload-env.sh" ]; then
-      "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
+      RELOAD_ENV_SKIP_PULL=true "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
     else
       docker compose up -d
       if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
     fi
-    docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
   fi
   log_success "Containers recreated with latest images and parameters."
 fi
@@ -968,43 +1157,47 @@ log_info "Step 5/5: Probing in-network service health across all active planes (
 
 if [ "${DRY_RUN}" = false ]; then
   HEALTH_PASSED=false
+  PROBE_DOMAIN="${BRAINSOS_DOMAIN:-localhost}"
   for i in $(seq 1 "${HEALTH_TIMEOUT}"); do
     ALL_DBS_OK=true
     LITELLM_OK=false
     LANGFUSE_OK=false
     CADDY_OK=false
 
-    # 1. In-network Postgres health checks (litellm-db, langfuse-db, authentik-db, sogo-db)
-    for db_svc in litellm-db langfuse-db; do
-      cid="$(docker compose ps -q "${db_svc}" 2>/dev/null || true)"
-      if [ -n "${cid}" ]; then
-        if ! docker compose exec -T "${db_svc}" pg_isready >/dev/null 2>&1; then
+    # 1. Fast Postgres health checks (litellm-db, langfuse-db)
+    for db_cname in brainsos-control-litellm-db brainsos-telemetry-langfuse-db; do
+      if docker ps -q --filter "name=^/${db_cname}$" 2>/dev/null | grep -q .; then
+        db_state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${db_cname}" 2>/dev/null || echo "unknown")"
+        if [ "${db_state}" != "healthy" ] && [ "${db_state}" != "running" ]; then
           ALL_DBS_OK=false
           break
         fi
       fi
     done
 
-    # 2. In-network LiteLLM probe
-    if [ -n "$(docker compose ps -q litellm 2>/dev/null)" ]; then
-      if docker compose exec -T litellm python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4000/health/liveness", timeout=2)' >/dev/null 2>&1; then
+    # 2. Fast LiteLLM probe
+    if docker ps -q --filter "name=^/brainsos-control-litellm$" 2>/dev/null | grep -q .; then
+      if curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LITELLM_PORT:-4000}/health/liveness" >/dev/null 2>&1; then
         LITELLM_OK=true
       fi
     else
       LITELLM_OK=true
     fi
 
-    # 3. In-network Langfuse probe
-    if [ -n "$(docker compose ps -q langfuse-web 2>/dev/null)" ]; then
-      if docker compose exec -T langfuse-web node -e 'fetch("http://127.0.0.1:3000/api/public/health").then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))' >/dev/null 2>&1; then
+    # 3. Fast Langfuse probe
+    if docker ps -q --filter "name=^/brainsos-telemetry-langfuse-web$" 2>/dev/null | grep -q .; then
+      if curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LANGFUSE_PORT:-3001}/api/public/health" >/dev/null 2>&1; then
         LANGFUSE_OK=true
       fi
     else
       LANGFUSE_OK=true
     fi
 
-    # 4. Ingress (Caddy) non-5xx probe
-    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --resolve localhost:443:127.0.0.1 https://localhost:443/ 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/ 2>/dev/null || echo "000")"
+    # 4. Ingress (Caddy) non-5xx probe using active BRAINSOS_DOMAIN SNI & /healthz
+    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/healthz" 2>/dev/null || echo "000")"
+    if [ "${HTTP_CODE}" = "000" ] || [ "${HTTP_CODE}" -ge 500 ]; then
+      HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/api/v1/system/health" 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:80/healthz" 2>/dev/null || echo "000")"
+    fi
     if [ "${HTTP_CODE}" != "000" ] && [ "${HTTP_CODE}" -lt 500 ]; then
       CADDY_OK=true
     fi
@@ -1023,6 +1216,13 @@ if [ "${DRY_RUN}" = false ]; then
     exit 1
   fi
 
+  if [ -z "${TARGET_SERVICE}" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
+    if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
+      log_info "Synchronizing LiteLLM SSO and proxy_admin roles..."
+      "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" >/dev/null 2>&1 || true
+    fi
+  fi
+
   # Clean up dangling images
   docker image prune -f >/dev/null 2>&1 || true
 fi
@@ -1039,3 +1239,13 @@ echo ""
 echo -e "All services are running target versions with health checks verified."
 echo -e "You can inspect active service URLs at any time with: ${BOLD}make urls${NC}"
 echo ""
+
+# If running on a systemd host with brainsos-system-api active, schedule a delayed
+# restart of brainsos-system-api after this script exits so newly pulled API routes take effect
+# without interrupting the active SSE stream completion event.
+if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ] && command -v systemctl >/dev/null 2>&1; then
+  if systemctl is-active --quiet brainsos-system-api 2>/dev/null; then
+    nohup sh -c "sleep 2 && systemctl restart brainsos-system-api" >/dev/null 2>&1 &
+  fi
+fi
+

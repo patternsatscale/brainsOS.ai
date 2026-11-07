@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>brainsOS — Enterprise Reference Architecture & Network Engineering Diagrams</title>
+  <style>
+    /* ==========================================================================
+       100% SELF-CONTAINED CSS — PRECISION ARCHITECTURAL & NETWORK SCHEMATICS
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background-color: #050811;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    /* Header / Toolbar */
+    .header-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(8, 13, 25, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 20px;
+    }
+    .header-inner {
+      max-width: 1640px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-badge {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #2563eb, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+      font-size: 14px;
+    }
+    .main-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .sub-title {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .toolbar-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .tab-group {
+      display: flex;
+      background: #0f172a;
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid #1e293b;
+      gap: 4px;
+    }
+    .btn-tab {
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-tab:hover {
+      color: #f8fafc;
+    }
+    .btn-tab.active {
+      background: #2563eb;
+      color: #fff;
+    }
+    .btn-action {
+      background: #111827;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      padding: 6px 11px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-action:hover {
+      border-color: #38bdf8;
+      color: #fff;
+    }
+
+    /* Filter Bar for Highlighting Planes / Flows */
+    .filter-strip {
+      max-width: 1640px;
+      margin: 12px auto 0;
+      padding: 0 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .filter-pills {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-right: 4px;
+    }
+    .pill {
+      background: #0b1120;
+      color: #cbd5e1;
+      border: 1px solid #1e293b;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .pill:hover {
+      border-color: #475569;
+      color: #fff;
+    }
+    .pill.active {
+      background: rgba(37, 99, 235, 0.2);
+      border-color: #3b82f6;
+      color: #60a5fa;
+    }
+    .swatch {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* Main Diagram Sheet Container */
+    .page-wrap {
+      max-width: 1640px;
+      margin: 12px auto 36px;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .diagram-card {
+      background: #070b14;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+      display: none;
+    }
+    .diagram-card.visible {
+      display: block;
+    }
+    .diagram-card-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .diagram-card-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.2px;
+    }
+    .diagram-card-sub {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .diagram-meta-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .meta-tag {
+      font-size: 12px;
+      padding: 3px 9px;
+      border-radius: 5px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      color: #38bdf8;
+    }
+
+    /* Responsive SVG Wrapper */
+    .svg-container {
+      width: 100%;
+      overflow-x: auto;
+      background: #050811;
+      border: 1px solid #152033;
+      border-radius: 10px;
+    }
+    svg.arch-svg {
+      width: 100%;
+      height: auto;
+      min-width: 1180px;
+      display: block;
+      user-select: none;
+    }
+
+    /* Interactive SVG Element Transitions */
+    .svg-node, .svg-wire, .svg-bus {
+      transition: opacity 0.2s ease, filter 0.2s ease;
+    }
+    .svg-node {
+      cursor: pointer;
+    }
+    .svg-node:hover rect.node-box {
+      stroke-width: 2.2px;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.35));
+    }
+    .dimmed {
+      opacity: 0.16 !important;
+    }
+    .highlighted-wire {
+      stroke-width: 3px !important;
+      filter: drop-shadow(0 0 6px currentColor);
+    }
+
+    @keyframes dashAnim {
+      to { stroke-dashoffset: -24; }
+    }
+    .flow-dash {
+      stroke-dasharray: 7 5;
+      animation: dashAnim 0.9s linear infinite;
+    }
+
+    /* Bottom Inspector Bar */
+    .inspector-bar {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-left: 4px solid #38bdf8;
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      gap: 16px;
+      align-items: center;
+    }
+    @media (max-width: 1100px) {
+      .inspector-bar {
+        grid-template-columns: 1fr;
+      }
+    }
+    .insp-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .insp-sub {
+      font-size: 12px;
+      color: #38bdf8;
+      margin-top: 2px;
+    }
+    .insp-desc {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+    .insp-specs {
+      background: #060a12;
+      border: 1px solid #1e293b;
+      border-radius: 7px;
+      padding: 8px 11px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       STICKY HEADER & DIAGRAM MODE SWITCHER
+       ======================================================================== -->
+  <header class="header-bar">
+    <div class="header-inner">
+      <div class="title-group">
+        <div class="logo-badge">bOS</div>
+        <div>
+          <div class="main-title">brainsOS — Reference Architecture &amp; Network Engineering Diagrams</div>
+          <div class="sub-title">Orthogonal Vector Blueprints • 5 Isolated Docker Bridge Subnets + Host Loopback • 18 Embedded Services</div>
+        </div>
+      </div>
+
+      <div class="toolbar-controls">
+        <div class="tab-group">
+          <button class="btn-tab active" id="mode-arch" onclick="setDiagramMode('arch')">01. Reference Architecture Schematic</button>
+          <button class="btn-tab" id="mode-net" onclick="setDiagramMode('net')">02. Network Bus &amp; NIC Matrix Diagram</button>
+          <button class="btn-tab" id="mode-both" onclick="setDiagramMode('both')">03. Side-by-Side / Print Both</button>
+        </div>
+        <button class="btn-action" onclick="exportCurrentSvg('svg-ref-arch', 'brainsos-reference-architecture.svg')">⬇ Export Arch SVG</button>
+        <button class="btn-action" onclick="exportCurrentSvg('svg-net-bus', 'brainsos-network-topology.svg')">⬇ Export Network SVG</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       INTERACTIVE NETWORK & TRAFFIC HIGHLIGHT BAR
+       ======================================================================== -->
+  <div class="filter-strip">
+    <div class="filter-pills">
+      <span class="filter-label">Isolate Network Bus:</span>
+      <button class="pill active" data-net="all" onclick="filterByNet('all')">All Networks</button>
+      <button class="pill" data-net="ingress" onclick="filterByNet('ingress')">
+        <span class="swatch" style="background:#38bdf8;"></span> brainsos-ingress-net
+      </button>
+      <button class="pill" data-net="internal" onclick="filterByNet('internal')">
+        <span class="swatch" style="background:#a855f7;"></span> brainsos-internal-net
+      </button>
+      <button class="pill" data-net="control" onclick="filterByNet('control')">
+        <span class="swatch" style="background:#f43f5e;"></span> brainsos-control-net (Rule 6)
+      </button>
+      <button class="pill" data-net="ide" onclick="filterByNet('ide')">
+        <span class="swatch" style="background:#10b981;"></span> brainsos-ide-net
+      </button>
+      <button class="pill" data-net="telemetry" onclick="filterByNet('telemetry')">
+        <span class="swatch" style="background:#f59e0b;"></span> brainsos-telemetry-net
+      </button>
+      <button class="pill" data-net="loopback" onclick="filterByNet('loopback')">
+        <span class="swatch" style="background:#ec4899;"></span> Host Loopback (127.0.0.1)
+      </button>
+    </div>
+
+    <div class="filter-pills">
+      <span class="filter-label">Highlight Data Path:</span>
+      <button class="pill" data-path="sso" onclick="filterByPath('sso')">Path A: Operator SSO</button>
+      <button class="pill" data-path="agent" onclick="filterByPath('agent')">Path B: Async Mail → Agent → LLM</button>
+      <button class="pill" data-path="egress" onclick="filterByPath('egress')">Path C: Zero-Secret Egress</button>
+      <button class="pill" data-path="otel" onclick="filterByPath('otel')">Path D: OTel v4 Tracing</button>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MAIN PAGE CONTAINER
+       ======================================================================== -->
+  <main class="page-wrap">
+
+    <!-- LIVE COMPONENT / BUS INSPECTOR BAR -->
+    <section class="inspector-bar" id="inspector-bar">
+      <div>
+        <div class="insp-title" id="insp-title">brainsOS Appliance Reference Topology</div>
+        <div class="insp-sub mono" id="insp-sub">Click any diagram node or network bus to inspect</div>
+      </div>
+      <div class="insp-desc" id="insp-desc">
+        All 18 services are partitioned across 5 isolated Docker bridge networks plus host loopback (127.0.0.1). External traffic enters exclusively through Port 443 (Caddy TLS + Authentik Forward-Auth). Agent containers hold zero ambient credentials and have zero route to the Control Plane PostgreSQL database or host Docker socket.
+      </div>
+      <div class="insp-specs mono" id="insp-specs">
+        Target: ASUS Ascent GX10 (GB10) / Apple Silicon<br/>
+        Concurrency: max_parallel_requests = 1
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         DIAGRAM 1: LAYERED REFERENCE ARCHITECTURE SCHEMATIC (ORTHOGONAL SVG)
+         ====================================================================== -->
+    <section class="diagram-card visible" id="card-arch">
+      <div class="diagram-card-header">
+        <div>
+          <div class="diagram-card-title">Diagram 1 — Enterprise "AI in a Box" Reference Architecture (Security Zones &amp; Orthogonal Data Paths)</div>
+          <div class="diagram-card-sub">
+            Shows trust boundaries, embedded open-source products, protocol/port bindings, and mediation choke points across L1–L7.
+          </div>
+        </div>
+        <div class="diagram-meta-tags mono">
+          <span class="meta-tag">Scale: 1600×980 Orthogonal SVG</span>
+          <span class="meta-tag">COHUMAIN ACSG Aligned</span>
+        </div>
+      </div>
+
+      <div class="svg-container">
+        <svg id="svg-ref-arch" class="arch-svg" viewBox="0 0 1600 980" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- Subtle Blueprint Grid -->
+            <pattern id="archGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#0f172a" stroke-width="1"/>
+            </pattern>
+            <!-- Directional Arrow Markers -->
+            <marker id="arr-ingress" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#38bdf8"/>
+            </marker>
+            <marker id="arr-internal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#a855f7"/>
+            </marker>
+            <marker id="arr-control" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#f43f5e"/>
+            </marker>
+            <marker id="arr-ide" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#10b981"/>
+            </marker>
+            <marker id="arr-telemetry" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#f59e0b"/>
+            </marker>
+            <marker id="arr-loopback" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#ec4899"/>
+            </marker>
+          </defs>
+
+          <!-- Background Canvas -->
+          <rect x="0" y="0" width="1600" height="980" fill="#050811"/>
+          <rect x="0" y="0" width="1600" height="980" fill="url(#archGrid)"/>
+
+          <!-- ================================================================
+               1. EXTERNAL WORLD / WAN BAND (Y: 16..96)
+               ================================================================ -->
+          <rect x="20" y="16" width="1560" height="76" rx="8" fill="#090e1a" stroke="#1e293b" stroke-width="1.5"/>
+          <text x="36" y="36" fill="#64748b" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.8">EXTERNAL NETWORKS &amp; CLIENTS (UNTRUSTED WAN / LAN)</text>
+
+          <!-- External Actor 1: Operator Browser -->
+          <g class="svg-node" data-nets="ingress" data-paths="sso" onclick="inspectItem('ext-operator')">
+            <rect class="node-box" x="240" y="30" width="260" height="48" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+            <text x="370" y="51" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">Operator Browser / Workstation</text>
+            <text x="370" y="67" text-anchor="middle" fill="#38bdf8" font-family="monospace" font-size="11">https://local.brainsos.ai (:443)</text>
+          </g>
+
+          <!-- External Actor 2: Inbound Email / Signal -->
+          <g class="svg-node" data-nets="internal" data-paths="agent" onclick="inspectItem('ext-mail')">
+            <rect class="node-box" x="670" y="30" width="270" height="48" rx="6" fill="#0f172a" stroke="#6366f1" stroke-width="1.5"/>
+            <text x="805" y="51" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">External Email (SES/SQS) &amp; Signal</text>
+            <text x="805" y="67" text-anchor="middle" fill="#818cf8" font-family="monospace" font-size="11">Async Inbound Triggers (No Open Port)</text>
+          </g>
+
+          <!-- External Actor 3: Outbound GitHub / Web APIs -->
+          <g class="svg-node" data-nets="internal" data-paths="egress" onclick="inspectItem('ext-github')">
+            <rect class="node-box" x="1150" y="30" width="310" height="48" rx="6" fill="#0f172a" stroke="#a855f7" stroke-width="1.5"/>
+            <text x="1305" y="51" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">GitHub API / Git Smart HTTP / Web Search</text>
+            <text x="1305" y="67" text-anchor="middle" fill="#c084fc" font-family="monospace" font-size="11">https://api.github.com • Tavily / Firecrawl</text>
+          </g>
+
+          <!-- ================================================================
+               2. APPLIANCE OUTER PERIMETER CHASSIS (Y: 112..962)
+               ================================================================ -->
+          <rect x="20" y="112" width="1560" height="850" rx="12" fill="#070c18" fill-opacity="0.7" stroke="#334155" stroke-width="2" stroke-dasharray="8 5"/>
+          <rect x="36" y="102" width="670" height="20" rx="4" fill="#050811"/>
+          <text x="44" y="116" fill="#94a3b8" font-family="monospace" font-size="11" font-weight="700">
+            ▣ APPLIANCE BOUNDARY: BARE-METAL GX10 / APPLE SILICON / VM (UFW + imds-guard.sh + Single-Origin :443)
+          </text>
+
+          <!-- ================================================================
+               ZONE A: L7 INGRESS & ZERO-TRUST IDENTITY GATE (Y: 132..242)
+               ================================================================ -->
+          <rect x="40" y="132" width="1520" height="110" rx="8" fill="#0a1324" stroke="#1e3a5f" stroke-width="1.5"/>
+          <text x="56" y="152" fill="#38bdf8" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            L7 EDGE INGRESS &amp; ZERO-TRUST IDENTITY PLANE (brainsos-ingress-net)
+          </text>
+
+          <!-- Node: Caddy Reverse Proxy -->
+          <g class="svg-node" data-nets="ingress,internal,ide" data-paths="sso,egress" onclick="inspectItem('caddy')">
+            <rect class="node-box" x="120" y="164" width="320" height="64" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+            <text x="136" y="185" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Caddy v2 Reverse Proxy &amp; TLS</text>
+            <text x="426" y="185" text-anchor="end" fill="#38bdf8" font-family="monospace" font-size="11" font-weight="700">:80 / :443</text>
+            <text x="136" y="203" fill="#94a3b8" font-family="monospace" font-size="11">brainsos-ingress-caddy</text>
+            <text x="136" y="218" fill="#cbd5e1" font-family="sans-serif" font-size="11">Single-Origin TLS • Subpath Router • forward_auth</text>
+          </g>
+
+          <!-- Node: Thin-Spine Portal -->
+          <g class="svg-node" data-nets="ingress" data-paths="sso" onclick="inspectItem('portal')">
+            <rect class="node-box" x="500" y="164" width="250" height="64" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+            <text x="516" y="185" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Thin-Spine React Portal</text>
+            <text x="736" y="185" text-anchor="end" fill="#38bdf8" font-family="monospace" font-size="11">/srv/portal</text>
+            <text x="516" y="203" fill="#94a3b8" font-family="monospace" font-size="11">packages/brainsOS-portal</text>
+            <text x="516" y="218" fill="#cbd5e1" font-family="sans-serif" font-size="11">Unified Operator Shell (&lt;4% Spine)</text>
+          </g>
+
+          <!-- Node: Authentik Server & Worker -->
+          <g class="svg-node" data-nets="ingress,internal" data-paths="sso" onclick="inspectItem('authentik')">
+            <rect class="node-box" x="810" y="164" width="350" height="64" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+            <text x="826" y="185" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Authentik Zero-Trust SSO (IdP)</text>
+            <text x="1146" y="185" text-anchor="end" fill="#38bdf8" font-family="monospace" font-size="11">:9000 (/auth/)</text>
+            <text x="826" y="203" fill="#94a3b8" font-family="monospace" font-size="11">brainsos-app-auth-server &amp; worker</text>
+            <text x="826" y="218" fill="#cbd5e1" font-family="sans-serif" font-size="11">OIDC Provider + Forward-Auth Gate for All UIs</text>
+          </g>
+
+          <!-- Node: Authentik DB + Redis -->
+          <g class="svg-node" data-nets="internal" data-paths="sso" onclick="inspectItem('auth-backing')">
+            <rect class="node-box" x="1220" y="164" width="310" height="64" rx="6" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/>
+            <text x="1236" y="185" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Authentik Postgres 16 + Redis 7</text>
+            <text x="1516" y="185" text-anchor="end" fill="#94a3b8" font-family="monospace" font-size="11">:5432 / :6379</text>
+            <text x="1236" y="203" fill="#94a3b8" font-family="monospace" font-size="11">brainsos-app-auth-db &amp; auth-redis</text>
+            <text x="1236" y="218" fill="#cbd5e1" font-family="sans-serif" font-size="11">Identity Store &amp; Session Cache (No Host Ports)</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE B (LEFT): OPERATOR IDE & SOURCE CONTROL (Y: 274..438, X: 40..510)
+               ================================================================ -->
+          <rect x="40" y="274" width="470" height="164" rx="8" fill="#071917" stroke="#065f46" stroke-width="1.5"/>
+          <text x="56" y="294" fill="#10b981" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            OPERATOR IDE &amp; GIT PLANE (brainsos-ide-net)
+          </text>
+
+          <!-- Node: VS Code IDE -->
+          <g class="svg-node" data-nets="ide,internal" data-paths="sso" onclick="inspectItem('codeserver')">
+            <rect class="node-box" x="56" y="306" width="212" height="116" rx="6" fill="#0f172a" stroke="#10b981" stroke-width="1.8"/>
+            <text x="68" y="327" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">VS Code (code-server)</text>
+            <text x="68" y="343" fill="#10b981" font-family="monospace" font-size="11">:8443 (/editor/)</text>
+            <text x="68" y="361" fill="#94a3b8" font-family="monospace" font-size="10.5">brainsos-app-code-server</text>
+            <text x="68" y="379" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Inspects /memories (.md)</text>
+            <text x="68" y="395" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Continue AI &amp; Aider</text>
+            <text x="68" y="411" fill="#cbd5e1" font-family="sans-serif" font-size="11">• UID 1000 Sandbox</text>
+          </g>
+
+          <!-- Node: Gitea Server -->
+          <g class="svg-node" data-nets="ingress,ide,internal" data-paths="sso" onclick="inspectItem('gitea')">
+            <rect class="node-box" x="282" y="306" width="212" height="116" rx="6" fill="#0f172a" stroke="#10b981" stroke-width="1.8"/>
+            <text x="294" y="327" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">Gitea Local Git Server</text>
+            <text x="294" y="343" fill="#10b981" font-family="monospace" font-size="11">:3000 (/git/ -&gt; :3002)</text>
+            <text x="294" y="361" fill="#94a3b8" font-family="monospace" font-size="10.5">brainsos-app-git</text>
+            <text x="294" y="379" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Versions SOUL.md &amp; Skills</text>
+            <text x="294" y="395" fill="#cbd5e1" font-family="sans-serif" font-size="11">• OFFLINE_MODE=true</text>
+            <text x="294" y="411" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Trusted Proxy SSO</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE C (CENTER): ASYNC MESSAGING BACKBONE (Y: 274..438, X: 530..1050)
+               ================================================================ -->
+          <rect x="530" y="274" width="520" height="164" rx="8" fill="#0d1329" stroke="#3730a3" stroke-width="1.5"/>
+          <text x="546" y="294" fill="#818cf8" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            ASYNC MESSAGING &amp; GROUPWARE PLANE (brainsos-internal-net)
+          </text>
+
+          <!-- Node: SOGo Webmail -->
+          <g class="svg-node" data-nets="ingress,internal" data-paths="sso,agent" onclick="inspectItem('sogo')">
+            <rect class="node-box" x="546" y="306" width="156" height="116" rx="6" fill="#0f172a" stroke="#6366f1" stroke-width="1.8"/>
+            <text x="556" y="327" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">SOGo Groupware</text>
+            <text x="556" y="343" fill="#818cf8" font-family="monospace" font-size="11">:20000 (/mail/)</text>
+            <text x="556" y="361" fill="#94a3b8" font-family="monospace" font-size="10.5">brainsos-app-sogo</text>
+            <text x="556" y="379" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Webmail &amp; CalDAV</text>
+            <text x="556" y="395" fill="#cbd5e1" font-family="sans-serif" font-size="11">• + sogo-db (PG16)</text>
+            <text x="556" y="411" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Agent Mailboxes</text>
+          </g>
+
+          <!-- Node: Postfix + Dovecot -->
+          <g class="svg-node" data-nets="internal,loopback" data-paths="agent" onclick="inspectItem('postfix')">
+            <rect class="node-box" x="714" y="306" width="168" height="116" rx="6" fill="#0f172a" stroke="#6366f1" stroke-width="1.8"/>
+            <text x="724" y="327" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">Postfix + Dovecot</text>
+            <text x="724" y="343" fill="#818cf8" font-family="monospace" font-size="11">SMTP :25 / IMAP :143</text>
+            <text x="724" y="361" fill="#94a3b8" font-family="monospace" font-size="10.5">brainsos-app-mail-server</text>
+            <text x="724" y="379" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Dovecot Sieve Hook</text>
+            <text x="724" y="395" fill="#cbd5e1" font-family="sans-serif" font-size="11">• agent-webhook.sh</text>
+            <text x="724" y="411" fill="#cbd5e1" font-family="sans-serif" font-size="11">• + mail-ingress (SQS)</text>
+          </g>
+
+          <!-- Node: Signal CLI -->
+          <g class="svg-node" data-nets="internal" data-paths="agent" onclick="inspectItem('signal')">
+            <rect class="node-box" x="894" y="306" width="140" height="116" rx="6" fill="#0f172a" stroke="#6366f1" stroke-width="1.5"/>
+            <text x="904" y="327" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">Signal CLI Daemon</text>
+            <text x="904" y="343" fill="#818cf8" font-family="monospace" font-size="11">JSON-RPC :8080</text>
+            <text x="904" y="361" fill="#94a3b8" font-family="monospace" font-size="10.5">app-signal-cli</text>
+            <text x="904" y="379" fill="#cbd5e1" font-family="sans-serif" font-size="11">• E2EE Mobile Bridge</text>
+            <text x="904" y="395" fill="#cbd5e1" font-family="sans-serif" font-size="11">• gateway_proxy.py</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE D (RIGHT): TOOL EGRESS FIREWALL (Y: 274..438, X: 1070..1560)
+               ================================================================ -->
+          <rect x="1070" y="274" width="490" height="164" rx="8" fill="#190d26" stroke="#7e22ce" stroke-width="1.5"/>
+          <text x="1086" y="294" fill="#c084fc" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            L4 TOOL EGRESS GATEWAY &amp; IN-TRANSIT AUTH (Rule 10)
+          </text>
+
+          <!-- Node: mitmproxy / mitmweb -->
+          <g class="svg-node" data-nets="internal" data-paths="egress" onclick="inspectItem('mitmproxy')">
+            <rect class="node-box" x="1088" y="306" width="454" height="116" rx="6" fill="#0f172a" stroke="#a855f7" stroke-width="2"/>
+            <text x="1104" y="328" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">mitmproxy / mitmweb Tool Egress Firewall</text>
+            <text x="1526" y="328" text-anchor="end" fill="#c084fc" font-family="monospace" font-size="11" font-weight="700">Proxy :8082 / UI :8081</text>
+            <text x="1104" y="346" fill="#94a3b8" font-family="monospace" font-size="11">brainsos-agent-egress-proxy (config/egress/addons/github_auth.py)</text>
+            <text x="1104" y="368" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Mandatory outbound HTTPS_PROXY for all agent containers</text>
+            <text x="1104" y="386" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Inspects source container IP on internal-net; injects GitHub PAT in transit</text>
+            <text x="1104" y="404" fill="#34d399" font-family="monospace" font-size="11">• Masks secrets as [INJECTED_CINDY_TOKEN] in /efw/ flow console</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE E (LEFT/CENTER): AGENT EXECUTION PLANE (Y: 472..646, X: 40..1050)
+               ================================================================ -->
+          <rect x="40" y="472" width="1010" height="174" rx="8" fill="#130d26" stroke="#6d28d9" stroke-width="1.8"/>
+          <text x="56" y="493" fill="#c084fc" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            L6 STATELESS MULTI-TENANT AGENT EXECUTION SANDBOX (UID 1000 • no-new-privileges • ZERO docker.sock • ZERO Ambient Secrets)
+          </text>
+
+          <!-- Node: Hermes Warm Runner -->
+          <g class="svg-node" data-nets="ingress,internal,loopback" data-paths="agent,egress,otel" onclick="inspectItem('hermes')">
+            <rect class="node-box" x="56" y="506" width="380" height="124" rx="6" fill="#0f172a" stroke="#a855f7" stroke-width="2.2"/>
+            <text x="72" y="528" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Hermes Shared Warm Runner</text>
+            <text x="422" y="528" text-anchor="end" fill="#c084fc" font-family="monospace" font-size="11" font-weight="700">:8642 API / :8787 UI</text>
+            <text x="72" y="546" fill="#94a3b8" font-family="monospace" font-size="11">brainsos-agent-runner-hermes</text>
+            <text x="72" y="566" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Executes async POST /v1/runs (max_concurrent_runs: 1)</text>
+            <text x="72" y="584" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Dynamically binds per-tenant SOUL.md &amp; OKF /memories</text>
+            <text x="72" y="602" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Emits OTel v4 turn spans via observability/langfuse plugin</text>
+            <text x="72" y="618" fill="#38bdf8" font-family="monospace" font-size="10.5">Tenants: Cindy Pawford • Terra Stella • Marvin</text>
+          </g>
+
+          <!-- Node: FastMCP Server -->
+          <g class="svg-node" data-nets="internal" data-paths="agent,otel" onclick="inspectItem('fastmcp')">
+            <rect class="node-box" x="452" y="506" width="260" height="124" rx="6" fill="#0f172a" stroke="#a855f7" stroke-width="1.6"/>
+            <text x="468" y="528" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">FastMCP Dynamic Tool Server</text>
+            <text x="700" y="528" text-anchor="end" fill="#c084fc" font-family="monospace" font-size="11">stdio MCP</text>
+            <text x="468" y="546" fill="#94a3b8" font-family="monospace" font-size="11">packages/brainsOS-mcp</text>
+            <text x="468" y="566" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Zero native tool schema bloat</text>
+            <text x="468" y="584" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Preserves unified RAM KV cache</text>
+            <text x="468" y="602" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Bridges mail, memory, queue SPIs</text>
+          </g>
+
+          <!-- Node: Claude & OpenAI SDK Runners -->
+          <g class="svg-node" data-nets="internal" data-paths="egress" onclick="inspectItem('sdk-runners')">
+            <rect class="node-box" x="728" y="506" width="306" height="124" rx="6" fill="#0f172a" stroke="#a855f7" stroke-width="1.6"/>
+            <text x="744" y="528" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Claude SDK &amp; OpenAI SDK Runners</text>
+            <text x="1020" y="528" text-anchor="end" fill="#c084fc" font-family="monospace" font-size="11">:8001 / :8002</text>
+            <text x="744" y="546" fill="#94a3b8" font-family="monospace" font-size="11">runner-claude &amp; runner-openai</text>
+            <text x="744" y="566" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Warm polyglot runner adapters</text>
+            <text x="744" y="584" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Mediated via LiteLLM (:4000)</text>
+            <text x="744" y="602" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Egress forced via mitmproxy (:8082)</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE F (RIGHT): L4 CONTROL PLANE & AIR-GAPPED DB (Y: 472..646, X: 1070..1560)
+               ================================================================ -->
+          <rect x="1070" y="472" width="490" height="174" rx="8" fill="#210916" stroke="#be123c" stroke-width="1.8"/>
+          <text x="1086" y="493" fill="#fb7185" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            L4 POLICY &amp; ROUTING CONTROL PLANE (Rule 3 &amp; Rule 6)
+          </text>
+
+          <!-- Node: LiteLLM Gateway -->
+          <g class="svg-node" data-nets="ingress,internal,control,loopback" data-paths="agent,otel" onclick="inspectItem('litellm')">
+            <rect class="node-box" x="1086" y="506" width="246" height="124" rx="6" fill="#0f172a" stroke="#f43f5e" stroke-width="2.2"/>
+            <text x="1100" y="528" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">LiteLLM Policy Gateway</text>
+            <text x="1100" y="545" fill="#fb7185" font-family="monospace" font-size="11">:4000 (/v1 &amp; /proxy/ui)</text>
+            <text x="1100" y="563" fill="#94a3b8" font-family="monospace" font-size="10.5">brainsos-control-litellm</text>
+            <text x="1100" y="582" fill="#fde047" font-family="monospace" font-size="11" font-weight="700">max_parallel_requests: 1</text>
+            <text x="1100" y="598" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Per-Tenant Virtual Keys</text>
+            <text x="1100" y="614" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Spend Quotas &amp; OTel Hook</text>
+          </g>
+
+          <!-- Air-Gapped Inner Box for LiteLLM DB -->
+          <rect x="1344" y="500" width="204" height="134" rx="6" fill="#2d0612" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="5 3"/>
+          <text x="1446" y="514" text-anchor="middle" fill="#fda4af" font-family="monospace" font-size="10" font-weight="700">AIR-GAPPED: control-net ONLY</text>
+
+          <!-- Node: LiteLLM Postgres DB -->
+          <g class="svg-node" data-nets="control" data-paths="agent" onclick="inspectItem('litellm-db')">
+            <rect class="node-box" x="1352" y="520" width="188" height="106" rx="5" fill="#0f172a" stroke="#f43f5e" stroke-width="1.8"/>
+            <text x="1364" y="540" fill="#f8fafc" font-family="sans-serif" font-size="12" font-weight="700">Control Plane DB</text>
+            <text x="1364" y="556" fill="#fb7185" font-family="monospace" font-size="11">PostgreSQL 16 (:5432)</text>
+            <text x="1364" y="573" fill="#94a3b8" font-family="monospace" font-size="10">control-litellm-db</text>
+            <text x="1364" y="591" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Zero Host Port Bindings</text>
+            <text x="1364" y="607" fill="#fb7185" font-family="sans-serif" font-size="11" font-weight="700">• Unreachable by Agents</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE G (LEFT): L5 MEMORY PLANE & TWO-REPO STORAGE (Y: 680..834, X: 40..490)
+               ================================================================ -->
+          <rect x="40" y="680" width="450" height="154" rx="8" fill="#081c19" stroke="#059669" stroke-width="1.5"/>
+          <text x="56" y="700" fill="#34d399" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            L5 MEMORY PLANE &amp; FLEET STORAGE (${BRAINSOS_DATA_DIR})
+          </text>
+
+          <!-- Node: OKF Memory Plane -->
+          <g class="svg-node" data-nets="ide,internal" data-paths="agent" onclick="inspectItem('okf-memory')">
+            <rect class="node-box" x="56" y="712" width="418" height="108" rx="6" fill="#0f172a" stroke="#10b981" stroke-width="1.8"/>
+            <text x="72" y="734" fill="#f8fafc" font-family="sans-serif" font-size="13" font-weight="700">Open Knowledge Format (OKF) Memory Store</text>
+            <text x="460" y="734" text-anchor="end" fill="#34d399" font-family="monospace" font-size="11">/memories (*.md)</text>
+            <text x="72" y="752" fill="#94a3b8" font-family="monospace" font-size="11">packages/brainsOS-memory • /data/agents/&lt;tenant_id&gt;/</text>
+            <text x="72" y="772" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Rule 1 (SEC-07): Pure flat-file Markdown with YAML frontmatter</text>
+            <text x="72" y="790" fill="#fb7185" font-family="sans-serif" font-size="11.5">• Runtime Purity Guard blocks SQLite .db, binaries &amp; vector blobs</text>
+            <text x="72" y="808" fill="#cbd5e1" font-family="sans-serif" font-size="11.5">• Decoupled Private Fleet Git Repo (snapshot-memories.sh)</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE H (CENTER): HOST LOOPBACK QUEUE & INFERENCE (Y: 680..834, X: 510..1050)
+               ================================================================ -->
+          <rect x="510" y="680" width="540" height="154" rx="8" fill="#210b1c" stroke="#db2777" stroke-width="1.8"/>
+          <text x="526" y="700" fill="#f472b6" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            L3 HOST LOOPBACK PLANE (127.0.0.1 ONLY — UNREACHABLE FROM EXTERNAL LAN/WAN)
+          </text>
+
+          <!-- Node: FIFO Queue Worker & Kill Switch -->
+          <g class="svg-node" data-nets="loopback,telemetry" data-paths="agent,otel" onclick="inspectItem('queue-worker')">
+            <rect class="node-box" x="526" y="712" width="250" height="108" rx="6" fill="#0f172a" stroke="#ec4899" stroke-width="1.8"/>
+            <text x="540" y="734" fill="#f8fafc" font-family="sans-serif" font-size="12.5" font-weight="700">Async FIFO Queue &amp; Kill Switch</text>
+            <text x="540" y="751" fill="#f472b6" font-family="monospace" font-size="11">127.0.0.1:8000 (brainsOS-queue)</text>
+            <text x="540" y="770" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Submits &amp; polls POST /v1/runs</text>
+            <text x="540" y="787" fill="#cbd5e1" font-family="sans-serif" font-size="11">• 4h budget (HERMES_RUN_MAX_SEC)</text>
+            <text x="540" y="804" fill="#fb7185" font-family="monospace" font-size="10.5" font-weight="700">• emergency-stop.sh (SAF-02 Halt)</text>
+          </g>
+
+          <!-- Node: Host Ollama / vLLM -->
+          <g class="svg-node" data-nets="loopback" data-paths="agent" onclick="inspectItem('ollama')">
+            <rect class="node-box" x="788" y="712" width="246" height="108" rx="6" fill="#0f172a" stroke="#ec4899" stroke-width="2.2"/>
+            <text x="802" y="734" fill="#f8fafc" font-family="sans-serif" font-size="12.5" font-weight="700">Native Ollama / vLLM Engine</text>
+            <text x="802" y="751" fill="#f472b6" font-family="monospace" font-size="11" font-weight="700">127.0.0.1:11434 (Loopback Bound)</text>
+            <text x="802" y="770" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Rule 2: Zero direct agent access</text>
+            <text x="802" y="787" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Only reachable via LiteLLM (:4000)</text>
+            <text x="802" y="804" fill="#34d399" font-family="monospace" font-size="10.5">• Native ARM64 CUDA / Metal</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE I (RIGHT): TELEMETRY & OBSERVABILITY (Y: 680..834, X: 1070..1560)
+               ================================================================ -->
+          <rect x="1070" y="680" width="490" height="154" rx="8" fill="#211605" stroke="#d97706" stroke-width="1.5"/>
+          <text x="1086" y="700" fill="#fbbf24" font-family="sans-serif" font-size="11" font-weight="700" letter-spacing="0.7">
+            DISTRIBUTED OBSERVABILITY PLANE (brainsos-telemetry-net)
+          </text>
+
+          <!-- Node: Langfuse v4 -->
+          <g class="svg-node" data-nets="telemetry,ingress" data-paths="otel" onclick="inspectItem('langfuse')">
+            <rect class="node-box" x="1086" y="712" width="224" height="108" rx="6" fill="#0f172a" stroke="#f59e0b" stroke-width="1.8"/>
+            <text x="1100" y="734" fill="#f8fafc" font-family="sans-serif" font-size="12.5" font-weight="700">Langfuse v4.58 Web &amp; Worker</text>
+            <text x="1100" y="751" fill="#fbbf24" font-family="monospace" font-size="11">:3001 UI / :3000 OTLP v4</text>
+            <text x="1100" y="770" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Unified thread_trace_id</text>
+            <text x="1100" y="787" fill="#cbd5e1" font-family="sans-serif" font-size="11">• TELEMETRY_ENABLED=false</text>
+            <text x="1100" y="804" fill="#cbd5e1" font-family="sans-serif" font-size="11">• + langfuse-db (Postgres 16)</text>
+          </g>
+
+          <!-- Node: ClickHouse + MinIO + Redis -->
+          <g class="svg-node" data-nets="telemetry" data-paths="otel" onclick="inspectItem('clickhouse')">
+            <rect class="node-box" x="1322" y="712" width="222" height="108" rx="6" fill="#0f172a" stroke="#f59e0b" stroke-width="1.8"/>
+            <text x="1336" y="734" fill="#f8fafc" font-family="sans-serif" font-size="12.5" font-weight="700">ClickHouse + MinIO + Redis</text>
+            <text x="1336" y="751" fill="#fbbf24" font-family="monospace" font-size="11">:8123 OLAP • :9000 S3 • :6379</text>
+            <text x="1336" y="770" fill="#cbd5e1" font-family="sans-serif" font-size="11">• Columnar span &amp; token store</text>
+            <text x="1336" y="787" fill="#cbd5e1" font-family="sans-serif" font-size="11">• S3 multimodal event blobs</text>
+            <text x="1336" y="804" fill="#34d399" font-family="monospace" font-size="10.5">• Millijoule (mJ/tok) metrics</text>
+          </g>
+
+          <!-- ================================================================
+               ZONE J (BOTTOM): L1 BARE-METAL SILICON & UNIFIED MEMORY BUS (Y: 856..946)
+               ================================================================ -->
+          <g class="svg-node" data-nets="loopback" data-paths="agent" onclick="inspectItem('silicon')">
+            <rect class="node-box" x="40" y="856" width="1520" height="90" rx="8" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+            <text x="64" y="882" fill="#f8fafc" font-family="sans-serif" font-size="14" font-weight="800">
+              L1 PHYSICAL SILICON &amp; THERMODYNAMIC LAYER — ASUS Ascent GX10 (NVIDIA GB10 ARM64) / Apple Silicon Parity
+            </text>
+            <text x="1536" y="882" text-anchor="end" fill="#fde047" font-family="monospace" font-size="12" font-weight="700">
+              ~273 GB/s Unified LPDDR5x Memory Bus • Project Millijoule (mJ/tok)
+            </text>
+            <text x="64" y="906" fill="#cbd5e1" font-family="sans-serif" font-size="12">
+              • Hardware Driver Pinning: apt-mark hold (DGX OS / Ubuntu 24.04)   • Host Firewall: harden-host.sh (UFW)   • Cloud Metadata Guard: imds-guard.sh (Drops 169.254.169.254 from Agents)
+            </text>
+            <text x="64" y="928" fill="#94a3b8" font-family="monospace" font-size="11">
+              Physical Trust Anchor: Serialized inference (max_parallel_requests: 1) prevents unified memory bus thrashing and bounds thermal dissipation.
+            </text>
+          </g>
+
+          <!-- ================================================================
+               ORTHOGONAL (MANHATTAN) DATA CORRIDOR WIRES
+               Routed cleanly in the gutters between zones so zero text is crossed
+               ================================================================ -->
+          <!-- 1. Operator Browser -> Caddy (:443) -->
+          <path class="svg-wire flow-dash" data-nets="ingress" data-paths="sso"
+                d="M 370 78 L 370 164" fill="none" stroke="#38bdf8" stroke-width="2.2" marker-end="url(#arr-ingress)"/>
+
+          <!-- 2. Caddy <-> Portal -->
+          <path class="svg-wire" data-nets="ingress" data-paths="sso"
+                d="M 440 196 L 500 196" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-ingress)"/>
+
+          <!-- 3. Caddy <-> Authentik (:9000 forward_auth) -->
+          <path class="svg-wire flow-dash" data-nets="ingress" data-paths="sso"
+                d="M 280 164 L 280 144 L 985 144 L 985 164" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-ingress)"/>
+          <text x="630" y="140" text-anchor="middle" fill="#38bdf8" font-family="monospace" font-size="10.5" font-weight="700">forward_auth &amp; OIDC (:9000)</text>
+
+          <!-- 4. Authentik -> Auth DB/Redis -->
+          <path class="svg-wire" data-nets="internal" data-paths="sso"
+                d="M 1160 196 L 1220 196" fill="none" stroke="#a855f7" stroke-width="2" marker-end="url(#arr-internal)"/>
+
+          <!-- 5. Caddy -> VS Code IDE, Gitea, SOGo (via Y=256 horizontal corridor) -->
+          <path class="svg-wire" data-nets="ide" data-paths="sso"
+                d="M 180 228 L 180 256 L 162 256 L 162 306" fill="none" stroke="#10b981" stroke-width="2" marker-end="url(#arr-ide)"/>
+          <path class="svg-wire" data-nets="ide" data-paths="sso"
+                d="M 180 256 L 388 256 L 388 306" fill="none" stroke="#10b981" stroke-width="2" marker-end="url(#arr-ide)"/>
+          <path class="svg-wire" data-nets="ingress" data-paths="sso,agent"
+                d="M 240 228 L 240 256 L 624 256 L 624 306" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arr-ingress)"/>
+
+          <!-- 6. External Email/Signal -> Postfix & Signal CLI -->
+          <path class="svg-wire flow-dash" data-nets="internal" data-paths="agent"
+                d="M 798 78 L 798 306" fill="none" stroke="#818cf8" stroke-width="2" marker-end="url(#arr-internal)"/>
+          <path class="svg-wire" data-nets="internal" data-paths="agent"
+                d="M 805 256 L 964 256 L 964 306" fill="none" stroke="#818cf8" stroke-width="1.8" marker-end="url(#arr-internal)"/>
+
+          <!-- 7. Postfix -> Host Queue Worker (via X=502 vertical corridor) -->
+          <path class="svg-wire flow-dash" data-nets="loopback" data-paths="agent"
+                d="M 798 422 L 798 454 L 502 454 L 502 766 L 526 766" fill="none" stroke="#ec4899" stroke-width="2.2" marker-end="url(#arr-loopback)"/>
+          <text x="650" y="450" text-anchor="middle" fill="#f472b6" font-family="monospace" font-size="10.5" font-weight="700">Dovecot Sieve -&gt; 127.0.0.1:8000 Queue</text>
+
+          <!-- 8. Queue Worker -> Hermes Runner (POST /v1/runs :8642) -->
+          <path class="svg-wire flow-dash" data-nets="loopback" data-paths="agent"
+                d="M 590 712 L 590 662 L 246 662 L 246 630" fill="none" stroke="#ec4899" stroke-width="2.2" marker-end="url(#arr-loopback)"/>
+          <text x="418" y="658" text-anchor="middle" fill="#f472b6" font-family="monospace" font-size="10.5" font-weight="700">POST /v1/runs (:8642 Async Poll)</text>
+
+          <!-- 9. Hermes <-> FastMCP -->
+          <path class="svg-wire" data-nets="internal" data-paths="agent"
+                d="M 436 568 L 452 568" fill="none" stroke="#a855f7" stroke-width="2" marker-end="url(#arr-internal)"/>
+
+          <!-- 10. Hermes & SDK Runners -> LiteLLM (:4000 via Y=458 corridor) -->
+          <path class="svg-wire flow-dash" data-nets="internal" data-paths="agent"
+                d="M 340 506 L 340 458 L 1180 458 L 1180 506" fill="none" stroke="#a855f7" stroke-width="2.2" marker-end="url(#arr-internal)"/>
+          <text x="930" y="453" text-anchor="middle" fill="#c084fc" font-family="monospace" font-size="10.5" font-weight="700">http://litellm:4000/v1 (Scoped Virtual Key)</text>
+
+          <!-- 11. Hermes & SDK Runners -> mitmproxy Egress (:8082) -->
+          <path class="svg-wire flow-dash" data-nets="internal" data-paths="egress"
+                d="M 880 506 L 880 448 L 1260 448 L 1260 422" fill="none" stroke="#a855f7" stroke-width="2.2" marker-end="url(#arr-internal)"/>
+          <text x="1155" y="444" text-anchor="middle" fill="#c084fc" font-family="monospace" font-size="10.5" font-weight="700">HTTPS_PROXY :8082 (Zero Env Token)</text>
+
+          <!-- 12. mitmproxy -> External GitHub API (In-Transit Token Injected) -->
+          <path class="svg-wire flow-dash" data-nets="internal" data-paths="egress"
+                d="M 1305 306 L 1305 78" fill="none" stroke="#a855f7" stroke-width="2.2" marker-end="url(#arr-internal)"/>
+          <rect x="1205" y="244" width="200" height="18" rx="4" fill="#050811" stroke="#a855f7" stroke-width="1"/>
+          <text x="1305" y="256" text-anchor="middle" fill="#34d399" font-family="monospace" font-size="10" font-weight="700">Injected Bearer PAT in Transit</text>
+
+          <!-- 13. LiteLLM <-> Air-Gapped Control DB (brainsos-control-net) -->
+          <path class="svg-wire" data-nets="control" data-paths="agent"
+                d="M 1332 568 L 1352 568" fill="none" stroke="#f43f5e" stroke-width="2.5" marker-end="url(#arr-control)"/>
+
+          <!-- 14. LiteLLM -> Host Ollama (127.0.0.1:11434 via Y=662 corridor) -->
+          <path class="svg-wire flow-dash" data-nets="loopback" data-paths="agent"
+                d="M 1160 630 L 1160 662 L 910 662 L 910 712" fill="none" stroke="#ec4899" stroke-width="2.4" marker-end="url(#arr-loopback)"/>
+          <text x="1035" y="658" text-anchor="middle" fill="#f472b6" font-family="monospace" font-size="10.5" font-weight="700">Serialized -&gt; 127.0.0.1:11434</text>
+
+          <!-- 15. Hermes & VS Code -> OKF Memory (/memories) -->
+          <path class="svg-wire" data-nets="internal,ide" data-paths="agent"
+                d="M 150 630 L 150 712" fill="none" stroke="#10b981" stroke-width="2" marker-end="url(#arr-ide)"/>
+          <text x="102" y="672" text-anchor="middle" fill="#34d399" font-family="monospace" font-size="10" font-weight="700">OKF .md Only</text>
+
+          <!-- 16. Telemetry OTLP v4 Spans -> Langfuse (:3000) -->
+          <path class="svg-wire flow-dash" data-nets="telemetry" data-paths="otel"
+                d="M 690 820 L 690 844 L 1198 844 L 1198 820" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arr-telemetry)"/>
+          <text x="944" y="840" text-anchor="middle" fill="#fbbf24" font-family="monospace" font-size="10.5" font-weight="700">OTLP v4 Traces (thread_trace_id) + mJ/tok Telemetry</text>
+
+          <!-- 17. Langfuse -> ClickHouse / MinIO / Redis -->
+          <path class="svg-wire flow-dash" data-nets="telemetry" data-paths="otel"
+                d="M 1310 766 L 1322 766" fill="none" stroke="#f59e0b" stroke-width="2.2" marker-end="url(#arr-telemetry)"/>
+
+          <!-- 18. Host Ollama -> L1 Unified Memory Silicon -->
+          <path class="svg-wire" data-nets="loopback" data-paths="agent"
+                d="M 910 820 L 910 856" fill="none" stroke="#ec4899" stroke-width="2.2" marker-end="url(#arr-loopback)"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         DIAGRAM 2: L2/L3 NETWORK SWITCH-FABRIC & NIC ATTACHMENT DIAGRAM
+         ====================================================================== -->
+    <section class="diagram-card" id="card-net">
+      <div class="diagram-card-header">
+        <div>
+          <div class="diagram-card-title">Diagram 2 — L2/L3 Network Switch-Fabric &amp; Container NIC Attachment Matrix</div>
+          <div class="diagram-card-sub">
+            Horizontal trunk rails represent the 5 isolated Docker bridge networks + Host Loopback. Vertical drop lines show exact container NIC attachments (`docker-compose.yml`).
+          </div>
+        </div>
+        <div class="diagram-meta-tags mono">
+          <span class="meta-tag">Scale: 1600×880 Bus Schematic</span>
+          <span class="meta-tag">Rule 4 &amp; Rule 6 Verified</span>
+        </div>
+      </div>
+
+      <div class="svg-container">
+        <svg id="svg-net-bus" class="arch-svg" viewBox="0 0 1600 880" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="0" width="1600" height="880" fill="#050811"/>
+          <rect x="0" y="0" width="1600" height="880" fill="url(#archGrid)"/>
+
+          <!-- Title Banner inside SVG -->
+          <rect x="24" y="18" width="1552" height="44" rx="6" fill="#0b1120" stroke="#1e293b"/>
+          <text x="40" y="45" fill="#f8fafc" font-family="monospace" font-size="13" font-weight="700">
+            DOCKER BRIDGE &amp; HOST LOOPBACK BUS MATRIX —● SOLID DOTS INDICATE ATTACHED CONTAINER INTERFACES (NICs)
+          </text>
+          <text x="1556" y="45" text-anchor="end" fill="#fb7185" font-family="monospace" font-size="12" font-weight="700">
+            ✕ /var/run/docker.sock = NEVER MOUNTED
+          </text>
+
+          <!-- ================================================================
+               TOP ROW: 15 SERVICE COLUMNS (X = 240 to 1540)
+               ================================================================ -->
+          <!-- Column Headers (Services) -->
+          <g font-family="monospace" font-size="11">
+            <!-- 1. Caddy -->
+            <g class="svg-node" data-nets="ingress,internal,ide" onclick="inspectItem('caddy')">
+              <rect class="node-box" x="230" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#38bdf8" stroke-width="1.8"/>
+              <text x="272" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">caddy</text>
+              <text x="272" y="118" text-anchor="middle" fill="#38bdf8">:80/:443</text>
+              <text x="272" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Ingress</text>
+              <text x="272" y="152" text-anchor="middle" fill="#34d399" font-size="9.5">Public TLS</text>
+            </g>
+
+            <!-- 2. Authentik -->
+            <g class="svg-node" data-nets="ingress,internal" onclick="inspectItem('authentik')">
+              <rect class="node-box" x="322" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+              <text x="364" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">authentik</text>
+              <text x="364" y="118" text-anchor="middle" fill="#38bdf8">:9000</text>
+              <text x="364" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">SSO IdP</text>
+              <text x="364" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">+db/redis</text>
+            </g>
+
+            <!-- 3. Code-Server -->
+            <g class="svg-node" data-nets="ide,internal" onclick="inspectItem('codeserver')">
+              <rect class="node-box" x="414" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+              <text x="456" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">code-srv</text>
+              <text x="456" y="118" text-anchor="middle" fill="#10b981">:8443</text>
+              <text x="456" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">VS Code</text>
+              <text x="456" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">/editor/</text>
+            </g>
+
+            <!-- 4. Gitea -->
+            <g class="svg-node" data-nets="ingress,ide,internal" onclick="inspectItem('gitea')">
+              <rect class="node-box" x="506" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+              <text x="548" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">gitea</text>
+              <text x="548" y="118" text-anchor="middle" fill="#10b981">:3000</text>
+              <text x="548" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Local Git</text>
+              <text x="548" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">/git/</text>
+            </g>
+
+            <!-- 5. SOGo -->
+            <g class="svg-node" data-nets="ingress,internal" onclick="inspectItem('sogo')">
+              <rect class="node-box" x="598" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#6366f1" stroke-width="1.5"/>
+              <text x="640" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">sogo</text>
+              <text x="640" y="118" text-anchor="middle" fill="#818cf8">:20000</text>
+              <text x="640" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Webmail</text>
+              <text x="640" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">+sogo-db</text>
+            </g>
+
+            <!-- 6. Postfix/Dovecot -->
+            <g class="svg-node" data-nets="internal,loopback" onclick="inspectItem('postfix')">
+              <rect class="node-box" x="690" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#6366f1" stroke-width="1.5"/>
+              <text x="732" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">mail-srv</text>
+              <text x="732" y="118" text-anchor="middle" fill="#818cf8">:25/:143</text>
+              <text x="732" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Postfix</text>
+              <text x="732" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">Sieve Hook</text>
+            </g>
+
+            <!-- 7. Hermes Runner -->
+            <g class="svg-node" data-nets="ingress,internal,loopback" onclick="inspectItem('hermes')">
+              <rect class="node-box" x="782" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#a855f7" stroke-width="2"/>
+              <text x="824" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">hermes</text>
+              <text x="824" y="118" text-anchor="middle" fill="#c084fc">:8642</text>
+              <text x="824" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Runner</text>
+              <text x="824" y="152" text-anchor="middle" fill="#fde047" font-size="9.5">UID 1000</text>
+            </g>
+
+            <!-- 8. Claude/OpenAI Runners -->
+            <g class="svg-node" data-nets="internal,loopback" onclick="inspectItem('sdk-runners')">
+              <rect class="node-box" x="874" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#a855f7" stroke-width="1.5"/>
+              <text x="916" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">sdk-run</text>
+              <text x="916" y="118" text-anchor="middle" fill="#c084fc">:8001/2</text>
+              <text x="916" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Claude/OAI</text>
+              <text x="916" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">Adapters</text>
+            </g>
+
+            <!-- 9. Egress Proxy -->
+            <g class="svg-node" data-nets="internal" onclick="inspectItem('mitmproxy')">
+              <rect class="node-box" x="966" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#a855f7" stroke-width="2"/>
+              <text x="1008" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">egress</text>
+              <text x="1008" y="118" text-anchor="middle" fill="#c084fc">:8082/:8081</text>
+              <text x="1008" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">mitmproxy</text>
+              <text x="1008" y="152" text-anchor="middle" fill="#34d399" font-size="9.5">PAT Inject</text>
+            </g>
+
+            <!-- 10. LiteLLM Gateway -->
+            <g class="svg-node" data-nets="ingress,internal,control,loopback" onclick="inspectItem('litellm')">
+              <rect class="node-box" x="1058" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#f43f5e" stroke-width="2"/>
+              <text x="1100" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">litellm</text>
+              <text x="1100" y="118" text-anchor="middle" fill="#fb7185">:4000</text>
+              <text x="1100" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Policy GW</text>
+              <text x="1100" y="152" text-anchor="middle" fill="#fde047" font-size="9.5">parallel:1</text>
+            </g>
+
+            <!-- 11. LiteLLM DB (Air-Gapped) -->
+            <g class="svg-node" data-nets="control" onclick="inspectItem('litellm-db')">
+              <rect class="node-box" x="1150" y="80" width="84" height="90" rx="5" fill="#2d0612" stroke="#f43f5e" stroke-width="2"/>
+              <text x="1192" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">litellm-db</text>
+              <text x="1192" y="118" text-anchor="middle" fill="#fb7185">:5432</text>
+              <text x="1192" y="136" text-anchor="middle" fill="#fda4af" font-size="9.5">Rule 6</text>
+              <text x="1192" y="152" text-anchor="middle" fill="#fb7185" font-size="9.5">AIR-GAPPED</text>
+            </g>
+
+            <!-- 12. Langfuse Web & Worker -->
+            <g class="svg-node" data-nets="ingress,telemetry" onclick="inspectItem('langfuse')">
+              <rect class="node-box" x="1242" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#f59e0b" stroke-width="1.8"/>
+              <text x="1284" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">langfuse</text>
+              <text x="1284" y="118" text-anchor="middle" fill="#fbbf24">:3001/:3000</text>
+              <text x="1284" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">OTel v4</text>
+              <text x="1284" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">Web+Wrk</text>
+            </g>
+
+            <!-- 13. ClickHouse + MinIO + Redis + LF-DB -->
+            <g class="svg-node" data-nets="telemetry" onclick="inspectItem('clickhouse')">
+              <rect class="node-box" x="1334" y="80" width="84" height="90" rx="5" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+              <text x="1376" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">olap-bus</text>
+              <text x="1376" y="118" text-anchor="middle" fill="#fbbf24">:8123/:9000</text>
+              <text x="1376" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">ClickHouse</text>
+              <text x="1376" y="152" text-anchor="middle" fill="#94a3b8" font-size="9.5">MinIO/Redis</text>
+            </g>
+
+            <!-- 14. Host Queue Worker -->
+            <g class="svg-node" data-nets="loopback" onclick="inspectItem('queue-worker')">
+              <rect class="node-box" x="1426" y="80" width="72" height="90" rx="5" fill="#0f172a" stroke="#ec4899" stroke-width="1.8"/>
+              <text x="1462" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">queue</text>
+              <text x="1462" y="118" text-anchor="middle" fill="#f472b6">:8000</text>
+              <text x="1462" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Host</text>
+              <text x="1462" y="152" text-anchor="middle" fill="#f472b6" font-size="9.5">127.0.0.1</text>
+            </g>
+
+            <!-- 15. Host Ollama -->
+            <g class="svg-node" data-nets="loopback" onclick="inspectItem('ollama')">
+              <rect class="node-box" x="1506" y="80" width="72" height="90" rx="5" fill="#0f172a" stroke="#ec4899" stroke-width="2"/>
+              <text x="1542" y="102" text-anchor="middle" fill="#f8fafc" font-weight="700">ollama</text>
+              <text x="1542" y="118" text-anchor="middle" fill="#f472b6">:11434</text>
+              <text x="1542" y="136" text-anchor="middle" fill="#94a3b8" font-size="9.5">Native GPU</text>
+              <text x="1542" y="152" text-anchor="middle" fill="#f472b6" font-size="9.5">127.0.0.1</text>
+            </g>
+          </g>
+
+          <!-- ================================================================
+               6 HORIZONTAL NETWORK BACKPLANE RAILS (Y = 240, 340, 440, 540, 640, 740)
+               ================================================================ -->
+
+          <!-- RAIL 1: brainsos-ingress-net (Y = 240) -->
+          <g class="svg-bus" data-nets="ingress">
+            <rect x="24" y="218" width="190" height="44" rx="6" fill="#0c1e36" stroke="#38bdf8" stroke-width="1.8"/>
+            <text x="36" y="238" fill="#38bdf8" font-family="monospace" font-size="11.5" font-weight="700">1. brainsos-ingress-net</text>
+            <text x="36" y="253" fill="#94a3b8" font-family="sans-serif" font-size="10.5">L7 TLS &amp; SSO Gateways</text>
+            <line x1="214" y1="240" x2="1570" y2="240" stroke="#38bdf8" stroke-width="4"/>
+          </g>
+
+          <!-- RAIL 2: brainsos-internal-net (Y = 340) -->
+          <g class="svg-bus" data-nets="internal">
+            <rect x="24" y="318" width="190" height="44" rx="6" fill="#1b0e30" stroke="#a855f7" stroke-width="1.8"/>
+            <text x="36" y="338" fill="#c084fc" font-family="monospace" font-size="11.5" font-weight="700">2. brainsos-internal-net</text>
+            <text x="36" y="353" fill="#94a3b8" font-family="sans-serif" font-size="10.5">Agent, Mail &amp; Egress Bus</text>
+            <line x1="214" y1="340" x2="1570" y2="340" stroke="#a855f7" stroke-width="4"/>
+          </g>
+
+          <!-- RAIL 3: brainsos-control-net (Y = 440) -->
+          <g class="svg-bus" data-nets="control">
+            <rect x="24" y="418" width="190" height="44" rx="6" fill="#2d0612" stroke="#f43f5e" stroke-width="2"/>
+            <text x="36" y="438" fill="#fb7185" font-family="monospace" font-size="11.5" font-weight="700">3. brainsos-control-net</text>
+            <text x="36" y="453" fill="#fda4af" font-family="sans-serif" font-size="10.5">Rule 6 Isolated DB Bridge</text>
+            <line x1="214" y1="440" x2="1570" y2="440" stroke="#f43f5e" stroke-width="4"/>
+          </g>
+
+          <!-- RAIL 4: brainsos-ide-net (Y = 540) -->
+          <g class="svg-bus" data-nets="ide">
+            <rect x="24" y="518" width="190" height="44" rx="6" fill="#06241c" stroke="#10b981" stroke-width="1.8"/>
+            <text x="36" y="538" fill="#34d399" font-family="monospace" font-size="11.5" font-weight="700">4. brainsos-ide-net</text>
+            <text x="36" y="553" fill="#94a3b8" font-family="sans-serif" font-size="10.5">Isolated Operator IDE Bus</text>
+            <line x1="214" y1="540" x2="1570" y2="540" stroke="#10b981" stroke-width="4"/>
+          </g>
+
+          <!-- RAIL 5: brainsos-telemetry-net (Y = 640) -->
+          <g class="svg-bus" data-nets="telemetry">
+            <rect x="24" y="618" width="190" height="44" rx="6" fill="#291a04" stroke="#f59e0b" stroke-width="1.8"/>
+            <text x="36" y="638" fill="#fbbf24" font-family="monospace" font-size="11.5" font-weight="700">5. brainsos-telemetry-net</text>
+            <text x="36" y="653" fill="#94a3b8" font-family="sans-serif" font-size="10.5">Langfuse OTel &amp; ClickHouse</text>
+            <line x1="214" y1="640" x2="1570" y2="640" stroke="#f59e0b" stroke-width="4"/>
+          </g>
+
+          <!-- RAIL 6: Host Loopback & Gateway (Y = 740) -->
+          <g class="svg-bus" data-nets="loopback">
+            <rect x="24" y="718" width="190" height="44" rx="6" fill="#29081d" stroke="#ec4899" stroke-width="1.8"/>
+            <text x="36" y="738" fill="#f472b6" font-family="monospace" font-size="11.5" font-weight="700">6. Host 127.0.0.1 Bus</text>
+            <text x="36" y="753" fill="#94a3b8" font-family="sans-serif" font-size="10.5">host.docker.internal / lo0</text>
+            <line x1="214" y1="740" x2="1570" y2="740" stroke="#ec4899" stroke-width="4" stroke-dasharray="10 4"/>
+          </g>
+
+          <!-- ================================================================
+               VERTICAL NIC ATTACHMENT DROP LINES & SOLDER DOTS
+               ================================================================ -->
+          <!-- 1. Caddy (X=272): ingress(240), internal(340), ide(540) -->
+          <line x1="272" y1="170" x2="272" y2="540" stroke="#38bdf8" stroke-width="2"/>
+          <circle cx="272" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="272" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <circle cx="272" cy="540" r="6" fill="#10b981" stroke="#050811" stroke-width="2"/>
+
+          <!-- 2. Authentik (X=364): ingress(240), internal(340) -->
+          <line x1="364" y1="170" x2="364" y2="340" stroke="#38bdf8" stroke-width="2"/>
+          <circle cx="364" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="364" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+
+          <!-- 3. Code-Server (X=456): internal(340), ide(540) -->
+          <line x1="456" y1="170" x2="456" y2="540" stroke="#10b981" stroke-width="2"/>
+          <circle cx="456" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <circle cx="456" cy="540" r="6" fill="#10b981" stroke="#050811" stroke-width="2"/>
+
+          <!-- 4. Gitea (X=548): ingress(240), internal(340), ide(540) -->
+          <line x1="548" y1="170" x2="548" y2="540" stroke="#10b981" stroke-width="2"/>
+          <circle cx="548" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="548" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <circle cx="548" cy="540" r="6" fill="#10b981" stroke="#050811" stroke-width="2"/>
+
+          <!-- 5. SOGo (X=640): ingress(240), internal(340) -->
+          <line x1="640" y1="170" x2="640" y2="340" stroke="#6366f1" stroke-width="2"/>
+          <circle cx="640" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="640" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+
+          <!-- 6. Mail-Server (X=732): internal(340), loopback(740 via host-gateway) -->
+          <line x1="732" y1="170" x2="732" y2="740" stroke="#6366f1" stroke-width="2"/>
+          <circle cx="732" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <circle cx="732" cy="740" r="6" fill="#ec4899" stroke="#050811" stroke-width="2"/>
+
+          <!-- 7. Hermes Runner (X=824): ingress(240), internal(340), loopback(740 port :8642) -->
+          <line x1="824" y1="170" x2="824" y2="740" stroke="#a855f7" stroke-width="2"/>
+          <circle cx="824" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="824" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <!-- Explicit Red X on control-net (440) and ide-net (540) to highlight isolation -->
+          <text x="824" y="444" text-anchor="middle" fill="#fb7185" font-family="monospace" font-size="13" font-weight="800">✕</text>
+          <text x="824" y="544" text-anchor="middle" fill="#fb7185" font-family="monospace" font-size="13" font-weight="800">✕</text>
+          <circle cx="824" cy="740" r="6" fill="#ec4899" stroke="#050811" stroke-width="2"/>
+
+          <!-- 8. SDK Runners (X=916): internal(340), loopback(740 port :8001/2) -->
+          <line x1="916" y1="170" x2="916" y2="740" stroke="#a855f7" stroke-width="2"/>
+          <circle cx="916" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <text x="916" y="444" text-anchor="middle" fill="#fb7185" font-family="monospace" font-size="13" font-weight="800">✕</text>
+          <circle cx="916" cy="740" r="6" fill="#ec4899" stroke="#050811" stroke-width="2"/>
+
+          <!-- 9. Tool Egress Proxy (X=1008): internal(340) -->
+          <line x1="1008" y1="170" x2="1008" y2="340" stroke="#a855f7" stroke-width="2.5"/>
+          <circle cx="1008" cy="340" r="7" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+
+          <!-- 10. LiteLLM Gateway (X=1100): ingress(240), internal(340), control(440), loopback(740 -> :11434) -->
+          <line x1="1100" y1="170" x2="1100" y2="740" stroke="#f43f5e" stroke-width="2.5"/>
+          <circle cx="1100" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="1100" cy="340" r="6" fill="#a855f7" stroke="#050811" stroke-width="2"/>
+          <circle cx="1100" cy="440" r="7" fill="#f43f5e" stroke="#050811" stroke-width="2"/>
+          <circle cx="1100" cy="740" r="6" fill="#ec4899" stroke="#050811" stroke-width="2"/>
+
+          <!-- 11. LiteLLM Control DB (X=1192): ONLY control-net (440)! -->
+          <line x1="1192" y1="170" x2="1192" y2="440" stroke="#f43f5e" stroke-width="3"/>
+          <circle cx="1192" cy="440" r="8" fill="#f43f5e" stroke="#fff" stroke-width="2"/>
+          <rect x="1136" y="454" width="112" height="20" rx="4" fill="#2d0612" stroke="#f43f5e"/>
+          <text x="1192" y="468" text-anchor="middle" fill="#fda4af" font-family="monospace" font-size="10" font-weight="700">SINGLE NIC ONLY</text>
+
+          <!-- 12. Langfuse Web (X=1284): ingress(240), telemetry(640) -->
+          <line x1="1284" y1="170" x2="1284" y2="640" stroke="#f59e0b" stroke-width="2"/>
+          <circle cx="1284" cy="240" r="6" fill="#38bdf8" stroke="#050811" stroke-width="2"/>
+          <circle cx="1284" cy="640" r="6" fill="#f59e0b" stroke="#050811" stroke-width="2"/>
+
+          <!-- 13. ClickHouse / MinIO / Redis / Langfuse-DB (X=1376): telemetry(640) ONLY -->
+          <line x1="1376" y1="170" x2="1376" y2="640" stroke="#f59e0b" stroke-width="2.5"/>
+          <circle cx="1376" cy="640" r="7" fill="#f59e0b" stroke="#050811" stroke-width="2"/>
+
+          <!-- 14. Host Queue Worker (X=1462): loopback(740) -->
+          <line x1="1462" y1="170" x2="1462" y2="740" stroke="#ec4899" stroke-width="2"/>
+          <circle cx="1462" cy="740" r="7" fill="#ec4899" stroke="#050811" stroke-width="2"/>
+
+          <!-- 15. Host Ollama (X=1542): loopback(740) -->
+          <line x1="1542" y1="170" x2="1542" y2="740" stroke="#ec4899" stroke-width="2.5"/>
+          <circle cx="1542" cy="740" r="7" fill="#ec4899" stroke="#fff" stroke-width="2"/>
+
+          <!-- Bottom Summary Callout Box inside Network SVG -->
+          <rect x="24" y="792" width="1552" height="66" rx="8" fill="#0b1120" stroke="#1e293b"/>
+          <text x="44" y="818" fill="#f8fafc" font-family="sans-serif" font-size="12.5" font-weight="700">
+            KEY NETWORK INVARIANTS ENFORCED IN CI (.github/workflows/pre-commit.yml) &amp; HOST IPTABLES:
+          </text>
+          <text x="44" y="840" fill="#cbd5e1" font-family="monospace" font-size="11">
+            1. litellm-db attaches ONLY to brainsos-control-net (Zero route from hermes/sdk-runners)   |   2. Runners attach to internal-net (Forced HTTPS_PROXY=:8082)   |   3. Ollama binds strictly to 127.0.0.1:11434
+          </text>
+        </svg>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    /* ==========================================================================
+       TECHNICAL SPECIFICATION DATA FOR INTERACTIVE NODE CLICKING
+       ========================================================================== */
+    const DETAILS = {
+      "ext-operator": {
+        title: "Operator Browser / Workstation",
+        sub: "External Client -> Single-Origin HTTPS :443",
+        desc: "Human operators access the entire appliance through a single TLS entry point (https://local.brainsos.ai). In Appliance Mode (compose.appliance.yml), all other container ports are bound strictly to 127.0.0.1.",
+        specs: "Protocol: HTTPS (TLS 1.3)\nAuth: Authentik SSO + Forward-Auth"
+      },
+      "ext-mail": {
+        title: "External Email (AWS SES/SQS/S3) & Signal",
+        sub: "Asynchronous Inbound Message Channels",
+        desc: "Inbound emails can arrive directly over SMTP or be pulled asynchronously from AWS SQS/S3 by brainsos-agent-mail-ingress (read-only rootfs, UID 1000) without exposing inbound mail ports to the internet.",
+        specs: "Daemon: brainsos-agent-mail-ingress\nPoll: Long-polling SQS -> Local Postfix :25"
+      },
+      "ext-github": {
+        title: "Outbound GitHub API & Web Search Providers",
+        sub: "Mediated External Tool Destinations",
+        desc: "Agents interact with standard https://api.github.com and https://github.com URLs without custom URL rewrites. Credentials are injected in transit by brainsos-agent-egress-proxy (:8082).",
+        specs: "Proxy: HTTPS_PROXY=egress-proxy:8082\nIMDSv2: 169.254.169.254 DROPPED by iptables"
+      },
+      "caddy": {
+        title: "Caddy v2 Reverse Proxy (brainsos-ingress-caddy)",
+        sub: "Nets: ingress-net, internal-net, ide-net | Ports: :80, :443",
+        desc: "Terminates TLS (internal CA or Route53 ACME DNS-01 wildcard), serves the Thin-Spine React Portal, and gates /editor/, /mail/, /proxy/ui, /efw/, /runner/, and /git/ behind Authentik forward_auth.",
+        specs: "Image: brainsos-caddy:latest\nConfig: config/caddy/Caddyfile"
+      },
+      "portal": {
+        title: "Thin-Spine React Portal (packages/brainsOS-portal)",
+        sub: "Served at https://local.brainsos.ai/",
+        desc: "Provides a unified single-origin operator console with a compact <4% navigation spine and 96%+ full-bleed workspace iframe for switching seamlessly between IDE, Mail, Langfuse, Mitmweb, and LiteLLM.",
+        specs: "Mount: /srv/portal:ro\nAuth: Public shell, SSO-gated subframes"
+      },
+      "authentik": {
+        title: "Authentik Zero-Trust SSO (brainsos-app-auth-server)",
+        sub: "Nets: ingress-net, internal-net | Port: 127.0.0.1:9002 -> :9000",
+        desc: "Centralized Identity Provider executing declarative zero-click blueprints (/blueprints/brainsos) to protect every web application in the appliance via OIDC or Forward-Auth headers.",
+        specs: "Image: ghcr.io/goauthentik/server:2024.8.3\nHardening: no-new-privileges:true"
+      },
+      "auth-backing": {
+        title: "Authentik PostgreSQL 16 & Redis 7",
+        sub: "Net: internal-net | Zero Host Port Bindings",
+        desc: "Dedicated persistence and session cache for Authentik SSOserver and background worker.",
+        specs: "Containers: brainsos-app-auth-db & auth-redis\nVolume: data/control_plane/authentik_db"
+      },
+      "codeserver": {
+        title: "Operator VS Code IDE (brainsos-app-code-server)",
+        sub: "Nets: ide-net, internal-net | Port: 127.0.0.1:8443 (/editor/)",
+        desc: "Sandboxed VS Code environment pre-configured with Continue AI, Aider, Goose, and direct mounts to /memories (OKF Markdown notes) and /data.",
+        specs: "User: UID/GID 1000\nLLM Route: http://litellm:4000/v1"
+      },
+      "gitea": {
+        title: "Gitea Self-Hosted Git Server (brainsos-app-git)",
+        sub: "Nets: ingress-net, ide-net, internal-net | Port: :3000 (/git/)",
+        desc: "Offline-mode local Git server versioning agent SOUL.md personas, dot-namespaced sub-agent prompts, skills, and web applications with Reverse-Proxy SSO.",
+        specs: "Image: gitea/gitea:1.22\nFlags: OFFLINE_MODE=true, DISABLE_SSH=true"
+      },
+      "sogo": {
+        title: "SOGo Webmail & CalDAV Groupware (brainsos-app-sogo)",
+        sub: "Nets: ingress-net, internal-net | Port: 127.0.0.1:20000 (/mail/)",
+        desc: "Human and agent webmail interface backed by dedicated PostgreSQL 16 (brainsos-app-sogo-db), pre-configured with mailboxes for operator, cindypawford, terrastella, and marvin.",
+        specs: "Auth: Authentik Trusted Proxy\nMount: data/comms/sogo/spool"
+      },
+      "postfix": {
+        title: "Postfix SMTP + Dovecot IMAP (brainsos-app-mail-server)",
+        sub: "Net: internal-net + host-gateway | Ports: 127.0.0.1:10025 / :10143",
+        desc: "Asynchronous email engine. Inbound emails trigger Dovecot Sieve (agent-webhook.sh) to submit a non-blocking job to the host Queue Worker on 127.0.0.1:8000.",
+        specs: "Hook: /usr/lib/dovecot/sieve-pipe/agent-webhook.sh\nStorage: data/comms/email/vmail"
+      },
+      "signal": {
+        title: "Signal CLI REST / JSON-RPC (brainsos-app-signal-cli)",
+        sub: "Net: internal-net | Port: :8080",
+        desc: "End-to-end encrypted messaging daemon enabling mobile operator dispatch to local agents.",
+        specs: "Mode: json-rpc\nProxy: gateway_proxy.py"
+      },
+      "mitmproxy": {
+        title: "Tool Egress Firewall & Auth Injector (brainsos-agent-egress-proxy)",
+        sub: "Net: internal-net | Proxy: :8082 | Web UI: 127.0.0.1:8081 (/efw/)",
+        desc: "Rule 10 enforcement: Agent containers hold ZERO GitHub tokens. Outbound HTTPS calls route through :8082 where github_auth.py checks client container IP, injects scoped PATs in transit, and masks tokens as [INJECTED_CINDY_TOKEN].",
+        specs: "Addons: github_auth.py, theme_loader.py\nCA Trust: Shared via tool_egress_proxy_data"
+      },
+      "hermes": {
+        title: "Hermes Warm Agent Runner (brainsos-agent-runner-hermes)",
+        sub: "Nets: ingress-net, internal-net | Ports: 127.0.0.1:8642 (API), :8787 (UI)",
+        desc: "Stateless multi-tenant agent execution engine. Enforces max_concurrent_runs: 1, runs as unprivileged UID 1000 with no-new-privileges:true, and dynamically loads tenant SOUL.md and /memories partitions.",
+        specs: "Concurrency: max_concurrent_runs = 1\nProxy: HTTPS_PROXY=http://brainsos-net-egress-proxy:8082"
+      },
+      "fastmcp": {
+        title: "FastMCP Dynamic Tool Server (packages/brainsOS-mcp)",
+        sub: "Transport: stdio inside runner container",
+        desc: "Exposes brainsOS domain tools (memory, mail, queue, telemetry) dynamically via Model Context Protocol, preventing static tool-schema prompt bloat and KV cache exhaustion.",
+        specs: "Config: data/runners/hermes/mcp.json\nPattern: Zero Native Tool Injection"
+      },
+      "sdk-runners": {
+        title: "Claude SDK (:8001) & OpenAI SDK (:8002) Warm Runners",
+        sub: "Net: internal-net | Ports: 127.0.0.1:8001 & :8002",
+        desc: "Stateless container runners for Anthropic Claude SDK and OpenAI Agents SDK workloads, routed strictly through LiteLLM (:4000) and the Tool Egress Proxy (:8082).",
+        specs: "Containers: brainsos-agent-runner-claude & openai\nHardening: no-new-privileges:true"
+      },
+      "litellm": {
+        title: "LiteLLM Control Plane Gateway (brainsos-control-litellm)",
+        sub: "Nets: control-net, internal-net, ingress-net | Port: 127.0.0.1:4000",
+        desc: "Mediates all LLM calls from agent runners and the Operator IDE. Enforces per-tenant virtual keys, spend limits, 300s timeouts, and max_parallel_requests: 1 (--num_workers 1) to protect the unified memory bus.",
+        specs: "Image: ghcr.io/berriai/litellm-database:v1.105.0\nUpstream: http://host.docker.internal:11434"
+      },
+      "litellm-db": {
+        title: "Air-Gapped Control Plane DB (brainsos-control-litellm-db)",
+        sub: "Net: brainsos-control-net ONLY | Zero Host Ports",
+        desc: "Rule 6 Hardening: Dedicated PostgreSQL 16 database storing virtual keys, rate limits, and model registrations. Completely air-gapped from brainsos-internal-net so agents can never reach it.",
+        specs: "Image: postgres:16-alpine\nCI Guard: .github/workflows/pre-commit.yml"
+      },
+      "okf-memory": {
+        title: "OKF Memory Engine (/memories • packages/brainsOS-memory)",
+        sub: "Host Mount: ${BRAINSOS_DATA_DIR}/agents/<tenant>/memories",
+        desc: "Rule 1 (SEC-07): Long-term agent memory is stored exclusively as human-auditable flat-file Markdown (.md) notes. Runtime validation rejects SQLite .db files, binary blobs, and path traversal.",
+        specs: "Format: Open Knowledge Format (.md + YAML)\nBackup: snapshot-memories.sh & backup.sh"
+      },
+      "queue-worker": {
+        title: "Host FIFO Queue Worker & Kill Switch (packages/brainsOS-queue)",
+        sub: "Host Loopback: 127.0.0.1:8000",
+        desc: "Decouples inbound email/webhook ingestion from long-running agent execution. Submits POST /v1/runs with Idempotency-Key, polls socket-free up to 4 hours, and pairs with emergency-stop.sh for out-of-band container halt.",
+        specs: "Budget: HERMES_RUN_MAX_SEC=14400 (4h)\nKill Switch: ./scripts/control/emergency-stop.sh"
+      },
+      "ollama": {
+        title: "Host Native Inference Engine (Ollama / vLLM)",
+        sub: "Host Loopback: 127.0.0.1:11434 (Rule 2)",
+        desc: "Executes model weights natively on bare-metal ARM64 GPU/NPU unified memory. Bound strictly to 127.0.0.1 so external networks and unmediated agent containers cannot bypass LiteLLM.",
+        specs: "Bind: 127.0.0.1:11434\nSetup: ./scripts/setup/setup-host.sh --pull-model"
+      },
+      "langfuse": {
+        title: "Langfuse v4.58 Distributed Observability (langfuse-web & worker)",
+        sub: "Nets: telemetry-net, ingress-net | Port: 127.0.0.1:3001 -> :3000",
+        desc: "Ingests OpenTelemetry v4 traces (/api/public/otel/v1/traces) correlating queue worker spans, Hermes turns, and FastMCP tool calls under a deterministic sha256 thread_trace_id.",
+        specs: "Header: x-langfuse-ingestion-version=4\nPrivacy: TELEMETRY_ENABLED=false (100% Local)"
+      },
+      "clickhouse": {
+        title: "ClickHouse 25.12 OLAP + Chainguard MinIO S3 + Redis 7",
+        sub: "Net: brainsos-telemetry-net ONLY",
+        desc: "High-throughput observability storage backing Langfuse v4: ClickHouse (:8123) for analytical span queries, MinIO (:9000) for S3 event blobs, Redis (:6379) for queue ingestion, and langfuse-db (PG16).",
+        specs: "Metric: Millijoule per token (mJ/tok)\nNetwork: Isolated on brainsos-telemetry-net"
+      },
+      "silicon": {
+        title: "L1 Bare-Metal Silicon & Thermodynamic Layer",
+        sub: "ASUS Ascent GX10 (NVIDIA GB10 ARM64) / Apple Silicon Parity",
+        desc: "Unified LPDDR5x memory architecture (~273 GB/s bandwidth). Protected by hardware request serialization (max_parallel_requests: 1), apt-mark hold driver pinning, UFW host firewall, and Project Millijoule energy accounting.",
+        specs: "Bus: ~273 GB/s Unified LPDDR5x\nIMDS Guard: ./scripts/setup/imds-guard.sh"
+      }
+    };
+
+    function inspectItem(key) {
+      const d = DETAILS[key];
+      if (!d) return;
+      document.getElementById("insp-title").textContent = d.title;
+      document.getElementById("insp-sub").textContent = d.sub;
+      document.getElementById("insp-desc").textContent = d.desc;
+      document.getElementById("insp-specs").innerHTML = d.specs.replace(/\n/g, "<br/>");
+    }
+
+    function setDiagramMode(mode) {
+      document.getElementById("mode-arch").classList.toggle("active", mode === "arch");
+      document.getElementById("mode-net").classList.toggle("active", mode === "net");
+      document.getElementById("mode-both").classList.toggle("active", mode === "both");
+
+      document.getElementById("card-arch").classList.toggle("visible", mode === "arch" || mode === "both");
+      document.getElementById("card-net").classList.toggle("visible", mode === "net" || mode === "both");
+    }
+
+    function filterByNet(net) {
+      document.querySelectorAll("[data-net]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-net") === net);
+      });
+      document.querySelectorAll("[data-path]").forEach(btn => btn.classList.remove("active"));
+
+      document.querySelectorAll(".svg-node, .svg-wire, .svg-bus").forEach(el => {
+        if (net === "all") {
+          el.classList.remove("dimmed", "highlighted-wire");
+          return;
+        }
+        const nets = (el.getAttribute("data-nets") || "").split(",");
+        const matches = nets.includes(net);
+        el.classList.toggle("dimmed", !matches);
+        if (el.classList.contains("svg-wire") && matches) {
+          el.classList.add("highlighted-wire");
+        } else {
+          el.classList.remove("highlighted-wire");
+        }
+      });
+    }
+
+    function filterByPath(pathKey) {
+      const alreadyActive = document.querySelector(`[data-path="${pathKey}"]`).classList.contains("active");
+      if (alreadyActive) {
+        filterByNet("all");
+        return;
+      }
+
+      document.querySelectorAll("[data-net]").forEach(btn => btn.classList.remove("active"));
+      document.querySelectorAll("[data-path]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-path") === pathKey);
+      });
+
+      document.querySelectorAll(".svg-node, .svg-wire").forEach(el => {
+        const paths = (el.getAttribute("data-paths") || "").split(",");
+        const matches = paths.includes(pathKey);
+        el.classList.toggle("dimmed", !matches);
+        if (el.classList.contains("svg-wire") && matches) {
+          el.classList.add("highlighted-wire");
+        } else {
+          el.classList.remove("highlighted-wire");
+        }
+      });
+    }
+
+    function exportCurrentSvg(svgId, filename) {
+      const svgEl = document.getElementById(svgId);
+      if (!svgEl) return;
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgEl);
+      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

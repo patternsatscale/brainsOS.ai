@@ -80,19 +80,23 @@ fi
 
 cd "${PORTAL_DIR}"
 
-if [ ! -d "node_modules" ]; then
-  log_info "Installing portal npm dependencies..."
-  if [ -f package-lock.json ]; then
-    npm ci --silent
-  else
-    npm install --silent
+if [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] && [ -f "dist/index.html" ] && [ ! -d "node_modules" ]; then
+  log_info "Pre-built portal bundle present at dist/index.html (build-only node_modules pruned for AMI security); skipping npm rebuild."
+else
+  if [ ! -d "node_modules" ]; then
+    log_info "Installing portal npm dependencies..."
+    if [ -f package-lock.json ]; then
+      npm ci --silent
+    else
+      npm install --silent
+    fi
   fi
-fi
 
-log_info "Compiling production static bundle via Vite (Host: ${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}, Version: ${BRAINSOS_VERSION:-v0.1.0-arm64})..."
-VITE_APPLIANCE_HOST="${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
-VITE_BRAINSOS_VERSION="${BRAINSOS_VERSION:-v0.1.0-arm64}" \
-npm run build
+  log_info "Compiling production static bundle via Vite (Host: ${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}, Version: ${BRAINSOS_VERSION:-v0.1.0-arm64})..."
+  VITE_APPLIANCE_HOST="${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
+  VITE_BRAINSOS_VERSION="${BRAINSOS_VERSION:-v0.1.0-arm64}" \
+  npm run build
+fi
 
 if [ ! -f "dist/index.html" ]; then
   fail_check "Portal build failed: dist/index.html missing."

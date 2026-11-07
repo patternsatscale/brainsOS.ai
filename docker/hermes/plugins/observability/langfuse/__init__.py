@@ -569,10 +569,16 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
     last_user = next((m for m in reversed(messages) if isinstance(m, dict) and m.get("role") == "user"), None) \
         if isinstance(messages, list) else None
     trace_input = None if last_user is None else {"role": "user", "content": _capture_content(last_user.get("content"))}
+    local_domain = (
+        _env("BRAINSOS_LOCAL_DOMAIN")
+        or _env("BRAINSOS_MAIL_DOMAIN")
+        or _env("BRAINSOS_DOMAIN")
+        or "brainsos.local"
+    )
     metadata = {
         "source": "hermes", "task_id": task_id, "turn_id": turn_id, "api_request_id": api_request_id,
         "platform": platform, "provider": provider, "model": model, "api_mode": api_mode,
-        "capture_mode": _capture_mode(),
+        "capture_mode": _capture_mode(), "local_domain": local_domain,
     }
     # session_id must be in trace_context for Langfuse session grouping.
     trace_ctx: Dict[str, Any] = {"trace_id": trace_id, **({"session_id": session_id} if session_id else {})}

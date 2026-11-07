@@ -110,6 +110,45 @@ set +a
 cd "${REPO_ROOT}"
 
 # ------------------------------------------------------------------------------
+# 0a. Optional Boot-Time Source Auto-Pull (Appliance Mode)
+# ------------------------------------------------------------------------------
+if [[ "${BRAINSOS_AUTO_PULL_ON_BOOT:-false}" =~ ^(true|1|yes)$ ]] && [ "${RELOAD_ENV_SKIP_PULL:-false}" != "true" ]; then
+  if [ -d "${REPO_ROOT}/.git" ] && command -v git >/dev/null 2>&1; then
+    git config --system --add safe.directory "${REPO_ROOT}" 2>/dev/null || true
+    ACTIVE_GIT_BRANCH="${BRAINSOS_GIT_BRANCH:-$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")}"
+    [ "${ACTIVE_GIT_BRANCH}" = "HEAD" ] && ACTIVE_GIT_BRANCH="main"
+    BEFORE_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || true)"
+    log_info "Checking origin/${ACTIVE_GIT_BRANCH} for latest source updates..."
+    if timeout 20 git -C "${REPO_ROOT}" fetch --quiet origin "${ACTIVE_GIT_BRANCH}" 2>/dev/null; then
+      REMOTE_SHA="$(git -C "${REPO_ROOT}" rev-parse FETCH_HEAD 2>/dev/null || true)"
+      if [ -n "${REMOTE_SHA}" ] && [ "${REMOTE_SHA}" != "${BEFORE_SHA}" ]; then
+        log_info "Auto-pulling latest source on boot (${BEFORE_SHA:0:12} -> ${REMOTE_SHA:0:12} on ${ACTIVE_GIT_BRANCH})..."
+        CHANGED_FILES="$(git -C "${REPO_ROOT}" diff --name-only "${BEFORE_SHA}" "${REMOTE_SHA}" 2>/dev/null || true)"
+        git -C "${REPO_ROOT}" checkout --quiet -B "${ACTIVE_GIT_BRANCH}" FETCH_HEAD 2>/dev/null || true
+        git -C "${REPO_ROOT}" reset --hard FETCH_HEAD >/dev/null 2>&1 || true
+        git -C "${REPO_ROOT}" update-ref "refs/remotes/origin/${ACTIVE_GIT_BRANCH}" "${REMOTE_SHA}" 2>/dev/null || true
+        git -C "${REPO_ROOT}" branch --quiet --set-upstream-to="origin/${ACTIVE_GIT_BRANCH}" "${ACTIVE_GIT_BRANCH}" 2>/dev/null || true
+        chmod +x "${REPO_ROOT}"/scripts/*/*.sh "${REPO_ROOT}"/packages/brainsOS-appliance/scripts/*.sh "${REPO_ROOT}"/docker/*/*.sh 2>/dev/null || true
+        if echo "${CHANGED_FILES}" | grep -q "^packages/brainsOS-portal/" && [ -x "${REPO_ROOT}/scripts/setup/setup-portal.sh" ]; then
+          log_info "Portal source updated; rebuilding Portal SPA bundle..."
+          "${REPO_ROOT}/scripts/setup/setup-portal.sh" || log_warn "Portal rebuild encountered a warning."
+        fi
+        if echo "${CHANGED_FILES}" | grep -q "^packages/brainsOS-telemetry/" && command -v systemctl >/dev/null 2>&1; then
+          systemctl restart brainsos-system-api.service 2>/dev/null || true
+        fi
+        log_success "Updated source tree to ${ACTIVE_GIT_BRANCH}@${REMOTE_SHA:0:12}; re-executing reload-env.sh..."
+        export RELOAD_ENV_SKIP_PULL=true
+        exec "${REPO_ROOT}/scripts/control/reload-env.sh" "${URLS_ARGS[@]}" $([ "${SKIP_URLS}" = true ] && echo "--no-urls")
+      else
+        log_success "Source tree is already at latest ${ACTIVE_GIT_BRANCH}@${BEFORE_SHA:0:12}."
+      fi
+    else
+      log_warn "Could not reach origin/${ACTIVE_GIT_BRANCH} (offline); continuing with local source."
+    fi
+  fi
+fi
+
+# ------------------------------------------------------------------------------
 # 0. Ensure Persistence Stores & Databases Are Running
 # ------------------------------------------------------------------------------
 log_info "Ensuring persistence stores and database engines are running..."
@@ -151,6 +190,9 @@ if [ -n "${DB_CONTAINER}" ]; then
       log_warn "Could not automatically alter LiteLLM password. Database may be initializing."
     fi
   fi
+  # Ensure the Operator Console virtual key alias is normalized to 'brainsOs.console'
+  docker exec "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
+    -c "UPDATE \"LiteLLM_VerificationToken\" SET key_alias = 'brainsOs.console' WHERE key_alias LIKE '%/editor/%' OR key_alias = 'brainsos-operator';" >/dev/null 2>&1 || true
 else
   log_info "LiteLLM database container is not running; will be started during control plane restart."
 fi
@@ -179,26 +221,58 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
     fi
   fi
 
-  # Synchronize user account passwords in sogo_users table
+  # Synchronize user account passwords and mail domain in sogo_users & sogo_addressbook
   ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
   OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  MAIL_DOM="${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}"
+  TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+  BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+  MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+  PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+  CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+  GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+  MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
+  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
   docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}' WHERE c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local');
-    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}' WHERE c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_name = 'admin' OR c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_name = 'operator' OR c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOM}' WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
     INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', 'admin@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', 'admin@${MAIL_DOM}')
-    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password;
+      ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('operator', 'operator', '${OPERATOR_MAIL_PASS}', 'Human Operator', 'operator@${MAIL_DOM}'),
+      ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOM}'),
+      ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOM}'),
+      ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOM}'),
+      ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOM}'),
+      ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOM}'),
+      ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOM}')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+  if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    SUPERUSER_CN="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
+    docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+      INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}'),
+        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}')
+      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
+EOSQL
+  fi
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    CREATE OR REPLACE VIEW sogo_addressbook AS
+    SELECT c_uid, c_name, c_password, c_cn, mail
+    FROM sogo_users
+    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
 EOSQL
   log_success "SOGo fleet accounts and passwords synchronized in sogo_users table."
 else
-  log_info "SOGo database container is not running (skipping)."
+  log_info "SOGo database container is not running (skipping pre-up check)."
 fi
 
 # Synchronize Dovecot mail accounts and credentials
 if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
-  "${SCRIPT_DIR}/../setup/setup-mail.sh" >/dev/null 2>&1 || true
+  "${SCRIPT_DIR}/../setup/setup-mail.sh" --accounts-only >/dev/null 2>&1 || true
   MAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || true)"
   if [ -n "${MAIL_CONTAINER}" ]; then
     docker exec "${MAIL_CONTAINER}" doveadm reload 2>/dev/null || true
@@ -248,34 +322,23 @@ if [ -n "${LF_DB_CONTAINER}" ]; then
     log_success "Langfuse database password synchronized."
   fi
 
-    # Synchronize Langfuse Web admin user password if updated
-    LF_ADMIN_PASS="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
-    LF_ADMIN_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}}"
-    LF_ADMIN_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
-    if [ -n "${LF_ADMIN_PASS}" ] && [ -n "${LF_WEB_CONTAINER}" ]; then
-      LF_HASH=$(docker exec -i "${LF_WEB_CONTAINER}" node -e "
-        const p = process.argv[1];
-        const bcrypt = require('/app/node_modules/.pnpm/bcryptjs@2.4.3/node_modules/bcryptjs/dist/bcrypt.js');
-        console.log(bcrypt.hashSync(p, 12));
-      " "${LF_ADMIN_PASS}" 2>/dev/null || true)
-      if [ -n "${LF_HASH}" ]; then
-        docker exec -i "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
-          -c "
-            DO \$\$
-            BEGIN
-              IF EXISTS (SELECT 1 FROM users WHERE email = '${LF_ADMIN_EMAIL}') THEN
-                UPDATE users SET password = '${LF_HASH}', updated_at = NOW() WHERE email = '${LF_ADMIN_EMAIL}';
-              ELSE
-                UPDATE users SET email = '${LF_ADMIN_EMAIL}', name = '${LF_ADMIN_NAME}', password = '${LF_HASH}', updated_at = NOW()
-                WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
-              END IF;
-            END \$\$;
-          " >/dev/null 2>&1 || true
-        log_success "Langfuse admin user password synchronized."
-      fi
-    fi
+  # Check if any existing Langfuse user is missing membership in project 'brainsos'.
+  # If so, rotate NEXTAUTH_SECRET before 'docker compose up -d' so any stale browser
+  # NextAuth JWT cookie (cached with organizations=[]) is invalidated and refreshed via OIDC.
+  UNLINKED_LF_USERS=$(docker exec -i "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" -tc "
+    SELECT COUNT(*) FROM users u
+    WHERE NOT EXISTS (
+      SELECT 1 FROM project_memberships pm WHERE pm.user_id = u.id AND pm.project_id = 'brainsos'
+    );
+  " 2>/dev/null | tr -d '[:space:]' || echo "0")
+  if [ -n "${UNLINKED_LF_USERS}" ] && [ "${UNLINKED_LF_USERS}" != "0" ]; then
+    log_info "Detected ${UNLINKED_LF_USERS} Langfuse user(s) missing 'brainsos' project membership; rotating NEXTAUTH_SECRET to refresh SSO sessions..."
+    NEW_NEXTAUTH_SECRET="$(python3 -c 'import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())' 2>/dev/null || openssl rand -base64 32)"
+    "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "NEXTAUTH_SECRET=${NEW_NEXTAUTH_SECRET}" >/dev/null 2>&1 || true
+    export NEXTAUTH_SECRET="${NEW_NEXTAUTH_SECRET}"
+  fi
 else
-  log_info "Step 3/6: Langfuse database is not running locally (skipping)."
+  log_info "Step 3/6: Langfuse database is not running locally (skipping pre-up check)."
 fi
 
 # Synchronize Caddy Operator IDE Basic Auth Password Hash
@@ -298,6 +361,18 @@ if [ -n "${EFFECTIVE_CODE_PASS}" ]; then
     export OPERATOR_PASSWORD_HASH="${OP_HASH}"
     log_success "Synchronized OPERATOR_PASSWORD_HASH with admin password for Caddy Basic Auth."
   fi
+fi
+
+# Ensure SYSTEM_API_TOKEN and BRAINSOS_UNIT_NAME exist in .env before docker compose up -d
+if [ -z "${SYSTEM_API_TOKEN:-}" ]; then
+  SYSTEM_API_TOKEN="$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')"
+  "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN}" >/dev/null 2>&1 || true
+  export SYSTEM_API_TOKEN
+fi
+if [ -z "${BRAINSOS_UNIT_NAME:-}" ]; then
+  BRAINSOS_UNIT_NAME="Enterprise Agent Box"
+  "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "BRAINSOS_UNIT_NAME=${BRAINSOS_UNIT_NAME}" >/dev/null 2>&1 || true
+  export BRAINSOS_UNIT_NAME
 fi
 
 # ------------------------------------------------------------------------------
@@ -341,12 +416,113 @@ if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
   "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
 fi
 
+# ------------------------------------------------------------------------------
+# 4b. Post-Up SOGo & Mail Synchronization (ensures live containers match .env)
+# ------------------------------------------------------------------------------
+SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?sogo-db$' | head -n 1 || true)"
+if [ -n "${SOGO_DB_CONTAINER}" ]; then
+  SOGO_DB_USER="${SOGO_DB_USER:-sogo}"
+  SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
+  ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+  BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+  MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+  PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+  CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+  GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+  MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
+  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    CREATE TABLE IF NOT EXISTS sogo_users (
+        c_uid VARCHAR(128) PRIMARY KEY,
+        c_name VARCHAR(128) NOT NULL,
+        c_password VARCHAR(128) NOT NULL,
+        c_cn VARCHAR(128) NOT NULL,
+        mail VARCHAR(128) NOT NULL
+    );
+    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_name = 'admin' OR c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_name = 'operator' OR c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
+    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOM}' WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+      ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
+      ('operator', 'operator', '${OPERATOR_MAIL_PASS}', 'Human Operator', 'operator@${MAIL_DOM}'),
+      ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOM}'),
+      ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOM}'),
+      ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOM}'),
+      ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOM}'),
+      ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOM}'),
+      ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOM}')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+EOSQL
+  if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    SUPERUSER_CN="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
+    docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+      INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}'),
+        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}')
+      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
+EOSQL
+  fi
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
+    CREATE OR REPLACE VIEW sogo_addressbook AS
+    SELECT c_uid, c_name, c_password, c_cn, mail
+    FROM sogo_users
+    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+    DELETE FROM sogo_user_profile WHERE c_defaults LIKE '%@brainsos.local%' OR c_defaults LIKE '%@local.brainsos.ai%';
+EOSQL
+fi
+
+if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
+  "${SCRIPT_DIR}/../setup/setup-mail.sh" --accounts-only >/dev/null 2>&1 || true
+  MAIL_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || true)"
+  if [ -n "${MAIL_CONTAINER}" ]; then
+    docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/vmailbox 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/virtual 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" doveadm reload 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" postfix reload 2>/dev/null || true
+  fi
+fi
+
+# Restart SOGo container so sogod and memcached reload sogo.conf (SOGoMailDomain) and flush addressbook cache
+SOGO_CONTAINER="$(docker ps -a --format '{{.Names}}' | grep -E '^brainsos-(app-|net-)?sogo$' | head -n 1 || true)"
+if [ -n "${SOGO_CONTAINER}" ]; then
+  log_info "Restarting SOGo container (${SOGO_CONTAINER}) to refresh domain & addressbook cache..."
+  docker compose restart sogo >/dev/null 2>&1 || docker restart "${SOGO_CONTAINER}" >/dev/null 2>&1 || true
+fi
+
+# ------------------------------------------------------------------------------
+# 4c. Post-Up Langfuse Organization, Project, Membership & Trigger Sync
+# ------------------------------------------------------------------------------
+if [ -x "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" sync || log_warn "Langfuse post-up sync encountered a warning."
+fi
+
+# Synchronize Local Git Server (Gitea) & /data Repository (#332)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-git.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-git.sh" || log_warn "Gitea seed sync encountered a warning."
+fi
+
 # Synchronize Authentik Identity & Master Credentials
 AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
+  RAW_URL="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"
+  EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   log_info "Waiting for Authentik blueprint & Embedded Outpost readiness..."
   for i in $(seq 1 60); do
-    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "from authentik.outposts.models import Outpost; import sys; sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)" >/dev/null 2>&1; then
+    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
+from authentik.outposts.models import Outpost
+import sys
+for o in Outpost.objects.all():
+    if o._config.get('authentik_host') != 'https://${EFFECTIVE_DOMAIN}':
+        o._config['authentik_host'] = 'https://${EFFECTIVE_DOMAIN}'
+        o._config['authentik_host_browser'] = 'https://${EFFECTIVE_DOMAIN}'
+        o.save()
+sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
+" >/dev/null 2>&1; then
       break
     fi
     # On a fresh database, default blueprints (flows/certs) may still be applying when
@@ -359,42 +535,78 @@ if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
   done
 
   log_info "Synchronizing Authentik identity and master credentials..."
-  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.ai}"
-  if [[ "${ADMIN_EMAIL}" == *.local ]]; then
-    ADMIN_EMAIL="admin@brainsos.ai"
+  SUPERUSER_USER="${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}"
+  ADMIN_USER="${SUPERUSER_USER}"
+  SUPERUSER_DISPLAY_NAME="${BRAINSOS_SUPERUSER_NAME:-${SUPERUSER_USER}}"
+  LOCAL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${EFFECTIVE_DOMAIN:-brainsos.ai}}"
+  BREAKGLASS_ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${EFFECTIVE_DOMAIN:-${LOCAL_DOM}}}"
+  if [[ "${BREAKGLASS_ADMIN_EMAIL}" == *.local ]]; then
+    BREAKGLASS_ADMIN_EMAIL="admin@brainsos.ai"
   fi
-  ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
+  ADMIN_EMAIL="${BRAINSOS_SUPERUSER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-${SUPERUSER_USER}@${LOCAL_DOM}}}"
+  if [[ "${ADMIN_EMAIL}" == *.local ]]; then
+    ADMIN_EMAIL="${SUPERUSER_USER}@brainsos.ai"
+  fi
+  SUPERUSER_PASS="${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+
+  # Resolve EC2 Instance ID so 'admin' / 'akadmin' stay bound to the Instance ID (#332)
+  INSTANCE_ADMIN_PASS=""
+  if command -v curl >/dev/null 2>&1; then
+    _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+    if [ -n "${_IMDS_TOK}" ]; then
+      INSTANCE_ADMIN_PASS="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" "http://169.254.169.254/latest/meta-data/instance-id" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+    fi
+  fi
+  if [ -z "${INSTANCE_ADMIN_PASS}" ]; then
+    INSTANCE_ADMIN_PASS="${BRAINSOS_INSTANCE_ID:-${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-${AUTHENTIK_BOOTSTRAP_PASSWORD:-${SUPERUSER_PASS}}}}"
+  fi
+
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
 from authentik.core.models import User, Group
 admin_group = Group.objects.filter(name='authentik Admins').first()
 
-admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': '${ADMIN_EMAIL}'})
-admin_u.email = '${ADMIN_EMAIL}'
-admin_u.set_password('${ADMIN_PASS}')
+admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': '${BREAKGLASS_ADMIN_EMAIL}'})
+admin_u.email = '${BREAKGLASS_ADMIN_EMAIL}'
+admin_u.set_password('${INSTANCE_ADMIN_PASS}')
 admin_u.is_active = True
 if admin_group:
     admin_u.ak_groups.add(admin_group)
 admin_u.save()
 
+if '${SUPERUSER_USER}' and '${SUPERUSER_USER}' != 'admin':
+    custom_u, _ = User.objects.get_or_create(username='${SUPERUSER_USER}', defaults={'name': '${SUPERUSER_DISPLAY_NAME}', 'email': '${ADMIN_EMAIL}'})
+    custom_u.name = '${SUPERUSER_DISPLAY_NAME}'
+    custom_u.email = '${ADMIN_EMAIL}'
+    custom_u.set_password('${SUPERUSER_PASS}')
+    custom_u.is_active = True
+    try:
+        custom_u.attributes['is_superuser'] = True
+    except Exception:
+        pass
+    if admin_group:
+        custom_u.ak_groups.add(admin_group)
+    custom_u.save()
+
 ak_u = User.objects.filter(username='akadmin').first()
 if ak_u:
-    ak_u.email = '${ADMIN_EMAIL}'
-    ak_u.set_password('${ADMIN_PASS}')
+    ak_u.email = 'akadmin@${EFFECTIVE_DOMAIN:-brainsos.ai}'
+    ak_u.set_password('${INSTANCE_ADMIN_PASS}')
     ak_u.save()
 
 op_u, _ = User.objects.get_or_create(username='operator', defaults={'name': 'Appliance Operator', 'email': 'operator@brainsos.ai'})
 if op_u.email.endswith('.local'):
     op_u.email = 'operator@brainsos.ai'
-op_u.set_password('${ADMIN_PASS}')
+op_u.set_password('${SUPERUSER_PASS}')
 op_u.is_active = True
 if admin_group:
     op_u.ak_groups.add(admin_group)
 op_u.save()
 " >/dev/null 2>&1 || true
-  log_success "Authentik accounts (admin, akadmin, operator) synchronized with master credentials."
+  log_success "Authentik accounts (${SUPERUSER_USER}, admin [instance-bound], akadmin, operator) synchronized."
 
   # Synchronize Authentik Outpost, Proxy Provider & OAuth2 OIDC secrets/domains
-  EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
+  RAW_URL="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"
+  EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}"
   LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}"
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
@@ -447,6 +659,10 @@ fi
 log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue)..."
 "${SCRIPT_DIR}/start-control-plane.sh" restart
 
+if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" || true
+fi
+
 # Synchronize Operator IDE (code-server) with active LiteLLM virtual key
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(app-)?code-server$'; then
   docker compose restart code-server >/dev/null 2>&1 || true
@@ -473,9 +689,9 @@ if [ "${ACME_DNS_PROVIDER:-}" = "route53" ] && [ -z "${BRAINSOS_INFRA_AWS_ACCESS
   fi
 fi
 
-# Dynamically render config/caddy/tls_policy.caddy based on ACME_DNS_PROVIDER
+# Dynamically render config/caddy/tls_policy.caddy based on ACME_DNS_PROVIDER and BRAINSOS_TLS_MODE
 TLS_POLICY_FILE="${REPO_ROOT}/config/caddy/tls_policy.caddy"
-if [ "${ACME_DNS_PROVIDER:-}" = "route53" ]; then
+if [ "${ACME_DNS_PROVIDER:-}" = "route53" ] || [ "${BRAINSOS_TLS_MODE:-}" = "route53" ]; then
   cat << EOF > "${TLS_POLICY_FILE}"
 # ==============================================================================
 # brainsOS: TLS Policy Snippet (AWS Route 53 ACME DNS-01 Challenge)
@@ -501,6 +717,24 @@ if [ "${ACME_DNS_PROVIDER:-}" = "route53" ]; then
 }
 EOF
   log_success "Configured Caddy TLS policy for Route 53 ACME DNS-01 wildcard certificates (${ACME_EMAIL:-admin@brainsos.ai})."
+elif [ "${BRAINSOS_TLS_MODE:-}" = "acme" ] || [ "${BRAINSOS_TLS_MODE:-}" = "public_acme" ]; then
+  cat << EOF > "${TLS_POLICY_FILE}"
+# ==============================================================================
+# brainsOS: TLS Policy Snippet (Public ACME HTTP-01 / TLS-ALPN-01)
+# Auto-generated by scripts/control/reload-env.sh from environment configuration.
+# DO NOT EDIT DIRECTLY. Make changes in .env and re-run make reload-env.
+# ==============================================================================
+(brainsos_tls) {
+	tls ${ACME_EMAIL:-admin@brainsos.ai}
+}
+
+(route53_tls) {
+	tls ${ACME_EMAIL:-admin@brainsos.ai} {
+		dns route53
+	}
+}
+EOF
+  log_success "Configured Caddy TLS policy for Public ACME (Let's Encrypt / ZeroSSL) certificates (${ACME_EMAIL:-admin@brainsos.ai})."
 else
   cat << EOF > "${TLS_POLICY_FILE}"
 # ==============================================================================
@@ -520,6 +754,8 @@ else
 EOF
   log_info "Configured Caddy TLS policy for internal private CA."
 fi
+git -C "${REPO_ROOT}" update-index --assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
+
 
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(ingress-|net-)?caddy$'; then
   docker compose restart caddy >/dev/null 2>&1
