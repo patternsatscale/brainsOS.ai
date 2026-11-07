@@ -41,6 +41,7 @@ ENV_UPSERT="${REPO_ROOT}/scripts/control/env-upsert.sh"
 DOMAIN=""
 URL_INPUT=""
 LOCAL_DOMAIN=""
+SUPERUSER_NAME=""
 ADMIN_USERNAME=""
 ADMIN_PASSWORD=""
 EMAIL=""
@@ -68,23 +69,27 @@ Usage:
   ./scripts/control/set-domain.sh [OPTIONS]
 
 Options:
-  --domain FQDN           External web URL / domain (alias for --url)
-  --url URL               External web access URL or hostname (BRAINSOS_URL, e.g. https://ec2-...amazonaws.com)
-  --local-domain FQDN     Coherent appliance unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN, e.g. jsm.cloud.aws.brainsos.ai)
-  --admin-username USER   Administrator username (BRAINSOS_ADMIN_USERNAME, default: admin)
-  --admin-password PASS   Administrator password (or pass via BRAINSOS_NEW_ADMIN_PASSWORD env var)
-  --email EMAIL           ACME contact email address for Let's Encrypt / ZeroSSL
-  --dns PROVIDER          DNS-01 ACME challenge provider (e.g. 'route53')
-  --internal              Use Caddy's internal private CA (self-signed)
-  --mark-wizard-completed Record completion of the First-Boot Setup Wizard (.brainsos-wizard-completed)
-  --skip-dns-check        Skip DNS resolution pre-flight check
-  --force                 Proceed even if DNS does not resolve to this instance
-  --dry-run               Simulate configuration changes without writing .env
-  -h, --help              Show this help message
+  --domain FQDN              External web URL / domain (alias for --url)
+  --url URL                  External web access URL or hostname (BRAINSOS_URL, e.g. https://ec2-...amazonaws.com)
+  --local-domain FQDN        Coherent appliance unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN, e.g. jsm.aws.cloud.brainsos.ai)
+  --superuser-name NAME      Superuser full display name (BRAINSOS_SUPERUSER_NAME, e.g. "Jane Smith")
+  --superuser-username USER  Named superuser username (BRAINSOS_SUPERUSER_USERNAME; 'admin' stays bound to EC2 Instance ID)
+  --superuser-password PASS  Named superuser password (or pass via BRAINSOS_NEW_ADMIN_PASSWORD / BRAINSOS_NEW_SUPERUSER_PASSWORD)
+  --admin-name NAME          Alias for --superuser-name
+  --admin-username USER      Alias for --superuser-username (BRAINSOS_ADMIN_USERNAME)
+  --admin-password PASS      Alias for --superuser-password
+  --email EMAIL              ACME contact email address for Let's Encrypt / ZeroSSL
+  --dns PROVIDER             DNS-01 ACME challenge provider (e.g. 'route53')
+  --internal                 Use Caddy's internal private CA (self-signed)
+  --mark-wizard-completed    Record completion of the First-Boot Setup Wizard (.brainsos-wizard-completed)
+  --skip-dns-check           Skip DNS resolution pre-flight check
+  --force                    Proceed even if DNS does not resolve to this instance
+  --dry-run                  Simulate configuration changes without writing .env
+  -h, --help                 Show this help message
 
 Examples:
-  # First-Boot Setup (keep AWS URL with internal CA, set local domain & admin credentials):
-  ./scripts/control/set-domain.sh --local-domain jsm.cloud.aws.brainsos.ai --admin-username jsm --internal --mark-wizard-completed
+  # First-Boot Setup (keep AWS URL with internal CA, set local domain & named superuser):
+  ./scripts/control/set-domain.sh --local-domain jsm.aws.cloud.brainsos.ai --superuser-name "Jane Smith" --superuser-username jsm --internal --mark-wizard-completed
 
   # Public ACME (TLS-ALPN-01 / HTTP-01):
   ./scripts/control/set-domain.sh --domain brainsos.myorg.com --local-domain jsm.myorg.com --email ops@myorg.com
@@ -111,11 +116,15 @@ while [ $# -gt 0 ]; do
       LOCAL_DOMAIN="${2:-}"
       shift 2
       ;;
-    --admin-username)
+    --superuser-name|--admin-name)
+      SUPERUSER_NAME="${2:-}"
+      shift 2
+      ;;
+    --superuser-username|--admin-username)
       ADMIN_USERNAME="${2:-}"
       shift 2
       ;;
-    --admin-password)
+    --superuser-password|--admin-password)
       ADMIN_PASSWORD="${2:-}"
       shift 2
       ;;
@@ -159,8 +168,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ -z "${ADMIN_PASSWORD}" ] && [ -n "${BRAINSOS_NEW_SUPERUSER_PASSWORD:-}" ]; then
+  ADMIN_PASSWORD="${BRAINSOS_NEW_SUPERUSER_PASSWORD}"
+fi
 if [ -z "${ADMIN_PASSWORD}" ] && [ -n "${BRAINSOS_NEW_ADMIN_PASSWORD:-}" ]; then
   ADMIN_PASSWORD="${BRAINSOS_NEW_ADMIN_PASSWORD}"
+fi
+if [ -z "${SUPERUSER_NAME}" ] && [ -n "${BRAINSOS_SUPERUSER_NAME:-}" ]; then
+  SUPERUSER_NAME="${BRAINSOS_SUPERUSER_NAME}"
 fi
 
 if [ -n "${URL_INPUT}" ] && [ -z "${DOMAIN}" ]; then
@@ -168,7 +183,7 @@ if [ -n "${URL_INPUT}" ] && [ -z "${DOMAIN}" ]; then
 fi
 
 if [ -z "${DOMAIN}" ]; then
-  if [ "${INTERNAL_MODE}" = true ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ]; then
+  if [ "${INTERNAL_MODE}" = true ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ]; then
     if [ -f "${ENV_FILE}" ]; then
       CURRENT_URL="$(grep -E '^BRAINSOS_URL=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
       CURRENT_DOMAIN="$(grep -E '^BRAINSOS_DOMAIN=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
@@ -296,6 +311,7 @@ fi
 log_info "Configuring brainsOS Domain, Identity & Ingress:"
 log_info "  External URL: ${DOMAIN}"
 [ -n "${LOCAL_DOMAIN}" ] && log_info "  Local Domain: ${LOCAL_DOMAIN}"
+[ -n "${SUPERUSER_NAME}" ] && log_info "  Superuser:    ${SUPERUSER_NAME}"
 [ -n "${ADMIN_USERNAME}" ] && log_info "  Admin User:   ${ADMIN_USERNAME}"
 [ -n "${ADMIN_PASSWORD}" ] && log_info "  Admin Pass:   [REDACTED - will rotate]"
 log_info "  TLS Mode:     ${TLS_MODE}"
@@ -329,21 +345,32 @@ fi
 
 EFFECTIVE_ADMIN_USER=""
 if [ -f "${ENV_FILE}" ]; then
-  EFFECTIVE_ADMIN_USER="$(grep -E '^BRAINSOS_ADMIN_USERNAME=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  EFFECTIVE_ADMIN_USER="$(grep -E '^BRAINSOS_SUPERUSER_USERNAME=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  if [ -z "${EFFECTIVE_ADMIN_USER}" ]; then
+    EFFECTIVE_ADMIN_USER="$(grep -E '^BRAINSOS_ADMIN_USERNAME=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  fi
 fi
 if [ -n "${ADMIN_USERNAME}" ]; then
   EFFECTIVE_ADMIN_USER="${ADMIN_USERNAME}"
-  ENV_CHANGES+=("BRAINSOS_ADMIN_USERNAME=${ADMIN_USERNAME}")
+  ENV_CHANGES+=(
+    "BRAINSOS_SUPERUSER_USERNAME=${ADMIN_USERNAME}"
+    "BRAINSOS_ADMIN_USERNAME=${ADMIN_USERNAME}"
+  )
 fi
 [ -z "${EFFECTIVE_ADMIN_USER}" ] && EFFECTIVE_ADMIN_USER="admin"
 
-if [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ]; then
+if [ -n "${SUPERUSER_NAME}" ]; then
+  ENV_CHANGES+=("BRAINSOS_SUPERUSER_NAME=${SUPERUSER_NAME}")
+fi
+
+if [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${SUPERUSER_NAME}" ]; then
   TARGET_ADMIN_EMAIL="${EFFECTIVE_ADMIN_USER}@${EFFECTIVE_LOCAL_DOM}"
   if [[ "${TARGET_ADMIN_EMAIL}" == *.local ]]; then
     TARGET_ADMIN_EMAIL="${EFFECTIVE_ADMIN_USER}@brainsos.ai"
   fi
   NEW_NEXTAUTH_SECRET="$(python3 -c 'import base64, secrets; print(base64.b64encode(secrets.token_bytes(32)).decode())' 2>/dev/null || openssl rand -base64 32)"
   ENV_CHANGES+=(
+    "BRAINSOS_SUPERUSER_EMAIL=${TARGET_ADMIN_EMAIL}"
     "BRAINSOS_ADMIN_EMAIL=${TARGET_ADMIN_EMAIL}"
     "AUTHENTIK_BOOTSTRAP_EMAIL=${TARGET_ADMIN_EMAIL}"
     "LANGFUSE_INIT_USER_EMAIL=${TARGET_ADMIN_EMAIL}"
@@ -351,10 +378,31 @@ if [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ]; then
   )
 fi
 
+# Preserve EC2 Instance ID for the hardcoded 'admin' / 'akadmin' bootstrap account (#332)
+DETECTED_INSTANCE_ID=""
+if [ -f "${ENV_FILE}" ]; then
+  DETECTED_INSTANCE_ID="$(grep -E '^BRAINSOS_INSTANCE_ID=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  if [ -z "${DETECTED_INSTANCE_ID}" ]; then
+    DETECTED_INSTANCE_ID="$(grep -E '^BRAINSOS_INSTANCE_ADMIN_PASSWORD=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  fi
+  if [ -z "${DETECTED_INSTANCE_ID}" ]; then
+    DETECTED_INSTANCE_ID="$(grep -E '^AUTHENTIK_BOOTSTRAP_PASSWORD=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  fi
+fi
+if [ -z "${DETECTED_INSTANCE_ID}" ] && [ "${DRY_RUN}" != true ] && command -v curl >/dev/null 2>&1; then
+  _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+  if [ -n "${_IMDS_TOK}" ]; then
+    DETECTED_INSTANCE_ID="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" "http://169.254.169.254/latest/meta-data/instance-id" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+  fi
+fi
+
 if [ -n "${ADMIN_PASSWORD}" ]; then
+  INSTANCE_BOOTSTRAP_PASS="${DETECTED_INSTANCE_ID:-${ADMIN_PASSWORD}}"
   ENV_CHANGES+=(
+    "BRAINSOS_SUPERUSER_PASSWORD=${ADMIN_PASSWORD}"
     "BRAINSOS_ADMIN_PASSWORD=${ADMIN_PASSWORD}"
-    "AUTHENTIK_BOOTSTRAP_PASSWORD=${ADMIN_PASSWORD}"
+    "BRAINSOS_INSTANCE_ADMIN_PASSWORD=${INSTANCE_BOOTSTRAP_PASS}"
+    "AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_BOOTSTRAP_PASS}"
     "ADMIN_MAIL_PASSWORD=${ADMIN_PASSWORD}"
     "OPERATOR_MAIL_PASSWORD=${ADMIN_PASSWORD}"
     "LANGFUSE_INIT_USER_PASSWORD=${ADMIN_PASSWORD}"

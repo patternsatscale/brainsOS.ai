@@ -265,3 +265,42 @@ def test_set_domain_local_domain_admin_and_hostname(tmp_path: Path):
     assert "SuperSecretPass123!" not in proc.stdout
     assert "preserve_hostname: true" in proc.stdout
     assert "127.0.1.1 jsm.cloud.aws.brainsos.ai jsm" in proc.stdout
+
+
+def test_set_domain_named_superuser_keeps_admin_bound_to_instance_id(tmp_path: Path):
+    """Verify set-domain.sh keeps AUTHENTIK_BOOTSTRAP_PASSWORD / BRAINSOS_INSTANCE_ADMIN_PASSWORD bound to Instance ID."""
+    dummy_env = tmp_path / ".env"
+    dummy_env.write_text(
+        "BRAINSOS_DOMAIN=\"local.brainsos.ai\"\n"
+        "BRAINSOS_INSTANCE_ID=\"i-0123456789abcdef0\"\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["BRAINSOS_ENV_FILE"] = str(dummy_env)
+    env["BRAINSOS_NEW_ADMIN_PASSWORD"] = "SuperSecretPass123!"
+
+    proc = subprocess.run(
+        [
+            str(SET_DOMAIN),
+            "--local-domain",
+            "jsm.aws.cloud.brainsos.ai",
+            "--superuser-name",
+            "Jane Smith",
+            "--superuser-username",
+            "jsm",
+            "--internal",
+            "--mark-wizard-completed",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc.returncode == 0
+    assert "BRAINSOS_SUPERUSER_NAME=Jane Smith" in proc.stdout
+    assert "BRAINSOS_SUPERUSER_USERNAME=jsm" in proc.stdout
+    assert "BRAINSOS_SUPERUSER_EMAIL=jsm@jsm.aws.cloud.brainsos.ai" in proc.stdout
+    assert "BRAINSOS_INSTANCE_ADMIN_PASSWORD=[REDACTED]" in proc.stdout
+    assert "SuperSecretPass123!" not in proc.stdout

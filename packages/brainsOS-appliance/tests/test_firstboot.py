@@ -24,6 +24,7 @@ def test_firstboot_script_dry_run():
     )
     assert proc.returncode == 0
     assert "[DRY-RUN] BRAINSOS_ADMIN_PASSWORD=" in proc.stdout
+    assert "[DRY-RUN] BRAINSOS_AUTO_PULL_ON_BOOT=false" in proc.stdout
     assert "[DRY-RUN] BRAINSOS_DOMAIN=" in proc.stdout
 
 

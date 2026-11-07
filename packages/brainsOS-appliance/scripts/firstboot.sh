@@ -250,13 +250,17 @@ if [ -n "${USER_DATA}" ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 1c. Auto-Pull Latest Source from GitHub on Boot
-#     Enabled by default on EC2 appliances so launched instances automatically
-#     pick up post-bake fixes on their active branch (or BRAINSOS_GIT_BRANCH)
-#     before generating .env, seeding data/, or building the Portal SPA.
+# 1c. Offline-First Golden AMI Boot (Opt-In GitHub Auto-Pull)
+#     Disabled by default on Golden AMIs so launched instances boot 100%
+#     self-contained from baked source and pre-built Portal SPA assets without
+#     requiring outbound internet access to GitHub. Can be opted into via
+#     BRAINSOS_AUTO_PULL=true in EC2 user-data or BRAINSOS_FIRSTBOOT_FORCE_PULL=true.
 # ------------------------------------------------------------------------------
-AUTO_PULL="true"
-if [[ "${UD_AUTO_PULL}" =~ ^(false|0|no)$ ]] || [[ "${BRAINSOS_FIRSTBOOT_SKIP_GIT_PULL:-false}" =~ ^(true|1|yes)$ ]]; then
+AUTO_PULL="false"
+if [[ "${UD_AUTO_PULL}" =~ ^(true|1|yes)$ ]] || [[ "${BRAINSOS_FIRSTBOOT_FORCE_PULL:-false}" =~ ^(true|1|yes)$ ]]; then
+  AUTO_PULL="true"
+fi
+if [[ "${BRAINSOS_FIRSTBOOT_SKIP_GIT_PULL:-false}" =~ ^(true|1|yes)$ ]]; then
   AUTO_PULL="false"
 fi
 
@@ -336,6 +340,10 @@ if [ -n "${UD_LOCAL_DOMAIN}" ]; then
   fi
 elif [ -n "${UD_DOMAIN}" ] && is_fqdn "${UD_DOMAIN}" && [[ "${UD_DOMAIN}" != *.amazonaws.com ]]; then
   APPLIANCE_LOCAL_DOMAIN="${UD_DOMAIN}"
+elif [ -n "${UD_ADMIN_USERNAME}" ] && [ "${UD_ADMIN_USERNAME}" != "admin" ] && [[ "${UD_ADMIN_USERNAME}" =~ ^[a-zA-Z0-9._-]{2,64}$ ]]; then
+  APPLIANCE_LOCAL_DOMAIN="$(printf '%s' "${UD_ADMIN_USERNAME}" | tr '[:upper:]' '[:lower:]').aws.cloud.brainsos.ai"
+elif [ -n "${IMDS_TOKEN}" ]; then
+  APPLIANCE_LOCAL_DOMAIN="admin.aws.cloud.brainsos.ai"
 fi
 
 APPLIANCE_ADMIN_USERNAME="admin"
@@ -397,8 +405,11 @@ esac
 if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --mail-domain ${APPLIANCE_LOCAL_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
   log_info "[DRY-RUN] Would write appliance overrides to ${TARGET_ENV}:"
+  log_info "[DRY-RUN] BRAINSOS_INSTANCE_ID=${INSTANCE_ID}"
   log_info "[DRY-RUN] BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
   log_info "[DRY-RUN] BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
+  log_info "[DRY-RUN] AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
+  log_info "[DRY-RUN] BRAINSOS_AUTO_PULL_ON_BOOT=${AUTO_PULL}"
   log_info "[DRY-RUN] BRAINSOS_URL=${APPLIANCE_DOMAIN}"
   log_info "[DRY-RUN] BRAINSOS_LOCAL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
   log_info "[DRY-RUN] BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
@@ -446,10 +457,12 @@ else
   APPLIANCE_OVERRIDES=(
     "BRAINSOS_APPLIANCE=true"
     "BRAINSOS_STAGE=aws"
-    # Operator login (Authentik admin/akadmin/operator) - AWS Marketplace convention, rotate at first login
+    "BRAINSOS_INSTANCE_ID=${INSTANCE_ID}"
+    # Operator login (Authentik admin/akadmin) - permanently bound to EC2 instance-id
     "BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
     "BRAINSOS_ADMIN_EMAIL=${ADMIN_EMAIL_DEFAULT}"
     "BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
+    "BRAINSOS_INSTANCE_ADMIN_PASSWORD=${INSTANCE_ID}"
     "AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
     "AUTHENTIK_BOOTSTRAP_EMAIL=${ADMIN_EMAIL_DEFAULT}"
     "LANGFUSE_INIT_USER_EMAIL=${ADMIN_EMAIL_DEFAULT}"

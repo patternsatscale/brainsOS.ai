@@ -251,11 +251,12 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    SUPERUSER_CN="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
     docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
       INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
-      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}'),
+        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}')
+      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
 EOSQL
   fi
   docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
@@ -446,11 +447,12 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
   if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+    SUPERUSER_CN="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
     docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
       INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}')
-      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}'),
+        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}')
+      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
 EOSQL
   fi
   docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
@@ -487,6 +489,11 @@ if [ -x "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" sync || log_warn "Langfuse post-up sync encountered a warning."
 fi
 
+# Synchronize Local Git Server (Gitea) & /data Repository (#332)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-git.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-git.sh" --seed-only || log_warn "Gitea seed sync encountered a warning."
+fi
+
 # Synchronize Authentik Identity & Master Credentials
 AUTH_SERVER_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
@@ -516,50 +523,70 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
   done
 
   log_info "Synchronizing Authentik identity and master credentials..."
-  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+  SUPERUSER_USER="${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}"
+  ADMIN_USER="${SUPERUSER_USER}"
+  SUPERUSER_DISPLAY_NAME="${BRAINSOS_SUPERUSER_NAME:-${SUPERUSER_USER}}"
   LOCAL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-brainsos.ai}}"
-  ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-${ADMIN_USER}@${LOCAL_DOM}}"
+  ADMIN_EMAIL="${BRAINSOS_SUPERUSER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-${SUPERUSER_USER}@${LOCAL_DOM}}}"
   if [[ "${ADMIN_EMAIL}" == *.local ]]; then
-    ADMIN_EMAIL="${ADMIN_USER}@brainsos.ai"
+    ADMIN_EMAIL="${SUPERUSER_USER}@brainsos.ai"
   fi
-  ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
+  SUPERUSER_PASS="${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+
+  # Resolve EC2 Instance ID so 'admin' / 'akadmin' stay bound to the Instance ID (#332)
+  INSTANCE_ADMIN_PASS=""
+  if command -v curl >/dev/null 2>&1; then
+    _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+    if [ -n "${_IMDS_TOK}" ]; then
+      INSTANCE_ADMIN_PASS="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" "http://169.254.169.254/latest/meta-data/instance-id" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+    fi
+  fi
+  if [ -z "${INSTANCE_ADMIN_PASS}" ]; then
+    INSTANCE_ADMIN_PASS="${BRAINSOS_INSTANCE_ID:-${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-${AUTHENTIK_BOOTSTRAP_PASSWORD:-${SUPERUSER_PASS}}}}"
+  fi
+
   docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
 from authentik.core.models import User, Group
 admin_group = Group.objects.filter(name='authentik Admins').first()
 
-admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': '${ADMIN_EMAIL}'})
-admin_u.email = '${ADMIN_EMAIL}'
-admin_u.set_password('${ADMIN_PASS}')
+admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': 'admin@${LOCAL_DOM}'})
+admin_u.email = 'admin@${LOCAL_DOM}' if not '${LOCAL_DOM}'.endswith('.local') else 'admin@brainsos.ai'
+admin_u.set_password('${INSTANCE_ADMIN_PASS}')
 admin_u.is_active = True
 if admin_group:
     admin_u.ak_groups.add(admin_group)
 admin_u.save()
 
-if '${ADMIN_USER}' and '${ADMIN_USER}' != 'admin':
-    custom_u, _ = User.objects.get_or_create(username='${ADMIN_USER}', defaults={'name': 'Appliance Administrator (${ADMIN_USER})', 'email': '${ADMIN_EMAIL}'})
+if '${SUPERUSER_USER}' and '${SUPERUSER_USER}' != 'admin':
+    custom_u, _ = User.objects.get_or_create(username='${SUPERUSER_USER}', defaults={'name': '${SUPERUSER_DISPLAY_NAME}', 'email': '${ADMIN_EMAIL}'})
+    custom_u.name = '${SUPERUSER_DISPLAY_NAME}'
     custom_u.email = '${ADMIN_EMAIL}'
-    custom_u.set_password('${ADMIN_PASS}')
+    custom_u.set_password('${SUPERUSER_PASS}')
     custom_u.is_active = True
+    try:
+        custom_u.attributes['is_superuser'] = True
+    except Exception:
+        pass
     if admin_group:
         custom_u.ak_groups.add(admin_group)
     custom_u.save()
 
 ak_u = User.objects.filter(username='akadmin').first()
 if ak_u:
-    ak_u.email = '${ADMIN_EMAIL}'
-    ak_u.set_password('${ADMIN_PASS}')
+    ak_u.email = 'admin@${LOCAL_DOM}' if not '${LOCAL_DOM}'.endswith('.local') else 'admin@brainsos.ai'
+    ak_u.set_password('${INSTANCE_ADMIN_PASS}')
     ak_u.save()
 
 op_u, _ = User.objects.get_or_create(username='operator', defaults={'name': 'Appliance Operator', 'email': 'operator@brainsos.ai'})
 if op_u.email.endswith('.local'):
     op_u.email = 'operator@brainsos.ai'
-op_u.set_password('${ADMIN_PASS}')
+op_u.set_password('${SUPERUSER_PASS}')
 op_u.is_active = True
 if admin_group:
     op_u.ak_groups.add(admin_group)
 op_u.save()
 " >/dev/null 2>&1 || true
-  log_success "Authentik accounts (${ADMIN_USER}, admin, akadmin, operator) synchronized with master credentials."
+  log_success "Authentik accounts (${SUPERUSER_USER}, admin [instance-bound], akadmin, operator) synchronized."
 
   # Synchronize Authentik Outpost, Proxy Provider & OAuth2 OIDC secrets/domains
   RAW_URL="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"

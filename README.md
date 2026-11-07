@@ -83,6 +83,7 @@ brainsOS unifies established enterprise-grade open-source components into a cohe
 | **In-Transit Egress Proxy** | Multi-tenant in-transit credential injection | Containers hold **zero ambient secrets** or GitHub tokens; credentials are dynamically injected in transit by proxy based on client container IP. |
 | **[Postfix](https://www.postfix.org) & [SOGo](https://sogo.nu)** | Decoupled, auditable messaging backbone | Asynchronous agent-to-human and agent-to-agent email communication, avoiding fragile polling loops. |
 | **Operator IDE ([code-server](https://github.com/coder/code-server))** | Controlled operator workspace and inspection console | Sandboxed environment for inspecting artifacts, memories, and workspace state behind HTTP Basic Auth. |
+| **Source Control ([Gitea](https://about.gitea.com))** | Self-hosted Git server for prompts, `SOUL.md` personas, and configs | Versions agent prompts, skills, and OKF memories locally (`/git/`) with VS Code Source Control integration and Authentik SSO. |
 
 ---
 
@@ -162,6 +163,7 @@ graph TD
 │     - Ingress Reverse Proxy: Caddy (*.brainsos.local, TLS)                 │
 │     - Messaging Daemons: brainsos-app-signal-cli, Postfix SMTP, SOGo        │
 │     - Operator IDE & PKM: Containerized VS Code (editor.brainsos.local :8443)│
+│     - Local Source Control: Containerized Gitea (/git/ :3000, Authentik SSO) │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Execution Plane (Warm Stateless Hermes Runner & Dynamic Profiles) │
 │     - Shared Hermes Runner (:8642 async API /v1/runs, max_concurrent_runs:1)│

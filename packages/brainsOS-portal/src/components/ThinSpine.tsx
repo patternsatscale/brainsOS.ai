@@ -3,10 +3,12 @@ import {
   Menu,
   Terminal,
   Mail,
+  GitBranch,
   Shield,
   Network,
   Activity,
   Cpu,
+  Sliders,
   Users,
   HelpCircle,
   Maximize2
@@ -39,6 +41,8 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
         return <Terminal className="w-5 h-5" />;
       case 'comms':
         return <Mail className="w-5 h-5" />;
+      case 'git':
+        return <GitBranch className="w-5 h-5" />;
       case 'security':
         return <Shield className="w-5 h-5" />;
       case 'network':
@@ -55,6 +59,10 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
         return <Terminal className="w-5 h-5" />;
     }
   };
+
+  const appSubsystems = Object.values(SUBSYSTEMS).filter((sub) => sub.id !== 'system');
+  const systemSub = SUBSYSTEMS.system;
+  const isSystemActive = activeKey === 'system';
 
   return (
     <aside
@@ -73,9 +81,9 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
         </button>
       </div>
 
-      {/* Center: The 6 Subsystem Squircle Buttons */}
-      <nav className="flex flex-col items-center gap-2.5 my-2">
-        {Object.values(SUBSYSTEMS).map((sub) => {
+      {/* Center: Application Subsystem Squircle Buttons (excluding System OS) */}
+      <nav className="flex flex-col items-center gap-2 my-1.5">
+        {appSubsystems.map((sub) => {
           const isActive = activeKey === sub.id;
           const isHelp = sub.id === 'help';
 
@@ -110,14 +118,45 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
       </nav>
 
       {/* Vertical Brand Spine: BRAINSOS.AI */}
-      <div className="my-auto py-4 flex items-center justify-center select-none pointer-events-none">
+      <div className="my-auto py-3 flex items-center justify-center select-none pointer-events-none">
         <span className="font-mono text-[11px] tracking-[0.32em] text-slate-500 font-semibold uppercase [writing-mode:vertical-rl] rotate-180 transition-colors">
           BRAINSOS<span className="text-[#00f2fe]">.AI</span>
         </span>
       </div>
 
-      {/* Bottom: Fullscreen & Operator Profile Trigger */}
-      <div className="flex flex-col items-center gap-2.5 text-slate-400 pb-2">
+      {/* Bottom: Operating System Control Center, Fullscreen & Operator Profile Trigger */}
+      <div className="flex flex-col items-center gap-2.5 text-slate-400 pb-1.5">
+        {/* Dedicated Operating System Control Center Button (#333) */}
+        {systemSub && (
+          <>
+            <button
+              onClick={() => onSelectSubsystem('system')}
+              id="spine-btn-system"
+              className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex flex-col items-center justify-center transition-all duration-200 group border ${
+                isSystemActive
+                  ? 'bg-gradient-to-br from-[#00f2fe]/25 via-cyan-500/15 to-emerald-500/20 border-[#00f2fe] text-[#00f2fe] shadow-[0_0_16px_rgba(0,242,254,0.4)] ring-1 ring-[#00f2fe]/50'
+                  : 'bg-gradient-to-br from-slate-800/80 to-[#0E1420] border-[#00f2fe]/35 text-slate-300 hover:text-[#00f2fe] hover:border-[#00f2fe]/80 shadow-inner'
+              }`}
+              title={`${systemSub.title} — ${systemSub.desc} (${systemSub.hotkey})`}
+              aria-label="brainsOS Operating System Control Center"
+            >
+              <Sliders className="w-4 h-4 transition-transform group-hover:rotate-90 duration-300" />
+              <span
+                className={`font-mono text-[7.5px] font-bold tracking-wider uppercase leading-none mt-0.5 ${
+                  isSystemActive ? 'text-[#00f2fe]' : 'text-cyan-400/80 group-hover:text-[#00f2fe]'
+                }`}
+              >
+                OS
+              </span>
+              <span
+                className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#00f2fe] ring-2 ring-[#0B0E14]"
+                title="Operating System Control Plane"
+              />
+            </button>
+            <div className="w-6 h-px bg-white/10" />
+          </>
+        )}
+
         <button
           onClick={onToggleFullscreen}
           id="btn-fullscreen"

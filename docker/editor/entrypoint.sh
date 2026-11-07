@@ -170,6 +170,14 @@ d["telemetry.telemetryLevel"] = "off"
 d["workbench.startupEditor"] = "none"
 d["workbench.editor.restoreViewState"] = True
 
+# Git & Source Control integration (#340)
+d["git.enabled"] = True
+d["git.path"] = "/usr/bin/git"
+d["git.autofetch"] = True
+d["git.confirmSync"] = False
+d["git.enableSmartCommit"] = True
+d["scm.alwaysShowRepositories"] = True
+
 # Pruned Explorer View & Outline / Timeline exclusions
 d["explorer.autoReveal"] = True
 d["explorer.openEditors.visible"] = 0
@@ -201,6 +209,8 @@ d["search.exclude"] = {
     "**/data/langfuse_clickhouse": True,
     "**/data/langfuse_postgres": True,
     "**/data/telemetry": True,
+    "**/data/git": True,
+    "**/git": True,
     "**/data/control_plane/litellm_db": True
 }
 d["files.watcherExclude"] = {
@@ -219,6 +229,8 @@ d["files.watcherExclude"] = {
     "**/data/agent_workspaces/**": True,
     "**/data/comms/**": True,
     "**/data/telemetry/**": True,
+    "**/data/git/**": True,
+    "**/git/**": True,
     "**/.venv/**": True,
     "**/dist/**": True,
     "**/build/**": True
@@ -253,6 +265,15 @@ fi
 if [ ! -f /etc/brainsos/system.mk ] && [ -f /etc/brainsos/editor/system.mk ]; then
   mkdir -p /etc/brainsos
   cp /etc/brainsos/editor/system.mk /etc/brainsos/system.mk 2>/dev/null || true
+fi
+
+# 3e. Configure global Git identity & safe workspace directory for VS Code SCM (#340)
+if command -v git >/dev/null 2>&1; then
+  git config --global --add safe.directory /data 2>/dev/null || true
+  git config --global init.defaultBranch main 2>/dev/null || true
+  git config --global user.name "${BRAINSOS_SUPERUSER_NAME:-${BRAINSOS_ADMIN_USERNAME:-brainsOS Operator}}" 2>/dev/null || true
+  git config --global user.email "${BRAINSOS_ADMIN_EMAIL:-operator@${BRAINSOS_LOCAL_DOMAIN:-local.brainsos.ai}}" 2>/dev/null || true
+  git config --global credential.helper store 2>/dev/null || true
 fi
 
 # 4. Scaffolding Aider CLI configuration

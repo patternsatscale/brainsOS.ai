@@ -74,6 +74,7 @@ buildable_services() {
 CHECK_ONLY=false
 JSON_OUTPUT=false
 CONTAINERS_ONLY=false
+OS_ONLY=false
 FULL_UPDATE=true
 TARGET_SERVICE=""
 TARGET_VERSION=""
@@ -94,6 +95,7 @@ show_help() {
   echo "  --check               Check for available updates without applying them"
   echo "  --json                Output version status and check results in JSON format"
   echo "  --containers-only     Update upstream container images only (do not pull git code)"
+  echo "  --os-only             Apply host OS security & package upgrades (apt-get dist-upgrade)"
   echo "  --full                Update both git source code and container images (default)"
   echo "  --branch <name>       Switch to and pull a specific remote git branch (e.g. main, task/320-appliance-rehearsal)"
   echo "  --service <name>      Target a specific service (e.g. litellm, langfuse, caddy)"
@@ -127,6 +129,12 @@ while [[ $# -gt 0 ]]; do
     --containers-only)
       CONTAINERS_ONLY=true
       FULL_UPDATE=false
+      shift
+      ;;
+    --os-only)
+      OS_ONLY=true
+      FULL_UPDATE=false
+      CONTAINERS_ONLY=false
       shift
       ;;
     --full)
@@ -421,6 +429,68 @@ disk_info = {
 overall_update = git_info.get("update_available", False) or any(s["update_available"] for s in services.values())
 platform_name, platform_detail = get_platform_info()
 
+def get_os_info():
+    import platform as py_platform
+    kernel = py_platform.release() or "unknown"
+    distro = f"{py_platform.system()} {py_platform.machine()}"
+    os_release_path = os.environ.get("BRAINSOS_OS_RELEASE_FILE", "/etc/os-release")
+    if os.path.isfile(os_release_path):
+        try:
+            with open(os_release_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        distro = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+    pending_packages = 0
+    security_packages = 0
+    updates_avail_path = os.environ.get(
+        "BRAINSOS_UPDATES_AVAILABLE_FILE", "/var/lib/update-notifier/updates-available"
+    )
+    if os.path.isfile(updates_avail_path):
+        try:
+            with open(updates_avail_path, "r", encoding="utf-8", errors="ignore") as f:
+                txt = f.read()
+            m_all = re.search(r"(\d+)\s+updates?\s+can\s+be\s+applied", txt, re.IGNORECASE)
+            if m_all:
+                pending_packages = int(m_all.group(1))
+            m_sec = re.search(
+                r"(\d+)\s+of\s+these\s+updates?\s+(?:are|is)\s+(?:standard\s+)?security",
+                txt,
+                re.IGNORECASE,
+            )
+            if m_sec:
+                security_packages = int(m_sec.group(1))
+        except Exception:
+            pass
+    reboot_req_path = os.environ.get("BRAINSOS_REBOOT_REQUIRED_FILE", "/var/run/reboot-required")
+    reboot_pkgs_path = os.environ.get(
+        "BRAINSOS_REBOOT_PACKAGES_FILE", "/var/run/reboot-required.pkgs"
+    )
+    reboot_required = os.path.isfile(reboot_req_path)
+    reboot_packages = []
+    if os.path.isfile(reboot_pkgs_path):
+        try:
+            with open(reboot_pkgs_path, "r", encoding="utf-8", errors="ignore") as f:
+                reboot_packages = [ln.strip() for ln in f.splitlines() if ln.strip()]
+        except Exception:
+            pass
+    unattended_active = os.path.isfile("/etc/apt/apt.conf.d/20auto-upgrades") or os.path.isfile(
+        "/etc/apt/apt.conf.d/50unattended-upgrades"
+    )
+    return {
+        "distro": distro,
+        "kernel": kernel,
+        "pending_packages": pending_packages,
+        "security_packages": security_packages,
+        "reboot_required": reboot_required,
+        "reboot_packages": reboot_packages,
+        "unattended_upgrades_active": unattended_active,
+    }
+
+os_info = get_os_info()
+
 import socket
 local_dom = os.environ.get("BRAINSOS_LOCAL_DOMAIN") or os.environ.get("BRAINSOS_MAIL_DOMAIN") or os.environ.get("BRAINSOS_DOMAIN") or "local.brainsos.ai"
 ext_url = os.environ.get("BRAINSOS_URL") or os.environ.get("BRAINSOS_DOMAIN") or "local.brainsos.ai"
@@ -443,6 +513,7 @@ status_data = {
     "git": git_info,
     "services": services,
     "disk": disk_info,
+    "os": os_info,
     "overall_update_available": overall_update
 }
 
@@ -551,6 +622,32 @@ if [ -n "${TARGET_SERVICE}" ]; then
   else
     log_info "Targeted service update selected: ${BOLD}${TARGET_SERVICE}${NC}"
   fi
+elif [ "${OS_ONLY}" = true ]; then
+  log_info "Host OS security & package upgrade selected (--os-only)."
+  if [ "${DRY_RUN}" = true ] || [ "$(uname -s)" != "Linux" ]; then
+    log_info "[DRY-RUN] Would hold docker-ce docker-ce-cli containerd.io via apt-mark hold"
+    log_info "[DRY-RUN] Would execute: DEBIAN_FRONTEND=noninteractive apt-get update -y && apt-get dist-upgrade -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
+    log_info "[DRY-RUN] Would unhold docker-ce docker-ce-cli containerd.io via apt-mark unhold"
+    log_success "[DRY-RUN] Host OS package upgrade simulation complete."
+    exit 0
+  fi
+  SUDO_CMD=""
+  if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
+    SUDO_CMD="sudo -n"
+  fi
+  log_info "Pinning Docker daemon packages during online APT upgrade..."
+  ${SUDO_CMD} apt-mark hold docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || true
+  log_info "Updating APT package indices and applying non-interactive dist-upgrade..."
+  ${SUDO_CMD} env DEBIAN_FRONTEND=noninteractive apt-get update -y
+  ${SUDO_CMD} env DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold"
+  ${SUDO_CMD} apt-mark unhold docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || true
+  if [ -f /var/run/reboot-required ]; then
+    log_warn "Kernel or system library update requires a host reboot (/var/run/reboot-required present)."
+  fi
+  log_success "Host OS security & package upgrade completed successfully."
+  exit 0
 elif [ "${CONTAINERS_ONLY}" = true ]; then
   log_info "Container-only update selected (skipping git source pull)."
 else
@@ -563,15 +660,19 @@ fi
 
 # C5: Clean auto-generated runtime files and handle dirty git working tree
 if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  # Always restore auto-generated Caddy TLS policy snippet modified by reload-env.sh
-  git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
-  git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
+  if [ "${DRY_RUN}" = false ]; then
+    # Always restore auto-generated Caddy TLS policy snippet modified by reload-env.sh
+    git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
+    git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
+  fi
 
   DIRTY_CHECK="$(git status --porcelain --untracked-files=no)"
   if [ -n "${DIRTY_CHECK}" ]; then
-    if [ -n "${TARGET_BRANCH}" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
-      log_warn "Working tree has local modifications on appliance; stashing/resetting before branch sync..."
-      git stash push -m "brainsos-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+    if [ -n "${TARGET_BRANCH}" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+      if [ "${DRY_RUN}" = false ]; then
+        log_warn "Working tree has local modifications on appliance; resetting before branch sync..."
+        git reset --hard HEAD >/dev/null 2>&1 || true
+      fi
     elif [ "${UNATTENDED}" = true ]; then
       log_error "Working tree has uncommitted modifications. Refusing to run unattended update on a dirty repository (Audit #18)."
       exit 1
@@ -741,8 +842,8 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
     git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
     git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-      if [ -n "${TARGET_BRANCH}" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
-        git stash push -m "brainsos-auto-stash-$(date -u +%Y%m%dT%H%M%SZ)" >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+      if [ -n "${TARGET_BRANCH}" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+        git reset --hard HEAD >/dev/null 2>&1 || true
       else
         log_error "Tracked files have local modifications. Commit or revert them before updating."
         exit 1

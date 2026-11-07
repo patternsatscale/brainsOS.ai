@@ -17,6 +17,7 @@ const getInitialKey = (): string => {
   if (path === '/system') return 'system';
   if (path === '/docs') return 'help';
   if (path === '/editor') return 'console';
+  if (path === '/git' || path.startsWith('/git/')) return 'git';
   if (path === '/mail' || path === '/SOGo') return 'comms';
   if (path === '/proxy' || path.startsWith('/proxy/ui')) return 'security';
   if (path === '/efw') return 'network';

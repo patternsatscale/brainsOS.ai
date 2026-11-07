@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # brainsOS: Golden AMI Build, Staging & Promotion Wrapper
-# Tickets #313 / #322 (Epic #309, Remediation Epic #321)
+# Tickets #313 / #322 / #338 (Epic #309, Remediation Epic #321)
 #
 # Builds the brainsOS ARM64 appliance golden AMI from a clean, git-staged
 # artifact (never the working tree), then optionally promotes a private AMI to
@@ -66,34 +66,36 @@ DRY_RUN=false
 ALLOW_DIRTY=false
 KEEP_STAGE=false
 VERIFY_COLDBOOT=false
+VERIFY_VULNERABILITIES=false
 BUILD_REF=""
 PROMOTE_AMI=""
 
 usage() {
   cat <<EOF
-brainsOS ARM64 AMI Build, Staging & Promotion Wrapper (Tickets #313 / #322)
+brainsOS ARM64 AMI Build, Staging & Promotion Wrapper (Tickets #313 / #322 / #338)
 
 Usage:
   ./scripts/control/build-ami.sh [OPTIONS]
 
 Options:
-  --ref REF               Git tag/branch/commit to bake (Default: latest v* tag)
-  --allow-dirty           Permit building while the working tree has local changes
-  --region REGION         Target AWS region (Default: ${AWS_REGION})
-  --instance-type TYPE    EC2 instance type for builder (Default: ${INSTANCE_TYPE})
-  --volume-size SIZE      Root EBS volume size in GB (Default: ${VOLUME_SIZE})
-  --ssh-interface IFACE   Packer communicator interface (Default: ${SSH_INTERFACE})
-  --publish-community     Publish publicly at build time (prefer --promote)
-  --verify-coldboot       Automatically boot and verify the newly baked AMI
-  --promote AMI_ID        Make an existing private AMI public (BPA pre-flight)
-  --keep-stage            Keep the staged artifact directory after exit
-  --validate-only         Validate Packer templates without starting build
-  --dry-run               Stage + scan the artifact and print the build command
-  -h, --help              Show this help message
+  --ref REF                   Git tag/branch/commit to bake (Default: latest v* tag)
+  --allow-dirty               Permit building while the working tree has local changes
+  --region REGION             Target AWS region (Default: ${AWS_REGION})
+  --instance-type TYPE        EC2 instance type for builder (Default: ${INSTANCE_TYPE})
+  --volume-size SIZE          Root EBS volume size in GB (Default: ${VOLUME_SIZE})
+  --ssh-interface IFACE       Packer communicator interface (Default: ${SSH_INTERFACE})
+  --publish-community         Publish publicly at build time (prefer --promote)
+  --verify-coldboot           Automatically boot and verify the newly baked AMI
+  --verify-vulnerabilities    Audit AMI via ec2:GetImageFindings (0 Critical/High fixable)
+  --promote AMI_ID            Make an existing private AMI public (BPA pre-flight)
+  --keep-stage                Keep the staged artifact directory after exit
+  --validate-only             Validate Packer templates without starting build
+  --dry-run                   Stage + scan the artifact and print the build command
+  -h, --help                  Show this help message
 
 Release flow:
   1. build-ami.sh --ref v0.1.0            (private AMI)
-  2. rehearse the private AMI             (#320)
+  2. rehearse the private AMI             (#320 / #338)
   3. build-ami.sh --promote <ami-id>      (public)
 EOF
 }
@@ -115,6 +117,7 @@ while [ $# -gt 0 ]; do
     --ssh-interface)  require_arg "$1" "${2:-}"; SSH_INTERFACE="$2"; shift 2 ;;
     --publish-community) PUBLISH_COMMUNITY=true; shift ;;
     --verify-coldboot) VERIFY_COLDBOOT=true; shift ;;
+    --verify-vulnerabilities) VERIFY_VULNERABILITIES=true; shift ;;
     --promote)        require_arg "$1" "${2:-}"; PROMOTE_AMI="$2"; shift 2 ;;
     --keep-stage)     KEEP_STAGE=true; shift ;;
     --validate-only)  VALIDATE_ONLY=true; shift ;;
@@ -314,8 +317,9 @@ log_info "Publish Public:  ${PUBLISH_COMMUNITY}"
 STAGE_PARENT="$(mktemp -d "${TMPDIR:-/tmp}/brainsos-ami-stage.XXXXXX")"
 STAGE_DIR="${STAGE_PARENT}/brainsos"
 STAGE_BRANCH="main"
-if git -C "${REPO_ROOT}" show-ref --verify --quiet "refs/heads/${BUILD_REF}" || \
-   git -C "${REPO_ROOT}" show-ref --verify --quiet "refs/remotes/origin/${BUILD_REF}"; then
+if [ "${BUILD_REF}" != "HEAD" ] && { \
+   git -C "${REPO_ROOT}" show-ref --verify --quiet "refs/heads/${BUILD_REF}" || \
+   git -C "${REPO_ROOT}" show-ref --verify --quiet "refs/remotes/origin/${BUILD_REF}"; }; then
   STAGE_BRANCH="${BUILD_REF}"
 fi
 log_info "Staging clean artifact from ${BUILD_REF} (branch: ${STAGE_BRANCH}) into ${STAGE_DIR}..."
@@ -391,15 +395,21 @@ log_info "Starting Packer AMI build..."
 "${BUILD_CMD[@]}"
 log_success "brainsOS ARM64 golden AMI build completed (ref ${BUILD_REF}, commit ${BUILD_COMMIT:0:12})."
 
-if [ "${VERIFY_COLDBOOT}" = true ]; then
+if [ "${VERIFY_COLDBOOT}" = true ] || [ "${VERIFY_VULNERABILITIES}" = true ]; then
   NEW_AMI_ID="$(aws ec2 describe-images --region "${AWS_REGION}" --owners self \
     --filters "Name=tag:BrainsOSCommit,Values=${BUILD_COMMIT}" \
     --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' --output text 2>/dev/null || true)"
   if [ -n "${NEW_AMI_ID}" ] && [ "${NEW_AMI_ID}" != "None" ]; then
-    log_info "Running automated cold-boot verification against ${NEW_AMI_ID}..."
-    "${REPO_ROOT}/scripts/verify/verify-ami-coldboot.sh" --ami "${NEW_AMI_ID}" --region "${AWS_REGION}" --instance-type "${INSTANCE_TYPE}"
+    if [ "${VERIFY_VULNERABILITIES}" = true ]; then
+      log_info "Running automated vulnerability audit against ${NEW_AMI_ID}..."
+      "${REPO_ROOT}/scripts/verify/verify-ami-vulnerabilities.sh" --ami "${NEW_AMI_ID}" --region "${AWS_REGION}"
+    fi
+    if [ "${VERIFY_COLDBOOT}" = true ]; then
+      log_info "Running automated cold-boot verification against ${NEW_AMI_ID}..."
+      "${REPO_ROOT}/scripts/verify/verify-ami-coldboot.sh" --ami "${NEW_AMI_ID}" --region "${AWS_REGION}" --instance-type "${INSTANCE_TYPE}"
+    fi
   else
-    log_warn "Could not resolve newly baked AMI ID for commit ${BUILD_COMMIT}; skipping cold-boot verification."
+    log_warn "Could not resolve newly baked AMI ID for commit ${BUILD_COMMIT}; skipping post-build verification."
   fi
 fi
 

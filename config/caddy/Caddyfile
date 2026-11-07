@@ -236,6 +236,22 @@ import tls_policy.caddy
 		}
 	}
 
+	# B2. Subsystem 1b: Source Control (Local Gitea Git Server) (Ticket #340)
+	@git_no_slash path /git
+	redir @git_no_slash /git/ 308
+	handle /git/* {
+		import authentik_forward_auth
+		uri strip_prefix /git
+		reverse_proxy gitea:3000 {
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up X-Authentik-Email {header.X-Authentik-Email}
+			header_up X-Authentik-Name {header.X-Authentik-Name}
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
 	# C. Subsystem 2: Communications Plane (SOGo Webmail & Groupware)
 	@sogo_static path /SOGo.woa/WebServerResources/* /SOGo/WebServerResources/* /WebServerResources/*
 	handle @sogo_static {
@@ -454,7 +470,7 @@ import tls_policy.caddy
 	# Future-proof catch-all for any new endpoint called by the LiteLLM Admin UI (/ui/*)
 	@litellm_ui_referer {
 		header_regexp Referer ^https?://[^/]+/(proxy/)?ui(/|$|\?)
-		not path /ui/* /proxy/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
+		not path /ui/* /proxy/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
 	}
 	handle @litellm_ui_referer {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
@@ -577,12 +593,16 @@ import tls_policy.caddy
 	}
 
 	# G. Subsystem 6: Agent Plane (Hermes Runner WebUI)
+	@runner_no_slash path /runner
+	redir @runner_no_slash /runner/ 308
 	handle /runner* {
 		import authentik_forward_auth
-		reverse_proxy runner-hermes:8787 {
+		uri strip_prefix /runner
+		reverse_proxy runner-hermes:9119 {
 			header_up Remote-User {header.Remote-User}
 			header_up X-Authentik-Username {header.X-Authentik-Username}
 			header_down -x-frame-options
+			header_down -content-security-policy
 			flush_interval -1
 		}
 	}
@@ -678,9 +698,11 @@ http://localhost, https://localhost, http://*.localhost, https://*.localhost, :8
 		output stdout
 		format console
 	}
-	reverse_proxy runner-hermes:8787 {
+	reverse_proxy runner-hermes:9119 {
 		header_up Remote-User {header.Remote-User}
 		header_up X-Authentik-Username {header.X-Authentik-Username}
+		header_down -x-frame-options
+		header_down -content-security-policy
 		flush_interval -1
 	}
 }

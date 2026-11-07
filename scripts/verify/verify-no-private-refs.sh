@@ -35,6 +35,9 @@ PROHIBITED_TERMS=(
   "project-mJ"
 )
 
+# High-confidence secret patterns (Rule 5: Secret Protection)
+SECRET_REGEX='(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,})'
+
 STAGED_ONLY=false
 AUDIT_ALL_ISSUES=false
 SPECIFIC_TICKET=""
@@ -86,6 +89,11 @@ if [ -n "${STAGED_FILES}" ]; then
       ERRORS_FOUND=$((ERRORS_FOUND + 1))
     fi
   done
+  SECRET_MATCHES=$(git -C "${REPO_ROOT}" diff --cached -- ':!scripts/verify/verify-no-private-refs.sh' | grep "^\+[^+]" | grep -E "${SECRET_REGEX}" || true)
+  if [ -n "${SECRET_MATCHES}" ]; then
+    log_error "Live credential / API key pattern detected in staged git changes (Rule 5 violation)!"
+    ERRORS_FOUND=$((ERRORS_FOUND + 1))
+  fi
 else
   log_info "No staged changes to audit."
 fi
@@ -135,6 +143,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   python3 - <<'EOF'
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -143,6 +152,7 @@ audit_all = os.environ.get("AUDIT_ALL_ISSUES", "false").lower() == "true"
 specific_ticket = os.environ.get("SPECIFIC_TICKET", "")
 auto_scrub = os.environ.get("AUTO_SCRUB", "false").lower() == "true"
 prohibited = ["project_mJ", "project-mJ"]
+secret_re = re.compile(r"(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{36,}|github_pat_[A-Za-z0-9_]{22,})")
 
 def log_info(msg): print(f"\033[0;34m[INFO]\033[0m {msg}")
 def log_success(msg): print(f"\033[0;32m[SUCCESS]\033[0m {msg}")
@@ -194,6 +204,11 @@ for kind, num in tickets_to_check:
 
     found_in_body = any(term in body for term in prohibited)
     found_in_title = any(term in title for term in prohibited)
+    found_secret = bool(secret_re.search(body) or secret_re.search(title))
+
+    if found_secret:
+        violations += 1
+        log_error(f"CRITICAL: Live credential pattern detected in {kind.upper()} #{num} ('{title}')! Delete the issue/PR immediately via 'gh issue delete {num} --yes' and rotate the credential.")
 
     if found_in_body or found_in_title:
         violations += 1

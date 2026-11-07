@@ -1,20 +1,25 @@
 import asyncio
+import fcntl
 import json
 import logging
 import os
 import platform
+import pty
 import re
 import secrets
 import shutil
+import signal
 import socket
+import struct
 import subprocess
+import termios
 import time
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import urlparse
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -518,6 +523,218 @@ def _query_imds_metadata() -> Dict[str, str]:
     return result
 
 
+def validate_password_complexity(
+    password: str,
+    username: str = "",
+    instance_id: str = "",
+) -> Optional[str]:
+    """Validate superuser/administrator password complexity (#332).
+
+    Returns None when valid, or a descriptive error message when invalid.
+    """
+    if not password or len(password) < 8 or "\n" in password or "\r" in password:
+        return "Password must be at least 8 characters long and contain no control characters."
+    if not re.search(r"[A-Z]", password):
+        return "Password must contain at least one uppercase letter (A-Z)."
+    if not re.search(r"[a-z]", password):
+        return "Password must contain at least one lowercase letter (a-z)."
+    if not re.search(r"[0-9]", password):
+        return "Password must contain at least one number (0-9)."
+    if not re.search(r"[^A-Za-z0-9]", password):
+        return "Password must contain at least one special character (e.g. !@#$%^&*)."
+    if username and password.strip().lower() == username.strip().lower():
+        return "Password must not match the username."
+    if instance_id and password.strip().lower() == instance_id.strip().lower():
+        return "Password must not equal the EC2 Instance ID."
+    return None
+
+
+def get_host_os_status(repo_root: str) -> Dict[str, Any]:
+    """Inspect Host OS distribution, kernel, pending APT security packages, and reboot state (#336)."""
+    kernel = platform.release() or "unknown"
+    distro = f"{platform.system()} {platform.machine()}"
+    os_release_path = os.environ.get("BRAINSOS_OS_RELEASE_FILE", "/etc/os-release")
+    if os.path.isfile(os_release_path):
+        try:
+            with open(os_release_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        distro = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+
+    pending_packages = 0
+    security_packages = 0
+    updates_avail_path = os.environ.get(
+        "BRAINSOS_UPDATES_AVAILABLE_FILE", "/var/lib/update-notifier/updates-available"
+    )
+    if os.path.isfile(updates_avail_path):
+        try:
+            with open(updates_avail_path, "r", encoding="utf-8", errors="ignore") as f:
+                txt = f.read()
+            m_all = re.search(r"(\d+)\s+updates?\s+can\s+be\s+applied", txt, re.IGNORECASE)
+            if m_all:
+                pending_packages = int(m_all.group(1))
+            m_sec = re.search(
+                r"(\d+)\s+of\s+these\s+updates?\s+(?:are|is)\s+(?:standard\s+)?security",
+                txt,
+                re.IGNORECASE,
+            )
+            if m_sec:
+                security_packages = int(m_sec.group(1))
+        except Exception:
+            pass
+
+    reboot_req_path = os.environ.get("BRAINSOS_REBOOT_REQUIRED_FILE", "/var/run/reboot-required")
+    reboot_pkgs_path = os.environ.get("BRAINSOS_REBOOT_PACKAGES_FILE", "/var/run/reboot-required.pkgs")
+    reboot_required = os.path.isfile(reboot_req_path)
+    reboot_packages: list[str] = []
+    if os.path.isfile(reboot_pkgs_path):
+        try:
+            with open(reboot_pkgs_path, "r", encoding="utf-8", errors="ignore") as f:
+                reboot_packages = [ln.strip() for ln in f.read().splitlines() if ln.strip()]
+        except Exception:
+            pass
+
+    unattended_active = os.path.isfile("/etc/apt/apt.conf.d/20auto-upgrades") or os.path.isfile(
+        "/etc/apt/apt.conf.d/50unattended-upgrades"
+    )
+    return {
+        "distro": distro,
+        "kernel": kernel,
+        "pending_packages": pending_packages,
+        "security_packages": security_packages,
+        "reboot_required": reboot_required,
+        "reboot_packages": reboot_packages,
+        "unattended_upgrades_active": unattended_active,
+    }
+
+
+def _mask_api_key(val: str) -> Dict[str, Any]:
+    """Return boolean configured status and masked prefix without exposing the raw secret."""
+    clean = (val or "").strip()
+    if not clean:
+        return {"configured": False, "masked": ""}
+    if len(clean) >= 8:
+        masked = f"{clean[:4]}...{clean[-3:]}"
+    else:
+        masked = "****"
+    return {"configured": True, "masked": masked}
+
+
+def get_runners_status(repo_root: str) -> Dict[str, Any]:
+    """Inspect Agent Runners & Tool API Key configuration (#334)."""
+    file_env = parse_env_file_only(repo_root)
+    env = parse_env_file(repo_root)
+
+    # Also inspect data/runners/hermes/.env if present
+    data_dir = file_env.get("BRAINSOS_DATA_DIR") or env.get("BRAINSOS_DATA_DIR") or os.path.join(repo_root, "data")
+    if not os.path.isabs(data_dir):
+        data_dir = os.path.join(repo_root, data_dir.lstrip("./"))
+    hermes_env_path = os.path.join(data_dir, "runners", "hermes", ".env")
+    hermes_env: Dict[str, str] = {}
+    if os.path.isfile(hermes_env_path):
+        try:
+            with open(hermes_env_path, "r", encoding="utf-8", errors="ignore") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    hermes_env[k.strip()] = v.strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+    tool_key_names = (
+        "FIRECRAWL_API_KEY",
+        "TAVILY_API_KEY",
+        "EXA_API_KEY",
+        "BRAVE_SEARCH_API_KEY",
+    )
+    tool_keys: Dict[str, Any] = {}
+    for k in tool_key_names:
+        raw_val = hermes_env.get(k) or file_env.get(k) or ""
+        tool_keys[k] = _mask_api_key(raw_val)
+
+    return {
+        "hermes": {
+            "id": "hermes-warm",
+            "name": "Nous Hermes Warm Runner",
+            "container": "brainsos-agent-runner-hermes",
+            "endpoint": "http://runner-hermes:8642",
+            "dashboard_path": "/runner/",
+            "status": "configured",
+            "firecrawl_configured": tool_keys["FIRECRAWL_API_KEY"]["configured"],
+            "tool_keys": tool_keys,
+        },
+        "claude": {
+            "id": "claude-warm",
+            "name": "Anthropic Claude SDK Warm Runner",
+            "container": "brainsos-agent-runner-claude",
+            "endpoint": "http://runner-claude:8001",
+            "status": "configured",
+        },
+        "openai": {
+            "id": "openai-warm",
+            "name": "OpenAI SDK Warm Runner",
+            "container": "brainsos-agent-runner-openai",
+            "endpoint": "http://runner-openai:8002",
+            "status": "configured",
+        },
+        "tool_keys": tool_keys,
+    }
+
+
+def _upsert_env_keys(repo_root: str, target_file: str, updates: Dict[str, str]) -> None:
+    """Safely upsert key=value pairs into an .env file with 0600 permissions."""
+    os.makedirs(os.path.dirname(os.path.abspath(target_file)), exist_ok=True)
+    env_upsert = os.path.join(repo_root, "scripts", "control", "env-upsert.sh")
+    if not os.path.isfile(env_upsert):
+        fallback_root = get_repo_root()
+        candidate = os.path.join(fallback_root, "scripts", "control", "env-upsert.sh")
+        if os.path.isfile(candidate):
+            env_upsert = candidate
+
+    pairs = [f"{k}={v}" for k, v in updates.items()]
+    if os.path.isfile(env_upsert) and os.access(env_upsert, os.X_OK):
+        if not os.path.isfile(target_file):
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.write("")
+            os.chmod(target_file, 0o600)
+        res = subprocess.run(
+            [env_upsert, "--file", target_file, *pairs],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        if res.returncode == 0:
+            return
+
+    existing_lines: list[str] = []
+    if os.path.isfile(target_file):
+        with open(target_file, "r", encoding="utf-8", errors="ignore") as f:
+            existing_lines = f.read().splitlines()
+
+    remaining = dict(updates)
+    new_lines: list[str] = []
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k = stripped.split("=", 1)[0].strip()
+            if k in remaining:
+                new_lines.append(f"{k}={remaining.pop(k)}")
+                continue
+        new_lines.append(line)
+    for k, v in remaining.items():
+        new_lines.append(f"{k}={v}")
+
+    with open(target_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(new_lines) + "\n")
+    os.chmod(target_file, 0o600)
+
+
 def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     """Assemble live Appliance Identity, Custom Domain, TLS & First-Boot Wizard state (#332/#333)."""
     file_env = parse_env_file_only(repo_root)
@@ -541,7 +758,15 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         or imds.get("public_ipv4")
         or "local.brainsos.ai"
     )
-    admin_username = file_env.get("BRAINSOS_ADMIN_USERNAME") or env.get("BRAINSOS_ADMIN_USERNAME") or "admin"
+    superuser_name = file_env.get("BRAINSOS_SUPERUSER_NAME") or env.get("BRAINSOS_SUPERUSER_NAME") or ""
+    superuser_username = (
+        file_env.get("BRAINSOS_SUPERUSER_USERNAME")
+        or file_env.get("BRAINSOS_ADMIN_USERNAME")
+        or env.get("BRAINSOS_SUPERUSER_USERNAME")
+        or env.get("BRAINSOS_ADMIN_USERNAME")
+        or "admin"
+    )
+    admin_username = file_env.get("BRAINSOS_ADMIN_USERNAME") or env.get("BRAINSOS_ADMIN_USERNAME") or superuser_username
     if "BRAINSOS_ADMIN_EMAIL" in file_env and file_env["BRAINSOS_ADMIN_EMAIL"]:
         admin_email = file_env["BRAINSOS_ADMIN_EMAIL"]
     elif "BRAINSOS_LOCAL_DOMAIN" in file_env or "BRAINSOS_ADMIN_USERNAME" in file_env:
@@ -584,12 +809,19 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     if not firstboot_wizard_completed and masked_instance_id:
         masked_instance_id = ""
 
+    su_prefix = superuser_username.lower() if superuser_username.lower() != "admin" else "username"
+    suggested_local_domain = f"{su_prefix}.aws.cloud.brainsos.ai"
+
     return {
         "firstboot_wizard_completed": firstboot_wizard_completed,
         "url": url,
         "local_domain": local_domain,
+        "suggested_local_domain": suggested_local_domain,
+        "superuser_name": superuser_name,
+        "superuser_username": superuser_username,
         "admin_username": admin_username,
         "admin_email": admin_email,
+        "admin_bound_to_instance_id": True,
         "tls_mode": tls_mode,
         "acme_email": acme_email,
         "hostname": os_hostname,
@@ -605,6 +837,8 @@ def get_system_status() -> Dict[str, Any]:
     repo_root = get_repo_root()
     update_script = os.path.join(repo_root, "scripts/control/update.sh")
     identity = get_appliance_identity(repo_root)
+    runners_info = get_runners_status(repo_root)
+    os_info = get_host_os_status(repo_root)
 
     if os.path.isfile(update_script) and os.access(update_script, os.X_OK):
         try:
@@ -622,6 +856,9 @@ def get_system_status() -> Dict[str, Any]:
                         pname, pdetail = detect_appliance_platform(repo_root)
                         status["platform_name"] = pname
                         status["platform_detail"] = pdetail
+                    if "os" not in status:
+                        status["os"] = os_info
+                    status["runners"] = runners_info
                     status.update(identity)
                     status["identity"] = identity
                     return status
@@ -661,6 +898,8 @@ def get_system_status() -> Dict[str, Any]:
         },
         "services": {},
         "disk": disk_info,
+        "os": os_info,
+        "runners": runners_info,
         "overall_update_available": False,
         "identity": identity,
     }
@@ -828,8 +1067,11 @@ def create_system_api_app():
     class SetupRequest(BaseModel):
         bootstrap_token: Optional[str] = Field(None, description="EC2 Instance ID / initial bootstrap password for pre-login first-boot verification")
         local_domain: Optional[str] = Field(None, description="Coherent unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN)")
-        admin_username: Optional[str] = Field(None, description="Primary administrator username (BRAINSOS_ADMIN_USERNAME)")
-        admin_password: Optional[str] = Field(None, description="New primary administrator password (never logged)")
+        superuser_name: Optional[str] = Field(None, description="Superuser full display name (BRAINSOS_SUPERUSER_NAME)")
+        superuser_username: Optional[str] = Field(None, description="Named superuser username (BRAINSOS_SUPERUSER_USERNAME)")
+        superuser_password: Optional[str] = Field(None, description="Named superuser password (never logged)")
+        admin_username: Optional[str] = Field(None, description="Primary administrator username (alias for superuser_username)")
+        admin_password: Optional[str] = Field(None, description="New primary administrator password (alias for superuser_password)")
         url: Optional[str] = Field(None, description="External web access URL or hostname (BRAINSOS_URL)")
         tls_mode: Optional[str] = Field("internal", description="TLS mode: internal, acme, public_acme, or route53")
         acme_email: Optional[str] = Field(None, description="ACME contact email for Let's Encrypt / Route 53")
@@ -837,6 +1079,24 @@ def create_system_api_app():
         dismiss_only: bool = Field(False, description="Only dismiss the First-Boot Setup Wizard without reconfiguring")
         dry_run: bool = Field(False, description="Simulate configuration without modifying disk or restarting services")
         force: bool = Field(True, description="Proceed even if DNS pre-flight check warns")
+
+    class HermesConfigRequest(BaseModel):
+        firecrawl_api_key: Optional[str] = Field(None, description="Firecrawl API key for web scraping")
+        tavily_api_key: Optional[str] = Field(None, description="Tavily Search API key")
+        exa_api_key: Optional[str] = Field(None, description="Exa Search API key")
+        brave_search_api_key: Optional[str] = Field(None, description="Brave Search API key")
+        restart_runner: bool = Field(True, description="Restart runner-hermes container after saving keys")
+
+    class OsUpgradeRequest(BaseModel):
+        dry_run: bool = Field(False, description="Simulate APT upgrade without modifying packages")
+
+    class RebootRequest(BaseModel):
+        dry_run: bool = Field(False, description="Simulate graceful stop and host reboot")
+        confirm: bool = Field(True, description="Operator confirmation")
+
+    class TerminalExecRequest(BaseModel):
+        command: str = Field(..., description="Shell command to execute in host console")
+        cwd: Optional[str] = Field(None, description="Working directory (defaults to REPO_ROOT)")
 
     @app.get("/health")
     @app.get("/api/v1/system/health")
@@ -982,30 +1242,47 @@ def create_system_api_app():
         fqdn_re = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
         ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
 
+        superuser_name: Optional[str] = None
+        if req.superuser_name is not None and req.superuser_name.strip():
+            superuser_name = req.superuser_name.strip()
+            if "\n" in superuser_name or "\r" in superuser_name or len(superuser_name) > 128:
+                raise HTTPException(status_code=400, detail="Invalid superuser_name.")
+
+        if req.superuser_username is not None and req.superuser_username.strip().lower() == "admin":
+            raise HTTPException(
+                status_code=400,
+                detail="Superuser username cannot be 'admin' (the 'admin' account is permanently bound to the EC2 Instance ID).",
+            )
+
+        raw_username = req.superuser_username if (req.superuser_username and req.superuser_username.strip()) else req.admin_username
+        admin_username: Optional[str] = None
+        if raw_username is not None and raw_username.strip():
+            admin_username = raw_username.strip()
+            if not re.match(r"^[a-zA-Z0-9._-]{2,64}$", admin_username):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid username '{raw_username}'. Use 2-64 alphanumeric, dot, underscore, or hyphen characters.",
+                )
+
         local_domain: Optional[str] = None
         if req.local_domain is not None and req.local_domain.strip():
             local_domain = normalize_url_host(req.local_domain)
             if not fqdn_re.match(local_domain):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Invalid local_domain '{req.local_domain}'. Must be a valid FQDN (e.g. jsm.cloud.aws.brainsos.ai).",
+                    detail=f"Invalid local_domain '{req.local_domain}'. Must be a valid FQDN (e.g. jsm.aws.cloud.brainsos.ai).",
                 )
+        elif admin_username and admin_username.lower() != "admin":
+            if ident.get("local_domain") in ("local.brainsos.ai", "admin.aws.cloud.brainsos.ai"):
+                local_domain = f"{admin_username.lower()}.aws.cloud.brainsos.ai"
 
-        admin_username: Optional[str] = None
-        if req.admin_username is not None and req.admin_username.strip():
-            admin_username = req.admin_username.strip()
-            if not re.match(r"^[a-zA-Z0-9._-]{2,64}$", admin_username):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid admin_username '{req.admin_username}'. Use 2-64 alphanumeric, dot, underscore, or hyphen characters.",
-                )
-
-        if req.admin_password is not None and req.admin_password != "":
-            if len(req.admin_password) < 8 or "\n" in req.admin_password or "\r" in req.admin_password:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Administrator password must be at least 8 characters long.",
-                )
+        raw_password = req.superuser_password if (req.superuser_password is not None and req.superuser_password != "") else req.admin_password
+        if raw_password is not None and raw_password != "":
+            raw_imds = _query_imds_metadata()
+            inst_id = (raw_imds.get("instance_id") or env.get("BRAINSOS_INSTANCE_ID") or "").strip()
+            pw_err = validate_password_complexity(raw_password, username=admin_username or "", instance_id=inst_id)
+            if pw_err:
+                raise HTTPException(status_code=400, detail=pw_err)
 
         ident = get_appliance_identity(repo_root)
         target_url = normalize_url_host(req.url) if (req.url and req.url.strip()) else ident["url"]
@@ -1039,6 +1316,8 @@ def create_system_api_app():
         cmd = [set_domain_script, "--url", target_url]
         if local_domain:
             cmd.extend(["--local-domain", local_domain])
+        if superuser_name:
+            cmd.extend(["--superuser-name", superuser_name])
         if admin_username:
             cmd.extend(["--admin-username", admin_username])
         if tls_mode == "internal":
@@ -1056,8 +1335,11 @@ def create_system_api_app():
             cmd.append("--dry-run")
 
         extra_env: Dict[str, str] = {}
-        if req.admin_password:
-            extra_env["BRAINSOS_NEW_ADMIN_PASSWORD"] = req.admin_password
+        if raw_password:
+            extra_env["BRAINSOS_NEW_ADMIN_PASSWORD"] = raw_password
+            extra_env["BRAINSOS_NEW_SUPERUSER_PASSWORD"] = raw_password
+        if superuser_name:
+            extra_env["BRAINSOS_SUPERUSER_NAME"] = superuser_name
 
         job = await job_manager.start_job("setup", cmd, extra_env=extra_env)
         if "error" in job and job["error"] == "conflict":
@@ -1217,6 +1499,296 @@ def create_system_api_app():
                 "X-Job-ID": job["id"],
             },
         )
+
+    @app.get("/api/v1/system/runners", dependencies=[Depends(verify_internal_auth)])
+    async def list_runners():
+        return JSONResponse(content=get_runners_status(repo_root))
+
+    @app.post(
+        "/api/v1/system/runners/hermes/config",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def update_hermes_config(req: HermesConfigRequest):
+        updates: Dict[str, str] = {}
+        key_map = {
+            "FIRECRAWL_API_KEY": req.firecrawl_api_key,
+            "TAVILY_API_KEY": req.tavily_api_key,
+            "EXA_API_KEY": req.exa_api_key,
+            "BRAVE_SEARCH_API_KEY": req.brave_search_api_key,
+        }
+        for env_key, raw_val in key_map.items():
+            if raw_val is not None:
+                val = raw_val.strip()
+                if "\n" in val or "\r" in val:
+                    raise HTTPException(status_code=400, detail=f"Invalid value for {env_key}")
+                updates[env_key] = val
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No runner tool keys provided to update")
+
+        env_file = os.path.join(repo_root, ".env")
+        _upsert_env_keys(repo_root, env_file, updates)
+
+        file_env = parse_env_file_only(repo_root)
+        data_dir = file_env.get("BRAINSOS_DATA_DIR") or os.path.join(repo_root, "data")
+        if not os.path.isabs(data_dir):
+            data_dir = os.path.join(repo_root, data_dir.lstrip("./"))
+        hermes_env_path = os.path.join(data_dir, "runners", "hermes", ".env")
+        _upsert_env_keys(repo_root, hermes_env_path, updates)
+
+        if req.restart_runner and os.environ.get("BRAINSOS_STAGE") != "test":
+            try:
+                subprocess.Popen(
+                    ["docker", "compose", "up", "-d", "runner-hermes"],
+                    cwd=repo_root,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception as e:
+                logger.warning(f"Failed restarting runner-hermes: {e}")
+
+        return JSONResponse(content={"status": "updated", "runners": get_runners_status(repo_root)})
+
+    @app.post(
+        "/api/v1/system/os-upgrade",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def trigger_os_upgrade(req: OsUpgradeRequest):
+        update_script = os.path.join(repo_root, "scripts/control/update.sh")
+        if not os.path.isfile(update_script):
+            raise HTTPException(status_code=500, detail="scripts/control/update.sh not found")
+
+        cmd = [update_script, "--os-only", "--unattended"]
+        if req.dry_run:
+            cmd.append("--dry-run")
+
+        job = await job_manager.start_job("os-upgrade", cmd)
+        if "error" in job and job["error"] == "conflict":
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": "A system job is already in progress",
+                    "active_job_id": job["active_job_id"],
+                    "type": job["type"],
+                },
+            )
+
+        return StreamingResponse(
+            stream_job_logs(job),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Job-ID": job["id"],
+            },
+        )
+
+    @app.post(
+        "/api/v1/system/reboot",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def trigger_reboot(req: RebootRequest):
+        if not req.confirm:
+            raise HTTPException(status_code=400, detail="Reboot confirmation required")
+
+        reboot_script = os.path.join(repo_root, "scripts/control/reboot-appliance.sh")
+        if not os.path.isfile(reboot_script):
+            fallback_script = os.path.join(get_repo_root(), "scripts/control/reboot-appliance.sh")
+            if os.path.isfile(fallback_script):
+                reboot_script = fallback_script
+            else:
+                raise HTTPException(status_code=500, detail="scripts/control/reboot-appliance.sh not found")
+
+        cmd = [reboot_script, "--unattended"]
+        if req.dry_run or os.environ.get("BRAINSOS_STAGE") == "test":
+            cmd.append("--dry-run")
+
+        job = await job_manager.start_job("reboot", cmd)
+        if "error" in job and job["error"] == "conflict":
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": "A system job is already in progress",
+                    "active_job_id": job["active_job_id"],
+                    "type": job["type"],
+                },
+            )
+
+        return StreamingResponse(
+            stream_job_logs(job),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Job-ID": job["id"],
+            },
+        )
+
+    @app.post(
+        "/api/v1/system/terminal/exec",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def terminal_exec(req: TerminalExecRequest):
+        cmd_str = (req.command or "").strip()
+        if not cmd_str:
+            raise HTTPException(status_code=400, detail="Command cannot be empty")
+        work_dir = repo_root
+        if req.cwd and os.path.isdir(req.cwd):
+            work_dir = os.path.abspath(req.cwd)
+
+        env = {**os.environ, **parse_env_file_only(repo_root), "TERM": "xterm-256color"}
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/bash",
+                "-c",
+                f"{cmd_str}\nprintf '\\n__BRAINSOS_CWD__=%s\\n' \"$(pwd)\"",
+                cwd=work_dir,
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            stdout_txt = stdout_b.decode("utf-8", errors="replace")
+            stderr_txt = stderr_b.decode("utf-8", errors="replace")
+            new_cwd = work_dir
+            if "__BRAINSOS_CWD__=" in stdout_txt:
+                parts = stdout_txt.rsplit("__BRAINSOS_CWD__=", 1)
+                stdout_txt = parts[0].rstrip("\n")
+                detected = parts[1].strip()
+                if detected and os.path.isdir(detected):
+                    new_cwd = detected
+            return JSONResponse(
+                content={
+                    "stdout": stdout_txt,
+                    "stderr": stderr_txt,
+                    "exit_code": proc.returncode or 0,
+                    "cwd": new_cwd,
+                }
+            )
+        except asyncio.TimeoutError:
+            return JSONResponse(
+                status_code=408,
+                content={"stdout": "", "stderr": "Command timed out after 30 seconds.", "exit_code": 124, "cwd": work_dir},
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Terminal execution failed: {e}")
+
+    @app.websocket("/api/v1/system/terminal/ws")
+    async def terminal_ws(websocket: WebSocket):
+        expected_token = os.environ.get("SYSTEM_API_TOKEN")
+        provided_internal = websocket.headers.get("X-BrainsOS-Internal") or websocket.query_params.get("internal_token")
+        if expected_token and os.environ.get("BRAINSOS_STAGE") != "test":
+            if not provided_internal or not secrets.compare_digest(provided_internal, expected_token):
+                await websocket.close(code=1008)
+                return
+        elif provided_internal and expected_token and not secrets.compare_digest(provided_internal, expected_token):
+            await websocket.close(code=1008)
+            return
+
+        username = (
+            websocket.headers.get("X-Authentik-Username")
+            or websocket.headers.get("X-Authentik-Email")
+            or websocket.headers.get("Remote-User")
+        )
+        if not username:
+            await websocket.close(code=1008)
+            return
+
+        await websocket.accept()
+        master_fd, slave_fd = pty.openpty()
+        shell_bin = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
+        env = {
+            **os.environ,
+            **parse_env_file_only(repo_root),
+            "TERM": "xterm-256color",
+            "PS1": r"\u@\h:\w\$ ",
+        }
+
+        proc = subprocess.Popen(
+            [shell_bin, "-i"],
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            cwd=repo_root,
+            env=env,
+            preexec_fn=os.setsid,
+            close_fds=True,
+        )
+        os.close(slave_fd)
+
+        fl = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+        fcntl.fcntl(master_fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+        stop_event = asyncio.Event()
+
+        async def _pty_reader():
+            while not stop_event.is_set():
+                try:
+                    data = os.read(master_fd, 4096)
+                    if not data:
+                        break
+                    await websocket.send_text(
+                        json.dumps({"type": "output", "data": data.decode("utf-8", errors="replace")})
+                    )
+                except BlockingIOError:
+                    if proc.poll() is not None:
+                        break
+                    await asyncio.sleep(0.03)
+                except Exception:
+                    break
+
+        reader_task = asyncio.create_task(_pty_reader())
+        try:
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "ready",
+                        "cwd": repo_root,
+                        "user": username,
+                        "hostname": socket.getfqdn(),
+                    }
+                )
+            )
+            while True:
+                raw_msg = await websocket.receive_text()
+                try:
+                    msg = json.loads(raw_msg)
+                except Exception:
+                    msg = {"type": "input", "data": raw_msg}
+
+                mtype = msg.get("type", "input")
+                if mtype == "input":
+                    inp = str(msg.get("data", ""))
+                    if inp:
+                        os.write(master_fd, inp.encode("utf-8"))
+                elif mtype == "resize":
+                    cols = max(20, min(500, int(msg.get("cols", 120))))
+                    rows = max(5, min(200, int(msg.get("rows", 32))))
+                    winsize = struct.pack("HHHH", rows, cols, 0, 0)
+                    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
+                elif mtype == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+        finally:
+            stop_event.set()
+            reader_task.cancel()
+            try:
+                os.close(master_fd)
+            except Exception:
+                pass
+            if proc.poll() is None:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except Exception:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
 
     return app
 

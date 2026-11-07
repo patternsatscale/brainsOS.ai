@@ -4,6 +4,7 @@ import {
   RotateCw,
   Terminal,
   Mail,
+  GitBranch,
   Shield,
   Network,
   Activity,
@@ -42,6 +43,8 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
         return <Terminal {...props} />;
       case 'comms':
         return <Mail {...props} />;
+      case 'git':
+        return <GitBranch {...props} />;
       case 'security':
         return <Shield {...props} />;
       case 'network':
@@ -99,7 +102,7 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       return `${host} • Knowledge Base`;
     }
     if (subsystem.id === 'system') {
-      return `${host} • System Manager & Update Center`;
+      return `${host} • Operating System Control Center`;
     }
     if (currentCustomUrl) {
       if (currentCustomUrl.includes('default-user-settings-flow')) {

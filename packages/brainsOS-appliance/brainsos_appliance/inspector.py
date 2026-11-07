@@ -133,3 +133,73 @@ def audit_host_hardening() -> Dict[str, Any]:
         checks["ufw"] = {"available": False}
 
     return checks
+
+
+def evaluate_ami_findings(
+    findings_payload: Dict[str, Any],
+    ami_id: str = "ami-unknown",
+    zero_fixable: bool = False,
+) -> Dict[str, Any]:
+    """Evaluate AWS EC2 GetImageFindings payload and assert 0 blocking fixable vulnerabilities.
+
+    Unfixed upstream kernel CVEs (``FixAvailable: false``) are tracked separately from
+    actionable vulnerabilities (``FixAvailable: true``).
+    """
+    findings = findings_payload.get("Findings") or findings_payload.get("findings") or []
+    total_by_sev: Dict[str, int] = {}
+    fixable_by_sev: Dict[str, int] = {}
+    blocking_samples = []
+
+    for item in findings:
+        sev = str(item.get("Severity") or item.get("severity") or "UNSPECIFIED").upper()
+        fix_raw = item.get("FixAvailable", item.get("fixAvailable", False))
+        if isinstance(fix_raw, str):
+            fix_avail = fix_raw.strip().upper() in ("TRUE", "YES", "1")
+        else:
+            fix_avail = bool(fix_raw)
+
+        total_by_sev[sev] = total_by_sev.get(sev, 0) + 1
+        if fix_avail:
+            fixable_by_sev[sev] = fixable_by_sev.get(sev, 0) + 1
+            if zero_fixable or sev in ("CRITICAL", "HIGH"):
+                vuln_id = (
+                    item.get("VulnerabilityId")
+                    or item.get("Title")
+                    or item.get("FindingArn")
+                    or "unknown"
+                )
+                pkg = (
+                    item.get("PackageName")
+                    or (
+                        item.get("PackageVulnerabilityDetails", {}).get("VulnerablePackages")
+                        or [{}]
+                    )[0].get("Name")
+                    or "unknown"
+                )
+                blocking_samples.append(
+                    {"severity": sev, "vulnerability_id": vuln_id, "package": pkg}
+                )
+
+    fixable_critical = fixable_by_sev.get("CRITICAL", 0)
+    fixable_high = fixable_by_sev.get("HIGH", 0)
+    fixable_total = sum(fixable_by_sev.values())
+    total_count = sum(total_by_sev.values())
+    passed = (
+        (fixable_total == 0)
+        if zero_fixable
+        else (fixable_critical == 0 and fixable_high == 0)
+    )
+
+    return {
+        "ami_id": ami_id,
+        "scan_status": findings_payload.get("Status") or "ACTIVE",
+        "total_findings": total_count,
+        "fixable_total": fixable_total,
+        "fixable_critical": fixable_critical,
+        "fixable_high": fixable_high,
+        "total_by_severity": total_by_sev,
+        "fixable_by_severity": fixable_by_sev,
+        "zero_fixable_enforced": zero_fixable,
+        "passed": passed,
+        "blocking_samples": blocking_samples[:20],
+    }
