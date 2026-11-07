@@ -9,6 +9,8 @@ services:
     build:
       context: ../..
       dockerfile: docker/editor/Dockerfile
+      args:
+        CODE_SERVER_IMAGE_TAG: ${CODE_SERVER_IMAGE_TAG:-latest}
     image: brainsos-code-server:latest
     container_name: brainsos-app-code-server
     restart: unless-stopped

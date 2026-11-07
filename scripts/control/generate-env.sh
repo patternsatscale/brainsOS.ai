@@ -313,7 +313,7 @@ secret_generators = {
     "MINIO_ROOT_PASSWORD": lambda: gen_hex(16),
     "LANGFUSE_PUBLIC_KEY": lambda: f"pk-lf-{gen_hex(16)}",
     "LANGFUSE_SECRET_KEY": lambda: f"sk-lf-{gen_hex(16)}",
-    "SYSTEM_API_TOKEN": lambda: f"sat-{gen_hex(24)}",
+    "SYSTEM_API_TOKEN": lambda: gen_hex(16),
 }
 
 generated_secrets = {}
@@ -380,10 +380,19 @@ with open(example_file, "r", encoding="utf-8") as f:
         else:
             output_lines.append(line_rstrip)
 
-# Ensure BRAINSOS_MAIL_DOMAIN is present
+# Ensure BRAINSOS_MAIL_DOMAIN, SYSTEM_API_TOKEN, and BRAINSOS_UNIT_NAME are present
 if "BRAINSOS_MAIL_DOMAIN" not in handled_keys:
     output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
     handled_keys.add("BRAINSOS_MAIL_DOMAIN")
+
+if "SYSTEM_API_TOKEN" not in handled_keys:
+    output_lines.append(f"SYSTEM_API_TOKEN={generated_secrets['SYSTEM_API_TOKEN']}")
+    handled_keys.add("SYSTEM_API_TOKEN")
+
+if "BRAINSOS_UNIT_NAME" not in handled_keys:
+    unit_name_val = current_vars.get("BRAINSOS_UNIT_NAME", "").strip() or "Enterprise Agent Box"
+    output_lines.append(f'BRAINSOS_UNIT_NAME="{unit_name_val}"')
+    handled_keys.add("BRAINSOS_UNIT_NAME")
 
 # Filter out legacy redundant variables that inherit from BRAINSOS_ADMIN_PASSWORD
 redundant_legacy_keys = {

@@ -135,10 +135,10 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
               </div>
             </div>
             <div style="padding:10px 14px; color:#33ff33; line-height:19px; overflow-y:auto; user-select:text;">
-              <span style="color:#00f2fe;">operator@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ python3 -m pytest tests/ -q<br>
+              <span style="color:#00f2fe;">admin@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ python3 -m pytest tests/ -q<br>
               <span style="color:#fff;">................................................. [100%]</span><br>
               <span style="color:#10b981; font-weight:bold;">49 passed in 0.84s (All Architectural Guardrails Satisfied)</span><br>
-              <span style="color:#00f2fe;">operator@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ <span style="animation:pulse 1s infinite;">█</span>
+              <span style="color:#00f2fe;">admin@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ <span style="animation:pulse 1s infinite;">█</span>
             </div>
           </div>
         </div>
@@ -171,7 +171,7 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
 
         <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; overflow:hidden; margin-bottom:20px;">
           <div style="padding:12px 16px; background:#192132; border-bottom:1px solid rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center; font-size:12px; font-family:monospace;">
-            <div><b style="color:#00f2fe;">operator</b> committed <span style="color:#f97316;">feat(souls): tune terrastella executive synthesis prompt</span></div>
+            <div><b style="color:#00f2fe;">admin</b> committed <span style="color:#f97316;">feat(souls): tune terrastella executive synthesis prompt</span></div>
             <div style="color:#94a3b8;">commit <span style="color:#f97316;">a94c21e</span> • 4 mins ago</div>
           </div>
           <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
@@ -411,8 +411,8 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
             </thead>
             <tbody>
               <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
-                <td style="padding:10px 8px; color:#00f2fe; font-weight:bold;">operator</td>
-                <td style="padding:10px 8px;">Appliance Operator</td>
+                <td style="padding:10px 8px; color:#00f2fe; font-weight:bold;">admin</td>
+                <td style="padding:10px 8px;">Appliance Admin</td>
                 <td style="padding:10px 8px;"><span style="background:rgba(0,242,254,0.15); color:#00f2fe; padding:2px 8px; border-radius:4px; font-size:10px;">authentik Admins</span></td>
                 <td style="padding:10px 8px;">Password / FIDO2</td>
                 <td style="padding:10px 8px; color:#10b981;">Active</td>

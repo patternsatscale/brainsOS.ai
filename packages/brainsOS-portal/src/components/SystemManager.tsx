@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Terminal as XTerm } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 import {
   Cpu,
   RefreshCw,
@@ -72,27 +75,55 @@ interface OsPatchStatus {
   last_apt_update?: string;
 }
 
-interface RunnerKeyStatus {
+export interface RunnerKeyStatus {
   configured: boolean;
   masked: string;
 }
 
-interface RunnerInfo {
+export interface RunnerStatus {
   id: string;
   name: string;
   runtime: string;
   status: string;
+  version?: string;
+  configured?: boolean;
+  details?: string;
   endpoint?: string;
   ui_route?: string;
   active_model?: string;
   web_search_mode?: string;
+  keys_configured?: string[];
   keys?: Record<string, RunnerKeyStatus>;
+}
+
+export interface ApplianceIdentity {
+  unit_name?: string;
+  instance_id?: string;
+  firstboot_wizard_completed?: boolean;
+  url?: string;
+  local_domain?: string;
+  hostname?: string;
+  preserve_hostname?: boolean;
+  superuser_name?: string;
+  superuser_username?: string;
+  admin_username?: string;
+  admin_email?: string;
+  admin_instance_bound?: boolean;
+  tls_mode?: string;
+  acme_email?: string;
+  public_ipv4?: string;
+  local_ipv4?: string;
+  repo_root?: string;
+  data_dir?: string;
+  mail_domain?: string;
+  console_user?: string;
 }
 
 interface SystemStatus {
   platform: string;
   platform_name?: string;
   platform_detail?: string;
+  unit_name?: string;
   firstboot_wizard_completed?: boolean;
   url?: string;
   local_domain?: string;
@@ -108,11 +139,16 @@ interface SystemStatus {
   public_ipv4?: string;
   local_ipv4?: string;
   instance_id?: string;
+  repo_root?: string;
+  data_dir?: string;
+  mail_domain?: string;
+  console_user?: string;
+  identity?: ApplianceIdentity;
   git: GitStatus;
   services: Record<string, ServiceStatus>;
   disk?: DiskStatus;
   os?: OsPatchStatus;
-  runners?: RunnerInfo[];
+  runners?: RunnerStatus[] | Record<string, unknown>;
   overall_update_available: boolean;
 }
 
@@ -125,10 +161,57 @@ interface DnsCheckResult {
   message: string;
 }
 
+const DEFAULT_RUNNERS_LIST: RunnerStatus[] = [
+  {
+    id: 'hermes',
+    name: 'Nous Hermes Warm Runner',
+    runtime: 'brainsos-agent-hermes-runner (Stateless Multi-Tenant Container)',
+    status: 'online',
+    version: 'v0.1.0-arm64',
+    configured: true,
+    endpoint: 'http://hermes-runner:8090',
+    ui_route: '/runner/',
+    active_model: 'qwen2.5:32b (via LiteLLM :4000)',
+    web_search_mode: 'Keyless Free Tier (Rate-Limited)',
+    keys: {
+      FIRECRAWL_API_KEY: { configured: false, masked: '' },
+      TAVILY_API_KEY: { configured: false, masked: '' },
+      EXA_API_KEY: { configured: false, masked: '' },
+      BRAVE_API_KEY: { configured: false, masked: '' },
+      BRAVE_SEARCH_API_KEY: { configured: false, masked: '' },
+      GITHUB_TOKEN: { configured: false, masked: '' },
+      OPENROUTER_API_KEY: { configured: false, masked: '' },
+      ANTHROPIC_API_KEY: { configured: false, masked: '' },
+      OPENAI_API_KEY: { configured: false, masked: '' },
+    },
+  },
+  {
+    id: 'claude',
+    name: 'Anthropic Claude SDK Runner',
+    runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
+    status: 'online',
+    configured: false,
+    endpoint: 'http://litellm:4000/v1',
+    active_model: 'claude-sonnet-4-20250514',
+    web_search_mode: 'Tool Egress Gateway (:8082)',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI Agents SDK Runner',
+    runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
+    status: 'online',
+    configured: false,
+    endpoint: 'http://litellm:4000/v1',
+    active_model: 'gpt-4.1',
+    web_search_mode: 'Tool Egress Gateway (:8082)',
+  },
+];
+
 const DEFAULT_STATUS: SystemStatus = {
   platform: 'brainsOS',
   platform_name: 'AWS EC2 Appliance (AMI)',
   platform_detail: 'AWS ARM64 Graviton • EC2',
+  unit_name: 'Enterprise Agent Box',
   firstboot_wizard_completed: true,
   url: 'ec2-32-192-215-107.compute-1.amazonaws.com',
   local_domain: 'jsm.aws.cloud.brainsos.ai',
@@ -144,6 +227,24 @@ const DEFAULT_STATUS: SystemStatus = {
   public_ipv4: '32.192.215.107',
   local_ipv4: '172.31.24.180',
   instance_id: 'i-0d32ae443d40e32d4',
+  identity: {
+    unit_name: 'Enterprise Agent Box',
+    instance_id: 'i-0d32ae443d40e32d4',
+    firstboot_wizard_completed: true,
+    url: 'ec2-32-192-215-107.compute-1.amazonaws.com',
+    local_domain: 'jsm.aws.cloud.brainsos.ai',
+    hostname: 'jsm.aws.cloud.brainsos.ai',
+    preserve_hostname: true,
+    superuser_name: 'Jane Operator',
+    superuser_username: 'jsm',
+    admin_username: 'jsm',
+    admin_email: 'jsm@jsm.aws.cloud.brainsos.ai',
+    admin_instance_bound: true,
+    tls_mode: 'internal',
+    acme_email: '',
+    public_ipv4: '32.192.215.107',
+    local_ipv4: '172.31.24.180',
+  },
   disk: {
     total_gb: 915.3,
     used_gb: 221.6,
@@ -162,42 +263,7 @@ const DEFAULT_STATUS: SystemStatus = {
     reboot_packages: [],
     last_apt_update: 'Today, 06:00 UTC',
   },
-  runners: [
-    {
-      id: 'hermes',
-      name: 'Nous Hermes Warm Runner',
-      runtime: 'brainsos-agent-hermes-runner (Stateless Multi-Tenant Container)',
-      status: 'online',
-      endpoint: 'http://hermes-runner:8090',
-      ui_route: '/runner/',
-      active_model: 'qwen2.5:32b (via LiteLLM :4000)',
-      web_search_mode: 'Keyless Free Tier (Rate-Limited)',
-      keys: {
-        FIRECRAWL_API_KEY: { configured: false, masked: '' },
-        TAVILY_API_KEY: { configured: false, masked: '' },
-        EXA_API_KEY: { configured: false, masked: '' },
-        BRAVE_SEARCH_API_KEY: { configured: false, masked: '' },
-      },
-    },
-    {
-      id: 'claude-sdk',
-      name: 'Anthropic Claude SDK Runner',
-      runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
-      status: 'online',
-      endpoint: 'http://litellm:4000/v1',
-      active_model: 'claude-sonnet-4-20250514',
-      web_search_mode: 'Tool Egress Gateway (:8082)',
-    },
-    {
-      id: 'openai-sdk',
-      name: 'OpenAI Agents SDK Runner',
-      runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
-      status: 'online',
-      endpoint: 'http://litellm:4000/v1',
-      active_model: 'gpt-4.1',
-      web_search_mode: 'Tool Egress Gateway (:8082)',
-    },
-  ],
+  runners: DEFAULT_RUNNERS_LIST,
   git: {
     is_git: true,
     branch: 'main',
@@ -221,6 +287,13 @@ const DEFAULT_STATUS: SystemStatus = {
       latest_version: '4.71.0',
       update_available: true,
       changelog_url: 'https://github.com/langfuse/langfuse/releases',
+    },
+    'code-server': {
+      name: 'Operator Studio (VS Code IDE)',
+      current_version: '4.138.0',
+      latest_version: '4.145.2',
+      update_available: true,
+      changelog_url: 'https://github.com/coder/code-server/releases',
     },
     caddy: {
       name: 'Caddy Ingress',
@@ -246,6 +319,424 @@ const DEFAULT_STATUS: SystemStatus = {
   },
   overall_update_available: true,
 };
+
+const KNOWN_TOOL_KEY_NAMES = [
+  'FIRECRAWL_API_KEY',
+  'TAVILY_API_KEY',
+  'BRAVE_API_KEY',
+  'BRAVE_SEARCH_API_KEY',
+  'EXA_API_KEY',
+  'GITHUB_TOKEN',
+  'OPENROUTER_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+] as const;
+
+export function extractToolKeys(rawRunners: unknown): Record<string, RunnerKeyStatus> {
+  const result: Record<string, RunnerKeyStatus> = {};
+  for (const k of KNOWN_TOOL_KEY_NAMES) {
+    result[k] = { configured: false, masked: '' };
+  }
+
+  const mergeKeyObj = (source: unknown) => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return;
+    for (const [keyName, rawVal] of Object.entries(source as Record<string, unknown>)) {
+      if (rawVal && typeof rawVal === 'object') {
+        const entry = rawVal as Record<string, unknown>;
+        const configured = Boolean(entry.configured ?? entry.is_set ?? Boolean(entry.masked));
+        const masked = typeof entry.masked === 'string' && entry.masked ? entry.masked : configured ? '••••' : '';
+        result[keyName] = { configured, masked };
+      } else if (typeof rawVal === 'boolean') {
+        result[keyName] = { configured: rawVal, masked: rawVal ? '••••' : '' };
+      } else if (typeof rawVal === 'string') {
+        const configured = rawVal.trim().length > 0;
+        result[keyName] = { configured, masked: configured ? rawVal : '' };
+      }
+    }
+  };
+
+  if (Array.isArray(rawRunners)) {
+    for (const item of rawRunners) {
+      if (item && typeof item === 'object') {
+        const rec = item as Record<string, unknown>;
+        mergeKeyObj(rec.keys);
+        mergeKeyObj(rec.tool_keys);
+      }
+    }
+  } else if (rawRunners && typeof rawRunners === 'object') {
+    const dict = rawRunners as Record<string, unknown>;
+    mergeKeyObj(dict.tool_keys);
+    if (dict.hermes && typeof dict.hermes === 'object') {
+      const h = dict.hermes as Record<string, unknown>;
+      mergeKeyObj(h.keys);
+      mergeKeyObj(h.tool_keys);
+    }
+  }
+
+  // Keep BRAVE_API_KEY and BRAVE_SEARCH_API_KEY synchronized if either is set
+  if (result.BRAVE_API_KEY?.configured && !result.BRAVE_SEARCH_API_KEY?.configured) {
+    result.BRAVE_SEARCH_API_KEY = { ...result.BRAVE_API_KEY };
+  } else if (result.BRAVE_SEARCH_API_KEY?.configured && !result.BRAVE_API_KEY?.configured) {
+    result.BRAVE_API_KEY = { ...result.BRAVE_SEARCH_API_KEY };
+  }
+
+  return result;
+}
+
+export function normalizeRunners(rawRunners: unknown): RunnerStatus[] {
+  const toolKeys = extractToolKeys(rawRunners);
+  const configuredKeyList = Object.entries(toolKeys)
+    .filter(([, v]) => v.configured)
+    .map(([k]) => k);
+
+  if (Array.isArray(rawRunners)) {
+    if (rawRunners.length === 0) return DEFAULT_RUNNERS_LIST;
+    return rawRunners
+      .filter((r): r is Record<string, unknown> => Boolean(r && typeof r === 'object'))
+      .map((r, idx) => {
+        const id = String(r.id || `runner-${idx}`);
+        const isHermes = id === 'hermes' || id.includes('hermes');
+        const mergedKeys = isHermes
+          ? { ...toolKeys, ...(r.keys && typeof r.keys === 'object' ? (r.keys as Record<string, RunnerKeyStatus>) : {}) }
+          : (r.keys as Record<string, RunnerKeyStatus> | undefined);
+        const firecrawlOn = Boolean(mergedKeys?.FIRECRAWL_API_KEY?.configured);
+        return {
+          id,
+          name: String(r.name || (isHermes ? 'Nous Hermes Warm Runner' : id)),
+          runtime: String(
+            r.runtime ||
+              r.details ||
+              (isHermes
+                ? 'brainsos-agent-hermes-runner (Stateless Multi-Tenant Container)'
+                : 'brainsOS-runner Adapter (LiteLLM Serialized)')
+          ),
+          status: String(r.status || (r.configured === false ? 'standby' : 'online')),
+          version: typeof r.version === 'string' ? r.version : undefined,
+          configured: typeof r.configured === 'boolean' ? r.configured : true,
+          details: typeof r.details === 'string' ? r.details : undefined,
+          endpoint: typeof r.endpoint === 'string' ? r.endpoint : undefined,
+          ui_route: typeof r.ui_route === 'string' ? r.ui_route : isHermes ? '/runner/' : undefined,
+          active_model:
+            typeof r.active_model === 'string'
+              ? r.active_model
+              : typeof r.model === 'string'
+              ? r.model
+              : isHermes
+              ? 'qwen2.5:32b (via LiteLLM :4000)'
+              : 'LiteLLM Default',
+          web_search_mode:
+            typeof r.web_search_mode === 'string'
+              ? r.web_search_mode
+              : isHermes
+              ? firecrawlOn
+                ? 'Firecrawl API Key Active'
+                : 'Keyless Free Tier (Rate-Limited)'
+              : 'Tool Egress Gateway (:8082)',
+          keys_configured: Array.isArray(r.keys_configured)
+            ? (r.keys_configured as string[])
+            : isHermes
+            ? configuredKeyList
+            : [],
+          keys: mergedKeys,
+        };
+      });
+  }
+
+  if (rawRunners && typeof rawRunners === 'object') {
+    const dict = rawRunners as Record<string, unknown>;
+    const normalized: RunnerStatus[] = [];
+    const metaByKey: Record<
+      string,
+      { name: string; runtime: string; ui_route?: string; defaultModel: string; searchMode: string }
+    > = {
+      hermes: {
+        name: 'Nous Hermes Warm Runner',
+        runtime: 'brainsos-agent-hermes-runner (Stateless Multi-Tenant Container)',
+        ui_route: '/runner/',
+        defaultModel: 'qwen2.5:32b (via LiteLLM :4000)',
+        searchMode: toolKeys.FIRECRAWL_API_KEY?.configured
+          ? 'Firecrawl API Key Active'
+          : 'Keyless Free Tier (Rate-Limited)',
+      },
+      claude: {
+        name: 'Anthropic Claude SDK Runner',
+        runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
+        defaultModel: 'claude-sonnet-4-20250514',
+        searchMode: 'Tool Egress Gateway (:8082)',
+      },
+      'claude-sdk': {
+        name: 'Anthropic Claude SDK Runner',
+        runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
+        defaultModel: 'claude-sonnet-4-20250514',
+        searchMode: 'Tool Egress Gateway (:8082)',
+      },
+      openai: {
+        name: 'OpenAI Agents SDK Runner',
+        runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
+        defaultModel: 'gpt-4.1',
+        searchMode: 'Tool Egress Gateway (:8082)',
+      },
+      'openai-sdk': {
+        name: 'OpenAI Agents SDK Runner',
+        runtime: 'brainsOS-runner Adapter (LiteLLM Serialized)',
+        defaultModel: 'gpt-4.1',
+        searchMode: 'Tool Egress Gateway (:8082)',
+      },
+    };
+
+    for (const [key, rawVal] of Object.entries(dict)) {
+      if (key === 'tool_keys') continue;
+      if (!rawVal || typeof rawVal !== 'object' || Array.isArray(rawVal)) continue;
+      const entry = rawVal as Record<string, unknown>;
+      const meta = metaByKey[key] || {
+        name: String(entry.name || key.toUpperCase()),
+        runtime: String(entry.runtime || 'brainsOS-runner Adapter'),
+        defaultModel: String(entry.active_model || entry.model || 'LiteLLM Default'),
+        searchMode: 'Tool Egress Gateway (:8082)',
+      };
+      const isHermes = key === 'hermes' || key.includes('hermes');
+      const containers = Array.isArray(entry.containers) ? entry.containers : [];
+      const containerSummary =
+        containers.length > 0
+          ? containers
+              .map((c) =>
+                c && typeof c === 'object'
+                  ? `${(c as Record<string, unknown>).name || 'hermes'} (${(c as Record<string, unknown>).status || 'running'})`
+                  : String(c)
+              )
+              .join(', ')
+          : '';
+      const configured =
+        typeof entry.configured === 'boolean'
+          ? entry.configured
+          : isHermes
+          ? true
+          : key === 'claude' || key === 'claude-sdk'
+          ? Boolean(toolKeys.ANTHROPIC_API_KEY?.configured || toolKeys.OPENROUTER_API_KEY?.configured)
+          : key === 'openai' || key === 'openai-sdk'
+          ? Boolean(toolKeys.OPENAI_API_KEY?.configured || toolKeys.OPENROUTER_API_KEY?.configured)
+          : true;
+      const statusStr = String(
+        entry.status || (isHermes ? 'online' : configured ? 'online' : 'standby')
+      );
+
+      normalized.push({
+        id: key,
+        name: String(entry.name || meta.name),
+        runtime: String(entry.runtime || entry.details || containerSummary || meta.runtime),
+        status: statusStr,
+        version: typeof entry.version === 'string' ? entry.version : undefined,
+        configured,
+        details: typeof entry.details === 'string' ? entry.details : containerSummary || undefined,
+        endpoint: typeof entry.endpoint === 'string' ? entry.endpoint : undefined,
+        ui_route: typeof entry.ui_route === 'string' ? entry.ui_route : meta.ui_route,
+        active_model: String(entry.active_model || entry.model || meta.defaultModel),
+        web_search_mode: String(entry.web_search_mode || meta.searchMode),
+        keys_configured: isHermes ? configuredKeyList : [],
+        keys: isHermes ? toolKeys : undefined,
+      });
+    }
+
+    if (normalized.length > 0) {
+      return normalized;
+    }
+  }
+
+  return DEFAULT_RUNNERS_LIST;
+}
+
+function normalizeStatusPayload(raw: unknown): SystemStatus {
+  if (!raw || typeof raw !== 'object') return DEFAULT_STATUS;
+  const data = raw as Record<string, unknown>;
+  const nestedIdentity =
+    data.identity && typeof data.identity === 'object'
+      ? (data.identity as Record<string, unknown>)
+      : {};
+
+  const firstbootCompleted =
+    typeof nestedIdentity.firstboot_wizard_completed === 'boolean'
+      ? nestedIdentity.firstboot_wizard_completed
+      : typeof data.firstboot_wizard_completed === 'boolean'
+      ? data.firstboot_wizard_completed
+      : true;
+
+  const rawSuperuserUsername = String(
+    nestedIdentity.superuser_username ?? data.superuser_username ?? ''
+  ).trim();
+  const rawAdminUsername = String(
+    nestedIdentity.admin_username ?? data.admin_username ?? ''
+  ).trim();
+
+  // Never allow superuser_username to default to 'admin' when wizard is not completed or when it equals 'admin'
+  const cleanSuperuserUsername =
+    !firstbootCompleted || rawSuperuserUsername.toLowerCase() === 'admin'
+      ? ''
+      : rawSuperuserUsername || (rawAdminUsername.toLowerCase() !== 'admin' ? rawAdminUsername : '');
+
+  const unitName = String(
+    nestedIdentity.unit_name ??
+      data.unit_name ??
+      (cleanSuperuserUsername ? `${cleanSuperuserUsername}'s Agent Box` : 'Enterprise Agent Box')
+  ).trim();
+
+  const rawLocalDomain = String(
+    nestedIdentity.local_domain ?? data.local_domain ?? 'dgx.local.brainsos.ai'
+  )
+    .trim()
+    .replace(/^mail\./i, '');
+  const localDomain = rawLocalDomain || 'dgx.local.brainsos.ai';
+  const url = String(nestedIdentity.url ?? data.url ?? localDomain)
+    .trim()
+    .replace(/^mail\./i, '');
+  const hostname = String(nestedIdentity.hostname ?? data.hostname ?? localDomain)
+    .trim()
+    .replace(/^mail\./i, '');
+  const instanceId = String(nestedIdentity.instance_id ?? data.instance_id ?? '').trim();
+  const publicIpv4 = String(nestedIdentity.public_ipv4 ?? data.public_ipv4 ?? '').trim();
+  const localIpv4 = String(nestedIdentity.local_ipv4 ?? data.local_ipv4 ?? '').trim();
+  const tlsMode = String(nestedIdentity.tls_mode ?? data.tls_mode ?? 'internal').trim();
+  const acmeEmail = String(nestedIdentity.acme_email ?? data.acme_email ?? '').trim();
+  const superuserName = String(nestedIdentity.superuser_name ?? data.superuser_name ?? '').trim();
+  const preserveHostname = Boolean(
+    nestedIdentity.preserve_hostname ?? data.preserve_hostname ?? true
+  );
+  const repoRoot = String(
+    nestedIdentity.repo_root ?? data.repo_root ?? '/opt/brainsos'
+  ).trim() || '/opt/brainsos';
+  const dataDir = String(
+    nestedIdentity.data_dir ?? data.data_dir ?? '/data'
+  ).trim() || '/data';
+  const mailDomain = String(
+    nestedIdentity.mail_domain ?? data.mail_domain ?? localDomain
+  )
+    .trim()
+    .replace(/^mail\./i, '') || localDomain;
+  const consoleUser = String(
+    nestedIdentity.console_user ??
+      data.console_user ??
+      (cleanSuperuserUsername || rawAdminUsername || 'admin')
+  ).trim() || 'admin';
+
+  const normalizedIdentity: ApplianceIdentity = {
+    unit_name: unitName,
+    instance_id: instanceId,
+    firstboot_wizard_completed: firstbootCompleted,
+    url,
+    local_domain: localDomain,
+    hostname,
+    preserve_hostname: preserveHostname,
+    superuser_name: superuserName,
+    superuser_username: cleanSuperuserUsername,
+    admin_username: cleanSuperuserUsername || rawAdminUsername || 'admin',
+    admin_email: String(
+      nestedIdentity.admin_email ??
+        data.admin_email ??
+        (cleanSuperuserUsername ? `${cleanSuperuserUsername}@${localDomain}` : `admin@${localDomain}`)
+    ),
+    admin_instance_bound: true,
+    tls_mode: tlsMode,
+    acme_email: acmeEmail,
+    public_ipv4: publicIpv4,
+    local_ipv4: localIpv4,
+    repo_root: repoRoot,
+    data_dir: dataDir,
+    mail_domain: mailDomain,
+    console_user: consoleUser,
+  };
+
+  const rawGit = data.git && typeof data.git === 'object' ? (data.git as Record<string, unknown>) : {};
+  const git: GitStatus = {
+    is_git: Boolean(rawGit.is_git ?? true),
+    branch: String(rawGit.branch || 'main'),
+    available_branches: Array.isArray(rawGit.available_branches)
+      ? (rawGit.available_branches as string[])
+      : [String(rawGit.branch || 'main')],
+    current_commit: String(rawGit.current_commit || 'HEAD'),
+    remote_commit: String(rawGit.remote_commit || 'HEAD'),
+    commits_behind: Number(rawGit.commits_behind || 0),
+    update_available: Boolean(rawGit.update_available),
+  };
+
+  const rawOs =
+    (data.os && typeof data.os === 'object' ? (data.os as Record<string, unknown>) : null) ||
+    (data.os_patches && typeof data.os_patches === 'object'
+      ? (data.os_patches as Record<string, unknown>)
+      : null) ||
+    {};
+
+  const os: OsPatchStatus = {
+    distro: String(rawOs.distro || DEFAULT_STATUS.os?.distro || 'Ubuntu 24.04 LTS'),
+    kernel: String(rawOs.kernel || DEFAULT_STATUS.os?.kernel || '6.8.0-aws'),
+    arch: String(rawOs.arch || DEFAULT_STATUS.os?.arch || 'aarch64'),
+    unattended_upgrades_active:
+      typeof rawOs.unattended_upgrades_active === 'boolean' ? rawOs.unattended_upgrades_active : true,
+    pending_security_updates: Number(
+      rawOs.pending_security_updates ?? rawOs.security_updates_count ?? 0
+    ),
+    pending_packages: Array.isArray(rawOs.pending_packages)
+      ? (rawOs.pending_packages as string[])
+      : [],
+    reboot_required: Boolean(rawOs.reboot_required ?? false),
+    reboot_packages: Array.isArray(rawOs.reboot_packages)
+      ? (rawOs.reboot_packages as string[])
+      : [],
+    last_apt_update: typeof rawOs.last_apt_update === 'string' ? rawOs.last_apt_update : undefined,
+  };
+
+  const rawServices =
+    data.services && typeof data.services === 'object' && !Array.isArray(data.services)
+      ? (data.services as Record<string, ServiceStatus>)
+      : DEFAULT_STATUS.services;
+
+  return {
+    ...(data as unknown as SystemStatus),
+    platform: String(data.platform || 'brainsOS'),
+    platform_name: String(data.platform_name || 'AWS EC2 Appliance (AMI)'),
+    platform_detail: String(data.platform_detail || 'AWS ARM64 Graviton • EC2'),
+    unit_name: unitName,
+    firstboot_wizard_completed: firstbootCompleted,
+    url,
+    local_domain: localDomain,
+    superuser_name: superuserName,
+    superuser_username: cleanSuperuserUsername,
+    admin_username: normalizedIdentity.admin_username,
+    admin_email: normalizedIdentity.admin_email,
+    admin_instance_bound: true,
+    tls_mode: tlsMode,
+    acme_email: acmeEmail,
+    hostname,
+    preserve_hostname: preserveHostname,
+    public_ipv4: publicIpv4,
+    local_ipv4: localIpv4,
+    instance_id: instanceId,
+    repo_root: repoRoot,
+    data_dir: dataDir,
+    mail_domain: mailDomain,
+    console_user: consoleUser,
+    identity: normalizedIdentity,
+    git,
+    os,
+    services: rawServices,
+    runners: normalizeRunners(data.runners),
+    overall_update_available: Boolean(data.overall_update_available),
+  };
+}
+
+function deriveUsernameFromFullName(fullName: string): string {
+  const trimmed = fullName.trim().toLowerCase();
+  if (!trimmed) return '';
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const firstWord = (parts[0] || '').replace(/[^a-z0-9]/g, '');
+  const fullSlug = trimmed.replace(/[^a-z0-9]/g, '');
+  let candidate = firstWord.length >= 2 ? firstWord : fullSlug;
+  if (candidate === 'admin' || candidate === 'akadmin') {
+    candidate = parts.length > 1 ? fullSlug : '';
+  }
+  if (candidate === 'admin' || candidate === 'akadmin') {
+    return '';
+  }
+  return candidate.slice(0, 32);
+}
 
 interface UpdateTarget {
   id: string;
@@ -305,7 +796,7 @@ export interface SystemManagerProps {
   standaloneWizard?: boolean;
 }
 
-export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard = false }) => {
+const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = false }) => {
   const [activePane, setActivePane] = useState<OsPane>('overview');
   const [status, setStatus] = useState<SystemStatus | null>(import.meta.env.DEV ? DEFAULT_STATUS : null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -324,6 +815,13 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
   const [showBootstrapToken, setShowBootstrapToken] = useState<boolean>(false);
   const [setupSuperuserName, setSetupSuperuserName] = useState<string>('');
   const [setupAdminUsername, setSetupAdminUsername] = useState<string>('');
+  const [wizardUsernameTouched, setWizardUsernameTouched] = useState<boolean>(false);
+  const [setupUnitName, setSetupUnitName] = useState<string>('Enterprise Agent Box');
+  const [wizardUnitNameTouched, setWizardUnitNameTouched] = useState<boolean>(false);
+  const [identityUnitName, setIdentityUnitName] = useState<string>('Enterprise Agent Box');
+  const [savingIdentityUnitName, setSavingIdentityUnitName] = useState<boolean>(false);
+  const [identitySaveBanner, setIdentitySaveBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isEditingRouting, setIsEditingRouting] = useState<boolean>(false);
   const [setupAdminPassword, setSetupAdminPassword] = useState<string>('');
   const [setupAdminPasswordConfirm, setSetupAdminPasswordConfirm] = useState<string>('');
   const [showSetupPasswords, setShowSetupPasswords] = useState<boolean>(false);
@@ -342,6 +840,10 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
   const [tavilyKey, setTavilyKey] = useState<string>('');
   const [exaKey, setExaKey] = useState<string>('');
   const [braveKey, setBraveKey] = useState<string>('');
+  const [githubTokenKey, setGithubTokenKey] = useState<string>('');
+  const [openrouterKey, setOpenrouterKey] = useState<string>('');
+  const [anthropicKey, setAnthropicKey] = useState<string>('');
+  const [openaiKey, setOpenaiKey] = useState<string>('');
   const [showRunnerKeys, setShowRunnerKeys] = useState<boolean>(false);
   const [savingRunnerConfig, setSavingRunnerConfig] = useState<boolean>(false);
   const [runnerSaveBanner, setRunnerSaveBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -358,14 +860,14 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
   const [copiedLogs, setCopiedLogs] = useState<boolean>(false);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Interactive Host Console State (#333)
+  // Interactive XTerm.js Host Console State (#333)
   const [consoleViewMode, setConsoleViewMode] = useState<'interactive' | 'jobs'>('interactive');
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([
     {
       id: 1,
       type: 'system',
       timestamp: new Date().toLocaleTimeString(),
-      text: 'brainsOS Appliance Host Console (ARM64) — Type "help" for built-in commands or run any host diagnostic command.',
+      text: 'brainsOS Appliance Host Console (ARM64) — Interactive XTerm.js PTY & HTTP Fallback Ready.',
     },
   ]);
   const [consoleInput, setConsoleInput] = useState<string>('');
@@ -374,8 +876,15 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
   const [consoleBusy, setConsoleBusy] = useState<boolean>(false);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const xtermContainerRef = useRef<HTMLDivElement | null>(null);
+  const xtermRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const localLineBufferRef = useRef<string>('');
   const consoleEndRef = useRef<HTMLDivElement | null>(null);
   const consoleInputRef = useRef<HTMLInputElement | null>(null);
+
+  const normalizedRunners = useMemo(() => normalizeRunners(status?.runners), [status?.runners]);
+  const toolKeysMap = useMemo(() => extractToolKeys(status?.runners), [status?.runners]);
 
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
@@ -410,17 +919,33 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     try {
       const res = await fetch('/api/v1/system/status');
       if (res.ok) {
-        const data: SystemStatus = await res.json();
+        const rawData = await res.json();
+        const data = normalizeStatusPayload(rawData);
         setStatus(data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('brainsos:system-status', {
+              detail: { overall_update_available: Boolean(data.overall_update_available) },
+            })
+          );
+        }
         if (data?.git?.branch) {
           setSelectedBranch((prev) => prev || data.git.branch);
+        }
+        if (data?.unit_name) {
+          setSetupUnitName((prev) => (prev === 'Enterprise Agent Box' ? data.unit_name! : prev));
+          setIdentityUnitName(data.unit_name);
         }
         if (data?.local_domain) {
           setSetupLocalDomain((prev) => (prev === 'local.brainsos.ai' ? data.local_domain! : prev));
         }
-        const existingUser = data?.superuser_username || (data?.admin_username && data.admin_username !== 'admin' ? data.admin_username : '');
-        if (existingUser) {
-          setSetupAdminUsername((prev) => prev || existingUser);
+        // Superuser username must NEVER default to 'admin'
+        const isFirstBootIncomplete = data?.firstboot_wizard_completed === false || data?.identity?.firstboot_wizard_completed === false;
+        const candidateUser = (data?.identity?.superuser_username || data?.superuser_username || '').trim();
+        if (isFirstBootIncomplete || candidateUser.toLowerCase() === 'admin') {
+          setSetupAdminUsername((prev) => (prev.toLowerCase() === 'admin' ? '' : prev));
+        } else if (candidateUser) {
+          setSetupAdminUsername((prev) => prev || candidateUser);
         }
         if (data?.superuser_name) {
           setSetupSuperuserName((prev) => prev || data.superuser_name!);
@@ -434,8 +959,10 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
         if (data?.acme_email) {
           setSetupAcmeEmail((prev) => prev || data.acme_email!);
         }
-        if (data?.firstboot_wizard_completed === false && !wizardAutoOpened) {
+        if (isFirstBootIncomplete && !wizardAutoOpened) {
           setWizardAutoOpened(true);
+          setSetupAdminUsername('');
+          setWizardUsernameTouched(false);
           setWizardStep(1);
           setWizardOpen(true);
         }
@@ -463,7 +990,139 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     fetchCsrfToken();
   }, [fetchStatus, fetchCsrfToken]);
 
-  // Connect interactive WebSocket when Console pane is active
+  // Execute a command via HTTP fallback (/api/v1/system/terminal/exec) or send into active PTY
+  const executeConsoleCommand = useCallback(
+    async (rawCmd: string) => {
+      const cmd = rawCmd.trim();
+      if (!cmd) return;
+
+      // If WebSocket PTY is open, send directly over WS as JSON input
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'input', data: `${cmd}\r` }));
+        setConsoleInput('');
+        xtermRef.current?.focus();
+        return;
+      }
+
+      const ts = new Date().toLocaleTimeString();
+      const promptHost = (status?.hostname || status?.local_domain || 'brainsos').split('.')[0];
+      const promptUser =
+        status?.console_user || status?.superuser_username || status?.admin_username || 'admin';
+      const promptRepoRoot = status?.repo_root || '/opt/brainsos';
+
+      setConsoleEntries((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          type: 'input',
+          timestamp: ts,
+          text: `${promptUser}@${promptHost}:${promptRepoRoot}$ ${cmd}`,
+        },
+      ]);
+      setConsoleHistory((prev) => [cmd, ...prev.filter((c) => c !== cmd)].slice(0, 50));
+      setHistoryIdx(-1);
+      setConsoleInput('');
+
+      if (cmd === 'clear' || cmd === 'cls') {
+        setConsoleEntries([]);
+        xtermRef.current?.clear();
+        return;
+      }
+
+      if (cmd === 'help') {
+        const helpLines = [
+          'brainsOS Host Console — Available Diagnostic & Operational Commands:',
+          '  ls -la                   Inspect brainsOS source root directory',
+          '  git status -sb           Check platform repository git status and branch',
+          '  docker ps                List running appliance containers and health states',
+          '  df -h                    Display filesystem disk space utilization',
+          '  htop / top               Interactive process & ARM64 core monitor',
+          '  uname -a                 Display Linux kernel and ARM64 hardware architecture',
+          '  clear                    Clear terminal scrollback buffer',
+        ].join('\r\n');
+        xtermRef.current?.writeln(`\r\n${helpLines}\r\n`);
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            type: 'output',
+            timestamp: ts,
+            text: helpLines,
+          },
+        ]);
+        return;
+      }
+
+      setConsoleBusy(true);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+      try {
+        const res = await fetch('/api/v1/system/terminal/exec', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ command: cmd }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const out = data.output || data.stdout || data.stderr || '(command completed with exit code 0)';
+          xtermRef.current?.writeln(`\r\n${String(out).replace(/\r?\n/g, '\r\n')}`);
+          setConsoleEntries((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 2,
+              type: data.exit_code && data.exit_code !== 0 ? 'error' : 'output',
+              timestamp: new Date().toLocaleTimeString(),
+              text: out,
+            },
+          ]);
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch {
+        let simulated = '';
+        if (cmd.startsWith('uname')) {
+          simulated = `Linux ${status?.hostname || 'brainsos'} ${status?.os?.kernel || '6.8.0-1018-aws'} #19-Ubuntu SMP PREEMPT_DYNAMIC aarch64 GNU/Linux`;
+        } else if (cmd.startsWith('df')) {
+          simulated = [
+            'Filesystem      Size  Used Avail Use% Mounted on',
+            `/dev/nvme0n1p1  ${status?.disk?.total_gb || 915}G  ${status?.disk?.used_gb || 221}G  ${status?.disk?.free_gb || 647}G  ${status?.disk ? (100 - status.disk.free_pct).toFixed(0) : 25}% /`,
+            'tmpfs            16G  1.2M   16G   1% /run',
+          ].join('\n');
+        } else if (cmd.includes('docker ps') || cmd.includes('docker compose ps') || cmd === 'make status') {
+          simulated = [
+            'NAME                            IMAGE                                      STATUS                   PORTS',
+            'brainsos-ingress-caddy          brainsos-caddy:2.8.4                       Up 4 hours (healthy)     80/tcp, 443/tcp',
+            'brainsos-auth-authentik-server  ghcr.io/goauthentik/server:2024.8.3        Up 4 hours (healthy)     9000/tcp',
+            'brainsos-control-litellm        ghcr.io/berriai/litellm:v1.105.0           Up 4 hours (healthy)     4000/tcp',
+            'brainsos-agent-hermes-runner    brainsos-hermes-runner:v0.1.0-arm64        Up 4 hours (healthy)     8090/tcp',
+            'brainsos-git-gitea              gitea/gitea:1.22.3-rootless                Up 4 hours (healthy)     3000/tcp',
+          ].join('\n');
+        } else if (cmd.includes('git') && cmd.includes('status')) {
+          simulated = `On branch ${status?.git?.branch || 'main'}\nYour branch is up to date with 'origin/${status?.git?.branch || 'main'}'.\nnothing to commit, working tree clean`;
+        } else {
+          simulated = `[HTTP Fallback] Executed: ${cmd}`;
+        }
+        xtermRef.current?.writeln(`\r\n${simulated.replace(/\r?\n/g, '\r\n')}`);
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 2,
+            type: 'output',
+            timestamp: new Date().toLocaleTimeString(),
+            text: simulated,
+          },
+        ]);
+      } finally {
+        setConsoleBusy(false);
+        const prompt = `\r\n\x1b[1;32m${promptUser}@${promptHost}\x1b[0m:\x1b[1;34m${promptRepoRoot}\x1b[0m$ `;
+        xtermRef.current?.write(prompt);
+      }
+    },
+    [csrfToken, status]
+  );
+
+  // Connect interactive WebSocket to XTerm PTY
   const connectTerminalWs = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (wsRef.current) {
@@ -479,28 +1138,39 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
       wsRef.current = ws;
       ws.onopen = () => {
         setWsConnected(true);
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            type: 'system',
-            timestamp: new Date().toLocaleTimeString(),
-            text: `Connected to live PTY WebSocket session (${wsUrl}).`,
-          },
-        ]);
+        if (fitAddonRef.current && xtermRef.current) {
+          try {
+            fitAddonRef.current.fit();
+            ws.send(
+              JSON.stringify({
+                type: 'resize',
+                cols: xtermRef.current.cols || 120,
+                rows: xtermRef.current.rows || 36,
+              })
+            );
+            xtermRef.current.focus();
+          } catch {}
+        }
       };
       ws.onmessage = (evt) => {
-        const text = typeof evt.data === 'string' ? evt.data : '';
-        if (!text) return;
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            id: Date.now() + Math.random(),
-            type: 'output',
-            timestamp: new Date().toLocaleTimeString(),
-            text,
-          },
-        ]);
+        const raw = typeof evt.data === 'string' ? evt.data : '';
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.type === 'output' && typeof parsed.data === 'string') {
+              xtermRef.current?.write(parsed.data);
+              return;
+            }
+            if (parsed.type === 'error' && typeof parsed.data === 'string') {
+              xtermRef.current?.writeln(`\r\n\x1b[1;31m[PTY Error] ${parsed.data}\x1b[0m`);
+              return;
+            }
+          }
+        } catch {
+          // Non-JSON payload fallback
+        }
+        xtermRef.current?.write(raw);
       };
       ws.onerror = () => {
         setWsConnected(false);
@@ -513,186 +1183,218 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     }
   }, []);
 
+  // Initialize XTerm.js instance & ResizeObserver when Host Console interactive view is mounted
   useEffect(() => {
-    if (activePane === 'console' && consoleViewMode === 'interactive') {
-      connectTerminalWs();
-      setTimeout(() => consoleInputRef.current?.focus(), 80);
+    if (activePane !== 'console' || consoleViewMode !== 'interactive') {
+      return;
     }
+    const container = xtermContainerRef.current;
+    if (!container) return;
+
+    if (!xtermRef.current) {
+      const term = new XTerm({
+        cursorBlink: true,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        fontSize: 12.5,
+        lineHeight: 1.35,
+        convertEol: true,
+        scrollback: 5000,
+        theme: {
+          background: '#05070B',
+          foreground: '#e2e8f0',
+          cursor: '#00f2fe',
+          selectionBackground: 'rgba(0, 242, 254, 0.25)',
+          black: '#07090e',
+          red: '#f87171',
+          green: '#34d399',
+          yellow: '#fbbf24',
+          blue: '#60a5fa',
+          magenta: '#c084fc',
+          cyan: '#00f2fe',
+          white: '#f8fafc',
+        },
+      });
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.open(container);
+      try {
+        fitAddon.fit();
+      } catch {}
+
+      term.writeln('\x1b[1;36mbrainsOS Operating System • Interactive XTerm.js Host Console (ARM64)\x1b[0m');
+      term.writeln('\x1b[90mConnecting to /api/v1/system/terminal/ws PTY session...\x1b[0m\r\n');
+
+      term.onData((data) => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'input', data }));
+        } else {
+          // Local line buffer for HTTP fallback when WebSocket is disconnected
+          if (data === '\r' || data === '\n') {
+            const cmdToRun = localLineBufferRef.current;
+            localLineBufferRef.current = '';
+            term.write('\r\n');
+            if (cmdToRun.trim()) {
+              executeConsoleCommand(cmdToRun);
+            } else {
+              const promptHost = (status?.hostname || status?.local_domain || 'brainsos').split('.')[0];
+              const promptUser =
+                status?.console_user || status?.superuser_username || status?.admin_username || 'admin';
+              const promptRepoRoot = status?.repo_root || '/opt/brainsos';
+              term.write(`\x1b[1;32m${promptUser}@${promptHost}\x1b[0m:\x1b[1;34m${promptRepoRoot}\x1b[0m$ `);
+            }
+          } else if (data === '\x7f' || data === '\b') {
+            if (localLineBufferRef.current.length > 0) {
+              localLineBufferRef.current = localLineBufferRef.current.slice(0, -1);
+              term.write('\b \b');
+            }
+          } else if (data === '\x03') {
+            localLineBufferRef.current = '';
+            term.write('^C\r\n$ ');
+          } else {
+            localLineBufferRef.current += data;
+            term.write(data);
+          }
+        }
+      });
+
+      xtermRef.current = term;
+      fitAddonRef.current = fitAddon;
+    } else {
+      try {
+        fitAddonRef.current?.fit();
+        xtermRef.current.focus();
+      } catch {}
+    }
+
+    connectTerminalWs();
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (fitAddonRef.current && xtermRef.current) {
+        try {
+          fitAddonRef.current.fit();
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'resize',
+                cols: xtermRef.current.cols || 120,
+                rows: xtermRef.current.rows || 36,
+              })
+            );
+          }
+        } catch {}
+      }
+    });
+    resizeObserver.observe(container);
+
     return () => {
-      if (wsRef.current && activePane !== 'console') {
+      resizeObserver.disconnect();
+    };
+  }, [activePane, consoleViewMode, connectTerminalWs, executeConsoleCommand, status]);
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
         try {
           wsRef.current.close();
         } catch {}
         wsRef.current = null;
-        setWsConnected(false);
+      }
+      if (xtermRef.current) {
+        try {
+          xtermRef.current.dispose();
+        } catch {}
+        xtermRef.current = null;
       }
     };
-  }, [activePane, consoleViewMode, connectTerminalWs]);
-
-  // Execute a command in the interactive Host Console
-  const executeConsoleCommand = async (rawCmd: string) => {
-    const cmd = rawCmd.trim();
-    if (!cmd) return;
-    const ts = new Date().toLocaleTimeString();
-    const promptHost = (status?.hostname || status?.local_domain || 'brainsos').split('.')[0];
-    const promptUser = status?.superuser_username || status?.admin_username || 'operator';
-
-    setConsoleEntries((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        type: 'input',
-        timestamp: ts,
-        text: `${promptUser}@${promptHost}:/opt/brainsos$ ${cmd}`,
-      },
-    ]);
-    setConsoleHistory((prev) => [cmd, ...prev.filter((c) => c !== cmd)].slice(0, 50));
-    setHistoryIdx(-1);
-    setConsoleInput('');
-
-    if (cmd === 'clear' || cmd === 'cls') {
-      setConsoleEntries([]);
-      return;
-    }
-
-    if (cmd === 'help') {
-      setConsoleEntries((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          type: 'output',
-          timestamp: ts,
-          text: [
-            'brainsOS Host Console — Available Diagnostic & Operational Commands:',
-            '  make status              Show multi-plane container & daemon status',
-            '  docker compose ps        List running appliance containers and health states',
-            '  git status / git log -n5 Inspect platform core repository state',
-            '  df -h                    Display filesystem disk space utilization',
-            '  uname -a                 Display Linux kernel and ARM64 hardware architecture',
-            '  uptime / free -h         Display host load average and unified memory usage',
-            '  clear                    Clear terminal scrollback buffer',
-          ].join('\n'),
-        },
-      ]);
-      return;
-    }
-
-    // If WebSocket PTY is open, send directly over WS
-    if (wsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(cmd + '\n');
-      return;
-    }
-
-    // Fallback to HTTP exec endpoint (/api/v1/system/terminal/exec)
-    setConsoleBusy(true);
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-
-    try {
-      const res = await fetch('/api/v1/system/terminal/exec', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ command: cmd }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const out = data.output || data.stdout || data.stderr || '(command completed with exit code 0)';
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 2,
-            type: data.exit_code && data.exit_code !== 0 ? 'error' : 'output',
-            timestamp: new Date().toLocaleTimeString(),
-            text: out,
-          },
-        ]);
-      } else {
-        throw new Error(`HTTP ${res.status}`);
-      }
-    } catch {
-      // Offline / Preview fallback responses for common commands
-      let simulated = '';
-      if (cmd.startsWith('uname')) {
-        simulated = `Linux ${status?.hostname || 'brainsos'} ${status?.os?.kernel || '6.8.0-1018-aws'} #19-Ubuntu SMP PREEMPT_DYNAMIC aarch64 GNU/Linux`;
-      } else if (cmd.startsWith('df')) {
-        simulated = [
-          'Filesystem      Size  Used Avail Use% Mounted on',
-          `/dev/nvme0n1p1  ${status?.disk?.total_gb || 915}G  ${status?.disk?.used_gb || 221}G  ${status?.disk?.free_gb || 647}G  ${status?.disk ? (100 - status.disk.free_pct).toFixed(0) : 25}% /`,
-          'tmpfs            16G  1.2M   16G   1% /run',
-        ].join('\n');
-      } else if (cmd.includes('docker compose ps') || cmd === 'make status') {
-        simulated = [
-          'NAME                            IMAGE                                      STATUS                   PORTS',
-          'brainsos-ingress-caddy          brainsos-caddy:2.8.4                       Up 4 hours (healthy)     80/tcp, 443/tcp',
-          'brainsos-auth-authentik-server  ghcr.io/goauthentik/server:2024.8.3        Up 4 hours (healthy)     9000/tcp',
-          'brainsos-control-litellm        ghcr.io/berriai/litellm:v1.105.0           Up 4 hours (healthy)     4000/tcp',
-          'brainsos-agent-hermes-runner    brainsos-hermes-runner:v0.1.0-arm64        Up 4 hours (healthy)     8090/tcp',
-          'brainsos-git-gitea              gitea/gitea:1.22.3-rootless                Up 4 hours (healthy)     3000/tcp',
-          'brainsos-comms-sogo             brainsos-sogo:latest                       Up 4 hours (healthy)     20000/tcp',
-          'brainsos-obs-langfuse-web       langfuse/langfuse:3                        Up 4 hours (healthy)     3000/tcp',
-        ].join('\n');
-      } else if (cmd.startsWith('git status')) {
-        simulated = `On branch ${status?.git?.branch || 'main'}\nYour branch is up to date with 'origin/${status?.git?.branch || 'main'}'.\nnothing to commit, working tree clean`;
-      } else if (cmd.startsWith('ls')) {
-        simulated = 'AGENTS.md  Makefile  PLANNING.md  README.md  config/  data/  docker-compose.yml  docs/  packages/  scripts/';
-      } else {
-        simulated = `[Host Console] Executed: ${cmd}\n(Connect to live appliance daemon brainsos-system-api for full interactive shell execution)`;
-      }
-      setConsoleEntries((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 2,
-          type: 'output',
-          timestamp: new Date().toLocaleTimeString(),
-          text: simulated,
-        },
-      ]);
-    } finally {
-      setConsoleBusy(false);
-    }
-  };
+  }, []);
 
   // Fallback polling when an SSE connection drops mid-stream
   const pollJobUntilComplete = async (
     jobId: string,
     addLog: (text: string, type?: 'log' | 'info' | 'error' | 'success') => void,
-    onSuccess?: () => void
-  ) => {
+    onSuccess?: () => void,
+    wizardActive: boolean = false
+  ): Promise<'success' | 'failed'> => {
     addLog(`🔄 Ingress proxy reloading — reattaching to background job ${jobId}...`, 'info');
     let seenCount = 0;
-    for (let attempt = 0; attempt < 90; attempt++) {
+    for (let attempt = 0; attempt < 180; attempt++) {
       await new Promise((r) => setTimeout(r, 2000));
+      let jobStillRunningOrUnreachable = false;
       try {
         const res = await fetch(`/api/v1/system/jobs/${jobId}`);
-        if (!res.ok) continue;
-        const job = await res.json();
-        const jobLogs: string[] = Array.isArray(job.logs) ? job.logs : [];
-        if (seenCount === 0 && jobLogs.length > 0) {
-          seenCount = Math.max(0, jobLogs.length - 3);
-        }
-        while (seenCount < jobLogs.length) {
-          addLog(jobLogs[seenCount], 'log');
-          seenCount++;
-        }
-        if (job.status === 'success') {
-          addLog(`✅ Background job ${jobId} completed successfully!`, 'success');
-          setExecutionStatus('success');
-          if (onSuccess) onSuccess();
-          fetchStatus();
-          return;
-        }
-        if (job.status === 'failed') {
-          addLog(`❌ Background job ${jobId} exited with code ${job.exit_code}.`, 'error');
-          setExecutionStatus('failed');
-          fetchStatus();
-          return;
+        if (!res.ok) {
+          jobStillRunningOrUnreachable = true;
+        } else {
+          const job = await res.json();
+          const jobLogs: string[] = Array.isArray(job.logs) ? job.logs : [];
+          if (seenCount === 0 && jobLogs.length > 0) {
+            seenCount = Math.max(0, jobLogs.length - 3);
+          }
+          while (seenCount < jobLogs.length) {
+            addLog(jobLogs[seenCount], 'log');
+            seenCount++;
+          }
+          if (job.status === 'success') {
+            addLog(`✅ Background job ${jobId} completed successfully!`, 'success');
+            setExecutionStatus('success');
+            if (onSuccess) onSuccess();
+            fetchStatus();
+            return 'success';
+          }
+          if (job.status === 'failed') {
+            addLog(`❌ Background job ${jobId} exited with code ${job.exit_code}.`, 'error');
+            setExecutionStatus('failed');
+            fetchStatus();
+            return 'failed';
+          }
+          jobStillRunningOrUnreachable = true;
         }
       } catch {
         // Wait for Caddy ingress to finish restarting
+        jobStillRunningOrUnreachable = true;
+      }
+
+      // After the first 3 polls during wizard setup, also probe /api/v1/system/identity (or /api/v1/system/status).
+      // If firstboot_wizard_completed === true, treat the setup job as 'success' immediately!
+      if (wizardActive && attempt >= 3 && jobStillRunningOrUnreachable) {
+        try {
+          const idRes = await fetch('/api/v1/system/identity');
+          if (idRes.ok) {
+            const idData = await idRes.json();
+            const completed =
+              idData?.firstboot_wizard_completed === true ||
+              idData?.identity?.firstboot_wizard_completed === true;
+            if (completed) {
+              addLog(`✅ Appliance identity & TLS reload verified active!`, 'success');
+              setExecutionStatus('success');
+              if (onSuccess) onSuccess();
+              fetchStatus();
+              return 'success';
+            }
+          } else {
+            const stRes = await fetch('/api/v1/system/status');
+            if (stRes.ok) {
+              const stData = await stRes.json();
+              const completed =
+                stData?.firstboot_wizard_completed === true ||
+                stData?.identity?.firstboot_wizard_completed === true;
+              if (completed) {
+                addLog(`✅ Appliance identity & TLS reload verified active!`, 'success');
+                setExecutionStatus('success');
+                if (onSuccess) onSuccess();
+                fetchStatus();
+                return 'success';
+              }
+            }
+          }
+        } catch {
+          // Continue polling while Caddy finishes reloading
+        }
       }
     }
     setExecutionStatus('failed');
     addLog(`⚠️ Timed out waiting for background job ${jobId}.`, 'error');
+    return 'failed';
   };
 
   // Helper to stream any SSE job endpoint into the Console Job Logs view
@@ -864,7 +1566,14 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     if (firecrawlKey.trim()) payload.FIRECRAWL_API_KEY = firecrawlKey.trim();
     if (tavilyKey.trim()) payload.TAVILY_API_KEY = tavilyKey.trim();
     if (exaKey.trim()) payload.EXA_API_KEY = exaKey.trim();
-    if (braveKey.trim()) payload.BRAVE_SEARCH_API_KEY = braveKey.trim();
+    if (braveKey.trim()) {
+      payload.BRAVE_SEARCH_API_KEY = braveKey.trim();
+      payload.BRAVE_API_KEY = braveKey.trim();
+    }
+    if (githubTokenKey.trim()) payload.GITHUB_TOKEN = githubTokenKey.trim();
+    if (openrouterKey.trim()) payload.OPENROUTER_API_KEY = openrouterKey.trim();
+    if (anthropicKey.trim()) payload.ANTHROPIC_API_KEY = anthropicKey.trim();
+    if (openaiKey.trim()) payload.OPENAI_API_KEY = openaiKey.trim();
 
     try {
       const res = await fetch('/api/v1/system/runners/hermes/config', {
@@ -881,6 +1590,10 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
         setTavilyKey('');
         setExaKey('');
         setBraveKey('');
+        setGithubTokenKey('');
+        setOpenrouterKey('');
+        setAnthropicKey('');
+        setOpenaiKey('');
         fetchStatus();
       } else {
         let detail = res.statusText;
@@ -906,6 +1619,112 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     } finally {
       setSavingRunnerConfig(false);
     }
+  };
+
+  const handleSaveIdentityUnitName = async () => {
+    const cleanUnitName = identityUnitName.trim() || 'Enterprise Agent Box';
+    setSavingIdentityUnitName(true);
+    setIdentitySaveBanner(null);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    try {
+      const res = await fetch('/api/v1/system/identity', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ unit_name: cleanUnitName }),
+      });
+      if (res.ok) {
+        setSetupUnitName(cleanUnitName);
+        setIdentitySaveBanner({
+          type: 'success',
+          text: `Unit Identity updated to "${cleanUnitName}".`,
+        });
+        fetchStatus();
+      } else {
+        let detail = res.statusText;
+        try {
+          const d = await res.json();
+          if (d?.detail) detail = d.detail;
+        } catch {}
+        throw new Error(detail);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (import.meta.env.DEV) {
+        setSetupUnitName(cleanUnitName);
+        setStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                unit_name: cleanUnitName,
+                identity: { ...(prev.identity || {}), unit_name: cleanUnitName },
+              }
+            : prev
+        );
+        setIdentitySaveBanner({
+          type: 'success',
+          text: `[Dev Preview] Unit Identity updated to "${cleanUnitName}".`,
+        });
+      } else {
+        setIdentitySaveBanner({
+          type: 'error',
+          text: `Failed saving Unit Name: ${msg}`,
+        });
+      }
+    } finally {
+      setSavingIdentityUnitName(false);
+    }
+  };
+
+  const handleStartEditRouting = () => {
+    const currentDomain = status?.local_domain || status?.url || 'dgx.local.brainsos.ai';
+    setSetupLocalDomain(currentDomain);
+    setSetupUrl(status?.url || currentDomain);
+    const rawTls = (status?.tls_mode || 'internal').toLowerCase();
+    setSetupTlsMode(
+      rawTls === 'acme' || rawTls === 'public_acme'
+        ? 'acme'
+        : rawTls === 'route53'
+          ? 'route53'
+          : 'internal'
+    );
+    setSetupAcmeEmail(status?.acme_email || status?.admin_email || '');
+    setIsEditingRouting(true);
+  };
+
+  const handleSaveRoutingInline = async () => {
+    const cleanDomain = setupLocalDomain
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/.*$/, '')
+      .replace(/^mail\./i, '');
+    if (!cleanDomain) {
+      setIdentitySaveBanner({
+        type: 'error',
+        text: 'Appliance Hostname (FQDN) cannot be empty.',
+      });
+      return;
+    }
+    setIsEditingRouting(false);
+    await runStreamedJob(
+      '/api/v1/system/identity',
+      {
+        url: cleanDomain,
+        local_domain: cleanDomain,
+        tls_mode: setupTlsMode,
+        acme_email: setupAcmeEmail.trim() || undefined,
+        force: true,
+      },
+      `🌐 Applying Appliance Hostname (${cleanDomain}) & TLS Mode (${setupTlsMode.toUpperCase()})...`,
+      () => {
+        setIdentitySaveBanner({
+          type: 'success',
+          text: `Appliance Hostname & Routing updated to ${cleanDomain} (${setupTlsMode.toUpperCase()}).`,
+        });
+        fetchStatus();
+      }
+    );
   };
 
   const handleGracefulReboot = async () => {
@@ -944,10 +1763,22 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
 
   const handleOpenWizard = (initialStep: 1 | 2 | 3 = 1) => {
     if (status?.local_domain) setSetupLocalDomain(status.local_domain);
-    const existingSuperuser =
+    if (status?.unit_name || status?.identity?.unit_name) {
+      setSetupUnitName(status.identity?.unit_name || status.unit_name || 'Enterprise Agent Box');
+    }
+    const isFirstBootIncomplete =
+      status?.firstboot_wizard_completed === false || status?.identity?.firstboot_wizard_completed === false;
+    const rawCandidate = (
+      status?.identity?.superuser_username ||
       status?.superuser_username ||
-      (status?.admin_username && status.admin_username !== 'admin' ? status.admin_username : '');
+      status?.admin_username ||
+      ''
+    ).trim();
+    // Never default Superuser Username to 'admin'
+    const existingSuperuser =
+      isFirstBootIncomplete || rawCandidate.toLowerCase() === 'admin' ? '' : rawCandidate;
     setSetupAdminUsername(existingSuperuser);
+    setWizardUsernameTouched(Boolean(existingSuperuser));
     if (status?.superuser_name) setSetupSuperuserName(status.superuser_name);
     if (status?.url) setSetupUrl(status.url);
     if (status?.tls_mode && ['internal', 'acme', 'route53'].includes(status.tls_mode)) {
@@ -962,12 +1793,38 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     setWizardOpen(true);
   };
 
-  // Dynamic Domain Suggestion when Superuser Username changes (#333)
+  // Auto-derive Superuser Username & Suggested Domain when typing Superuser Full Name (while !wizardUsernameTouched)
+  const handleSuperuserFullNameChange = (val: string) => {
+    setSetupSuperuserName(val);
+    const firstWordRaw = val.trim().split(/\s+/)[0] || '';
+    if (!wizardUnitNameTouched) {
+      if (firstWordRaw.length >= 2) {
+        const capitalized = firstWordRaw.charAt(0).toUpperCase() + firstWordRaw.slice(1);
+        setSetupUnitName(`${capitalized}'s Agent Box`);
+      } else {
+        setSetupUnitName('Enterprise Agent Box');
+      }
+    }
+    if (!wizardUsernameTouched) {
+      const derived = deriveUsernameFromFullName(val);
+      setSetupAdminUsername(derived);
+      if (!localDomainManuallyEdited) {
+        if (derived.length >= 2) {
+          setSetupLocalDomain(`${derived}.aws.cloud.brainsos.ai`);
+        } else {
+          setSetupLocalDomain('local.brainsos.ai');
+        }
+      }
+    }
+  };
+
+  // Dynamic Domain Suggestion when Superuser Username is manually edited (#333)
   const handleSuperuserUsernameChange = (val: string) => {
+    setWizardUsernameTouched(true);
     setSetupAdminUsername(val);
     const clean = val.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
     if (!localDomainManuallyEdited) {
-      if (clean.length >= 2) {
+      if (clean.length >= 2 && clean !== 'admin' && clean !== 'akadmin') {
         setSetupLocalDomain(`${clean}.aws.cloud.brainsos.ai`);
       } else {
         setSetupLocalDomain('local.brainsos.ai');
@@ -1082,6 +1939,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     const cleanLocal = setupLocalDomain.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     const cleanUser = setupAdminUsername.trim();
     const cleanName = setupSuperuserName.trim() || cleanUser;
+    const cleanUnitName = setupUnitName.trim() || 'Enterprise Agent Box';
     const cleanUrl = setupUrl.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     const isInitialBoot = Boolean(standaloneWizard || status?.firstboot_wizard_completed === false);
 
@@ -1091,12 +1949,12 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
       return;
     }
     if (!cleanUser || !/^[a-zA-Z0-9._-]{2,64}$/.test(cleanUser)) {
-      setSetupError('Superuser username must be 2–64 alphanumeric characters (e.g. jdoe).');
+      setSetupError('Superuser username must be 2–64 alphanumeric characters (e.g. alex or jdoe, not admin).');
       setWizardStep(1);
       return;
     }
     if (cleanUser.toLowerCase() === 'admin' || cleanUser.toLowerCase() === 'akadmin') {
-      setSetupError('The "admin" account is permanently reserved and bound to the EC2 Instance ID. Please choose a personal Superuser username (e.g. jdoe).');
+      setSetupError('The "admin" account is permanently reserved and bound to the EC2 Instance ID. Please choose a personal Superuser username (e.g. alex or jdoe).');
       setWizardStep(1);
       return;
     }
@@ -1135,6 +1993,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
         headers,
         body: JSON.stringify({
           bootstrap_token: setupBootstrapToken.trim() || undefined,
+          unit_name: cleanUnitName,
           local_domain: cleanLocal,
           superuser_name: cleanName,
           superuser_username: cleanUser,
@@ -1177,13 +2036,13 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
       {
         id: 1,
         timestamp: startTimestamp,
-        text: `🪄 Provisioning Superuser (${cleanUser}) & Applying Appliance Identity...`,
+        text: `🪄 Provisioning Superuser (${cleanUser}) & Applying Unit Identity (${cleanUnitName})...`,
         type: 'info',
       },
       {
         id: 2,
         timestamp: startTimestamp,
-        text: `🌐 Local Domain: ${cleanLocal} | Superuser: ${cleanUser}@${cleanLocal} | Web URL: https://${cleanUrl}/ (${setupTlsMode})`,
+        text: `🌐 Unit: ${cleanUnitName} | Hostname/FQDN: ${cleanLocal} | Superuser: ${cleanUser}@${cleanLocal} | Web URL: https://${cleanUrl}/ (${setupTlsMode})`,
         type: 'info',
       },
     ]);
@@ -1223,7 +2082,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                 } else if (payload.type === 'complete') {
                   completedCleanly = true;
                   if (payload.exit_code === 0) {
-                    addLog(`✅ Superuser account, hostname, Gitea repo, mailboxes, and TLS configured!`, 'success');
+                    addLog(`✅ Superuser account, unit identity, hostname, Gitea repo, mailboxes, and TLS configured!`, 'success');
                     setExecutionStatus('success');
                     if (wasFirstBoot || (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase())) {
                       setNewConfiguredUrl(`https://${cleanUrl}/`);
@@ -1245,14 +2104,33 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
         }
       } catch (streamErr: unknown) {
         if (activeJobId && !completedCleanly) {
-          await pollJobUntilComplete(activeJobId, addLog, () => {
-            if (wasFirstBoot || (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase())) {
-              setNewConfiguredUrl(`https://${cleanUrl}/`);
-            }
-          });
+          await pollJobUntilComplete(
+            activeJobId,
+            addLog,
+            () => {
+              if (wasFirstBoot || (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase())) {
+                setNewConfiguredUrl(`https://${cleanUrl}/`);
+              }
+            },
+            true
+          );
           return;
         }
         throw streamErr;
+      }
+
+      if (!completedCleanly && activeJobId) {
+        await pollJobUntilComplete(
+          activeJobId,
+          addLog,
+          () => {
+            if (wasFirstBoot || (previousUrl && cleanUrl.toLowerCase() !== previousUrl.toLowerCase())) {
+              setNewConfiguredUrl(`https://${cleanUrl}/`);
+            }
+          },
+          true
+        );
+        return;
       }
 
       fetchStatus();
@@ -1266,9 +2144,11 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
   const isStandaloneWizard = Boolean(standaloneWizard || status?.firstboot_wizard_completed === false);
 
   const renderWizardCardContent = (standalone: boolean) => {
-    const suggestedDom = setupAdminUsername.trim()
-      ? `${setupAdminUsername.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')}.aws.cloud.brainsos.ai`
-      : 'username.aws.cloud.brainsos.ai';
+    const cleanWizardSlug = setupAdminUsername.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const suggestedDom =
+      cleanWizardSlug && cleanWizardSlug !== 'admin' && cleanWizardSlug !== 'akadmin'
+        ? `${cleanWizardSlug}.aws.cloud.brainsos.ai`
+        : 'username.aws.cloud.brainsos.ai';
 
     return (
       <div className="w-full max-w-2xl bg-[#0D111A] border border-white/15 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -1288,7 +2168,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                 </span>
               </div>
               <p className="font-mono text-xs text-slate-400 mt-0.5">
-                Provision your personal Superuser account, unit FQDN &amp; mail domain, and HTTPS ingress
+                Provision your personal Superuser account, Unit Identity, Appliance Hostname (FQDN), and HTTPS ingress
               </p>
             </div>
           </div>
@@ -1326,8 +2206,8 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                 : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
             }`}
           >
-            <div className="text-[10px] text-[#00f2fe] font-bold">2. UNIT IDENTITY</div>
-            <div className="truncate font-semibold mt-0.5">Local Domain &amp; Hostname</div>
+            <div className="text-[10px] text-[#00f2fe] font-bold">2. UNIT &amp; HOSTNAME</div>
+            <div className="truncate font-semibold mt-0.5">Unit Identity &amp; FQDN</div>
           </button>
           <button
             type="button"
@@ -1398,7 +2278,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                 <input
                   type="text"
                   value={setupSuperuserName}
-                  onChange={(e) => setSetupSuperuserName(e.target.value)}
+                  onChange={(e) => handleSuperuserFullNameChange(e.target.value)}
                   placeholder="e.g. Jane Doe"
                   className="w-full px-3.5 py-2 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
                 />
@@ -1412,7 +2292,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                   type="text"
                   value={setupAdminUsername}
                   onChange={(e) => handleSuperuserUsernameChange(e.target.value)}
-                  placeholder="e.g. jdoe"
+                  placeholder="e.g. alex or jdoe (not admin)"
                   className="w-full px-3.5 py-2 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
                 />
               </div>
@@ -1420,7 +2300,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
 
             {setupAdminUsername.trim() && (
               <div className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-[11px] flex items-center justify-between">
-                <span className="text-slate-400">Suggested Unit Domain (Step 2):</span>
+                <span className="text-slate-400">Suggested Appliance Hostname / FQDN (Step 2):</span>
                 <span className="text-[#00f2fe] font-semibold">{suggestedDom}</span>
               </div>
             )}
@@ -1515,14 +2395,54 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
           </div>
         )}
 
-        {/* STEP 2: Unit Identity & Local Domain */}
+        {/* STEP 2: Unit Identity vs Appliance Hostname (FQDN) & Local Domain */}
         {wizardStep === 2 && (
           <div className="space-y-4 font-mono text-xs">
-            <div className="space-y-1.5">
+            {/* Concept 1: Unit Identity */}
+            <div className="p-4 rounded-xl bg-[#07090E] border border-white/10 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="block text-slate-200 font-semibold">
-                  Appliance Local Domain &amp; Unit FQDN (<code className="text-[#00f2fe]">BRAINSOS_LOCAL_DOMAIN</code>)
-                </label>
+                <span className="text-[11px] uppercase tracking-wider text-[#00f2fe] font-bold">
+                  1. Unit Identity (Logical Display Name &amp; Hardware Unit ID)
+                </span>
+                <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] text-slate-300">
+                  Hardware Unit ID: <strong className="text-white">{status?.identity?.instance_id || status?.instance_id || 'local-dev'}</strong>
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="block text-slate-200 font-semibold">
+                    Unit Name (<code className="text-[#00f2fe]">unit_name</code>)
+                  </label>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    Logical display identity of this Agent-in-a-Box appliance (e.g. &quot;Enterprise Agent Box&quot; or &quot;Alex&apos;s Agent Box&quot;).
+                  </p>
+                  <input
+                    type="text"
+                    value={setupUnitName}
+                    onChange={(e) => {
+                      setWizardUnitNameTouched(true);
+                      setSetupUnitName(e.target.value);
+                    }}
+                    placeholder="e.g. Enterprise Agent Box"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                  />
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-0.5">
+                  <span className="text-[10px] uppercase text-slate-500 block">Immutable Hardware ID</span>
+                  <span className="text-white font-semibold block truncate">
+                    {status?.identity?.instance_id || status?.instance_id || 'local-dev'}
+                  </span>
+                  <span className="text-[10px] text-emerald-400 block">Read-only cloud/hardware binding</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Concept 2: Appliance Hostname (FQDN) & External Routing */}
+            <div className="p-4 rounded-xl bg-[#07090E] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-bold">
+                  2. Appliance Hostname (FQDN) &amp; External Routing
+                </span>
                 {localDomainManuallyEdited && setupAdminUsername.trim() && (
                   <button
                     type="button"
@@ -1536,19 +2456,30 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 font-sans">
-                Default suggested from your Superuser username (<code className="font-mono text-[#00f2fe]">&lt;username&gt;.aws.cloud.brainsos.ai</code>). Sets OS hostname (<code className="font-mono">hostname -f</code>), Postfix/Dovecot/SOGo mailboxes, and Langfuse telemetry tags.
-              </p>
-              <input
-                type="text"
-                value={setupLocalDomain}
-                onChange={(e) => {
-                  setLocalDomainManuallyEdited(true);
-                  setSetupLocalDomain(e.target.value);
-                }}
-                placeholder="e.g. jdoe.aws.cloud.brainsos.ai"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-              />
+              <div className="space-y-1.5">
+                <label className="block text-slate-200 font-semibold">
+                  Appliance Hostname / Local Domain (<code className="text-[#00f2fe]">local_domain</code>)
+                </label>
+                <p className="text-[11px] text-slate-400 font-sans">
+                  Network FQDN (<code className="font-mono text-[#00f2fe]">&lt;username&gt;.aws.cloud.brainsos.ai</code>), TLS certificate SAN, OS <code className="font-mono">hostname -f</code>, and internal mail domain.
+                </p>
+                <input
+                  type="text"
+                  value={setupLocalDomain}
+                  onChange={(e) => {
+                    setLocalDomainManuallyEdited(true);
+                    setSetupLocalDomain(e.target.value);
+                  }}
+                  placeholder="e.g. jdoe.aws.cloud.brainsos.ai"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5 text-slate-400">
+                <span>External Web URL (<code className="text-slate-300">url</code>):</span>
+                <span className="text-white font-semibold">
+                  https://{(setupUrl.trim() || setupLocalDomain.trim() || suggestedDom).replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}/
+                </span>
+              </div>
             </div>
 
             {(() => {
@@ -1566,18 +2497,20 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
               return (
                 <div className="p-4 rounded-xl bg-[#07090E]/90 border border-white/10 space-y-3">
                   <div className="text-[11px] uppercase tracking-wider text-[#00f2fe] font-semibold">
-                    Live Coherent Identity Preview
+                    Live Coherent Identity &amp; Routing Preview
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
                     <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
-                      <span className="text-slate-500 block">OS Hostname (/etc/hosts):</span>
-                      <span className="text-white font-semibold truncate block">{previewDom}</span>
-                      <span className="text-emerald-400 block text-[10px] mt-0.5">short: {shortHost}</span>
+                      <span className="text-slate-500 block">Unit Identity:</span>
+                      <span className="text-white font-semibold truncate block">{setupUnitName.trim() || 'Enterprise Agent Box'}</span>
+                      <span className="text-emerald-400 block text-[10px] mt-0.5">
+                        ID: {status?.identity?.instance_id || status?.instance_id || 'local-dev'}
+                      </span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
-                      <span className="text-slate-500 block">Langfuse Telemetry Tag:</span>
+                      <span className="text-slate-500 block">Appliance Hostname (FQDN):</span>
                       <span className="text-[#00f2fe] font-semibold truncate block">{previewDom}</span>
-                      <span className="text-slate-400 block text-[10px] mt-0.5">OTel host.name synced</span>
+                      <span className="text-slate-400 block text-[10px] mt-0.5">short: {shortHost} • OTel synced</span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
                       <span className="text-slate-500 block">Gitea Source Control:</span>
@@ -1926,8 +2859,11 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     },
   ];
 
-  const hermesRunner = status?.runners?.find((r) => r.id === 'hermes') || DEFAULT_STATUS.runners![0];
-  const firecrawlConfigured = Boolean(hermesRunner?.keys?.FIRECRAWL_API_KEY?.configured);
+  const hermesRunner =
+    normalizedRunners.find((r) => r.id === 'hermes' || r.id.includes('hermes')) || DEFAULT_RUNNERS_LIST[0];
+  const firecrawlConfigured = Boolean(
+    toolKeysMap.FIRECRAWL_API_KEY?.configured || hermesRunner?.keys?.FIRECRAWL_API_KEY?.configured
+  );
 
   return (
     <div className="h-full flex flex-col bg-[#07090E] text-slate-200 overflow-hidden font-sans antialiased selection:bg-[#00f2fe] selection:text-black">
@@ -1942,6 +2878,9 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
               <h1 className="font-headline font-bold text-sm sm:text-base text-white tracking-tight">
                 brainsOS Operating System Control Center
               </h1>
+              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe] font-semibold">
+                {status?.identity?.unit_name || status?.unit_name || 'Enterprise Agent Box'}
+              </span>
               <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
                 {status?.os?.distro || 'Ubuntu 24.04 LTS'} • {status?.os?.arch || 'ARM64'}
               </span>
@@ -2027,6 +2966,12 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
           {/* Bottom Appliance Quick Telemetry in Left Rail */}
           <div className="hidden md:flex flex-col mt-auto pt-3 border-t border-white/10 px-2.5 space-y-2 font-mono text-[10.5px]">
             <div className="flex items-center justify-between text-slate-400">
+              <span>Unit Identity:</span>
+              <span className="text-white font-semibold truncate max-w-[110px]">
+                {status?.identity?.unit_name || status?.unit_name || 'Enterprise Agent Box'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-slate-400">
               <span>Root Disk Free:</span>
               <span className={status?.disk?.warning ? 'text-amber-400 font-semibold' : 'text-emerald-400 font-semibold'}>
                 {status?.disk ? `${status.disk.free_gb} GB (${status.disk.free_pct}%)` : '—'}
@@ -2039,7 +2984,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
             <div className="flex items-center justify-between text-slate-400">
               <span>Superuser:</span>
               <span className="text-[#00f2fe] font-semibold">
-                {status?.superuser_username || status?.admin_username || 'jsm'}
+                {status?.superuser_username || 'Not Provisioned'}
               </span>
             </div>
           </div>
@@ -2092,7 +3037,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                     Operating System &amp; Appliance Identity Specification
                   </h2>
                   <p className="font-mono text-xs text-slate-400">
-                    Hardware architecture, kernel release, unit domain (<code className="text-[#00f2fe]">BRAINSOS_LOCAL_DOMAIN</code>), and SSO superuser bindings
+                    Unit Identity (<code className="text-[#00f2fe]">unit_name</code> &amp; <code className="text-slate-300">instance_id</code>), Appliance Hostname (FQDN <code className="text-[#00f2fe]">local_domain</code>), and SSO Superuser bindings
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2104,107 +3049,234 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                     <Download className="w-3.5 h-3.5 text-[#00f2fe]" />
                     <span>Download Root CA</span>
                   </a>
-                  <button
-                    onClick={() => handleOpenWizard(1)}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-mono font-semibold flex items-center gap-1.5"
-                  >
-                    <Wand2 className="w-3.5 h-3.5" />
-                    <span>Configure Identity &amp; Domain...</span>
-                  </button>
                 </div>
               </div>
 
-              {/* Structured OS Property Table */}
-              <div className="rounded-xl border border-white/10 bg-[#0B0E14] overflow-hidden divide-y divide-white/5 font-mono text-xs">
-                <div className="px-4 py-2.5 bg-[#101520] text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                  Hardware &amp; Kernel Environment
+              {identitySaveBanner && (
+                <div
+                  className={`p-3 rounded-lg border font-mono text-xs ${
+                    identitySaveBanner.type === 'success'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+                      : 'bg-red-500/15 border-red-500/40 text-red-200'
+                  }`}
+                >
+                  {identitySaveBanner.text}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">Appliance Platform</span>
-                  <span className="sm:col-span-2 text-white font-semibold">
-                    {status?.platform_name || 'AWS EC2 Appliance (AMI)'} <span className="text-slate-400 font-normal">({status?.platform_detail || 'ARM64'})</span>
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">OS Distribution &amp; Kernel</span>
-                  <span className="sm:col-span-2 text-slate-200">
-                    {status?.os?.distro || 'Ubuntu 24.04 LTS'} • Linux {status?.os?.kernel || '6.8.0-1018-aws'} ({status?.os?.arch || 'aarch64'})
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">EC2 Instance ID</span>
-                  <span className="sm:col-span-2 text-slate-200">
-                    {status?.instance_id || 'Baremetal / Protected'}
-                  </span>
-                </div>
+              )}
 
-                <div className="px-4 py-2.5 bg-[#101520] text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                  Network, Hostname &amp; TLS Ingress
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">OS Hostname (FQDN)</span>
-                  <span className="sm:col-span-2 text-white font-semibold flex items-center gap-2 flex-wrap">
-                    <span>{status?.hostname || status?.local_domain || 'local.brainsos.ai'}</span>
-                    {status?.preserve_hostname && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px]">
-                        preserve_hostname: true
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">Local Unit Domain (BRAINSOS_LOCAL_DOMAIN)</span>
-                  <span className="sm:col-span-2 text-[#00f2fe] font-semibold">
-                    {status?.local_domain || 'local.brainsos.ai'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">External Browser URL (BRAINSOS_URL)</span>
-                  <span className="sm:col-span-2 text-slate-200">
-                    https://{status?.url || 'local.brainsos.ai'}/
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">Public / Private IPv4</span>
-                  <span className="sm:col-span-2 text-slate-200">
-                    {status?.public_ipv4 || 'N/A'} / {status?.local_ipv4 || '127.0.0.1'}
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">TLS Certificate Mode</span>
-                  <span className="sm:col-span-2 text-emerald-300 font-semibold uppercase">
-                    {status?.tls_mode || 'internal'}
-                  </span>
-                </div>
-
-                <div className="px-4 py-2.5 bg-[#101520] text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                  Superuser &amp; Break-Glass Admin Accounts
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">Primary Superuser Account</span>
-                  <span className="sm:col-span-2 text-white font-semibold flex items-center gap-2 flex-wrap">
-                    <UserCheck className="w-3.5 h-3.5 text-[#00f2fe]" />
-                    <span>{status?.superuser_username || status?.admin_username || 'jsm'}</span>
-                    <span className="text-slate-400 font-normal">
-                      ({status?.admin_email || `${status?.admin_username || 'jsm'}@${status?.local_domain || 'local.brainsos.ai'}`})
+              {/* Two Distinct Identity Cards: 1. Unit Identity & Source Paths vs. 2. Appliance Hostname (FQDN) & Network Routing */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono text-xs">
+                {/* Card 1: Unit Identity & Source Paths */}
+                <div className="p-4 rounded-xl border border-white/10 bg-[#0B0E14] space-y-3">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                    <span className="text-[11px] uppercase tracking-wider text-[#00f2fe] font-bold">
+                      1. Unit Identity &amp; Source Paths
                     </span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-semibold">
+                      Hardware Unit ID: {status?.identity?.instance_id || status?.instance_id || 'local-gx10'}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-300 font-semibold">
+                      Unit Name (<code className="text-[#00f2fe]">unit_name</code>)
+                    </label>
+                    <p className="text-[11px] text-slate-400 font-sans">
+                      Logical display identity of this Agent-in-a-Box appliance (e.g. &quot;Enterprise Agent Box&quot;).
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={identityUnitName}
+                        onChange={(e) => setIdentityUnitName(e.target.value)}
+                        placeholder="Enterprise Agent Box"
+                        className="flex-1 px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveIdentityUnitName}
+                        disabled={savingIdentityUnitName}
+                        className="px-3 py-1.5 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] font-semibold shrink-0 disabled:opacity-50"
+                      >
+                        {savingIdentityUnitName ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-white/5 space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between py-0.5">
+                      <span className="text-slate-400">Hardware Unit ID (<code className="text-slate-300">instance_id</code>):</span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-semibold">
+                        {status?.identity?.instance_id || status?.instance_id || 'local-gx10'} (Read-Only)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-0.5 border-t border-white/5">
+                      <span className="text-slate-400">brainsOS Source Root:</span>
+                      <code className="text-slate-200 font-semibold">{status?.repo_root || '/opt/brainsos'}</code>
+                    </div>
+                    <div className="flex items-center justify-between py-0.5 border-t border-white/5">
+                      <span className="text-slate-400">Fleet Data Directory:</span>
+                      <code className="text-slate-200 font-semibold">{status?.data_dir || '/data'}</code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 2: Appliance Hostname (FQDN) & Network Routing */}
+                <div className="p-4 rounded-xl border border-white/10 bg-[#0B0E14] space-y-3">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                    <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-bold">
+                      2. Appliance Hostname (FQDN) &amp; Network Routing
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => (isEditingRouting ? setIsEditingRouting(false) : handleStartEditRouting())}
+                      className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-[#00f2fe] font-semibold"
+                    >
+                      {isEditingRouting ? 'Cancel' : 'Edit Hostname & TLS'}
+                    </button>
+                  </div>
+                  {isEditingRouting ? (
+                    <div className="space-y-3 pt-1">
+                      <div className="space-y-1">
+                        <label className="block text-slate-300 font-semibold">
+                          Appliance Hostname (FQDN)
+                        </label>
+                        <input
+                          type="text"
+                          value={setupLocalDomain}
+                          onChange={(e) => setSetupLocalDomain(e.target.value)}
+                          placeholder="dgx.local.brainsos.ai"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        />
+                        <p className="text-[11px] text-slate-400 font-sans">
+                          Sets primary HTTPS hostname and derives mail domain <code className="text-amber-300">mail.{setupLocalDomain.trim().replace(/^mail\./i, '') || 'dgx.local.brainsos.ai'}</code>.
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-slate-300 font-semibold">
+                          TLS Certificate Mode
+                        </label>
+                        <select
+                          value={setupTlsMode}
+                          onChange={(e) => setSetupTlsMode(e.target.value as 'internal' | 'acme' | 'route53')}
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        >
+                          <option value="internal">Internal Appliance Root CA (LAN / Private)</option>
+                          <option value="acme">Let&apos;s Encrypt Public ACME (HTTP-01)</option>
+                          <option value="route53">AWS Route 53 Public ACME (DNS-01)</option>
+                        </select>
+                      </div>
+                      {setupTlsMode !== 'internal' && (
+                        <div className="space-y-1">
+                          <label className="block text-slate-300 font-semibold">
+                            ACME Contact Email
+                          </label>
+                          <input
+                            type="email"
+                            value={setupAcmeEmail}
+                            onChange={(e) => setSetupAcmeEmail(e.target.value)}
+                            placeholder="admin@brainsos.ai"
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingRouting(false)}
+                          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 text-xs"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveRoutingInline}
+                          className="px-3.5 py-1.5 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] font-semibold text-xs"
+                        >
+                          Apply Hostname &amp; Reload Ingress
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="py-1 space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-300 font-semibold">Appliance Hostname (FQDN):</span>
+                          <span className="text-[#00f2fe] font-bold">
+                            {status?.local_domain || 'dgx.local.brainsos.ai'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-sans">
+                          Primary domain for HTTPS ingress, SSO, and user logins
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between py-1.5 border-t border-white/5">
+                        <span className="text-slate-400">Web Portal Ingress:</span>
+                        <a
+                          href={`https://${status?.url || status?.local_domain || 'dgx.local.brainsos.ai'}/`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-white hover:text-[#00f2fe] font-semibold inline-flex items-center gap-1"
+                        >
+                          <span>https://{status?.url || status?.local_domain || 'dgx.local.brainsos.ai'}/</span>
+                          <ExternalLink className="w-3 h-3 text-[#00f2fe]" />
+                        </a>
+                      </div>
+                      <div className="flex items-center justify-between py-1.5 border-t border-white/5 text-[11px]">
+                        <span className="text-slate-400">Internal Mail Domain &amp; MX Host:</span>
+                        <span className="text-slate-200 font-semibold">
+                          @{status?.local_domain || 'dgx.local.brainsos.ai'}{' '}
+                          <span className="text-slate-400 font-normal">
+                            (MX: <code className="text-amber-300">mail.{status?.local_domain || 'dgx.local.brainsos.ai'}</code>)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-1.5 border-t border-white/5 text-[11px]">
+                        <span className="text-slate-400">TLS Certificate Mode:</span>
+                        <span className="text-emerald-300 font-semibold uppercase">
+                          {status?.tls_mode || 'internal'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Clean Administrative & Host OS Accounts Card */}
+              <div className="rounded-xl border border-white/10 bg-[#0B0E14] overflow-hidden divide-y divide-white/5 font-mono text-xs">
+                <div className="px-4 py-2.5 bg-[#101520] flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-300 font-bold">
+                    Administrative &amp; Host OS Accounts
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {status?.platform_name || 'brainsOS Appliance'} • {status?.os?.distro || 'Ubuntu 24.04 LTS'} ({status?.os?.arch || 'aarch64'})
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3 gap-1">
-                  <span className="text-slate-400">Instance Admin Account (Break-Glass)</span>
-                  <span className="sm:col-span-2 text-slate-300">
-                    <code className="text-amber-300 font-semibold">admin</code> — Permanently bound to EC2 Instance ID (<code className="text-slate-400">i-...</code>)
-                  </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3.5 gap-2 items-start">
+                  <div className="flex items-center gap-2 text-amber-300 font-semibold">
+                    <Shield className="w-3.5 h-3.5 shrink-0" />
+                    <span>Break-Glass &amp; OS Admin (<code className="text-white">admin</code>)</span>
+                  </div>
+                  <div className="sm:col-span-2 text-slate-300 font-sans text-xs leading-relaxed">
+                    Bound to EC2 Instance ID on AWS (or local admin password). Full <code className="font-mono text-amber-300">proxy_admin</code> in LiteLLM, Authentik Admin, and Linux <code className="font-mono text-emerald-300">sudo</code> access.
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3.5 gap-2 items-start">
+                  <div className="flex items-center gap-2 text-[#00f2fe] font-semibold">
+                    <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span>Named Superuser (<code className="text-white">{status?.superuser_username || 'Not Provisioned'}</code>)</span>
+                  </div>
+                  <div className="sm:col-span-2 text-slate-300 font-sans text-xs leading-relaxed">
+                    Provisioned via First-Boot Wizard. Full <code className="font-mono text-[#00f2fe]">proxy_admin</code> in LiteLLM, Authentik Admin, Gitea Admin, and Linux <code className="font-mono text-emerald-300">sudo</code> access.
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* PANE 2: HOST CONSOLE (INTERACTIVE APPLIANCE TERMINAL & JOB LOGS) */}
+          {/* PANE 2: HOST CONSOLE (INTERACTIVE XTERM.JS PTY & JOB LOGS) */}
           {activePane === 'console' && (
-            <div className="space-y-4 max-w-6xl h-[calc(100vh-11.5rem)] flex flex-col">
+            <div className="space-y-3 max-w-6xl h-[calc(100vh-11.5rem)] flex flex-col">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => setConsoleViewMode('interactive')}
                     className={`px-3.5 py-1.5 rounded-lg font-mono text-xs font-semibold transition-all flex items-center gap-2 border ${
@@ -2214,8 +3286,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                     }`}
                   >
                     <Terminal className="w-3.5 h-3.5" />
-                    <span>Interactive Host Shell</span>
-                    <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-cyan-400'}`} />
+                    <span>Interactive XTerm Host Shell</span>
                   </button>
                   <button
                     onClick={() => setConsoleViewMode('jobs')}
@@ -2231,33 +3302,68 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                       <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
                     )}
                   </button>
+
+                  {consoleViewMode === 'interactive' && (
+                    <span
+                      className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-bold border flex items-center gap-1.5 ${
+                        wsConnected
+                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                          : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                        }`}
+                      />
+                      <span>{wsConnected ? 'LIVE XTERM PTY' : 'RECONNECTING / HTTP FALLBACK'}</span>
+                    </span>
+                  )}
                 </div>
 
                 {/* Quick Command Toolbar */}
                 {consoleViewMode === 'interactive' ? (
                   <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
-                    {['make status', 'docker compose ps', 'git status', 'df -h', 'uname -a'].map((qcmd) => (
+                    {['ls -la', 'git status -sb', 'docker ps', 'df -h', 'htop'].map((qcmd) => (
                       <button
                         key={qcmd}
-                        onClick={() => executeConsoleCommand(qcmd)}
+                        type="button"
+                        onClick={() => {
+                          if (wsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                            wsRef.current.send(JSON.stringify({ type: 'input', data: `${qcmd}\r` }));
+                            xtermRef.current?.focus();
+                          } else {
+                            executeConsoleCommand(qcmd);
+                          }
+                        }}
                         className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-[#00f2fe] transition-colors"
                       >
                         {qcmd}
                       </button>
                     ))}
                     <button
-                      onClick={() => setConsoleEntries([])}
+                      type="button"
+                      onClick={() => {
+                        if (wsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                          wsRef.current.send(JSON.stringify({ type: 'input', data: 'clear\r' }));
+                          xtermRef.current?.focus();
+                        } else {
+                          xtermRef.current?.clear();
+                          setConsoleEntries([]);
+                        }
+                      }}
                       className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white"
                     >
                       Clear
                     </button>
                     <button
+                      type="button"
                       onClick={connectTerminalWs}
                       className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center gap-1"
                       title="Reconnect WebSocket PTY"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>Reconnect</span>
+                      <span>Reconnect PTY</span>
                     </button>
                   </div>
                 ) : (
@@ -2289,91 +3395,78 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                 )}
               </div>
 
-              {/* Terminal Viewport Box */}
+              {/* XTerm.js Interactive PTY Viewport Box */}
               {consoleViewMode === 'interactive' ? (
-                <div
-                  onClick={() => consoleInputRef.current?.focus()}
-                  className="flex-1 rounded-xl border border-white/15 bg-[#05070B] flex flex-col overflow-hidden shadow-2xl font-mono text-xs"
-                >
-                  <div className="px-4 py-2 bg-[#0D111A] border-b border-white/10 flex items-center justify-between text-[11px] text-slate-400 select-none">
+                <div className="flex-1 rounded-xl border border-white/15 bg-[#05070B] flex flex-col overflow-hidden shadow-2xl font-mono text-xs">
+                  <div className="px-4 py-2 bg-[#0D111A] border-b border-white/10 flex items-center justify-between text-[11px] text-slate-400 select-none shrink-0">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                      <span className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
                       <span className="text-slate-200 font-semibold">
-                        {status?.superuser_username || status?.admin_username || 'operator'}@{(status?.hostname || status?.local_domain || 'brainsos').split('.')[0]}:/opt/brainsos
+                        {status?.console_user || status?.superuser_username || status?.admin_username || 'admin'}@{(status?.hostname || status?.local_domain || 'brainsos').split('.')[0]}:{status?.repo_root || '/opt/brainsos'}
                       </span>
                     </div>
                     <span>
-                      {wsConnected ? 'WebSocket PTY Active' : 'Command Exec Mode (/api/v1/system/terminal/exec)'}
+                      {wsConnected ? 'XTerm.js PTY WebSocket (/api/v1/system/terminal/ws)' : 'HTTP Exec Fallback (/api/v1/system/terminal/exec)'}
                     </span>
                   </div>
 
-                  <div className="flex-1 p-4 overflow-y-auto space-y-2 leading-relaxed">
-                    {consoleEntries.map((entry) => (
-                      <div key={entry.id} className="whitespace-pre-wrap break-all">
-                        {entry.type === 'input' ? (
-                          <div className="text-[#00f2fe] font-semibold">{entry.text}</div>
-                        ) : entry.type === 'system' ? (
-                          <div className="text-slate-500 italic">{entry.text}</div>
-                        ) : entry.type === 'error' ? (
-                          <div className="text-red-400">{renderAnsiLine(entry.text)}</div>
-                        ) : (
-                          <div className="text-slate-200">{renderAnsiLine(entry.text)}</div>
-                        )}
-                      </div>
-                    ))}
-                    <div ref={consoleEndRef} />
-                  </div>
+                  {/* Full Interactive XTerm Canvas */}
+                  <div
+                    ref={xtermContainerRef}
+                    onClick={() => xtermRef.current?.focus()}
+                    className="flex-1 w-full bg-[#05070B] p-2 overflow-hidden"
+                  />
 
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      executeConsoleCommand(consoleInput);
-                    }}
-                    className="px-4 py-2.5 bg-[#0A0E17] border-t border-white/10 flex items-center gap-2"
-                  >
-                    <span className="text-emerald-400 font-bold shrink-0">
-                      {status?.superuser_username || status?.admin_username || 'operator'}@{(status?.hostname || 'brainsos').split('.')[0]}:~$
-                    </span>
-                    <input
-                      ref={consoleInputRef}
-                      type="text"
-                      value={consoleInput}
-                      disabled={consoleBusy}
-                      onChange={(e) => setConsoleInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          if (consoleHistory.length > 0) {
-                            const nextIdx = Math.min(historyIdx + 1, consoleHistory.length - 1);
-                            setHistoryIdx(nextIdx);
-                            setConsoleInput(consoleHistory[nextIdx]);
-                          }
-                        } else if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          if (historyIdx > 0) {
-                            const nextIdx = historyIdx - 1;
-                            setHistoryIdx(nextIdx);
-                            setConsoleInput(consoleHistory[nextIdx]);
-                          } else {
-                            setHistoryIdx(-1);
-                            setConsoleInput('');
-                          }
-                        } else if (e.ctrlKey && e.key.toLowerCase() === 'l') {
-                          e.preventDefault();
-                          setConsoleEntries([]);
-                        }
+                  {/* HTTP /api/v1/system/terminal/exec Line-by-Line Fallback Input Bar when WebSocket PTY is closed */}
+                  {!wsConnected && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        executeConsoleCommand(consoleInput);
                       }}
-                      placeholder="Enter host command (e.g. make status, docker compose ps, df -h, help)..."
-                      className="flex-1 bg-transparent text-white focus:outline-none font-mono text-xs"
-                    />
-                    <button
-                      type="submit"
-                      disabled={consoleBusy || !consoleInput.trim()}
-                      className="px-3 py-1 rounded bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] text-[11px] font-semibold disabled:opacity-40"
+                      className="px-4 py-2 bg-[#0A0E17] border-t border-white/10 flex items-center gap-2 shrink-0"
                     >
-                      {consoleBusy ? 'Running...' : 'Run ↵'}
-                    </button>
-                  </form>
+                      <span className="text-amber-400 font-bold shrink-0 text-[11px]">
+                        HTTP Fallback $
+                      </span>
+                      <input
+                        ref={consoleInputRef}
+                        type="text"
+                        value={consoleInput}
+                        disabled={consoleBusy}
+                        onChange={(e) => setConsoleInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            if (consoleHistory.length > 0) {
+                              const nextIdx = Math.min(historyIdx + 1, consoleHistory.length - 1);
+                              setHistoryIdx(nextIdx);
+                              setConsoleInput(consoleHistory[nextIdx]);
+                            }
+                          } else if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            if (historyIdx > 0) {
+                              const nextIdx = historyIdx - 1;
+                              setHistoryIdx(nextIdx);
+                              setConsoleInput(consoleHistory[nextIdx]);
+                            } else {
+                              setHistoryIdx(-1);
+                              setConsoleInput('');
+                            }
+                          }
+                        }}
+                        placeholder="WebSocket offline — run host command via HTTP fallback (e.g. docker ps, df -h, git -C /data status)..."
+                        className="flex-1 bg-transparent text-white focus:outline-none font-mono text-xs"
+                      />
+                      <button
+                        type="submit"
+                        disabled={consoleBusy || !consoleInput.trim()}
+                        className="px-3 py-1 rounded bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] text-[11px] font-semibold disabled:opacity-40"
+                      >
+                        {consoleBusy ? 'Running...' : 'Run ↵'}
+                      </button>
+                    </form>
+                  )}
                 </div>
               ) : (
                 <div className="flex-1 rounded-xl border border-white/15 bg-[#05070B] p-4 overflow-y-auto font-mono text-xs space-y-1.5">
@@ -2433,7 +3526,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {(status?.runners || DEFAULT_STATUS.runners || []).map((runner) => (
+                    {normalizedRunners.map((runner) => (
                       <tr key={runner.id} className="hover:bg-white/[0.02]">
                         <td className="py-3 px-4 font-semibold text-white">
                           <div>{runner.name}</div>
@@ -2452,7 +3545,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                         <td className="py-3 px-4 text-slate-300">{runner.runtime}</td>
                         <td className="py-3 px-4 text-purple-300">{runner.active_model || 'LiteLLM Default'}</td>
                         <td className="py-3 px-4">
-                          {runner.id === 'hermes' ? (
+                          {runner.id === 'hermes' || runner.id.includes('hermes') ? (
                             firecrawlConfigured ? (
                               <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[10px]">
                                 Firecrawl API Key Active
@@ -2484,11 +3577,11 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4 text-[#00f2fe]" />
                       <h3 className="font-headline font-bold text-sm text-white">
-                        Nous Hermes Web Search &amp; Scraping API Keys
+                        Nous Hermes Web Search &amp; Tool Egress API Keys
                       </h3>
                     </div>
                     <p className="font-mono text-xs text-slate-400 mt-0.5">
-                      Out-of-the-box, Hermes uses keyless DuckGs/Markdown fallback. Add a <code className="text-[#00f2fe]">FIRECRAWL_API_KEY</code> below to unlock high-rate deep web scraping.
+                      Out-of-the-box, Hermes uses keyless DuckGs/Markdown fallback. Add a <code className="text-[#00f2fe]">FIRECRAWL_API_KEY</code> or provider keys below to unlock high-rate deep web scraping and external models.
                     </p>
                   </div>
                   <button
@@ -2519,7 +3612,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                       <span>FIRECRAWL_API_KEY</span>
                       <span className={firecrawlConfigured ? 'text-emerald-400 text-[10px]' : 'text-amber-400 text-[10px]'}>
                         {firecrawlConfigured
-                          ? `Configured (${hermesRunner?.keys?.FIRECRAWL_API_KEY?.masked || 'fc-***'})`
+                          ? `Configured (${toolKeysMap.FIRECRAWL_API_KEY?.masked || '••••'})`
                           : 'Not Set (Keyless Fallback)'}
                       </span>
                     </label>
@@ -2535,8 +3628,10 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                   <div className="space-y-1.5">
                     <label className="block text-slate-200 font-semibold flex items-center justify-between">
                       <span>TAVILY_API_KEY (Optional)</span>
-                      <span className="text-slate-500 text-[10px]">
-                        {hermesRunner?.keys?.TAVILY_API_KEY?.configured ? 'Configured' : 'Optional'}
+                      <span className={toolKeysMap.TAVILY_API_KEY?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.TAVILY_API_KEY?.configured
+                          ? `Configured (${toolKeysMap.TAVILY_API_KEY.masked || '••••'})`
+                          : 'Optional'}
                       </span>
                     </label>
                     <input
@@ -2551,8 +3646,10 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                   <div className="space-y-1.5">
                     <label className="block text-slate-200 font-semibold flex items-center justify-between">
                       <span>EXA_API_KEY (Optional)</span>
-                      <span className="text-slate-500 text-[10px]">
-                        {hermesRunner?.keys?.EXA_API_KEY?.configured ? 'Configured' : 'Optional'}
+                      <span className={toolKeysMap.EXA_API_KEY?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.EXA_API_KEY?.configured
+                          ? `Configured (${toolKeysMap.EXA_API_KEY.masked || '••••'})`
+                          : 'Optional'}
                       </span>
                     </label>
                     <input
@@ -2566,9 +3663,11 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
 
                   <div className="space-y-1.5">
                     <label className="block text-slate-200 font-semibold flex items-center justify-between">
-                      <span>BRAVE_SEARCH_API_KEY (Optional)</span>
-                      <span className="text-slate-500 text-[10px]">
-                        {hermesRunner?.keys?.BRAVE_SEARCH_API_KEY?.configured ? 'Configured' : 'Optional'}
+                      <span>BRAVE_API_KEY (Optional)</span>
+                      <span className={toolKeysMap.BRAVE_API_KEY?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.BRAVE_API_KEY?.configured
+                          ? `Configured (${toolKeysMap.BRAVE_API_KEY.masked || '••••'})`
+                          : 'Optional'}
                       </span>
                     </label>
                     <input
@@ -2576,6 +3675,78 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                       value={braveKey}
                       onChange={(e) => setBraveKey(e.target.value)}
                       placeholder="BSAxxxxxxxxxxxxxxxx"
+                      className="w-full px-3 py-2 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold flex items-center justify-between">
+                      <span>GITHUB_TOKEN (Optional Egress)</span>
+                      <span className={toolKeysMap.GITHUB_TOKEN?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.GITHUB_TOKEN?.configured
+                          ? `Configured (${toolKeysMap.GITHUB_TOKEN.masked || '••••'})`
+                          : 'Optional'}
+                      </span>
+                    </label>
+                    <input
+                      type={showRunnerKeys ? 'text' : 'password'}
+                      value={githubTokenKey}
+                      onChange={(e) => setGithubTokenKey(e.target.value)}
+                      placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                      className="w-full px-3 py-2 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold flex items-center justify-between">
+                      <span>OPENROUTER_API_KEY (Optional)</span>
+                      <span className={toolKeysMap.OPENROUTER_API_KEY?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.OPENROUTER_API_KEY?.configured
+                          ? `Configured (${toolKeysMap.OPENROUTER_API_KEY.masked || '••••'})`
+                          : 'Optional'}
+                      </span>
+                    </label>
+                    <input
+                      type={showRunnerKeys ? 'text' : 'password'}
+                      value={openrouterKey}
+                      onChange={(e) => setOpenrouterKey(e.target.value)}
+                      placeholder="sk-or-v1-xxxxxxxxxxxxxxxx"
+                      className="w-full px-3 py-2 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold flex items-center justify-between">
+                      <span>ANTHROPIC_API_KEY (Optional)</span>
+                      <span className={toolKeysMap.ANTHROPIC_API_KEY?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.ANTHROPIC_API_KEY?.configured
+                          ? `Configured (${toolKeysMap.ANTHROPIC_API_KEY.masked || '••••'})`
+                          : 'Optional'}
+                      </span>
+                    </label>
+                    <input
+                      type={showRunnerKeys ? 'text' : 'password'}
+                      value={anthropicKey}
+                      onChange={(e) => setAnthropicKey(e.target.value)}
+                      placeholder="sk-ant-xxxxxxxxxxxxxxxx"
+                      className="w-full px-3 py-2 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-slate-200 font-semibold flex items-center justify-between">
+                      <span>OPENAI_API_KEY (Optional)</span>
+                      <span className={toolKeysMap.OPENAI_API_KEY?.configured ? 'text-emerald-400 text-[10px]' : 'text-slate-500 text-[10px]'}>
+                        {toolKeysMap.OPENAI_API_KEY?.configured
+                          ? `Configured (${toolKeysMap.OPENAI_API_KEY.masked || '••••'})`
+                          : 'Optional'}
+                      </span>
+                    </label>
+                    <input
+                      type={showRunnerKeys ? 'text' : 'password'}
+                      value={openaiKey}
+                      onChange={(e) => setOpenaiKey(e.target.value)}
+                      placeholder="sk-proj-xxxxxxxxxxxxxxxx"
                       className="w-full px-3 py-2 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white"
                     />
                   </div>
@@ -2721,7 +3892,7 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
                         ))}
                       </select>
                       <span className="text-slate-400">
-                        HEAD <code className="text-[#00f2fe]">{status.git.current_commit.substring(0, 7)}</code>
+                        HEAD <code className="text-[#00f2fe]">{(status.git.current_commit || 'HEAD').substring(0, 7)}</code>
                       </span>
                     </div>
                     <button
@@ -3036,3 +4207,81 @@ export const SystemManager: React.FC<SystemManagerProps> = ({ standaloneWizard =
     </div>
   );
 };
+
+interface SystemManagerErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class SystemManagerErrorBoundary extends React.Component<
+  SystemManagerProps,
+  SystemManagerErrorBoundaryState
+> {
+  constructor(props: SystemManagerProps) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: unknown): SystemManagerErrorBoundaryState {
+    const message = error instanceof Error ? error.message : String(error || 'Unexpected UI runtime error');
+    return { hasError: true, errorMessage: message };
+  }
+
+  componentDidCatch(error: unknown, errorInfo: React.ErrorInfo): void {
+    console.error('[SystemManagerErrorBoundary] Caught runtime exception:', error, errorInfo);
+  }
+
+  private handleReload = (): void => {
+    this.setState({ hasError: false, errorMessage: '' });
+  };
+
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full min-h-[420px] bg-[#07090E] text-slate-200 flex items-center justify-center p-6 font-sans">
+          <div className="w-full max-w-lg rounded-2xl border border-red-500/30 bg-[#0B0E14] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-headline font-bold text-base text-white">
+                  System Console Recovery Mode
+                </h2>
+                <p className="font-mono text-xs text-slate-400">
+                  brainsOS caught an unexpected UI exception and protected the portal session
+                </p>
+              </div>
+            </div>
+
+            {this.state.errorMessage && (
+              <div className="p-3 rounded-xl bg-black/50 border border-white/10 font-mono text-xs text-red-300 break-words">
+                {this.state.errorMessage}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={this.handleReload}
+                className="px-4 py-2 rounded-xl bg-[#00f2fe]/20 hover:bg-[#00f2fe]/30 border border-[#00f2fe]/50 text-[#00f2fe] font-mono text-xs font-bold flex items-center gap-2 transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reload System Console</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return <SystemManagerInner {...this.props} />;
+  }
+}
+
+export const SystemManager: React.FC<SystemManagerProps> = (props) => (
+  <SystemManagerErrorBoundary {...props} />
+);
+
+export default SystemManager;
+

@@ -377,6 +377,29 @@ hermes_curr = parse_semver(hermes_img) or "local build"
 hermes_latest = hermes_curr
 hermes_update = False
 
+# Operator Studio (VS Code IDE / code-server)
+def get_code_server_version():
+    out = run_cmd("docker exec brainsos-app-code-server code-server --version")
+    if out:
+        first_tok = out.splitlines()[0].strip().split()[0].lstrip("v")
+        if re.match(r"^[0-9]+(\.[0-9]+)+", first_tok):
+            return first_tok
+    lbl = run_cmd("docker inspect --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}' brainsos-app-code-server")
+    if lbl and lbl not in ("latest", "<no value>"):
+        return lbl.lstrip("v")
+    env_tag = os.environ.get("CODE_SERVER_IMAGE_TAG", "").strip().lstrip("v")
+    if env_tag and env_tag != "latest":
+        return env_tag
+    return "local build"
+
+code_server_curr = get_code_server_version()
+code_server_latest = get_latest_github_release("coder/code-server") or code_server_curr
+code_server_update = (
+    code_server_latest != ""
+    and code_server_latest != code_server_curr
+    and code_server_curr != "local build"
+)
+
 services = {
     "litellm": {
         "name": "LiteLLM Control Plane Gateway",
@@ -395,6 +418,15 @@ services = {
         "update_available": langfuse_update,
         "changelog_url": "https://github.com/langfuse/langfuse/releases",
         "plane": "telemetry"
+    },
+    "code-server": {
+        "name": "Operator Studio (VS Code IDE)",
+        "container": "brainsos-app-code-server",
+        "current_version": code_server_curr,
+        "latest_version": code_server_latest,
+        "update_available": code_server_update,
+        "changelog_url": "https://github.com/coder/code-server/releases",
+        "plane": "apps"
     },
     "caddy": {
         "name": "Caddy Ingress Reverse Proxy",
@@ -798,18 +830,23 @@ rollback_handler() {
       fi
     fi
 
-    # 3. Restore pre-flight database & memories backup if available
-    if [ "${CONTAINERS_CHANGED}" = true ] && [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
+    # 3. Restore pre-flight database & memories backup if available (full updates only)
+    if [ "${CONTAINERS_CHANGED}" = true ] && [ -z "${TARGET_SERVICE}" ] && [ -n "${PRE_UPDATE_BACKUP}" ] && [ -f "${PRE_UPDATE_BACKUP}" ]; then
       log_info "Restoring pre-flight logical database and memory planes from ${PRE_UPDATE_BACKUP}..."
       "${REPO_ROOT}/scripts/control/backup.sh" --restore "${PRE_UPDATE_BACKUP}" -f || true
     else
-      log_info "No containers were recreated; skipping database restore."
+      log_info "Targeted container update or no containers recreated; skipping database restore."
     fi
 
     # 4. Recreate Docker container stack with restored parameters
     if [ "${CONTAINERS_CHANGED}" = true ]; then
-      log_info "Re-aligning container stack (docker compose up -d)..."
-      docker compose up -d || true
+      if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
+        log_info "Re-aligning targeted container(s): ${COMPOSE_TARGETS[*]}..."
+        docker compose up -d --no-deps "${COMPOSE_TARGETS[@]}" || true
+      else
+        log_info "Re-aligning container stack (docker compose up -d)..."
+        docker compose up -d || true
+      fi
       if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
         "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard could not be applied."
       fi
@@ -936,6 +973,12 @@ if [ -n "${TARGET_SERVICE}" ]; then
       OVERRIDE_VAR="LANGFUSE_IMAGE_TAG"
       UPSTREAM_REPO="langfuse/langfuse"
       ;;
+    code-server|vscode|editor)
+      TARGET_SERVICE="code-server"
+      COMPOSE_TARGETS=("code-server")
+      OVERRIDE_VAR="CODE_SERVER_IMAGE_TAG"
+      UPSTREAM_REPO="coder/code-server"
+      ;;
     caddy|ingress)
       TARGET_SERVICE="caddy"
       COMPOSE_TARGETS=("caddy")
@@ -950,7 +993,7 @@ if [ -n "${TARGET_SERVICE}" ]; then
   esac
 
   if [ -n "${TARGET_VERSION}" ] && [ -z "${OVERRIDE_VAR}" ]; then
-    log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse."
+    log_error "--version is not supported for '${TARGET_SERVICE}' (locally built or unpinned). Supported: litellm, langfuse, code-server."
     exit 1
   fi
 
@@ -977,7 +1020,7 @@ if [ -n "${TARGET_SERVICE}" ]; then
     TAG_VAL="${TARGET_VERSION}"
     if [ "${OVERRIDE_VAR}" = "LITELLM_IMAGE_TAG" ] && [[ "${TAG_VAL}" =~ ^[0-9] ]]; then
       TAG_VAL="v${TAG_VAL}"
-    elif [ "${OVERRIDE_VAR}" = "LANGFUSE_IMAGE_TAG" ] && [[ "${TAG_VAL}" =~ ^v[0-9] ]]; then
+    elif { [ "${OVERRIDE_VAR}" = "LANGFUSE_IMAGE_TAG" ] || [ "${OVERRIDE_VAR}" = "CODE_SERVER_IMAGE_TAG" ]; } && [[ "${TAG_VAL}" =~ ^v[0-9] ]]; then
       TAG_VAL="${TAG_VAL#v}"
     fi
 
@@ -990,7 +1033,7 @@ if [ -n "${TARGET_SERVICE}" ]; then
     fi
   fi
 else
-  # Full or containers-only update: resolve latest upstream tags for LiteLLM & Langfuse
+  # Full or containers-only update: resolve latest upstream tags for LiteLLM, Langfuse & Code-Server
   LATEST_LITELLM="$(resolve_latest_github_release "berriai/litellm")"
   if [ -n "${LATEST_LITELLM}" ]; then
     LITELLM_TAG_VAL="${LATEST_LITELLM}"
@@ -1012,6 +1055,18 @@ else
     elif [ "${LANGFUSE_IMAGE_TAG:-4.58.0}" != "${LANGFUSE_TAG_VAL}" ]; then
       log_info "Updating LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL} in .env..."
       "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "LANGFUSE_IMAGE_TAG=${LANGFUSE_TAG_VAL}"
+      set -a; . "${REPO_ROOT}/.env"; set +a
+    fi
+  fi
+
+  LATEST_CODE_SERVER="$(resolve_latest_github_release "coder/code-server")"
+  if [ -n "${LATEST_CODE_SERVER}" ]; then
+    CODE_SERVER_TAG_VAL="${LATEST_CODE_SERVER#v}"
+    if [ "${DRY_RUN}" = true ]; then
+      log_info "[DRY-RUN] Would set CODE_SERVER_IMAGE_TAG=${CODE_SERVER_TAG_VAL} in .env"
+    elif [ "${CODE_SERVER_IMAGE_TAG:-}" != "${CODE_SERVER_TAG_VAL}" ]; then
+      log_info "Updating CODE_SERVER_IMAGE_TAG=${CODE_SERVER_TAG_VAL} in .env..."
+      "${ENV_UPSERT}" --file "${REPO_ROOT}/.env" "CODE_SERVER_IMAGE_TAG=${CODE_SERVER_TAG_VAL}"
       set -a; . "${REPO_ROOT}/.env"; set +a
     fi
   fi
@@ -1051,7 +1106,11 @@ else
     if [[ "${TARGET_SERVICE}" == runner-* ]]; then
       make -C "${REPO_ROOT}" runner-base
     fi
-    docker compose build "${COMPOSE_TARGETS[@]}"
+    if [ "${TARGET_SERVICE}" = "code-server" ]; then
+      docker compose build --pull "${COMPOSE_TARGETS[@]}"
+    else
+      docker compose build "${COMPOSE_TARGETS[@]}"
+    fi
   fi
 fi
 
@@ -1098,43 +1157,47 @@ log_info "Step 5/5: Probing in-network service health across all active planes (
 
 if [ "${DRY_RUN}" = false ]; then
   HEALTH_PASSED=false
+  PROBE_DOMAIN="${BRAINSOS_DOMAIN:-localhost}"
   for i in $(seq 1 "${HEALTH_TIMEOUT}"); do
     ALL_DBS_OK=true
     LITELLM_OK=false
     LANGFUSE_OK=false
     CADDY_OK=false
 
-    # 1. In-network Postgres health checks (litellm-db, langfuse-db, authentik-db, sogo-db)
-    for db_svc in litellm-db langfuse-db; do
-      cid="$(docker compose ps -q "${db_svc}" 2>/dev/null || true)"
-      if [ -n "${cid}" ]; then
-        if ! docker compose exec -T "${db_svc}" pg_isready >/dev/null 2>&1; then
+    # 1. Fast Postgres health checks (litellm-db, langfuse-db)
+    for db_cname in brainsos-control-litellm-db brainsos-telemetry-langfuse-db; do
+      if docker ps -q --filter "name=^/${db_cname}$" 2>/dev/null | grep -q .; then
+        db_state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${db_cname}" 2>/dev/null || echo "unknown")"
+        if [ "${db_state}" != "healthy" ] && [ "${db_state}" != "running" ]; then
           ALL_DBS_OK=false
           break
         fi
       fi
     done
 
-    # 2. In-network LiteLLM probe
-    if [ -n "$(docker compose ps -q litellm 2>/dev/null)" ]; then
-      if docker compose exec -T litellm python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4000/health/liveness", timeout=2)' >/dev/null 2>&1; then
+    # 2. Fast LiteLLM probe
+    if docker ps -q --filter "name=^/brainsos-control-litellm$" 2>/dev/null | grep -q .; then
+      if curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LITELLM_PORT:-4000}/health/liveness" >/dev/null 2>&1; then
         LITELLM_OK=true
       fi
     else
       LITELLM_OK=true
     fi
 
-    # 3. In-network Langfuse probe
-    if [ -n "$(docker compose ps -q langfuse-web 2>/dev/null)" ]; then
-      if docker compose exec -T langfuse-web node -e 'fetch("http://127.0.0.1:3000/api/public/health").then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))' >/dev/null 2>&1; then
+    # 3. Fast Langfuse probe
+    if docker ps -q --filter "name=^/brainsos-telemetry-langfuse-web$" 2>/dev/null | grep -q .; then
+      if curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LANGFUSE_PORT:-3001}/api/public/health" >/dev/null 2>&1; then
         LANGFUSE_OK=true
       fi
     else
       LANGFUSE_OK=true
     fi
 
-    # 4. Ingress (Caddy) non-5xx probe
-    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --resolve localhost:443:127.0.0.1 https://localhost:443/ 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:80/ 2>/dev/null || echo "000")"
+    # 4. Ingress (Caddy) non-5xx probe using active BRAINSOS_DOMAIN SNI & /healthz
+    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/healthz" 2>/dev/null || echo "000")"
+    if [ "${HTTP_CODE}" = "000" ] || [ "${HTTP_CODE}" -ge 500 ]; then
+      HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/api/v1/system/health" 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:80/healthz" 2>/dev/null || echo "000")"
+    fi
     if [ "${HTTP_CODE}" != "000" ] && [ "${HTTP_CODE}" -lt 500 ]; then
       CADDY_OK=true
     fi
@@ -1151,6 +1214,13 @@ if [ "${DRY_RUN}" = false ]; then
   else
     log_error "Service health checks failed or timed out after ${HEALTH_TIMEOUT} seconds."
     exit 1
+  fi
+
+  if [ -z "${TARGET_SERVICE}" ] || [ "${TARGET_SERVICE}" = "litellm" ]; then
+    if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
+      log_info "Synchronizing LiteLLM SSO and proxy_admin roles..."
+      "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" >/dev/null 2>&1 || true
+    fi
   fi
 
   # Clean up dangling images

@@ -30,6 +30,10 @@ services:
       - HERMES_DASHBOARD=true
       - HERMES_DASHBOARD_HOST=0.0.0.0
       - HERMES_DASHBOARD_PORT=9119
+      - HERMES_TRUST_REVERSE_PROXY_AUTH=true
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}}
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}-hermes-dashboard-secret
       - HERMES_UID=1000
       - HERMES_GID=1000
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
@@ -79,6 +83,7 @@ services:
       - ../hermes/plugins/model-providers:/opt/data/plugins/model-providers:ro
       # brainsOS Hermes Langfuse plugin override (#299/#320: mounts plugin.yaml + __init__.py)
       - ../hermes/plugins/observability/langfuse:/opt/hermes/plugins/observability/langfuse:ro
+      - ../hermes/01-tool-egress-ca:/etc/cont-init.d/01-tool-egress-ca:ro
       - tool_egress_proxy_data:/etc/ssl/mitmproxy:ro
     command: ["gateway", "run"]
     extra_hosts:

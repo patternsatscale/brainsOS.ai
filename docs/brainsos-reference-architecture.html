@@ -1,0 +1,2253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>brainsOS — Appliance Reference Architecture & Network Topology</title>
+  <style>
+    /* ==========================================================================
+       100% SELF-CONTAINED CSS — ZERO EXTERNAL DEPENDENCIES
+       Engineered for Conference Keynote Projection & Deep-Dive Architecture Review
+       ========================================================================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background-color: #060a12;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    code, pre, .mono {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    /* Blueprint grid background */
+    .bg-blueprint {
+      background-color: #060a12;
+      background-image:
+        linear-gradient(to right, rgba(30, 41, 59, 0.32) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(30, 41, 59, 0.32) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+
+    /* Animated SVG Wire Keyframes */
+    @keyframes wireFlow {
+      to {
+        stroke-dashoffset: -28;
+      }
+    }
+    @keyframes pulseNode {
+      0%, 100% { r: 4px; opacity: 0.9; }
+      50% { r: 6.5px; opacity: 1; }
+    }
+    .svg-wire-animated {
+      stroke-dasharray: 8 6;
+      animation: wireFlow 0.95s linear infinite;
+    }
+    .svg-wire-blocked {
+      stroke-dasharray: 4 5;
+    }
+    .svg-endpoint-pulse {
+      animation: pulseNode 1.8s ease-in-out infinite;
+    }
+
+    /* Top Header */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(9, 14, 26, 0.94);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 20px;
+    }
+    .topbar-inner {
+      max-width: 1480px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #06b6d4 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+      font-size: 15px;
+      letter-spacing: -0.5px;
+      box-shadow: 0 0 16px rgba(99, 102, 241, 0.4);
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    /* View Switcher Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 5px;
+      background: #0f172a;
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid #1e293b;
+      flex-wrap: wrap;
+    }
+    .nav-tab {
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+      padding: 7px 12px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-tab:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .nav-tab.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+    }
+    .nav-tab .num {
+      opacity: 0.75;
+      font-family: ui-monospace, monospace;
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 16px 20px 44px;
+    }
+    .view-panel {
+      display: none;
+    }
+    .view-panel.active {
+      display: block;
+    }
+
+    /* Control Strip (Network Filters & Traffic Flows) */
+    .control-bar {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 11px 15px;
+      margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .control-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #64748b;
+      margin-right: 4px;
+    }
+    .chip-btn {
+      background: #111827;
+      color: #cbd5e1;
+      border: 1px solid #1e293b;
+      border-radius: 7px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chip-btn:hover {
+      border-color: #475569;
+      color: #fff;
+    }
+    .chip-btn.active {
+      background: rgba(59, 130, 246, 0.2);
+      border-color: #3b82f6;
+      color: #60a5fa;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-ingress   { background: #38bdf8; box-shadow: 0 0 6px #38bdf8; }
+    .dot-internal  { background: #a855f7; box-shadow: 0 0 6px #a855f7; }
+    .dot-control   { background: #f43f5e; box-shadow: 0 0 6px #f43f5e; }
+    .dot-ide       { background: #10b981; box-shadow: 0 0 6px #10b981; }
+    .dot-telemetry { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+    .dot-loopback  { background: #ec4899; box-shadow: 0 0 6px #ec4899; }
+
+    /* Context Banner */
+    .context-banner {
+      background: linear-gradient(90deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.78) 100%);
+      border: 1px solid #334155;
+      border-left: 4px solid #38bdf8;
+      border-radius: 10px;
+      padding: 10px 16px;
+      margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .context-banner-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .context-banner-desc {
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-top: 2px;
+    }
+    .context-banner-meta {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      color: #38bdf8;
+    }
+
+    /* ==========================================================================
+       SHARED WORKSPACE LAYOUT (CHASSIS + INSPECTOR)
+       ========================================================================== */
+    .arch-workspace {
+      display: grid;
+      grid-template-columns: 1fr 365px;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 1200px) {
+      .arch-workspace {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Appliance Outer Chassis Box */
+    .appliance-chassis {
+      border: 2px dashed #334155;
+      border-radius: 16px;
+      background: rgba(11, 17, 32, 0.86);
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .chassis-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #1e293b;
+      position: relative;
+      z-index: 15;
+    }
+    .chassis-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .chassis-specs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .spec-tag {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: #111827;
+      border: 1px solid #1e293b;
+      color: #cbd5e1;
+    }
+
+    /* 5-Network Bus Spine Indicator Bar inside Chassis */
+    .network-bus-bar {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      margin-bottom: 14px;
+      position: relative;
+      z-index: 15;
+    }
+    @media (max-width: 900px) {
+      .network-bus-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .bus-rail {
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .bus-rail:hover {
+      border-color: #475569;
+    }
+    .bus-rail.active {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: #38bdf8;
+      transform: translateY(-1px);
+    }
+    .bus-rail-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .bus-rail-sub {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* SVG Wire Overlay Container (Used on View 0: Wired Topology) */
+    .wired-stage {
+      position: relative;
+    }
+    .svg-wire-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 12;
+      overflow: visible;
+    }
+
+    /* Architectural Swimlanes / Planes Grid */
+    .planes-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+      position: relative;
+      z-index: 5;
+    }
+    .plane-box {
+      background: rgba(15, 23, 42, 0.68);
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+    .col-12 { grid-column: span 12; }
+    .col-8  { grid-column: span 8; }
+    .col-7  { grid-column: span 7; }
+    .col-6  { grid-column: span 6; }
+    .col-5  { grid-column: span 5; }
+    .col-4  { grid-column: span 4; }
+    @media (max-width: 900px) {
+      .col-8, .col-7, .col-6, .col-5, .col-4 {
+        grid-column: span 12;
+      }
+    }
+
+    .plane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+      padding-bottom: 6px;
+    }
+    .plane-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .plane-badge {
+      font-size: 12px;
+      padding: 1px 7px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #94a3b8;
+    }
+
+    /* Plane Accent Borders */
+    .plane-ingress   { border-top: 3px solid #38bdf8; }
+    .plane-agents    { border-top: 3px solid #a855f7; }
+    .plane-control   { border-top: 3px solid #f43f5e; }
+    .plane-comms     { border-top: 3px solid #6366f1; }
+    .plane-ide       { border-top: 3px solid #10b981; }
+    .plane-telemetry { border-top: 3px solid #f59e0b; }
+    .plane-silicon   { border-top: 3px solid #ec4899; }
+
+    /* Embedded Product Node Cards inside Planes */
+    .nodes-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+    }
+    .node-card {
+      background: rgba(11, 17, 32, 0.94);
+      border: 1px solid #1e293b;
+      border-radius: 9px;
+      padding: 9px 11px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 6px;
+      z-index: 6;
+    }
+    .node-card:hover {
+      border-color: #64748b;
+      transform: translateY(-1px);
+      background: #111a2e;
+    }
+    .node-card.selected {
+      border-color: #38bdf8;
+      background: rgba(14, 28, 54, 0.96);
+      box-shadow: 0 0 0 1px #38bdf8, 0 4px 16px rgba(56, 189, 248, 0.22);
+    }
+    .node-card.dimmed {
+      opacity: 0.22;
+      filter: grayscale(60%);
+    }
+    .node-card.flow-highlight {
+      border-color: #f59e0b;
+      background: rgba(28, 22, 12, 0.96);
+      box-shadow: 0 0 0 1px #f59e0b, 0 4px 14px rgba(245, 158, 11, 0.2);
+    }
+
+    .node-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .product-tag {
+      font-size: 12px;
+      font-weight: 700;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .port-badge {
+      font-size: 12px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: #1e293b;
+      color: #93c5fd;
+      white-space: nowrap;
+    }
+    .node-container-name {
+      font-size: 12px;
+      color: #64748b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .node-role {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.35;
+    }
+    .node-nets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 2px;
+      padding-top: 5px;
+      border-top: 1px solid rgba(30, 41, 59, 0.7);
+    }
+    .net-dot-pill {
+      font-size: 12px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #070b14;
+      border: 1px solid #1e293b;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #94a3b8;
+    }
+
+    /* Flow Step Overlay Badge on Node */
+    .flow-step-badge {
+      display: none;
+      position: absolute;
+      top: -9px;
+      right: -6px;
+      background: #f59e0b;
+      color: #000;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.65);
+      z-index: 20;
+    }
+    .node-card.flow-highlight .flow-step-badge {
+      display: inline-block;
+    }
+
+    /* Wire Legend Bar inside Wired View */
+    .wire-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #1e293b;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+    }
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend-line {
+      width: 22px;
+      height: 3px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    /* Right-Hand Technical Inspector Panel */
+    .inspector-panel {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      padding: 18px;
+      position: sticky;
+      top: 72px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .inspector-header {
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 12px;
+    }
+    .inspector-eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #38bdf8;
+      letter-spacing: 0.6px;
+    }
+    .inspector-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #f8fafc;
+      margin-top: 3px;
+    }
+    .inspector-container {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .inspector-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
+    }
+    .inspector-desc {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.55;
+    }
+    .kv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .kv-row {
+      background: #070b14;
+      border: 1px solid #1e293b;
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+    .kv-key {
+      color: #64748b;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .kv-val {
+      color: #e2e8f0;
+      word-break: break-word;
+    }
+    .code-snippet {
+      background: #050811;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      color: #a5b4fc;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
+    /* ==========================================================================
+       CLEAN BLUEPRINT PAGE SPECIFIC STYLING (VIEW 1)
+       ========================================================================== */
+    .clean-blueprint-sheet {
+      border: 2px solid #1e293b;
+      border-radius: 16px;
+      background: #080d19;
+      padding: 20px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    }
+    .blueprint-titleblock {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+      border-bottom: 2px solid #1e293b;
+    }
+    .blueprint-stamp {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+    .stamp-box {
+      border: 1px solid #334155;
+      background: #0b1120;
+      padding: 4px 10px;
+      border-radius: 6px;
+      color: #cbd5e1;
+    }
+
+    /* ==========================================================================
+       EMBEDDED OPEN-SOURCE PRODUCT STACK CATALOG (VIEW 2)
+       ========================================================================== */
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 14px;
+    }
+    .product-card {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .product-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .product-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .product-category {
+      font-size: 12px;
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .product-why {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+    .product-wiring {
+      background: #070b14;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 9px 11px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    /* ==========================================================================
+       ZERO-TRUST NETWORK REACHABILITY & FIREWALL MATRIX (VIEW 3)
+       ========================================================================== */
+    .matrix-wrapper {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+    }
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .matrix-table th, .matrix-table td {
+      border: 1px solid #1e293b;
+      padding: 9px 10px;
+      text-align: left;
+    }
+    .matrix-table th {
+      background: #0f172a;
+      color: #f8fafc;
+      font-weight: 700;
+    }
+    .cell-allow {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cell-block {
+      background: rgba(244, 63, 94, 0.12);
+      color: #fb7185;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cell-mediate {
+      background: rgba(245, 158, 11, 0.14);
+      color: #fbbf24;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .cell-self {
+      background: #070b14;
+      color: #475569;
+      text-align: center;
+    }
+    .matrix-table td:hover {
+      outline: 1px solid #38bdf8;
+    }
+
+    /* ==========================================================================
+       STORAGE TOPOLOGY, TWO-REPO ARCHITECTURE & SILICON PHYSICS (VIEW 4)
+       ========================================================================== */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 960px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+    .panel-card {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .panel-card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+  </style>
+</head>
+<body class="bg-blueprint">
+
+  <!-- ========================================================================
+       STICKY HEADER & 5-VIEW KEYNOTE NAVIGATION
+       ======================================================================== -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">bOS</div>
+        <div>
+          <div class="brand-title">
+            brainsOS Reference Architecture
+            <span class="badge-pill">Enterprise Agent in a Box</span>
+          </div>
+          <div class="brand-sub">
+            Embedded Open-Source Governance Stack • 5 Isolated Bridge Networks • Hardware-Serialized Inference
+          </div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" role="tablist">
+        <button class="nav-tab active" onclick="switchView(0)" id="vtab-0">
+          <span class="num">01</span> SVG-Wired Network Topology
+        </button>
+        <button class="nav-tab" onclick="switchView(1)" id="vtab-1">
+          <span class="num">02</span> Clean Reference Blueprint
+        </button>
+        <button class="nav-tab" onclick="switchView(2)" id="vtab-2">
+          <span class="num">03</span> Embedded Product Stack (18)
+        </button>
+        <button class="nav-tab" onclick="switchView(3)" id="vtab-3">
+          <span class="num">04</span> Zero-Trust Reachability Matrix
+        </button>
+        <button class="nav-tab" onclick="switchView(4)" id="vtab-4">
+          <span class="num">05</span> Storage &amp; Silicon Physics
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ======================================================================
+         VIEW 0: INTERACTIVE SVG-WIRED NETWORK TOPOLOGY
+         ====================================================================== -->
+    <section class="view-panel active" id="view-0">
+
+      <!-- Interactive Filter Bar: Networks, Live SVG Flows & Wire Density -->
+      <div class="control-bar">
+        <div class="control-group">
+          <span class="control-label">Network Bus:</span>
+          <button class="chip-btn active" data-net="all" onclick="selectNetwork('all')">All Planes</button>
+          <button class="chip-btn" data-net="ingress-net" onclick="selectNetwork('ingress-net')">
+            <span class="dot dot-ingress"></span> ingress-net
+          </button>
+          <button class="chip-btn" data-net="internal-net" onclick="selectNetwork('internal-net')">
+            <span class="dot dot-internal"></span> internal-net
+          </button>
+          <button class="chip-btn" data-net="control-net" onclick="selectNetwork('control-net')">
+            <span class="dot dot-control"></span> control-net
+          </button>
+          <button class="chip-btn" data-net="ide-net" onclick="selectNetwork('ide-net')">
+            <span class="dot dot-ide"></span> ide-net
+          </button>
+          <button class="chip-btn" data-net="telemetry-net" onclick="selectNetwork('telemetry-net')">
+            <span class="dot dot-telemetry"></span> telemetry-net
+          </button>
+          <button class="chip-btn" data-net="host-loopback" onclick="selectNetwork('host-loopback')">
+            <span class="dot dot-loopback"></span> Host 127.0.0.1
+          </button>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">SVG Wire Flow:</span>
+          <button class="chip-btn active" data-flow="node" onclick="selectFlow('node')">Selected Node Wires</button>
+          <button class="chip-btn" data-flow="all-wires" onclick="selectFlow('all-wires')">All Mesh Wires</button>
+          <button class="chip-btn" data-flow="sso" onclick="selectFlow('sso')">1. SSO Ingress</button>
+          <button class="chip-btn" data-flow="email" onclick="selectFlow('email')">2. Async Email → LLM</button>
+          <button class="chip-btn" data-flow="egress" onclick="selectFlow('egress')">3. Zero-Secret Egress</button>
+          <button class="chip-btn" data-flow="otel" onclick="selectFlow('otel')">4. OTel v4 Trace</button>
+          <button class="chip-btn" data-flow="airgap" onclick="selectFlow('airgap')">5. Blocked Attack</button>
+        </div>
+      </div>
+
+      <!-- Dynamic Explanation Banner -->
+      <div class="context-banner" id="wired-banner">
+        <div>
+          <div class="context-banner-title" id="banner-title">
+            Interactive SVG-Wired Topology — Showing Connections for Selected Component
+          </div>
+          <div class="context-banner-desc" id="banner-desc">
+            Click any embedded product card to draw its live inbound/outbound SVG network wires, or select an end-to-end SVG Wire Flow above.
+          </div>
+        </div>
+        <div class="context-banner-meta mono" id="banner-meta">
+          Live SVG Bezier Wire Overlay
+        </div>
+      </div>
+
+      <!-- Main Split: Left = SVG-Wired Chassis | Right = Deep-Dive Inspector -->
+      <div class="arch-workspace">
+
+        <!-- LEFT: APPLIANCE CHASSIS WITH DYNAMIC SVG WIRE LAYER -->
+        <div class="appliance-chassis">
+          <div class="chassis-header">
+            <div class="chassis-title">
+              <span>⚡ INTERACTIVE WIRED SCHEMATIC — APPLIANCE CONTAINER &amp; BRIDGE TOPOLOGY</span>
+            </div>
+            <div class="chassis-specs">
+              <span class="spec-tag mono">Single-Origin Port :443</span>
+              <span class="spec-tag mono">No /var/run/docker.sock</span>
+              <span class="spec-tag mono">UFW + imds-guard.sh</span>
+            </div>
+          </div>
+
+          <!-- 5-Bridge + Host Loopback Spine Bar -->
+          <div class="network-bus-bar">
+            <div class="bus-rail" onclick="selectNetwork('ingress-net')" id="rail-ingress-net">
+              <div class="bus-rail-top"><span class="dot dot-ingress"></span> ingress-net</div>
+              <div class="bus-rail-sub">L7 TLS &amp; SSO Forward-Auth</div>
+            </div>
+            <div class="bus-rail" onclick="selectNetwork('internal-net')" id="rail-internal-net">
+              <div class="bus-rail-top"><span class="dot dot-internal"></span> internal-net</div>
+              <div class="bus-rail-sub">Runners, Mail &amp; Egress Bus</div>
+            </div>
+            <div class="bus-rail" onclick="selectNetwork('control-net')" id="rail-control-net">
+              <div class="bus-rail-top"><span class="dot dot-control"></span> control-net</div>
+              <div class="bus-rail-sub">Air-Gapped Policy DB (Rule 6)</div>
+            </div>
+            <div class="bus-rail" onclick="selectNetwork('ide-net')" id="rail-ide-net">
+              <div class="bus-rail-top"><span class="dot dot-ide"></span> ide-net</div>
+              <div class="bus-rail-sub">Operator VS Code &amp; Git Bus</div>
+            </div>
+            <div class="bus-rail" onclick="selectNetwork('telemetry-net')" id="rail-telemetry-net">
+              <div class="bus-rail-top"><span class="dot dot-telemetry"></span> telemetry-net</div>
+              <div class="bus-rail-sub">Langfuse OTel, ClickHouse, S3</div>
+            </div>
+            <div class="bus-rail" onclick="selectNetwork('host-loopback')" id="rail-host-loopback">
+              <div class="bus-rail-top"><span class="dot dot-loopback"></span> Host 127.0.0.1</div>
+              <div class="bus-rail-sub">Native Ollama &amp; FIFO Queue</div>
+            </div>
+          </div>
+
+          <!-- WIRED STAGE: SVG OVERLAY + SWIMLANES -->
+          <div class="wired-stage" id="wired-stage">
+            <svg class="svg-wire-layer" id="svg-wire-layer"></svg>
+            <div class="planes-grid" id="wired-planes-grid">
+              <!-- Populated dynamically by JS -->
+            </div>
+          </div>
+
+          <!-- Wire Color Legend -->
+          <div class="wire-legend">
+            <div class="legend-items">
+              <span class="legend-item"><span class="legend-line" style="background:#38bdf8;"></span> ingress-net (TLS/SSO)</span>
+              <span class="legend-item"><span class="legend-line" style="background:#a855f7;"></span> internal-net (Agent/Mail/Egress)</span>
+              <span class="legend-item"><span class="legend-line" style="background:#f43f5e;"></span> control-net (Isolated DB)</span>
+              <span class="legend-item"><span class="legend-line" style="background:#10b981;"></span> ide-net (VS Code/Git)</span>
+              <span class="legend-item"><span class="legend-line" style="background:#f59e0b;"></span> telemetry-net (OTel v4)</span>
+              <span class="legend-item"><span class="legend-line" style="background:#ec4899;"></span> Host 127.0.0.1 Loopback</span>
+            </div>
+            <span class="mono">Tip: Switch to Tab 02 for a clean wire-free blueprint</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: SELECTED COMPONENT TECHNICAL INSPECTOR -->
+        <aside class="inspector-panel" id="node-inspector-wired">
+          <!-- Populated dynamically by JS -->
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 1: CLEAN REFERENCE ARCHITECTURE BLUEPRINT (WIRE-FREE SCHEMATIC)
+         ====================================================================== -->
+    <section class="view-panel" id="view-1">
+      <div class="clean-blueprint-sheet">
+        <div class="blueprint-titleblock">
+          <div>
+            <div class="inspector-eyebrow">ARCHITECTURAL SPECIFICATION • WIRE-FREE REFERENCE SCHEMATIC</div>
+            <h2 style="font-size:20px;font-weight:800;color:#f8fafc;margin-top:2px;">
+              brainsOS Appliance Reference Architecture (L1–L7 Plane Separation Model)
+            </h2>
+            <p style="font-size:12px;color:#94a3b8;margin-top:2px;">
+              Clean presentation view without wire overlays. Click any network filter or embedded product card to inspect its configuration on the right.
+            </p>
+          </div>
+          <div class="blueprint-stamp mono">
+            <div class="stamp-box">TARGET: ASUS Ascent GX10 (GB10) / Apple Silicon</div>
+            <div class="stamp-box">STANDARD: COHUMAIN ACSG (25 Controls)</div>
+            <div class="stamp-box">ISOLATION: 5 Bridge Nets + 127.0.0.1</div>
+          </div>
+        </div>
+
+        <!-- Clean Filter Bar -->
+        <div class="control-bar" style="margin-bottom:16px;">
+          <div class="control-group">
+            <span class="control-label">Highlight Plane / Bridge:</span>
+            <button class="chip-btn active" data-clean-net="all" onclick="selectCleanNet('all')">All 18 Components</button>
+            <button class="chip-btn" data-clean-net="ingress-net" onclick="selectCleanNet('ingress-net')">
+              <span class="dot dot-ingress"></span> ingress-net
+            </button>
+            <button class="chip-btn" data-clean-net="internal-net" onclick="selectCleanNet('internal-net')">
+              <span class="dot dot-internal"></span> internal-net
+            </button>
+            <button class="chip-btn" data-clean-net="control-net" onclick="selectCleanNet('control-net')">
+              <span class="dot dot-control"></span> control-net
+            </button>
+            <button class="chip-btn" data-clean-net="ide-net" onclick="selectCleanNet('ide-net')">
+              <span class="dot dot-ide"></span> ide-net
+            </button>
+            <button class="chip-btn" data-clean-net="telemetry-net" onclick="selectCleanNet('telemetry-net')">
+              <span class="dot dot-telemetry"></span> telemetry-net
+            </button>
+            <button class="chip-btn" data-clean-net="host-loopback" onclick="selectCleanNet('host-loopback')">
+              <span class="dot dot-loopback"></span> Host 127.0.0.1
+            </button>
+          </div>
+        </div>
+
+        <div class="arch-workspace">
+          <div>
+            <div class="planes-grid" id="clean-planes-grid">
+              <!-- Populated dynamically by JS (Zero wire clutter) -->
+            </div>
+          </div>
+          <aside class="inspector-panel" id="node-inspector-clean">
+            <!-- Populated dynamically by JS -->
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 2: EMBEDDED OPEN-SOURCE PRODUCT STACK (18 SERVICES)
+         ====================================================================== -->
+    <section class="view-panel" id="view-2">
+      <div class="context-banner">
+        <div>
+          <div class="context-banner-title">
+            Best-of-Breed Open-Source Products Pre-Wired Inside the Box
+          </div>
+          <div class="context-banner-desc">
+            brainsOS eliminates cloud SaaS sprawl by packaging, hardening, and interconnecting established open-source infrastructure into a single declarative appliance.
+          </div>
+        </div>
+        <div class="context-banner-meta mono">Zero External SaaS Required</div>
+      </div>
+
+      <div class="catalog-grid" id="product-catalog-grid">
+        <!-- Populated dynamically by inline JS -->
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 3: ZERO-TRUST NETWORK REACHABILITY & FIREWALL MATRIX
+         ====================================================================== -->
+    <section class="view-panel" id="view-3">
+      <div class="context-banner">
+        <div>
+          <div class="context-banner-title">
+            Cross-Plane Network Reachability &amp; Mediation Matrix
+          </div>
+          <div class="context-banner-desc">
+            Click any cell in the matrix to inspect how brainsOS enforces allow, mediation, or air-gap block rules between containers and host interfaces.
+          </div>
+        </div>
+        <div class="context-banner-meta mono" id="matrix-selected-rule">Click any cell to inspect enforcement</div>
+      </div>
+
+      <div class="matrix-wrapper">
+        <table class="matrix-table" id="reachability-table">
+          <!-- Populated by inline JS -->
+        </table>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         VIEW 4: TWO-REPO STORAGE ARCHITECTURE & SILICON SERIALIZATION
+         ====================================================================== -->
+    <section class="view-panel" id="view-4">
+      <div class="two-col">
+        <div class="panel-card">
+          <div class="inspector-eyebrow">Rule 9, 12 &amp; 14 • Two-Repository Architecture</div>
+          <h3>Decoupled Platform Core vs. Versioned Fleet State</h3>
+          <p class="inspector-desc">
+            The stateless platform topology (<code class="mono">brainsOS</code>) is cleanly separated from proprietary agent personas, OKF Markdown memories, and workspaces (<code class="mono">${BRAINSOS_DATA_DIR}</code>), allowing zero-rebuild fleet updates and instant Git rollback via self-hosted <strong>Gitea</strong>.
+          </p>
+          <pre class="code-snippet">${BRAINSOS_DATA_DIR}/                  # Private Fleet Git Repository
+├── settings/
+│   └── agents.yaml                    # Declarative multi-tenant registry
+├── control_plane/
+│   ├── litellm_db/                    # Isolated PostgreSQL (brainsos-control-net)
+│   ├── authentik_db/                  # SSO Identity store
+│   └── vscode_config/                 # Operator code-server state
+├── git/
+│   └── gitea.db &amp; repositories/       # Self-hosted Gitea (/git/ :3000)
+├── telemetry/
+│   ├── clickhouse/                    # Columnar OTel span analytics
+│   ├── minio/                         # S3 event/media blobs
+│   └── postgres/                      # Langfuse v4 metadata
+└── agents/
+    └── &lt;tenant_id&gt;/                   # e.g. cindypawford, terrastella, marvin
+        ├── SOUL.md                    # Primary orchestrator persona
+        ├── subagents/&lt;id&gt;.&lt;role&gt;.md   # Isolated sub-agent prompt (Rule 12)
+        ├── memories/                  # Pure OKF Markdown (.md only, Rule 1)
+        └── workspace/                 # Sandboxed tool &amp; app execution root</pre>
+        </div>
+
+        <div class="panel-card">
+          <div class="inspector-eyebrow">Rule 2 &amp; 3 • Hardware-Aware Serialization</div>
+          <h3>Unified Memory Bus Protection &amp; Millijoule Accounting</h3>
+          <p class="inspector-desc">
+            On unified memory architectures like the <strong>ASUS Ascent GX10 (NVIDIA GB10 ARM64, ~273 GB/s LPDDR5x)</strong> and <strong>Apple Silicon</strong>, system RAM and VRAM share a single physical bus. Unthrottled parallel agent loops cause severe bandwidth thrashing and thermal saturation.
+          </p>
+          <pre class="code-snippet">┌──────────────────────────────────────────────────────────────┐
+│ 1. Async Queue Backpressure (packages/brainsOS-queue)        │
+│    • Inbound emails &amp; webhooks queued in FIFO order          │
+│    • Hermes Runner enforces max_concurrent_runs: 1           │
+├──────────────────────────────────────────────────────────────┤
+│ 2. Control Plane Serialization (LiteLLM :4000)               │
+│    • Enforces max_parallel_requests: 1 &amp; --num_workers 1     │
+│    • Per-tenant virtual keys &amp; 300s request timeout          │
+├──────────────────────────────────────────────────────────────┤
+│ 3. Loopback-Only Native Inference (127.0.0.1:11434)          │
+│    • Ollama / vLLM bound strictly to host loopback           │
+│    • Zero external network exposure; zero KV cache thrashing │
+├──────────────────────────────────────────────────────────────┤
+│ 4. Deterministic Out-of-Band Kill Switch (SAF-02 / TN-3.4)   │
+│    • ./scripts/control/emergency-stop.sh pauses/stops        │
+│      runner containers directly on host + revokes LiteLLM key│
+└──────────────────────────────────────────────────────────────┘</pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    /* ==========================================================================
+       COMPLETE ARCHITECTURAL DATASET (18 EMBEDDED PRODUCTS / CONTAINERS)
+       ========================================================================== */
+    const PLANES = [
+      {
+        id: "plane-ingress",
+        title: "L7 Ingress & Zero-Trust Identity Plane (compose.ingress.yml & compose.apps.yml)",
+        badge: "Single-Origin HTTPS :443",
+        css: "plane-ingress col-12",
+        nodes: ["caddy", "portal", "authentik", "auth-backing"]
+      },
+      {
+        id: "plane-agents",
+        title: "L6 Agent Execution & Tool Egress Plane (compose.agents.yml)",
+        badge: "Stateless Multi-Tenant Runners",
+        css: "plane-agents col-7",
+        nodes: ["hermes", "sdk-runners", "fastmcp", "mitmproxy"]
+      },
+      {
+        id: "plane-control",
+        title: "L4 Policy & Routing Control Plane (compose.control.yml)",
+        badge: "Rule 6 Air-Gapped DB",
+        css: "plane-control col-5",
+        nodes: ["litellm", "litellm-db"]
+      },
+      {
+        id: "plane-comms",
+        title: "L7 Asynchronous Messaging & Queue Backbone (compose.apps.yml)",
+        badge: "Zero Synchronous Polling",
+        css: "plane-comms col-6",
+        nodes: ["postfix", "sogo", "signal"]
+      },
+      {
+        id: "plane-ide",
+        title: "L5/L7 Operator IDE, Source Control & OKF Memory Plane",
+        badge: "Human-Auditable Markdown",
+        css: "plane-ide col-6",
+        nodes: ["codeserver", "gitea", "okf-memory"]
+      },
+      {
+        id: "plane-telemetry",
+        title: "Cross-Cutting Telemetry & Distributed Tracing Plane (compose.telemetry.yml)",
+        badge: "OpenTelemetry v4 Native",
+        css: "plane-telemetry col-7",
+        nodes: ["langfuse", "clickhouse", "minio-redis"]
+      },
+      {
+        id: "plane-silicon",
+        title: "L1–L3 Host Loopback Inference, Queue Daemon & Silicon Layer",
+        badge: "127.0.0.1 Loopback Bound",
+        css: "plane-silicon col-5",
+        nodes: ["ollama", "queue-worker"]
+      }
+    ];
+
+    const NODES = {
+      "caddy": {
+        product: "Caddy v2 Reverse Proxy",
+        container: "brainsos-ingress-caddy",
+        port: ":80 / :443",
+        role: "Single-origin TLS termination, subpath routing, and Authentik forward_auth enforcement.",
+        nets: ["ingress-net", "internal-net", "ide-net"],
+        netColors: ["dot-ingress", "dot-internal", "dot-ide"],
+        security: "Single published port (443) in Appliance Mode; automated internal CA or Route53 ACME wildcard TLS.",
+        mounts: "config/caddy:/etc/caddy:ro, packages/brainsOS-portal/dist:/srv/portal:ro",
+        config: `# Caddyfile Single-Origin Routing
+https://local.brainsos.ai {
+  route /auth/*   { reverse_proxy authentik-server:9000 }
+  route /editor/* { forward_auth authentik-server:9000 ...; reverse_proxy code-server:8443 }
+  route /mail/*   { forward_auth authentik-server:9000 ...; reverse_proxy sogo:20000 }
+  route /proxy/*  { forward_auth authentik-server:9000 ...; reverse_proxy litellm:4000 }
+  route /efw/*    { forward_auth authentik-server:9000 ...; reverse_proxy tool-egress-proxy:8081 }
+  route /git/*    { forward_auth authentik-server:9000 ...; reverse_proxy gitea:3000 }
+}`
+      },
+      "portal": {
+        product: "Thin-Spine React Portal",
+        container: "packages/brainsOS-portal (Served by Caddy)",
+        port: "https://local.brainsos.ai/",
+        role: "Unified operator cockpit (<4% navigation spine, 96%+ full-bleed workspace iframe) across all embedded tools.",
+        nets: ["ingress-net"],
+        netColors: ["dot-ingress"],
+        security: "Same-origin framing protection; integrates Authentik session identity across all embedded UIs.",
+        mounts: "/srv/portal:ro inside brainsos-ingress-caddy",
+        config: `Embedded Subpath Views in Thin-Spine Portal:
+• /editor/  -> VS Code (code-server)
+• /mail/    -> SOGo Groupware & Agent Mailboxes
+• /proxy/ui -> LiteLLM Spend & Virtual Key Console
+• /efw/     -> Mitmweb Outbound Flow Inspector
+• /git/     -> Gitea Prompt & Config Repositories
+• :3001     -> Langfuse v4 OTel Trace Explorer`
+      },
+      "authentik": {
+        product: "Authentik Zero-Trust SSO",
+        container: "brainsos-app-auth-server & auth-worker",
+        port: "127.0.0.1:9002 -> :9000",
+        role: "Centralized OIDC Identity Provider & Forward-Auth proxy protecting all operator consoles.",
+        nets: ["ingress-net", "internal-net"],
+        netColors: ["dot-ingress", "dot-internal"],
+        security: "no-new-privileges:true; declarative zero-click blueprints provision OIDC clients for LiteLLM & Langfuse.",
+        mounts: "config/authentik/blueprints:/blueprints/brainsos:ro",
+        config: `# Declarative Blueprint Provisioning
+• Forward-Auth Gate: VS Code (/editor/), Mitmweb (/efw/), Hermes UI (/runner/)
+• Trusted Header Auth: Gitea (X-Authentik-Username) & SOGo
+• OIDC Native SSO: LiteLLM Proxy UI & Langfuse v4 Observability`
+      },
+      "auth-backing": {
+        product: "Authentik Postgres 16 + Redis 7",
+        container: "brainsos-app-auth-db & auth-redis",
+        port: "Internal :5432 / :6379",
+        role: "Dedicated relational identity store and session cache for Authentik SSO.",
+        nets: ["internal-net"],
+        netColors: ["dot-internal"],
+        security: "no-new-privileges:true; zero host port bindings.",
+        mounts: "data/control_plane/authentik_db:/var/lib/postgresql/data",
+        config: `services:
+  authentik-db:    postgres:16-alpine
+  authentik-redis: redis:7-alpine`
+      },
+      "hermes": {
+        product: "Hermes Warm Agent Runner",
+        container: "brainsos-agent-runner-hermes",
+        port: "127.0.0.1:8642 / :8787",
+        role: "Primary stateless multi-tenant execution engine running async /v1/runs turns with dynamic SOUL.md & OKF mounts.",
+        nets: ["ingress-net", "internal-net"],
+        netColors: ["dot-ingress", "dot-internal"],
+        security: "UID/GID 1000, no-new-privileges:true, max_concurrent_runs: 1, HTTPS_PROXY=egress-proxy:8082, zero docker.sock.",
+        mounts: "data/agents:/data/agents, data/agents:/memories, tool_egress_proxy_data:/etc/ssl/mitmproxy:ro",
+        config: `# Enforced by scripts/setup/apply-hermes-guards.sh
+max_concurrent_runs: 1
+OPENAI_BASE_URL: http://litellm:4000/v1
+HTTPS_PROXY: http://brainsos-net-egress-proxy:8082
+HERMES_WRITE_SAFE_ROOT: /opt/data:/tmp:/data:/memories`
+      },
+      "sdk-runners": {
+        product: "Claude SDK & OpenAI SDK Runners",
+        container: "brainsos-agent-runner-claude (:8001) & openai (:8002)",
+        port: "127.0.0.1:8001 & :8002",
+        role: "Warm stateless runner adapters for Anthropic Claude SDK and OpenAI Agents SDK workloads.",
+        nets: ["internal-net"],
+        netColors: ["dot-internal"],
+        security: "no-new-privileges:true; all completions routed via LiteLLM (:4000); all WAN calls routed via Egress Proxy (:8082).",
+        mounts: "data/runners:/data/runners:ro, data/agents:/data/agents:rw",
+        config: `runner-claude:
+  ANTHROPIC_BASE_URL: http://litellm:4000
+  HTTPS_PROXY: http://brainsos-net-egress-proxy:8082
+runner-openai:
+  OPENAI_BASE_URL: http://litellm:4000/v1
+  HTTPS_PROXY: http://brainsos-net-egress-proxy:8082`
+      },
+      "fastmcp": {
+        product: "FastMCP Dynamic Tool Server",
+        container: "packages/brainsOS-mcp (stdio inside runner)",
+        port: "stdio transport",
+        role: "Exposes domain tools (mail, memory, queue, telemetry) dynamically over Model Context Protocol without prompt bloat.",
+        nets: ["internal-net"],
+        netColors: ["dot-internal"],
+        security: "Eliminates static tool schema injection into system prompts, preserving KV cache on unified memory silicon.",
+        mounts: "data/runners/hermes/mcp.json:/opt/data/mcp.json:ro",
+        config: `// mcp.json (Zero Native Tool Injection - README §2.5)
+{
+  "mcpServers": {
+    "brainsos-core": {
+      "command": "python3",
+      "args": ["-m", "brainsos_mcp.server"]
+    }
+  }
+}`
+      },
+      "mitmproxy": {
+        product: "mitmproxy / mitmweb Egress Firewall",
+        container: "brainsos-agent-egress-proxy",
+        port: ":8082 (Proxy) / :8081 (Web UI)",
+        role: "Intercepts outbound agent HTTPS traffic, injects scoped credentials in transit by IP, and redacts secrets in flow logs.",
+        nets: ["internal-net"],
+        netColors: ["dot-internal"],
+        security: "Rule 10: Agent containers hold ZERO GitHub tokens. Addon github_auth.py injects PATs in transit & masks UI as [INJECTED_CINDY_TOKEN].",
+        mounts: "config/egress/addons:/addons:ro, tool_egress_proxy_data:/home/mitmproxy/.mitmproxy",
+        config: `# Command in compose.agents.yml:
+mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 \\
+  -s /addons/theme_loader.py \\
+  -s /addons/github_auth.py`
+      },
+      "litellm": {
+        product: "LiteLLM Control Plane Gateway",
+        container: "brainsos-control-litellm",
+        port: "127.0.0.1:4000",
+        role: "Central policy gateway enforcing virtual API keys, token budgets, model routing, and hardware request serialization.",
+        nets: ["control-net", "internal-net", "ingress-net"],
+        netColors: ["dot-control", "dot-internal", "dot-ingress"],
+        security: "Rule 2 & 3: max_parallel_requests: 1 and --num_workers 1 protect unified LPDDR5x memory bus from bandwidth thrashing.",
+        mounts: "config/litellm/config.yaml:/app/config.yaml:ro",
+        config: `# compose.control.yml & config/litellm/config.yaml
+command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+OLLAMA_API_BASE: http://host.docker.internal:11434
+max_parallel_requests: 1
+timeout: 300`
+      },
+      "litellm-db": {
+        product: "PostgreSQL 16 (Control Plane DB)",
+        container: "brainsos-control-litellm-db",
+        port: "None (Air-Gapped :5432)",
+        role: "Persists virtual keys, rate limits, dynamic model registrations, and spend ledgers exclusively for LiteLLM.",
+        nets: ["control-net"],
+        netColors: ["dot-control"],
+        security: "Rule 6 Hardening: Zero host port bindings; attached ONLY to brainsos-control-net. Completely unreachable from agent containers.",
+        mounts: "data/control_plane/litellm_db:/var/lib/postgresql/data",
+        config: `# Enforced by .github/workflows/pre-commit.yml
+litellm-db:
+  image: postgres:16-alpine
+  networks:
+    - brainsos-control-net  # Strictly isolated from brainsos-internal-net`
+      },
+      "postfix": {
+        product: "Postfix SMTP + Dovecot IMAP + Sieve",
+        container: "brainsos-app-mail-server (+ mail-ingress)",
+        port: "127.0.0.1:10025 / :10143",
+        role: "Asynchronous email engine; inbound messages fire Dovecot sieve-pipe (agent-webhook.sh) to enqueue agent runs.",
+        nets: ["internal-net"],
+        netColors: ["dot-internal"],
+        security: "no-new-privileges:true; decouples external email ingestion (AWS SES/SQS/S3 via mail-ingress) from agent execution.",
+        mounts: "data/comms/email/vmail:/var/mail/vmail, docker/mail/agent-webhook.sh:ro",
+        config: `Inbound Mail Flow (#295):
+1. Email arrives in Postfix/Dovecot mailbox (e.g. cindypawford@brainsos.local)
+2. Sieve script invokes agent-webhook.sh
+3. Enqueues non-blocking task on Host Queue Worker (127.0.0.1:8000)`
+      },
+      "sogo": {
+        product: "SOGo Groupware & Webmail (+ Postgres)",
+        container: "brainsos-app-sogo & brainsos-app-sogo-db",
+        port: "127.0.0.1:20000",
+        role: "Full-featured webmail and CalDAV groupware interface (/mail/) for messaging agents and inspecting email threads.",
+        nets: ["ingress-net", "internal-net"],
+        netColors: ["dot-ingress", "dot-internal"],
+        security: "no-new-privileges:true; pre-authenticated via Authentik Trusted Proxy SSO.",
+        mounts: "data/comms/sogo/spool:/var/spool/sogo, theme-brainsos.css:ro",
+        config: `Pre-configured Agent & Operator Mailboxes:
+• operator@brainsos.local
+• terrastella@brainsos.local
+• cindypawford@brainsos.local
+• marvin@brainsos.local`
+      },
+      "signal": {
+        product: "Signal CLI REST / JSON-RPC",
+        container: "brainsos-app-signal-cli",
+        port: "Internal :8080",
+        role: "End-to-end encrypted mobile messaging bridge for low-latency operator-to-agent dispatch.",
+        nets: ["internal-net"],
+        netColors: ["dot-internal"],
+        security: "no-new-privileges:true; isolated on brainsos-internal-net with gateway_proxy.py.",
+        mounts: "data/comms/signal:/home/.local/share/signal-cli",
+        config: `MODE=json-rpc
+PORT=8080
+volumes:
+  - data/comms/signal:/home/.local/share/signal-cli`
+      },
+      "codeserver": {
+        product: "VS Code IDE (code-server)",
+        container: "brainsos-app-code-server",
+        port: "127.0.0.1:8443 (/editor/)",
+        role: "Containerized Operator IDE & PKM console pre-loaded with Continue AI, Aider, Goose, and system terminal extensions.",
+        nets: ["ide-net", "internal-net"],
+        netColors: ["dot-ide", "dot-internal"],
+        security: "UID/GID 1000, no-new-privileges:true; isolated on brainsos-ide-net behind Authentik Forward-Auth.",
+        mounts: "data:/data, data/agents:/memories, config/editor:/etc/brainsos/editor:ro",
+        config: `# Operator IDE Capabilities:
+• Live inspection & editing of /memories (OKF Markdown notes)
+• Built-in Git source control connected to local Gitea (/git/)
+• Pre-wired OPENAI_API_BASE=http://litellm:4000/v1`
+      },
+      "gitea": {
+        product: "Gitea Self-Hosted Git Server",
+        container: "brainsos-app-git",
+        port: "127.0.0.1:3002 -> :3000 (/git/)",
+        role: "Local source control server versioning SOUL.md personas, sub-agent prompts, skills, and agent web apps.",
+        nets: ["ingress-net", "ide-net", "internal-net"],
+        netColors: ["dot-ingress", "dot-ide", "dot-internal"],
+        security: "OFFLINE_MODE=true, DISABLE_SSH=true, Authentik Reverse-Proxy Header Authentication.",
+        mounts: "data/git:/data",
+        config: `GITEA__server__ROOT_URL=https://local.brainsos.ai/git/
+GITEA__server__OFFLINE_MODE=true
+GITEA__security__REVERSE_PROXY_AUTHENTICATION_USER=X-Authentik-Username`
+      },
+      "okf-memory": {
+        product: "OKF Memory Engine (Pure Markdown)",
+        container: "packages/brainsOS-memory (/memories)",
+        port: "Filesystem Bind Mount",
+        role: "Human-auditable flat-file Markdown knowledge store with YAML frontmatter; enforces Rule 1 Memory Purity.",
+        nets: ["ide-net", "internal-net"],
+        netColors: ["dot-ide", "dot-internal"],
+        security: "SEC-07 Memory Purity Guardrail: strictly blocks .db, SQLite, binary blobs, node_modules, and vector indices from /memories.",
+        mounts: "${BRAINSOS_DATA_DIR}/agents/<tenant>/memories -> /memories",
+        config: `# Three-Layer Purity Enforcement (packages/brainsOS-memory):
+1. Extension Check: only *.md files permitted
+2. Binary Scan: rejects any payload containing null bytes ('\\0')
+3. Path Traversal Guard: confines writes to tenant's /memories root`
+      },
+      "langfuse": {
+        product: "Langfuse v4.58 Web & Worker (+ Postgres)",
+        container: "brainsos-telemetry-langfuse-web & worker",
+        port: "127.0.0.1:3001 -> :3000",
+        role: "Distributed OpenTelemetry v4 observability platform capturing unified email-to-reply traces, prompts, and tool spans.",
+        nets: ["telemetry-net", "ingress-net"],
+        netColors: ["dot-telemetry", "dot-ingress"],
+        security: "TELEMETRY_ENABLED=false (zero phone-home), Authentik OIDC SSO, declarative zero-click org/project initialization.",
+        mounts: "Connected to langfuse-db (Postgres 16) on brainsos-telemetry-net",
+        config: `# Unified Thread Trace Correlation (#295 / #299):
+thread_trace_id = sha256(f"{session_id}::{session_id}")[:16]
+OTEL_EXPORTER_OTLP_HEADERS: "x-langfuse-ingestion-version=4"
+Endpoint: POST /api/public/otel/v1/traces`
+      },
+      "clickhouse": {
+        product: "ClickHouse 25.12 OLAP Database",
+        container: "brainsos-telemetry-clickhouse",
+        port: "127.0.0.1:8123 / :9000",
+        role: "High-speed columnar OLAP analytical store powering Langfuse v4 trace queries, latency histograms, and token costs.",
+        nets: ["telemetry-net"],
+        netColors: ["dot-telemetry"],
+        security: "Runs as UID 101 strictly on brainsos-telemetry-net.",
+        mounts: "data/telemetry/clickhouse:/var/lib/clickhouse",
+        config: `clickhouse:
+  image: clickhouse/clickhouse-server:25.12
+  networks:
+    - brainsos-telemetry-net`
+      },
+      "minio-redis": {
+        product: "Chainguard MinIO S3 + Redis 7",
+        container: "brainsos-telemetry-minio & redis",
+        port: "127.0.0.1:9090/:9091 & :6379",
+        role: "S3-compatible object storage for raw OTel event payloads/multimodal media and Redis high-throughput ingestion queue.",
+        nets: ["telemetry-net"],
+        netColors: ["dot-telemetry"],
+        security: "Isolated on brainsos-telemetry-net; zero external exposure.",
+        mounts: "data/telemetry/minio:/data, data/telemetry/redis:/data",
+        config: `LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+REDIS_HOST: redis (maxmemory-policy: noeviction)`
+      },
+      "ollama": {
+        product: "Host Ollama / vLLM + Silicon Bus",
+        container: "Native Host Daemon (127.0.0.1:11434)",
+        port: "127.0.0.1:11434",
+        role: "Bare-metal LLM inference engine executing on ASUS Ascent GX10 (NVIDIA GB10 CUDA) or Apple Silicon Metal.",
+        nets: ["host-loopback"],
+        netColors: ["dot-loopback"],
+        security: "Rule 2: Bound strictly to 127.0.0.1. Unreachable from LAN/WAN; agents cannot call :11434 directly and must traverse LiteLLM.",
+        mounts: "Unified LPDDR5x Memory Bus (~273 GB/s)",
+        config: `# scripts/setup/setup-host.sh
+OLLAMA_HOST=127.0.0.1:11434
+# Linux/DGX OS hardware driver pinning:
+sudo apt-mark hold nvidia-driver-* cuda-*`
+      },
+      "queue-worker": {
+        product: "Async FIFO Queue & mJ Telemetry",
+        container: "packages/brainsOS-queue & telemetry (:8000)",
+        port: "127.0.0.1:8000",
+        role: "Host-side asynchronous queue daemon orchestrating POST /v1/runs lifecycles, 4h wall-clock budgets, and mJ/tok accounting.",
+        nets: ["host-loopback"],
+        netColors: ["dot-loopback"],
+        security: "Checkpoints run_id for crash-resilient polling; triggers ./scripts/control/emergency-stop.sh on critical breaker trip.",
+        mounts: "Reads ${BRAINSOS_DATA_DIR}/settings/agents.yaml",
+        config: `# Email -> Queue -> Run -> Reply Lifecycle:
+1. Submit POST /v1/runs (Idempotency-Key = Message-ID)
+2. Poll GET /v1/runs/{run_id} (socket-free up to HERMES_RUN_MAX_SEC=4h)
+3. Emit OTLP span + millijoule energy telemetry to Langfuse v4`
+      }
+    };
+
+    /* ==========================================================================
+       SVG TOPOLOGY EDGES (PHYSICAL / LOGICAL CONTAINER WIRES)
+       ========================================================================== */
+    const NET_COLOR_HEX = {
+      "ingress-net":   "#38bdf8",
+      "internal-net":  "#a855f7",
+      "control-net":   "#f43f5e",
+      "ide-net":       "#10b981",
+      "telemetry-net": "#f59e0b",
+      "host-loopback": "#ec4899",
+      "blocked":       "#fb7185"
+    };
+
+    const TOPOLOGY_WIRES = [
+      // Ingress & SSO wires
+      { from: "caddy", to: "portal",       net: "ingress-net",  label: "Static UI" },
+      { from: "caddy", to: "authentik",    net: "ingress-net",  label: "forward_auth :9000" },
+      { from: "authentik", to: "auth-backing", net: "internal-net", label: "PG :5432 / Redis" },
+      { from: "caddy", to: "codeserver",   net: "ide-net",      label: "/editor/ :8443" },
+      { from: "caddy", to: "gitea",        net: "ide-net",      label: "/git/ :3000" },
+      { from: "caddy", to: "sogo",         net: "ingress-net",  label: "/mail/ :20000" },
+      { from: "caddy", to: "litellm",      net: "ingress-net",  label: "/proxy/ui :4000" },
+      { from: "caddy", to: "mitmproxy",    net: "internal-net", label: "/efw/ :8081" },
+      { from: "caddy", to: "langfuse",     net: "ingress-net",  label: "UI :3001" },
+      { from: "caddy", to: "hermes",       net: "ingress-net",  label: "/runner/ :8787" },
+
+      // Agent Execution, FastMCP, Egress & Memory wires
+      { from: "hermes", to: "fastmcp",     net: "internal-net", label: "stdio MCP" },
+      { from: "hermes", to: "okf-memory",  net: "internal-net", label: "OKF .md only" },
+      { from: "hermes", to: "mitmproxy",   net: "internal-net", label: "HTTPS_PROXY :8082" },
+      { from: "sdk-runners", to: "mitmproxy", net: "internal-net", label: "HTTPS_PROXY :8082" },
+      { from: "hermes", to: "litellm",     net: "internal-net", label: "POST /v1/chat" },
+      { from: "sdk-runners", to: "litellm", net: "internal-net", label: "POST /v1/chat" },
+      { from: "hermes", to: "gitea",       net: "internal-net", label: "Git Pull/Push" },
+
+      // Control Plane & Host Loopback Inference wires
+      { from: "litellm", to: "litellm-db", net: "control-net",  label: "Air-Gapped :5432" },
+      { from: "litellm", to: "ollama",     net: "host-loopback", label: "max_parallel:1 (:11434)" },
+
+      // Messaging & Queue wires
+      { from: "sogo", to: "postfix",       net: "internal-net", label: "SMTP/IMAP" },
+      { from: "postfix", to: "queue-worker", net: "host-loopback", label: "sieve webhook :8000" },
+      { from: "signal", to: "queue-worker", net: "internal-net", label: "JSON-RPC" },
+      { from: "queue-worker", to: "hermes", net: "host-loopback", label: "POST /v1/runs (:8642)" },
+
+      // Operator IDE wires
+      { from: "codeserver", to: "okf-memory", net: "ide-net",   label: "Inspect/Edit .md" },
+      { from: "codeserver", to: "gitea",   net: "ide-net",      label: "Git Sync" },
+      { from: "codeserver", to: "litellm", net: "internal-net", label: "Continue AI" },
+
+      // Telemetry & OTel v4 wires
+      { from: "queue-worker", to: "langfuse", net: "telemetry-net", label: "Root OTLP Span" },
+      { from: "hermes", to: "langfuse",    net: "ingress-net",  label: "Turn OTLP v4" },
+      { from: "litellm", to: "langfuse",   net: "ingress-net",  label: "langfuse_otel" },
+      { from: "langfuse", to: "clickhouse", net: "telemetry-net", label: "OLAP :8123" },
+      { from: "langfuse", to: "minio-redis", net: "telemetry-net", label: "S3 + Redis :6379" }
+    ];
+
+    const NETWORK_DESCRIPTIONS = {
+      "all": {
+        title: "Complete brainsOS Appliance Topology (5 Segregated Docker Bridge Networks + Host Loopback)",
+        desc: "Click any embedded product card below to draw its live SVG network connections, or select a Network Bus / SVG Wire Flow above.",
+        meta: "docker-compose.yml • 5-Plane Modular Topology"
+      },
+      "ingress-net": {
+        title: "Network 1: brainsos-ingress-net (L7 Edge & SSO Gateways)",
+        desc: "Connects Caddy reverse proxy to web-facing consoles (Authentik, SOGo, LiteLLM UI, Gitea, Langfuse Web, Hermes WebUI). Only Port 443 is exposed on the appliance perimeter.",
+        meta: "Driver: bridge • Verified by verify-appliance-ingress.sh"
+      },
+      "internal-net": {
+        title: "Network 2: brainsos-internal-net (Agent Execution, Messaging & Egress Firewall)",
+        desc: "Connects warm agent runners (Hermes, Claude, OpenAI) to LiteLLM (:4000), Postfix/SOGo/Signal, and the mitmproxy Tool Egress Firewall (:8082).",
+        meta: "Driver: bridge • Outbound WAN forced through :8082"
+      },
+      "control-net": {
+        title: "Network 3: brainsos-control-net (Rule 6 Air-Gapped Policy Database Bridge)",
+        desc: "Strictly isolates brainsos-control-litellm-db (PostgreSQL 16). Only LiteLLM attaches to this bridge—agent containers have zero route, DNS, or credentials.",
+        meta: "Driver: bridge • CI-enforced in .github/workflows/pre-commit.yml"
+      },
+      "ide-net": {
+        title: "Network 4: brainsos-ide-net (Isolated Operator IDE & Source Control Bus)",
+        desc: "Segregates the containerized VS Code Operator IDE (code-server :8443) and Gitea WebSockets from autonomous agent execution containers.",
+        meta: "Driver: bridge • Verified by verify-editor.sh"
+      },
+      "telemetry-net": {
+        title: "Network 5: brainsos-telemetry-net (Distributed OTel v4 & ClickHouse OLAP Bus)",
+        desc: "High-throughput observability backbone linking Langfuse v4 Web/Worker, ClickHouse 25.12, Redis 7, Chainguard MinIO, and Langfuse Postgres.",
+        meta: "Driver: bridge • 100% local OTel v4 ingestion"
+      },
+      "host-loopback": {
+        title: "Host Loopback Plane (127.0.0.1:11434 & :8000)",
+        desc: "Native Ollama/vLLM inference and the brainsOS-queue worker bind strictly to 127.0.0.1 on the host OS, unreachable from LAN/WAN or direct unmediated agent sockets.",
+        meta: "Host Loopback • Hardware-serialized unified memory bus"
+      }
+    };
+
+    const FLOWS = {
+      "sso": {
+        title: "SVG Flow 1: Single-Origin HTTPS & Authentik Zero-Trust SSO",
+        desc: "1. Operator connects to https://local.brainsos.ai (:443) → 2. Caddy loads Thin-Spine Portal → 3. Caddy verifies session via Authentik Forward-Auth (:9000) → 4. Proxies authenticated traffic to VS Code (:8443), Gitea (:3000), or SOGo (:20000).",
+        meta: "Single-Origin Lock (Ticket #312)",
+        steps: {
+          "caddy": "1. TLS :443",
+          "portal": "2. Portal UI",
+          "authentik": "3. SSO Verify",
+          "auth-backing": "3b. Session DB",
+          "codeserver": "4a. /editor/",
+          "gitea": "4b. /git/",
+          "sogo": "4c. /mail/"
+        },
+        wires: [
+          { from: "caddy", to: "portal", net: "ingress-net", label: "1. Load Shell" },
+          { from: "caddy", to: "authentik", net: "ingress-net", label: "2. forward_auth" },
+          { from: "authentik", to: "auth-backing", net: "internal-net", label: "3. Verify Session" },
+          { from: "caddy", to: "codeserver", net: "ide-net", label: "4a. /editor/ :8443" },
+          { from: "caddy", to: "gitea", net: "ide-net", label: "4b. /git/ :3000" },
+          { from: "caddy", to: "sogo", net: "ingress-net", label: "4c. /mail/ :20000" }
+        ]
+      },
+      "email": {
+        title: "SVG Flow 2: Async Email → FIFO Queue → Hermes Runner → LiteLLM → Host Ollama",
+        desc: "1. Email arrives at Postfix/Dovecot → 2. Sieve webhook enqueues task on Host Queue Worker (:8000) → 3. Worker calls POST /v1/runs on Hermes (:8642) → 4. Hermes calls LiteLLM (:4000, max_parallel: 1) → 5. LiteLLM routes to Host Ollama (127.0.0.1:11434) → 6. Turn saved to /memories as pure OKF Markdown.",
+        meta: "Zero Held Sockets • Hardware Serialized",
+        steps: {
+          "sogo": "1a. Send Mail",
+          "postfix": "1b. Sieve Hook",
+          "queue-worker": "2. FIFO Queue",
+          "hermes": "3. POST /v1/runs",
+          "litellm": "4. max_parallel:1",
+          "ollama": "5. 127.0.0.1 GPU",
+          "okf-memory": "6. Write .md"
+        },
+        wires: [
+          { from: "sogo", to: "postfix", net: "internal-net", label: "1. SMTP Mail" },
+          { from: "postfix", to: "queue-worker", net: "host-loopback", label: "2. agent-webhook.sh" },
+          { from: "queue-worker", to: "hermes", net: "host-loopback", label: "3. POST /v1/runs" },
+          { from: "hermes", to: "litellm", net: "internal-net", label: "4. Scoped Key :4000" },
+          { from: "litellm", to: "ollama", net: "host-loopback", label: "5. Serialized :11434" },
+          { from: "hermes", to: "okf-memory", net: "internal-net", label: "6. Save OKF .md" }
+        ]
+      },
+      "egress": {
+        title: "SVG Flow 3: Zero-Secret Outbound Tool Call & In-Transit Credential Injection (Rule 10)",
+        desc: "1. Hermes or SDK Runner invokes Git/GitHub tool with ZERO tokens in container env → 2. Traffic routes via HTTPS_PROXY to mitmproxy (:8082) → 3. github_auth.py verifies container IP on internal-net & injects scoped Bearer PAT in transit → 4. Redacts token as [INJECTED_CINDY_TOKEN] in mitmweb (:8081).",
+        meta: "Zero Ambient Secrets in Agent Containers",
+        steps: {
+          "hermes": "1a. Zero Env PAT",
+          "sdk-runners": "1b. SDK Egress",
+          "mitmproxy": "2. IP Auth + Mask",
+          "caddy": "3. /efw/ Redacted UI"
+        },
+        wires: [
+          { from: "hermes", to: "mitmproxy", net: "internal-net", label: "1. HTTPS_PROXY :8082 (No Token)" },
+          { from: "sdk-runners", to: "mitmproxy", net: "internal-net", label: "1b. HTTPS_PROXY :8082" },
+          { from: "caddy", to: "mitmproxy", net: "internal-net", label: "2. Inspect Masked [INJECTED_TOKEN]" }
+        ]
+      },
+      "otel": {
+        title: "SVG Flow 4: Unified OpenTelemetry v4 Tracing & Millijoule Accounting",
+        desc: "1. Queue Worker opens root thread trace (sha256 session_id) → 2. Hermes & FastMCP append LLM turn and tool spans → 3. LiteLLM logs non-Hermes operator spans → 4. Langfuse Web (:3001) ingests OTLP v4 → 5. Redis & Worker batch events into ClickHouse OLAP & MinIO S3.",
+        meta: "x-langfuse-ingestion-version: 4",
+        steps: {
+          "queue-worker": "1. Root OTLP",
+          "hermes": "2. Turn Spans",
+          "litellm": "3. OTel Callback",
+          "langfuse": "4. Ingest v4",
+          "minio-redis": "5. S3 + Queue",
+          "clickhouse": "6. OLAP Analytics"
+        },
+        wires: [
+          { from: "queue-worker", to: "langfuse", net: "telemetry-net", label: "1. thread_trace_id" },
+          { from: "hermes", to: "langfuse", net: "ingress-net", label: "2. OTLP Spans" },
+          { from: "litellm", to: "langfuse", net: "ingress-net", label: "3. langfuse_otel" },
+          { from: "langfuse", to: "minio-redis", net: "telemetry-net", label: "4. Event Blob & Queue" },
+          { from: "langfuse", to: "clickhouse", net: "telemetry-net", label: "5. Columnar OLAP" }
+        ]
+      },
+      "airgap": {
+        title: "SVG Flow 5: Blocked Lateral Movement & Air-Gap Defense (Rule 1, 2 & 6)",
+        desc: "Demonstrates three hard architectural blocks if an agent turn is prompt-injected: (A) Direct access to litellm-db is air-gapped by brainsos-control-net; (B) Direct access to Host Ollama (:11434) is blocked; (C) Binary/SQLite writes to /memories are rejected by the OKF Purity Guard.",
+        meta: "Defense-in-Depth Boundaries",
+        steps: {
+          "hermes": "Compromised Turn",
+          "litellm-db": "✕ BLOCKED (Rule 6)",
+          "ollama": "✕ BLOCKED (Rule 2)",
+          "okf-memory": "✕ BLOCKED (.db/bin)"
+        },
+        wires: [
+          { from: "hermes", to: "litellm-db", net: "blocked", label: "✕ BLOCKED: Air-Gapped control-net" },
+          { from: "hermes", to: "ollama", net: "blocked", label: "✕ BLOCKED: Must route via LiteLLM" },
+          { from: "hermes", to: "okf-memory", net: "blocked", label: "✕ BLOCKED: SEC-07 Rejects .db/binary" }
+        ]
+      }
+    };
+
+    /* ==========================================================================
+       STATE & RENDER LOGIC (VIEW 0 WIRED + VIEW 1 CLEAN BLUEPRINT)
+       ========================================================================== */
+    let activeNet = "all";
+    let activeFlow = "node"; // 'node' | 'all-wires' | 'sso' | 'email' | 'egress' | 'otel' | 'airgap'
+    let cleanNet = "all";
+    let selectedNodeId = "hermes";
+
+    function buildPlanesHtml(mode) {
+      const isWired = mode === "wired";
+      const netFilter = isWired ? activeNet : cleanNet;
+      const flowObj = (isWired && FLOWS[activeFlow]) ? FLOWS[activeFlow] : null;
+
+      return PLANES.map(plane => {
+        const cardsHtml = plane.nodes.map(nodeId => {
+          const n = NODES[nodeId];
+          const isSelected = nodeId === selectedNodeId;
+          const matchesNet = netFilter === "all" || n.nets.includes(netFilter);
+          const flowStep = flowObj && flowObj.steps[nodeId] ? flowObj.steps[nodeId] : null;
+
+          // If in "node" wire mode on wired tab, highlight connected neighbors too
+          let isConnectedNeighbor = false;
+          if (isWired && activeFlow === "node" && activeNet === "all") {
+            isConnectedNeighbor = TOPOLOGY_WIRES.some(
+              w => (w.from === selectedNodeId && w.to === nodeId) || (w.to === selectedNodeId && w.from === nodeId)
+            );
+          }
+
+          const isDimmed =
+            (netFilter !== "all" && !matchesNet) ||
+            (flowObj && !flowStep);
+
+          const classes = [
+            "node-card",
+            isSelected ? "selected" : "",
+            isDimmed ? "dimmed" : "",
+            flowStep ? "flow-highlight" : ""
+          ].filter(Boolean).join(" ");
+
+          const netsPills = n.nets.map((netName, i) => `
+            <span class="net-dot-pill mono">
+              <span class="dot ${n.netColors[i]}"></span>${netName}
+            </span>
+          `).join("");
+
+          const dataAttr = isWired ? `data-wired-node="${nodeId}"` : `data-clean-node="${nodeId}"`;
+
+          return `
+            <div class="${classes}" ${dataAttr} onclick="selectNode('${nodeId}')">
+              <span class="flow-step-badge mono">${flowStep || ""}</span>
+              <div>
+                <div class="node-top">
+                  <div class="product-tag">${n.product}</div>
+                  <span class="port-badge mono">${n.port}</span>
+                </div>
+                <div class="node-container-name mono">${n.container}</div>
+                <div class="node-role" style="margin-top:5px;">${n.role}</div>
+              </div>
+              <div class="node-nets">${netsPills}</div>
+            </div>
+          `;
+        }).join("");
+
+        return `
+          <div class="plane-box ${plane.css}">
+            <div class="plane-header">
+              <div class="plane-title">${plane.title}</div>
+              <span class="plane-badge mono">${plane.badge}</span>
+            </div>
+            <div class="nodes-row">${cardsHtml}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function buildInspectorHtml(n) {
+      const connectedWires = TOPOLOGY_WIRES.filter(w => w.from === selectedNodeId || w.to === selectedNodeId);
+      const peersText = connectedWires.map(w => {
+        const dir = w.from === selectedNodeId ? `→ ${NODES[w.to].product}` : `← ${NODES[w.from].product}`;
+        return `${dir} (${w.label})`;
+      }).join(" • ");
+
+      return `
+        <div class="inspector-header">
+          <div class="inspector-eyebrow">Embedded Component Specification</div>
+          <div class="inspector-title">${n.product}</div>
+          <div class="inspector-container mono">${n.container}</div>
+        </div>
+
+        <div>
+          <div class="inspector-section-title">Architectural Role in brainsOS</div>
+          <p class="inspector-desc">${n.role}</p>
+        </div>
+
+        <div class="kv-list">
+          <div class="kv-row">
+            <span class="kv-key">Listening Ports / Interface</span>
+            <span class="kv-val mono">${n.port}</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">Attached Isolated Bridge Networks</span>
+            <span class="kv-val mono">${n.nets.map(x => "brainsos-" + x).join(", ").replace("brainsos-host-loopback", "host-loopback (127.0.0.1)")}</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">Direct Wire Peers (${connectedWires.length})</span>
+            <span class="kv-val mono">${peersText || "Standalone"}</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">Security &amp; Boundary Guardrails</span>
+            <span class="kv-val">${n.security}</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-key">Volume &amp; State Mounts</span>
+            <span class="kv-val mono">${n.mounts}</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="inspector-section-title">Live Appliance Wiring &amp; Config</div>
+          <pre class="code-snippet">${n.config}</pre>
+        </div>
+      `;
+    }
+
+    /* ==========================================================================
+       DYNAMIC SVG BEZIER WIRE RENDERING ENGINE (VIEW 0)
+       ========================================================================== */
+    function drawSvgWires() {
+      const stage = document.getElementById("wired-stage");
+      const svg = document.getElementById("svg-wire-layer");
+      if (!stage || !svg) return;
+
+      const stageRect = stage.getBoundingClientRect();
+      if (stageRect.width === 0 || stageRect.height === 0) return;
+
+      svg.setAttribute("viewBox", `0 0 ${stageRect.width} ${stageRect.height}`);
+
+      // Determine which wires to render based on current filter/flow state
+      let wiresToDraw = [];
+      let showLabels = true;
+
+      if (FLOWS[activeFlow]) {
+        wiresToDraw = FLOWS[activeFlow].wires;
+        showLabels = true;
+      } else if (activeNet !== "all") {
+        wiresToDraw = TOPOLOGY_WIRES.filter(w => w.net === activeNet);
+        showLabels = true;
+      } else if (activeFlow === "all-wires") {
+        wiresToDraw = TOPOLOGY_WIRES;
+        showLabels = false; // Keep all-mesh view clean
+      } else {
+        // Default 'node' mode: draw all inbound/outbound wires for selectedNodeId
+        wiresToDraw = TOPOLOGY_WIRES.filter(w => w.from === selectedNodeId || w.to === selectedNodeId);
+        showLabels = true;
+      }
+
+      // Build SVG markers for each color
+      const defsHtml = Object.keys(NET_COLOR_HEX).map(k => {
+        const col = NET_COLOR_HEX[k];
+        return `
+          <marker id="arrow-${k}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="${col}" />
+          </marker>
+        `;
+      }).join("");
+
+      const pathsHtml = wiresToDraw.map((w, idx) => {
+        const fromEl = stage.querySelector(`[data-wired-node="${w.from}"]`);
+        const toEl   = stage.querySelector(`[data-wired-node="${w.to}"]`);
+        if (!fromEl || !toEl) return "";
+
+        const r1 = fromEl.getBoundingClientRect();
+        const r2 = toEl.getBoundingClientRect();
+
+        const x1 = r1.left - stageRect.left + r1.width / 2;
+        const y1 = r1.top  - stageRect.top  + r1.height / 2;
+        const x2 = r2.left - stageRect.left + r2.width / 2;
+        const y2 = r2.top  - stageRect.top  + r2.height / 2;
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+
+        // Smooth cubic Bezier curve with slight arc offset
+        const cx1 = x1 + dx * 0.25 - dy * 0.08;
+        const cy1 = y1 + dy * 0.55 + dx * 0.05;
+        const cx2 = x1 + dx * 0.75 - dy * 0.08;
+        const cy2 = y1 + dy * 0.45 + dx * 0.05;
+
+        const d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${cx1.toFixed(1)} ${cy1.toFixed(1)}, ${cx2.toFixed(1)} ${cy2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+        const color = NET_COLOR_HEX[w.net] || "#38bdf8";
+        const isBlocked = w.net === "blocked";
+
+        // Midpoint on cubic bezier (t = 0.5)
+        const mx = 0.125 * x1 + 0.375 * cx1 + 0.375 * cx2 + 0.125 * x2;
+        const my = 0.125 * y1 + 0.375 * cy1 + 0.375 * cy2 + 0.125 * y2;
+
+        const labelWidth = Math.max(68, (w.label ? w.label.length * 6.4 + 14 : 70));
+
+        const labelSvg = (showLabels && w.label) ? `
+          <g transform="translate(${mx.toFixed(1)}, ${my.toFixed(1)})">
+            <rect x="${(-labelWidth / 2).toFixed(1)}" y="-10" width="${labelWidth.toFixed(1)}" height="19" rx="5"
+                  fill="#060a12" fill-opacity="0.92" stroke="${color}" stroke-width="1.2" />
+            <text x="0" y="3" text-anchor="middle" fill="#f8fafc"
+                  font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="700">
+              ${w.label}
+            </text>
+          </g>
+        ` : "";
+
+        return `
+          <g>
+            <!-- Soft Outer Wire Glow -->
+            <path d="${d}" fill="none" stroke="${color}" stroke-width="6" stroke-opacity="0.18" stroke-linecap="round" />
+            <!-- Core Animated Wire -->
+            <path d="${d}" fill="none" stroke="${color}" stroke-width="2.3"
+                  class="${isBlocked ? 'svg-wire-blocked' : 'svg-wire-animated'}"
+                  marker-end="url(#arrow-${w.net})" />
+            <!-- Endpoint Solder Dots -->
+            <circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="4" fill="${color}" class="svg-endpoint-pulse" />
+            <circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="4" fill="${color}" />
+            ${labelSvg}
+          </g>
+        `;
+      }).join("");
+
+      svg.innerHTML = `<defs>${defsHtml}</defs>${pathsHtml}`;
+    }
+
+    function renderAllArchViews() {
+      document.getElementById("wired-planes-grid").innerHTML = buildPlanesHtml("wired");
+      document.getElementById("clean-planes-grid").innerHTML = buildPlanesHtml("clean");
+
+      const inspectorHtml = buildInspectorHtml(NODES[selectedNodeId]);
+      document.getElementById("node-inspector-wired").innerHTML = inspectorHtml;
+      document.getElementById("node-inspector-clean").innerHTML = inspectorHtml;
+
+      requestAnimationFrame(drawSvgWires);
+    }
+
+    function selectNode(nodeId) {
+      selectedNodeId = nodeId;
+      // If user clicks a node on View 0 while in all-wires mode, switch to 'node' wire focus so they see its exact wires
+      if (activeFlow === "all-wires") {
+        activeFlow = "node";
+        document.querySelectorAll("[data-flow]").forEach(btn => {
+          btn.classList.toggle("active", btn.getAttribute("data-flow") === "node");
+        });
+      }
+      if (activeNet === "all" && activeFlow === "node") {
+        const n = NODES[nodeId];
+        document.getElementById("banner-title").textContent = `SVG Wire Focus: ${n.product} (${n.container})`;
+        document.getElementById("banner-desc").textContent = n.role;
+        document.getElementById("banner-meta").textContent = `Port: ${n.port} • Nets: ${n.nets.join(", ")}`;
+      }
+      renderAllArchViews();
+    }
+
+    function selectNetwork(net) {
+      activeNet = net;
+      if (FLOWS[activeFlow]) {
+        activeFlow = "node";
+      }
+
+      document.querySelectorAll("[data-net]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-net") === net);
+      });
+      document.querySelectorAll("[data-flow]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-flow") === activeFlow);
+      });
+      document.querySelectorAll(".bus-rail").forEach(rail => {
+        rail.classList.toggle("active", rail.id === "rail-" + net);
+      });
+
+      const info = NETWORK_DESCRIPTIONS[net];
+      document.getElementById("banner-title").textContent = info.title;
+      document.getElementById("banner-desc").textContent = info.desc;
+      document.getElementById("banner-meta").textContent = info.meta;
+
+      if (net !== "all" && !NODES[selectedNodeId].nets.includes(net)) {
+        const firstMatch = Object.keys(NODES).find(k => NODES[k].nets.includes(net));
+        if (firstMatch) selectedNodeId = firstMatch;
+      }
+      renderAllArchViews();
+    }
+
+    function selectFlow(flowKey) {
+      activeFlow = flowKey;
+      activeNet = "all";
+
+      document.querySelectorAll("[data-flow]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-flow") === flowKey);
+      });
+      document.querySelectorAll("[data-net]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-net") === "all");
+      });
+      document.querySelectorAll(".bus-rail").forEach(rail => rail.classList.remove("active"));
+
+      if (FLOWS[flowKey]) {
+        const f = FLOWS[flowKey];
+        document.getElementById("banner-title").textContent = f.title;
+        document.getElementById("banner-desc").textContent = f.desc;
+        document.getElementById("banner-meta").textContent = f.meta;
+        const firstStepNode = Object.keys(f.steps)[0];
+        if (firstStepNode) selectedNodeId = firstStepNode;
+      } else if (flowKey === "all-wires") {
+        document.getElementById("banner-title").textContent = "Complete Appliance Mesh — All 31 Container & Bridge SVG Wires";
+        document.getElementById("banner-desc").textContent = "Showing the full interconnected mesh across all 5 Docker bridge networks and host loopback. Click any node to isolate its wires.";
+        document.getElementById("banner-meta").textContent = "Full SVG Mesh Overlay";
+      } else {
+        const n = NODES[selectedNodeId];
+        document.getElementById("banner-title").textContent = `SVG Wire Focus: ${n.product} (${n.container})`;
+        document.getElementById("banner-desc").textContent = n.role;
+        document.getElementById("banner-meta").textContent = `Port: ${n.port} • Nets: ${n.nets.join(", ")}`;
+      }
+      renderAllArchViews();
+    }
+
+    function selectCleanNet(net) {
+      cleanNet = net;
+      document.querySelectorAll("[data-clean-net]").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-clean-net") === net);
+      });
+      if (net !== "all" && !NODES[selectedNodeId].nets.includes(net)) {
+        const firstMatch = Object.keys(NODES).find(k => NODES[k].nets.includes(net));
+        if (firstMatch) selectedNodeId = firstMatch;
+      }
+      renderAllArchViews();
+    }
+
+    /* ==========================================================================
+       VIEW 2: EMBEDDED PRODUCTS CATALOG
+       ========================================================================== */
+    function renderProductCatalog() {
+      const grid = document.getElementById("product-catalog-grid");
+      grid.innerHTML = Object.keys(NODES).map(key => {
+        const n = NODES[key];
+        return `
+          <div class="product-card">
+            <div>
+              <div class="product-card-head">
+                <div>
+                  <div class="product-category">${n.nets.join(" • ")}</div>
+                  <div class="product-name">${n.product}</div>
+                </div>
+                <span class="port-badge mono">${n.port}</span>
+              </div>
+              <p class="product-why" style="margin-top:8px;">${n.role}</p>
+            </div>
+            <div class="product-wiring">
+              <div class="mono" style="color:#e2e8f0;font-weight:600;margin-bottom:3px;">${n.container}</div>
+              <div>${n.security}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    /* ==========================================================================
+       VIEW 3: REACHABILITY & FIREWALL MATRIX
+       ========================================================================== */
+    const MATRIX_ACTORS = [
+      "External LAN/Browser",
+      "Caddy Ingress (:443)",
+      "Agent Runners (Hermes/SDK)",
+      "Egress Proxy (mitmproxy)",
+      "LiteLLM Gateway (:4000)",
+      "LiteLLM Control DB",
+      "Operator IDE (code-server)",
+      "Langfuse v4 / ClickHouse",
+      "Host Ollama (127.0.0.1:11434)",
+      "Outbound WAN / GitHub / IMDS"
+    ];
+
+    const MATRIX_RULES = [
+      // Row 0: External LAN/Browser
+      [
+        { t: "self", label: "—" },
+        { t: "allow", label: "HTTPS :443", rule: "Single-origin TLS ingress via Caddy (compose.appliance.yml)." },
+        { t: "block", label: "BLOCKED", rule: "Runners bind to 127.0.0.1 only; external callers must traverse Caddy + Authentik SSO." },
+        { t: "block", label: "BLOCKED", rule: "Mitmweb (:8081) is bound to 127.0.0.1 and gated by Caddy + Authentik SSO at /efw/." },
+        { t: "block", label: "BLOCKED", rule: "LiteLLM (:4000) is loopback-bound; external UI access is gated via Caddy + Authentik at /proxy/ui." },
+        { t: "block", label: "AIR-GAPPED", rule: "Rule 6: brainsos-control-litellm-db has zero host port bindings and sits on brainsos-control-net." },
+        { t: "block", label: "SSO GATED", rule: "code-server (:8443) is only reachable externally through Caddy + Authentik Forward-Auth (/editor/)." },
+        { t: "mediate", label: "SSO GATED", rule: "Langfuse UI requires Authentik OIDC Single Sign-On." },
+        { t: "block", label: "LOOPBACK ONLY", rule: "Rule 2: Ollama binds strictly to 127.0.0.1:11434; completely unreachable from external networks." },
+        { t: "self", label: "—" }
+      ],
+      // Row 1: Caddy Ingress
+      [
+        { t: "allow", label: "TLS Response", rule: "Caddy serves TLS responses back to client browsers." },
+        { t: "self", label: "—" },
+        { t: "mediate", label: "SSO Forward-Auth", rule: "Caddy proxies /runner/ to Hermes WebUI (:9119) only after Authentik forward-auth succeeds." },
+        { t: "mediate", label: "SSO Forward-Auth", rule: "Caddy proxies /efw/ to mitmweb (:8081) behind Authentik SSO." },
+        { t: "mediate", label: "SSO + Key Inject", rule: "Caddy routes /proxy/ui to LiteLLM (:4000) on brainsos-ingress-net." },
+        { t: "block", label: "AIR-GAPPED", rule: "Caddy is not attached to brainsos-control-net and cannot reach litellm-db." },
+        { t: "allow", label: "ide-net :8443", rule: "Caddy routes /editor/ over isolated brainsos-ide-net to code-server:8443." },
+        { t: "allow", label: "ingress-net :3000", rule: "Caddy routes Langfuse traffic over brainsos-ingress-net." },
+        { t: "block", label: "BLOCKED", rule: "Caddy never routes directly to host Ollama (:11434)." },
+        { t: "allow", label: "ACME DNS-01", rule: "Caddy performs Route53 DNS-01 challenges for wildcard TLS certs when configured." }
+      ],
+      // Row 2: Agent Runners (Hermes / Claude / OpenAI)
+      [
+        { t: "block", label: "BLOCKED", rule: "Runners cannot initiate inbound connections to operator browsers." },
+        { t: "allow", label: "internal-net", rule: "Runners can resolve internal appliance services via Caddy aliases if needed." },
+        { t: "self", label: "max_runs: 1", rule: "Hermes serializes execution via max_concurrent_runs: 1; tenants are isolated by filesystem path." },
+        { t: "mediate", label: "HTTPS_PROXY :8082", rule: "Rule 10: All runner outbound HTTP/HTTPS traffic is forced through brainsos-agent-egress-proxy:8082." },
+        { t: "allow", label: "Scoped Virtual Key", rule: "Rule 2: Runners send all LLM completion calls to http://litellm:4000/v1 using per-tenant virtual keys." },
+        { t: "block", label: "AIR-GAPPED (Rule 6)", rule: "CRITICAL: Runners are on brainsos-internal-net; litellm-db is on brainsos-control-net. Zero network route." },
+        { t: "block", label: "ISOLATED (ide-net)", rule: "Runners are excluded from brainsos-ide-net and cannot access the Operator VS Code IDE." },
+        { t: "allow", label: "OTLP Traces :3000", rule: "Hermes Langfuse plugin exports OTel spans to langfuse-web:3000 over ingress-net." },
+        { t: "block", label: "FORBIDDEN (Rule 2)", rule: "Agents are strictly forbidden from calling 127.0.0.1:11434 directly; all calls must be mediated by LiteLLM." },
+        { t: "block", label: "NO DIRECT WAN / IMDS", rule: "Direct WAN bypass is blocked; imds-guard.sh drops all packets from runners to 169.254.169.254." }
+      ],
+      // Row 3: Egress Proxy (mitmproxy)
+      [
+        { t: "block", label: "BLOCKED", rule: "Proxy only handles outbound requests from brainsos-internal-net." },
+        { t: "allow", label: "mitmweb :8081", rule: "Exposes flow inspection console to Caddy over internal-net." },
+        { t: "allow", label: "Proxy Listener :8082", rule: "Accepts HTTP_PROXY / HTTPS_PROXY connections from agent runners." },
+        { t: "self", label: "—" },
+        { t: "block", label: "NOT USED", rule: "Internal LiteLLM calls bypass proxy via NO_PROXY=litellm." },
+        { t: "block", label: "AIR-GAPPED", rule: "Egress proxy has no route to brainsos-control-net." },
+        { t: "block", label: "ISOLATED", rule: "No route to code-server." },
+        { t: "block", label: "ISOLATED", rule: "No route to telemetry-net." },
+        { t: "block", label: "BLOCKED", rule: "No access to host Ollama." },
+        { t: "mediate", label: "In-Transit Token Inject", rule: "Rule 10: github_auth.py verifies container IP, injects GitHub PAT in transit, and masks logs." }
+      ],
+      // Row 4: LiteLLM Gateway (:4000)
+      [
+        { t: "block", label: "BLOCKED", rule: "Loopback-bound :4000." },
+        { t: "allow", label: "/proxy/ui", rule: "Serves Admin UI behind Caddy & Authentik OIDC." },
+        { t: "allow", label: "/v1/chat/completions", rule: "Accepts OpenAI/Anthropic compatible completion requests from runners." },
+        { t: "block", label: "NO_PROXY", rule: "LiteLLM does not route through agent tool egress proxy." },
+        { t: "self", label: "max_parallel: 1", rule: "Rule 3: Serializes concurrent requests (--num_workers 1, max_parallel_requests: 1)." },
+        { t: "allow", label: "control-net :5432", rule: "Rule 6: LiteLLM is the ONLY container permitted on brainsos-control-net to reach litellm-db." },
+        { t: "allow", label: "Continue AI / Aider", rule: "Accepts operator coding assistant requests from code-server using OPERATOR_LITELLM_KEY." },
+        { t: "allow", label: "langfuse_otel.py", rule: "Exports OTel v4 traces for non-Hermes callers to Langfuse (:3001)." },
+        { t: "allow", label: "host.docker.internal", rule: "Rule 2: Routes serialized LLM requests to native host Ollama on 127.0.0.1:11434." },
+        { t: "mediate", label: "Cloud Fallback (Opt)", rule: "Only container permitted by imds-guard.sh to reach AWS Bedrock / external model APIs if configured." }
+      ]
+    ];
+
+    function renderMatrix() {
+      const table = document.getElementById("reachability-table");
+      const headerCells = MATRIX_ACTORS.map(a => `<th>${a}</th>`).join("");
+      const sourceLabels = [
+        "External LAN / Browser",
+        "Caddy Ingress (:443)",
+        "Agent Runners (Hermes/SDK)",
+        "Egress Proxy (mitmproxy)",
+        "LiteLLM Gateway (:4000)"
+      ];
+
+      const rowsHtml = MATRIX_RULES.map((row, rIdx) => {
+        const cells = row.map((cell, cIdx) => {
+          const cls = cell.t === "allow" ? "cell-allow"
+                    : cell.t === "block" ? "cell-block"
+                    : cell.t === "mediate" ? "cell-mediate"
+                    : "cell-self";
+          const safeRule = (cell.rule || "Self / N/A").replace(/'/g, "\\'");
+          return `<td class="${cls}" onclick="showMatrixRule('${sourceLabels[rIdx]} → ${MATRIX_ACTORS[cIdx]}', '${safeRule}')">${cell.label}</td>`;
+        }).join("");
+        return `<tr><th>${sourceLabels[rIdx]}</th>${cells}</tr>`;
+      }).join("");
+
+      table.innerHTML = `
+        <thead>
+          <tr><th>Source ↓ / Destination →</th>${headerCells}</tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      `;
+    }
+
+    function showMatrixRule(pair, ruleText) {
+      document.getElementById("matrix-selected-rule").textContent = `${pair}: ${ruleText}`;
+    }
+
+    /* ==========================================================================
+       TOP-LEVEL VIEW SWITCHING & RESIZE HANDLING
+       ========================================================================== */
+    function switchView(idx) {
+      for (let i = 0; i < 5; i++) {
+        document.getElementById(`view-${i}`).classList.toggle("active", i === idx);
+        document.getElementById(`vtab-${i}`).classList.toggle("active", i === idx);
+      }
+      if (idx === 0) {
+        requestAnimationFrame(drawSvgWires);
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      requestAnimationFrame(drawSvgWires);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const current = [0, 1, 2, 3, 4].findIndex(i => document.getElementById(`view-${i}`).classList.contains("active"));
+        const delta = e.key === "ArrowRight" ? 1 : 4;
+        switchView((current + delta) % 5);
+      }
+    });
+
+    // Initial boot
+    renderAllArchViews();
+    renderProductCatalog();
+    renderMatrix();
+    setTimeout(drawSvgWires, 60);
+  </script>
+</body>
+</html>

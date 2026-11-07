@@ -24,6 +24,7 @@ interface ThinSpineProps {
   onOpenProfile: () => void;
   isProfileOpen?: boolean;
   user?: AuthenticatedUser;
+  hasUpdateAvailable?: boolean;
 }
 
 export const ThinSpine: React.FC<ThinSpineProps> = ({
@@ -33,7 +34,8 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
   onToggleFullscreen,
   onOpenProfile,
   isProfileOpen = false,
-  user
+  user,
+  hasUpdateAvailable = false
 }) => {
   const renderIcon = (sub: Subsystem) => {
     switch (sub.id) {
@@ -148,10 +150,12 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
               >
                 OS
               </span>
-              <span
-                className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#00f2fe] ring-2 ring-[#0B0E14]"
-                title="Operating System Control Plane"
-              />
+              {hasUpdateAvailable && (
+                <span
+                  className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#00f2fe] ring-2 ring-[#0B0E14]"
+                  title="Software Update Available"
+                />
+              )}
             </button>
             <div className="w-6 h-px bg-white/10" />
           </>

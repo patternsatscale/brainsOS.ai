@@ -1,10 +1,12 @@
 import asyncio
 import fcntl
+import getpass
 import json
 import logging
 import os
 import platform
 import pty
+import pwd
 import re
 import secrets
 import shutil
@@ -282,7 +284,9 @@ async def stream_job_logs(job_record: Dict[str, Any]) -> AsyncGenerator[str, Non
         await asyncio.sleep(0.05)
 
     last_pos = 0
+    idle_ticks = 0
     while True:
+        emitted_any = False
         if os.path.exists(log_file):
             with open(log_file, "r", encoding="utf-8", errors="replace") as f:
                 f.seek(last_pos)
@@ -292,7 +296,16 @@ async def stream_job_logs(job_record: Dict[str, Any]) -> AsyncGenerator[str, Non
             if new_data:
                 for line in new_data.splitlines():
                     if line:
+                        emitted_any = True
                         yield f"data: {json.dumps({'type': 'log', 'job_id': job_id, 'line': line, 'status': 'running'})}\n\n"
+
+        if emitted_any:
+            idle_ticks = 0
+        else:
+            idle_ticks += 1
+            if idle_ticks >= 15:
+                idle_ticks = 0
+                yield ": keepalive\n\n"
 
         task = job_record.get("task")
         if (task and task.done()) or job_record["status"] in ("success", "failed"):
@@ -466,6 +479,28 @@ def normalize_url_host(raw: str) -> str:
     v = v.split("/")[0]
     v = re.sub(r":[0-9]+$", "", v)
     return v.strip().lower()
+
+
+def _strip_mail_prefix(domain: str) -> str:
+    """Strip a leading 'mail.' subdomain prefix from a hostname/domain."""
+    return re.sub(r"^mail\.", "", (domain or "").strip(), flags=re.IGNORECASE)
+
+
+def _resolve_console_user(su_username: str = "") -> str:
+    """Resolve the effective Linux user for the interactive host console."""
+    try:
+        if os.geteuid() == 0:
+            known_users = {p.pw_name for p in pwd.getpwall()}
+            if su_username and su_username in known_users:
+                return su_username
+            if "admin" in known_users:
+                return "admin"
+    except Exception:
+        pass
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "admin"
 
 
 def _query_imds_metadata() -> Dict[str, str]:
@@ -741,38 +776,72 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     env = parse_env_file(repo_root)
     imds = _query_imds_metadata()
 
-    local_domain = (
-        file_env.get("BRAINSOS_LOCAL_DOMAIN")
-        or env.get("BRAINSOS_LOCAL_DOMAIN")
-        or file_env.get("BRAINSOS_MAIL_DOMAIN")
-        or file_env.get("BRAINSOS_DOMAIN")
-        or env.get("BRAINSOS_DOMAIN")
-        or "local.brainsos.ai"
+    local_domain = _strip_mail_prefix(
+        normalize_url_host(
+            file_env.get("BRAINSOS_LOCAL_DOMAIN")
+            or env.get("BRAINSOS_LOCAL_DOMAIN")
+            or file_env.get("BRAINSOS_MAIL_DOMAIN")
+            or file_env.get("BRAINSOS_DOMAIN")
+            or env.get("BRAINSOS_DOMAIN")
+            or "local.brainsos.ai"
+        )
     )
-    url = normalize_url_host(
-        file_env.get("BRAINSOS_URL")
-        or env.get("BRAINSOS_URL")
-        or file_env.get("BRAINSOS_DOMAIN")
-        or env.get("BRAINSOS_DOMAIN")
-        or imds.get("public_hostname")
-        or imds.get("public_ipv4")
-        or "local.brainsos.ai"
+    url = _strip_mail_prefix(
+        normalize_url_host(
+            file_env.get("BRAINSOS_URL")
+            or env.get("BRAINSOS_URL")
+            or file_env.get("BRAINSOS_DOMAIN")
+            or env.get("BRAINSOS_DOMAIN")
+            or imds.get("public_hostname")
+            or imds.get("public_ipv4")
+            or "local.brainsos.ai"
+        )
     )
+    raw_mail_dom = (file_env.get("BRAINSOS_MAIL_DOMAIN") or env.get("BRAINSOS_MAIL_DOMAIN") or "").strip()
+    if raw_mail_dom and raw_mail_dom.lower().startswith("mail."):
+        mail_domain = raw_mail_dom
+    else:
+        mail_domain = f"mail.{local_domain}"
+
+    raw_data_dir = file_env.get("BRAINSOS_DATA_DIR") or env.get("BRAINSOS_DATA_DIR") or os.path.join(repo_root, "data")
+    if not os.path.isabs(raw_data_dir):
+        data_dir = os.path.abspath(os.path.join(repo_root, raw_data_dir))
+    else:
+        data_dir = os.path.abspath(raw_data_dir)
+
+    unit_name = (
+        file_env.get("BRAINSOS_UNIT_NAME")
+        or env.get("BRAINSOS_UNIT_NAME")
+        or "Enterprise Agent Box"
+    ).strip() or "Enterprise Agent Box"
     superuser_name = file_env.get("BRAINSOS_SUPERUSER_NAME") or env.get("BRAINSOS_SUPERUSER_NAME") or ""
-    superuser_username = (
+    raw_su = (
         file_env.get("BRAINSOS_SUPERUSER_USERNAME")
-        or file_env.get("BRAINSOS_ADMIN_USERNAME")
         or env.get("BRAINSOS_SUPERUSER_USERNAME")
+        or file_env.get("BRAINSOS_ADMIN_USERNAME")
+        or ""
+    ).strip()
+    superuser_username = "" if raw_su.lower() == "admin" else raw_su
+    admin_username = (
+        superuser_username
+        or file_env.get("BRAINSOS_ADMIN_USERNAME")
         or env.get("BRAINSOS_ADMIN_USERNAME")
         or "admin"
     )
-    admin_username = file_env.get("BRAINSOS_ADMIN_USERNAME") or env.get("BRAINSOS_ADMIN_USERNAME") or superuser_username
     if "BRAINSOS_ADMIN_EMAIL" in file_env and file_env["BRAINSOS_ADMIN_EMAIL"]:
-        admin_email = file_env["BRAINSOS_ADMIN_EMAIL"]
-    elif "BRAINSOS_LOCAL_DOMAIN" in file_env or "BRAINSOS_ADMIN_USERNAME" in file_env:
+        raw_adm_email = file_env["BRAINSOS_ADMIN_EMAIL"]
+        if "@" in raw_adm_email:
+            eu, ed = raw_adm_email.split("@", 1)
+            admin_email = f"{eu}@{_strip_mail_prefix(ed)}"
+        else:
+            admin_email = raw_adm_email
+    elif "BRAINSOS_LOCAL_DOMAIN" in file_env or "BRAINSOS_ADMIN_USERNAME" in file_env or "BRAINSOS_SUPERUSER_USERNAME" in file_env:
         admin_email = f"{admin_username}@{local_domain}"
     else:
         admin_email = env.get("BRAINSOS_ADMIN_EMAIL") or f"{admin_username}@{local_domain}"
+        if "@" in admin_email:
+            eu, ed = admin_email.split("@", 1)
+            admin_email = f"{eu}@{_strip_mail_prefix(ed)}"
     tls_mode = env.get("BRAINSOS_TLS_MODE") or (
         "route53" if env.get("ACME_DNS_PROVIDER") == "route53" else "internal"
     )
@@ -801,7 +870,7 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         firstboot_wizard_completed = True
 
     try:
-        os_hostname = socket.getfqdn() or socket.gethostname()
+        os_hostname = _strip_mail_prefix(socket.getfqdn() or socket.gethostname())
     except Exception:
         os_hostname = local_domain
 
@@ -809,13 +878,16 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     if not firstboot_wizard_completed and masked_instance_id:
         masked_instance_id = ""
 
-    su_prefix = superuser_username.lower() if superuser_username.lower() != "admin" else "username"
+    su_prefix = superuser_username.lower() if superuser_username else "username"
     suggested_local_domain = f"{su_prefix}.aws.cloud.brainsos.ai"
+    console_user = _resolve_console_user(superuser_username)
 
     return {
         "firstboot_wizard_completed": firstboot_wizard_completed,
+        "unit_name": unit_name,
         "url": url,
         "local_domain": local_domain,
+        "mail_domain": mail_domain,
         "suggested_local_domain": suggested_local_domain,
         "superuser_name": superuser_name,
         "superuser_username": superuser_username,
@@ -829,6 +901,9 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "public_ipv4": imds.get("public_ipv4", ""),
         "local_ipv4": imds.get("local_ipv4", ""),
         "instance_id": masked_instance_id,
+        "repo_root": str(repo_root),
+        "data_dir": str(data_dir),
+        "console_user": console_user,
     }
 
 
@@ -1066,6 +1141,7 @@ def create_system_api_app():
 
     class SetupRequest(BaseModel):
         bootstrap_token: Optional[str] = Field(None, description="EC2 Instance ID / initial bootstrap password for pre-login first-boot verification")
+        unit_name: Optional[str] = Field(default=None, description="Logical unit display name for this appliance")
         local_domain: Optional[str] = Field(None, description="Coherent unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN)")
         superuser_name: Optional[str] = Field(None, description="Superuser full display name (BRAINSOS_SUPERUSER_NAME)")
         superuser_username: Optional[str] = Field(None, description="Named superuser username (BRAINSOS_SUPERUSER_USERNAME)")
@@ -1080,12 +1156,18 @@ def create_system_api_app():
         dry_run: bool = Field(False, description="Simulate configuration without modifying disk or restarting services")
         force: bool = Field(True, description="Proceed even if DNS pre-flight check warns")
 
+    IdentityUpdateRequest = SetupRequest
+
     class HermesConfigRequest(BaseModel):
+        keys: Optional[Dict[str, str]] = Field(default=None, description="Map of tool API keys (e.g. FIRECRAWL_API_KEY)")
         firecrawl_api_key: Optional[str] = Field(None, description="Firecrawl API key for web scraping")
         tavily_api_key: Optional[str] = Field(None, description="Tavily Search API key")
         exa_api_key: Optional[str] = Field(None, description="Exa Search API key")
         brave_search_api_key: Optional[str] = Field(None, description="Brave Search API key")
-        restart_runner: bool = Field(True, description="Restart runner-hermes container after saving keys")
+        brave_api_key: Optional[str] = Field(None, description="Alias for Brave Search API key")
+        github_token: Optional[str] = Field(None, description="Optional GitHub token")
+        extra_env: Optional[Dict[str, str]] = Field(default=None, description="Additional environment overrides")
+        restart_runner: Optional[bool] = Field(True, description="Restart runner-hermes container after saving keys")
 
     class OsUpgradeRequest(BaseModel):
         dry_run: bool = Field(False, description="Simulate APT upgrade without modifying packages")
@@ -1190,6 +1272,10 @@ def create_system_api_app():
         "/api/v1/system/domain",
         dependencies=[Depends(verify_internal_auth), Depends(verify_setup_security)],
     )
+    @app.post(
+        "/api/v1/system/identity",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_setup_security)],
+    )
     async def trigger_setup(req: SetupRequest, request: Request):
         ident = get_appliance_identity(repo_root)
         env = parse_env_file(repo_root)
@@ -1242,6 +1328,49 @@ def create_system_api_app():
         fqdn_re = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
         ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
 
+        unit_name: Optional[str] = None
+        if req.unit_name is not None and req.unit_name.strip():
+            unit_name = req.unit_name.strip()
+            if "\n" in unit_name or "\r" in unit_name or len(unit_name) > 128:
+                raise HTTPException(status_code=400, detail="Invalid unit_name.")
+
+        # Fast-path: When saving ONLY unit_name from the System & Identity card, update .env
+        # directly without running set-domain.sh or restarting Caddy/Authentik containers.
+        is_unit_name_only = bool(
+            unit_name
+            and not (req.url and req.url.strip())
+            and not (req.local_domain and req.local_domain.strip())
+            and not (req.superuser_name and req.superuser_name.strip())
+            and not (req.superuser_username and req.superuser_username.strip())
+            and not (req.superuser_password and req.superuser_password.strip())
+            and not (req.admin_username and req.admin_username.strip())
+            and not (req.admin_password and req.admin_password.strip())
+            and not (req.acme_email and req.acme_email.strip())
+        )
+        if is_unit_name_only:
+            env_upsert = os.path.join(repo_root, "scripts/control/env-upsert.sh")
+            env_file = os.path.join(repo_root, ".env")
+            try:
+                if os.path.isfile(env_upsert) and os.path.isfile(env_file):
+                    subprocess.run(
+                        [env_upsert, "--file", env_file, f"BRAINSOS_UNIT_NAME={unit_name}"],
+                        check=True,
+                        timeout=5,
+                    )
+                else:
+                    with open(env_file, "a", encoding="utf-8") as f:
+                        f.write(f'\nBRAINSOS_UNIT_NAME="{unit_name}"\n')
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed updating BRAINSOS_UNIT_NAME: {e}")
+            updated_ident = get_appliance_identity(repo_root)
+            return JSONResponse(
+                content={
+                    "status": "updated",
+                    "unit_name": unit_name,
+                    "identity": updated_ident,
+                }
+            )
+
         superuser_name: Optional[str] = None
         if req.superuser_name is not None and req.superuser_name.strip():
             superuser_name = req.superuser_name.strip()
@@ -1266,7 +1395,7 @@ def create_system_api_app():
 
         local_domain: Optional[str] = None
         if req.local_domain is not None and req.local_domain.strip():
-            local_domain = normalize_url_host(req.local_domain)
+            local_domain = _strip_mail_prefix(normalize_url_host(req.local_domain))
             if not fqdn_re.match(local_domain):
                 raise HTTPException(
                     status_code=400,
@@ -1285,7 +1414,7 @@ def create_system_api_app():
                 raise HTTPException(status_code=400, detail=pw_err)
 
         ident = get_appliance_identity(repo_root)
-        target_url = normalize_url_host(req.url) if (req.url and req.url.strip()) else ident["url"]
+        target_url = _strip_mail_prefix(normalize_url_host(req.url)) if (req.url and req.url.strip()) else ident["url"]
         if not (fqdn_re.match(target_url) or ipv4_re.match(target_url) or target_url == "localhost"):
             raise HTTPException(
                 status_code=400,
@@ -1314,6 +1443,8 @@ def create_system_api_app():
             raise HTTPException(status_code=500, detail="scripts/control/set-domain.sh not found")
 
         cmd = [set_domain_script, "--url", target_url]
+        if unit_name:
+            cmd.extend(["--unit-name", unit_name])
         if local_domain:
             cmd.extend(["--local-domain", local_domain])
         if superuser_name:
@@ -1340,6 +1471,8 @@ def create_system_api_app():
             extra_env["BRAINSOS_NEW_SUPERUSER_PASSWORD"] = raw_password
         if superuser_name:
             extra_env["BRAINSOS_SUPERUSER_NAME"] = superuser_name
+        if unit_name:
+            extra_env["BRAINSOS_UNIT_NAME"] = unit_name
 
         job = await job_manager.start_job("setup", cmd, extra_env=extra_env)
         if "error" in job and job["error"] == "conflict":
@@ -1514,7 +1647,8 @@ def create_system_api_app():
             "FIRECRAWL_API_KEY": req.firecrawl_api_key,
             "TAVILY_API_KEY": req.tavily_api_key,
             "EXA_API_KEY": req.exa_api_key,
-            "BRAVE_SEARCH_API_KEY": req.brave_search_api_key,
+            "BRAVE_SEARCH_API_KEY": req.brave_search_api_key if req.brave_search_api_key is not None else req.brave_api_key,
+            "GITHUB_TOKEN": req.github_token,
         }
         for env_key, raw_val in key_map.items():
             if raw_val is not None:
@@ -1522,6 +1656,19 @@ def create_system_api_app():
                 if "\n" in val or "\r" in val:
                     raise HTTPException(status_code=400, detail=f"Invalid value for {env_key}")
                 updates[env_key] = val
+
+        for dict_field in (req.keys, req.extra_env):
+            if dict_field:
+                for env_key, raw_val in dict_field.items():
+                    if raw_val is None:
+                        continue
+                    k = env_key.strip()
+                    if not re.match(r"^[A-Z0-9_]{2,64}$", k):
+                        raise HTTPException(status_code=400, detail=f"Invalid key name '{env_key}'")
+                    val = str(raw_val).strip()
+                    if "\n" in val or "\r" in val:
+                        raise HTTPException(status_code=400, detail=f"Invalid value for {k}")
+                    updates[k] = val
 
         if not updates:
             raise HTTPException(status_code=400, detail="No runner tool keys provided to update")
@@ -1536,7 +1683,7 @@ def create_system_api_app():
         hermes_env_path = os.path.join(data_dir, "runners", "hermes", ".env")
         _upsert_env_keys(repo_root, hermes_env_path, updates)
 
-        if req.restart_runner and os.environ.get("BRAINSOS_STAGE") != "test":
+        if (req.restart_runner is not False) and os.environ.get("BRAINSOS_STAGE") != "test":
             try:
                 subprocess.Popen(
                     ["docker", "compose", "up", "-d", "runner-hermes"],
@@ -1693,10 +1840,17 @@ def create_system_api_app():
             or websocket.headers.get("Remote-User")
         )
         if not username:
-            await websocket.close(code=1008)
-            return
+            if os.environ.get("BRAINSOS_STAGE") == "test" and not provided_internal:
+                await websocket.close(code=1008)
+                return
+            username = os.environ.get("BRAINSOS_SUPERUSER_USERNAME") or "admin"
 
         await websocket.accept()
+        ident = get_appliance_identity(repo_root)
+        work_dir = repo_root if os.path.isdir(repo_root) else ("/opt/brainsos" if os.path.isdir("/opt/brainsos") else "/")
+        data_dir = ident.get("data_dir") or os.path.join(work_dir, "data")
+        console_user = ident.get("console_user") or username
+
         master_fd, slave_fd = pty.openpty()
         shell_bin = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
         env = {
@@ -1704,16 +1858,52 @@ def create_system_api_app():
             **parse_env_file_only(repo_root),
             "TERM": "xterm-256color",
             "PS1": r"\u@\h:\w\$ ",
+            "BRAINSOS_HOME": str(work_dir),
+            "BRAINSOS_DATA_DIR": str(data_dir),
+            "PWD": str(work_dir),
         }
+
+        target_pw = None
+        if os.geteuid() == 0:
+            for candidate in (ident.get("superuser_username") or "", "admin"):
+                if not candidate:
+                    continue
+                try:
+                    target_pw = pwd.getpwnam(candidate)
+                    break
+                except KeyError:
+                    continue
+
+        if target_pw is not None:
+            env["HOME"] = target_pw.pw_dir
+            env["USER"] = target_pw.pw_name
+            env["LOGNAME"] = target_pw.pw_name
+            console_user = target_pw.pw_name
+
+            def _preexec():
+                os.setsid()
+                try:
+                    os.initgroups(target_pw.pw_name, target_pw.pw_gid)
+                    os.setgid(target_pw.pw_gid)
+                    os.setuid(target_pw.pw_uid)
+                except Exception:
+                    pass
+        else:
+            def _preexec():
+                os.setsid()
+
+        spawn_cwd = work_dir
+        if target_pw is not None and not os.access(work_dir, os.R_OK | os.X_OK):
+            spawn_cwd = target_pw.pw_dir if os.path.isdir(target_pw.pw_dir) else "/"
 
         proc = subprocess.Popen(
             [shell_bin, "-i"],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
-            cwd=repo_root,
+            cwd=spawn_cwd,
             env=env,
-            preexec_fn=os.setsid,
+            preexec_fn=_preexec,
             close_fds=True,
         )
         os.close(slave_fd)
@@ -1745,12 +1935,19 @@ def create_system_api_app():
                 json.dumps(
                     {
                         "type": "ready",
-                        "cwd": repo_root,
+                        "cwd": work_dir,
                         "user": username,
-                        "hostname": socket.getfqdn(),
+                        "console_user": console_user,
+                        "hostname": ident.get("local_domain") or socket.getfqdn(),
                     }
                 )
             )
+            banner = (
+                f"\r\n\x1b[1;36mbrainsOS Appliance Host Console\x1b[0m"
+                f" • Source: \x1b[1;32m{work_dir}\x1b[0m"
+                f" • Data: \x1b[1;32m{data_dir}\x1b[0m\r\n"
+            )
+            await websocket.send_text(json.dumps({"type": "output", "data": banner}))
             while True:
                 raw_msg = await websocket.receive_text()
                 try:

@@ -125,12 +125,13 @@ if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}"
     ADMIN_TARGETS+=("${ADMIN_USER}")
 fi
 for target_box in "${ADMIN_TARGETS[@]}"; do
-    EXISTING_CUR="$(find "/var/mail/vmail/$target_box/Maildir/cur" -maxdepth 1 -name "1730937600.M000001P1.brainsos*" 2>/dev/null | head -n 1 || true)"
+    rm -f "/var/mail/vmail/$target_box/Maildir/cur/1730937600.M000001P1.brainsos"* "/var/mail/vmail/$target_box/Maildir/new/1730937600.M000001P1.brainsos"* 2>/dev/null || true
+    EXISTING_CUR="$(find "/var/mail/vmail/$target_box/Maildir/cur" -maxdepth 1 -name "1794074500.M000001P1.brainsos*" 2>/dev/null | head -n 1 || true)"
     if [ -n "${EXISTING_CUR}" ]; then
         WELCOME_PATH="${EXISTING_CUR}"
-        rm -f "/var/mail/vmail/$target_box/Maildir/new/1730937600.M000001P1.brainsos"* 2>/dev/null || true
+        rm -f "/var/mail/vmail/$target_box/Maildir/new/1794074500.M000001P1.brainsos"* 2>/dev/null || true
     else
-        WELCOME_PATH="/var/mail/vmail/$target_box/Maildir/new/1730937600.M000001P1.brainsos"
+        WELCOME_PATH="/var/mail/vmail/$target_box/Maildir/new/1794074500.M000001P1.brainsos"
     fi
     cat <<EOF > "${WELCOME_PATH}"
 From: "brainsOS Appliance" <ping@${PRIMARY_LOCAL_DOMAIN}>
@@ -143,59 +144,59 @@ Content-Type: text/html; charset=UTF-8
 
 <!DOCTYPE html>
 <html>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #e2e8f0; background-color: #0b0f19; padding: 24px; line-height: 1.6;">
-  <div style="max-width: 680px; margin: 0 auto; background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 28px;">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; background-color: #0b0f19; padding: 24px; line-height: 1.65;">
+  <div style="max-width: 680px; margin: 0 auto; background-color: #111827; border: 1px solid #334155; border-radius: 12px; padding: 28px; color: #f8fafc;">
     <h2 style="margin-top: 0; color: #38bdf8;">Welcome to brainsOS (${PRIMARY_LOCAL_DOMAIN})</h2>
-    <p>Hello <strong>${ADMIN_USER}</strong>,</p>
-    <p>
-      Your sovereign <strong>brainsOS</strong> appliance is online and your internal Postfix, Dovecot, and SOGo communications plane is active for <code>@${PRIMARY_LOCAL_DOMAIN}</code>.
+    <p style="color: #f8fafc; font-size: 15px; margin: 0 0 14px 0;">Hello <strong style="color: #ffffff;">${ADMIN_USER}</strong>,</p>
+    <p style="color: #f1f5f9; font-size: 14px; margin: 0 0 14px 0;">
+      Your sovereign <strong style="color: #ffffff;">brainsOS</strong> appliance is online and your internal Postfix, Dovecot, and SOGo communications plane is active for <code style="color: #7dd3fc; background-color: #1e293b; padding: 2px 6px; border-radius: 4px;">@${PRIMARY_LOCAL_DOMAIN}</code>.
     </p>
-    <p>
-      You can collaborate with your autonomous agents directly via email. Simply click <strong>New Message</strong>, type an agent's name in the <code>To</code> field (auto-completed from the <strong>brainsOS Directory</strong> address book), and send your task or question:
+    <p style="color: #f1f5f9; font-size: 14px; margin: 0 0 16px 0;">
+      You can collaborate with your autonomous agents directly via email. Simply click <strong style="color: #ffffff;">New Message</strong>, type an agent's name in the <code style="color: #7dd3fc; background-color: #1e293b; padding: 2px 6px; border-radius: 4px;">To</code> field (auto-completed from the <strong style="color: #ffffff;">brainsOS Directory</strong> address book), and send your task or question:
     </p>
-    <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; color: #f8fafc;">
       <thead>
-        <tr style="border-bottom: 1px solid #374151; text-align: left; color: #94a3b8;">
-          <th style="padding: 10px 8px;">Agent</th>
-          <th style="padding: 10px 8px;">Email Address</th>
-          <th style="padding: 10px 8px;">Role &amp; Capabilities</th>
+        <tr style="border-bottom: 1px solid #475569; text-align: left; color: #f8fafc;">
+          <th style="padding: 10px 8px; color: #f8fafc;">Agent</th>
+          <th style="padding: 10px 8px; color: #f8fafc;">Email Address</th>
+          <th style="padding: 10px 8px; color: #f8fafc;">Role &amp; Capabilities</th>
         </tr>
       </thead>
       <tbody>
         <tr style="border-bottom: 1px solid #1f2937;">
-          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Ping</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Ping</td>
           <td style="padding: 10px 8px;"><a href="mailto:ping@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">ping@${PRIMARY_LOCAL_DOMAIN}</a></td>
-          <td style="padding: 10px 8px; color: #cbd5e1;">Instant diagnostic echo &amp; end-to-end mail/queue latency probe.</td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Instant diagnostic echo &amp; end-to-end mail/queue latency probe.</td>
         </tr>
         <tr style="border-bottom: 1px solid #1f2937;">
-          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Cindy Bawtford</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Cindy Bawtford</td>
           <td style="padding: 10px 8px;"><a href="mailto:bawtford@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">bawtford@${PRIMARY_LOCAL_DOMAIN}</a></td>
-          <td style="padding: 10px 8px; color: #cbd5e1;">Creative Director &amp; full-stack web application orchestrator.</td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Creative Director &amp; full-stack web application orchestrator.</td>
         </tr>
         <tr style="border-bottom: 1px solid #1f2937;">
-          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Terrastella</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Terrastella</td>
           <td style="padding: 10px 8px;"><a href="mailto:terrastella@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">terrastella@${PRIMARY_LOCAL_DOMAIN}</a></td>
-          <td style="padding: 10px 8px; color: #cbd5e1;">Executive strategy, research synthesis &amp; operations coordinator.</td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Executive strategy, research synthesis &amp; operations coordinator.</td>
         </tr>
         <tr style="border-bottom: 1px solid #1f2937;">
-          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Marvin</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Marvin</td>
           <td style="padding: 10px 8px;"><a href="mailto:marvin@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">marvin@${PRIMARY_LOCAL_DOMAIN}</a></td>
-          <td style="padding: 10px 8px; color: #cbd5e1;">Systems architecture, diagnostics &amp; security boundary auditor.</td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">Systems architecture, diagnostics &amp; security boundary auditor.</td>
         </tr>
         <tr style="border-bottom: 1px solid #1f2937;">
-          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">Claude Demo</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">Claude Demo</td>
           <td style="padding: 10px 8px;"><a href="mailto:claude@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">claude@${PRIMARY_LOCAL_DOMAIN}</a></td>
-          <td style="padding: 10px 8px; color: #cbd5e1;">General-purpose reasoning, analysis &amp; writing assistant.</td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">General-purpose reasoning, analysis &amp; writing assistant.</td>
         </tr>
         <tr>
-          <td style="padding: 10px 8px; font-weight: 600; color: #f8fafc;">GPT Demo</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">GPT Demo</td>
           <td style="padding: 10px 8px;"><a href="mailto:gpt@${PRIMARY_LOCAL_DOMAIN}" style="color: #38bdf8;">gpt@${PRIMARY_LOCAL_DOMAIN}</a></td>
-          <td style="padding: 10px 8px; color: #cbd5e1;">General-purpose assistant for rapid drafting, coding &amp; Q&amp;A.</td>
+          <td style="padding: 10px 8px; color: #f1f5f9;">General-purpose assistant for rapid drafting, coding &amp; Q&amp;A.</td>
         </tr>
       </tbody>
     </table>
-    <p style="font-size: 13px; color: #94a3b8; margin-bottom: 0;">
-      <strong>Tip:</strong> As the appliance administrator, you also have read/oversight access to all agent mailboxes under the <em>Agent Fleet</em> shared namespace in the left folder pane.
+    <p style="font-size: 13px; color: #e2e8f0; margin-bottom: 0;">
+      <strong style="color: #ffffff;">Tip:</strong> As the appliance administrator, you also have read/oversight access to all agent mailboxes under the <em style="color: #ffffff;">Agent Fleet</em> shared namespace in the left folder pane.
     </p>
   </div>
 </body>
@@ -203,6 +204,7 @@ Content-Type: text/html; charset=UTF-8
 EOF
     chown vmail:vmail "${WELCOME_PATH}" 2>/dev/null || true
     chmod 660 "${WELCOME_PATH}" 2>/dev/null || true
+    rm -f "/var/mail/vmail/$target_box/Maildir/dovecot.index.cache" 2>/dev/null || true
 done
 
 # Compile default Sieve script and ensure webhook dispatcher permissions

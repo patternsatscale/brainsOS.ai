@@ -79,7 +79,10 @@ def test_caddyfiles_route_git_and_hermes_runner():
         assert "header_up X-Authentik-Email {header.X-Authentik-Email}" in content
         assert "header_up X-Authentik-Name {header.X-Authentik-Name}" in content
         assert "reverse_proxy runner-hermes:9119" in content, f"Missing runner-hermes:9119 in {caddy_path}"
+        assert "header_up X-Forwarded-Prefix /runner" in content, f"Missing X-Forwarded-Prefix /runner in {caddy_path}"
         assert "runner-hermes:8787" not in content, f"Stale runner-hermes:8787 found in {caddy_path}"
+        assert "path /api/v1/system/jobs/* /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf" in content
+        assert "header_up X-Authentik-Email {header.X-Authentik-Email}" in content
 
 
 def test_setup_git_syntax_and_dry_run(tmp_path: Path):
@@ -157,6 +160,24 @@ def test_setup_git_seed_only_initializes_repo_and_gitignore(tmp_path: Path):
     ).stdout.strip()
     assert branch == "main"
 
+    branches = subprocess.run(
+        ["git", "-C", str(data_dir), "branch", "-a"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "initial-setup" in branches
+    assert "remotes/origin/main" in branches
+    assert "remotes/origin/initial-setup" in branches
+
+    upstream = subprocess.run(
+        ["git", "-C", str(data_dir), "config", "--get", "branch.main.remote"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert upstream == "origin"
+
     tracked = subprocess.run(
         ["git", "-C", str(data_dir), "ls-files"],
         capture_output=True,
@@ -179,6 +200,8 @@ def test_editor_entrypoint_configures_git_and_scm():
     assert syntax.returncode == 0, syntax.stderr
 
     content = EDITOR_ENTRYPOINT.read_text(encoding="utf-8")
+    assert 'd["github.gitAuthentication"] = False' in content
+    assert 'd["git.terminalAuthentication"] = False' in content
     assert 'd["git.enabled"] = True' in content
     assert 'd["git.path"] = "/usr/bin/git"' in content
     assert 'd["git.autofetch"] = True' in content
@@ -187,3 +210,4 @@ def test_editor_entrypoint_configures_git_and_scm():
     assert 'd["scm.alwaysShowRepositories"] = True' in content
     assert "git config --global --add safe.directory /data" in content
     assert "git config --global init.defaultBranch main" in content
+    assert 'git config --global credential.helper "store --file=/data/.git/credentials"' in content

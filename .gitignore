@@ -36,6 +36,8 @@ data/memories/*
 
 # Snapshots, Runtime State & Backups
 data/backups/
+data/system_jobs/
+data/git/
 data/control_plane/*
 !data/control_plane/.gitkeep
 data/telemetry/*
@@ -78,6 +80,7 @@ ollama_data/
 tmp/
 .venv/
 venv/
+uv.lock
 __pycache__/
 *.py[cod]
 *$py.class

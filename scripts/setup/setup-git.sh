@@ -106,11 +106,14 @@ PUBLIC_HOST="${PUBLIC_HOST#http://}"
 PUBLIC_HOST="${PUBLIC_HOST%/}"
 
 LOCAL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}}"
-ADMIN_USER="admin"
+ADMIN_USER="operator"
 ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
-ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${LOCAL_DOMAIN}}"
+ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-operator@${LOCAL_DOMAIN}}"
 
-SUPERUSER_USER="${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}"
+SUPERUSER_USER="${BRAINSOS_SUPERUSER_USERNAME:-}"
+if [ -z "${SUPERUSER_USER}" ] || [ "${SUPERUSER_USER}" = "admin" ] || [ "${SUPERUSER_USER}" = "akadmin" ]; then
+  SUPERUSER_USER="operator"
+fi
 SUPERUSER_PASS="${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-${ADMIN_PASS}}}"
 SUPERUSER_NAME="${BRAINSOS_SUPERUSER_NAME:-${SUPERUSER_USER}}"
 SUPERUSER_EMAIL="${BRAINSOS_SUPERUSER_EMAIL:-${SUPERUSER_USER}@${LOCAL_DOMAIN}}"
@@ -241,11 +244,45 @@ git -C "${DATA_ROOT}" config init.defaultBranch main
 git -C "${DATA_ROOT}" add -A >/dev/null 2>&1 || true
 if ! git -C "${DATA_ROOT}" rev-parse --verify HEAD >/dev/null 2>&1; then
   log_info "Creating initial commit of appliance prompts, souls, and settings..."
-  git -C "${DATA_ROOT}" commit -m "chore(appliance): initial brainsOS agent-box workspace seed" >/dev/null 2>&1 || true
+  git -C "${DATA_ROOT}" commit --allow-empty -m "chore(appliance): initial brainsOS agent-box workspace seed" >/dev/null 2>&1 || true
   log_success "Created initial commit on branch 'main' in ${DATA_ROOT}."
 elif ! git -C "${DATA_ROOT}" diff --cached --quiet >/dev/null 2>&1; then
   git -C "${DATA_ROOT}" commit -m "chore(appliance): sync brainsOS workspace state" >/dev/null 2>&1 || true
 fi
+
+# Ensure 'initial-setup' branch exists pointing to the initial/current main commit
+if ! git -C "${DATA_ROOT}" show-ref --verify --quiet refs/heads/initial-setup; then
+  git -C "${DATA_ROOT}" branch -f initial-setup main >/dev/null 2>&1 || true
+fi
+
+# Configure origin remote, credential store & upstream tracking refs in /data/.git
+URL_ENCODED_USER="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PRIMARY_USER}")"
+URL_ENCODED_PASS="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PRIMARY_PASS}")"
+
+GIT_CREDENTIALS_FILE="/data/.git/credentials"
+CRED_FILE="${DATA_ROOT}/.git/credentials"
+printf "http://%s:%s@gitea:3000\n" "${URL_ENCODED_USER}" "${URL_ENCODED_PASS}" > "${CRED_FILE}"
+chmod 664 "${CRED_FILE}" 2>/dev/null || true
+
+if git -C "${DATA_ROOT}" remote get-url origin >/dev/null 2>&1; then
+  git -C "${DATA_ROOT}" remote set-url origin "${REMOTE_URL}"
+else
+  git -C "${DATA_ROOT}" remote add origin "${REMOTE_URL}"
+fi
+
+git -C "${DATA_ROOT}" update-ref refs/remotes/origin/main HEAD 2>/dev/null || true
+INITIAL_SETUP_SHA="$(git -C "${DATA_ROOT}" rev-parse refs/heads/initial-setup 2>/dev/null || git -C "${DATA_ROOT}" rev-parse HEAD 2>/dev/null || true)"
+if [ -n "${INITIAL_SETUP_SHA}" ]; then
+  git -C "${DATA_ROOT}" update-ref refs/remotes/origin/initial-setup "${INITIAL_SETUP_SHA}" 2>/dev/null || true
+fi
+git -C "${DATA_ROOT}" config branch.main.remote origin
+git -C "${DATA_ROOT}" config branch.main.merge refs/heads/main
+git -C "${DATA_ROOT}" config branch.initial-setup.remote origin
+git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
+git -C "${DATA_ROOT}" config push.default simple
+git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
+chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || chmod -R a+rwX "${DATA_ROOT}/.git" 2>/dev/null || true
+chmod 664 "${CRED_FILE}" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # 3. Start Gitea Container (unless --seed-only and container is not running)
@@ -339,47 +376,56 @@ docker exec \
     fi
   ' || true
 
-# Configure origin remote and credential store for seamless VS Code Git sync
-URL_ENCODED_USER="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["U"], safe=""))' U="${PRIMARY_USER}")"
-URL_ENCODED_PASS="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["P"], safe=""))' P="${PRIMARY_PASS}")"
-
-CRED_FILE="${DATA_ROOT}/.git/credentials"
-printf "http://%s:%s@gitea:3000\n" "${URL_ENCODED_USER}" "${URL_ENCODED_PASS}" > "${CRED_FILE}"
-chmod 600 "${CRED_FILE}" 2>/dev/null || true
-
-git -C "${DATA_ROOT}" config credential.helper "store --file=/data/.git/credentials"
-if git -C "${DATA_ROOT}" remote get-url origin >/dev/null 2>&1; then
-  git -C "${DATA_ROOT}" remote set-url origin "${REMOTE_URL}"
-else
-  git -C "${DATA_ROOT}" remote add origin "${REMOTE_URL}"
-fi
-
-# Push main branch to Gitea (via code-server container if running, else via Gitea container IP / localhost)
+# Push main and initial-setup branches to Gitea (via code-server container if running, else via Gitea container IP / localhost)
 PUSHED=false
 if docker inspect -f '{{.State.Running}}' brainsos-app-code-server 2>/dev/null | grep -q "true"; then
+  PUSH_URL="http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@gitea:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git"
   docker exec brainsos-app-code-server sh -c "
     git config --global --add safe.directory /data 2>/dev/null || true
     printf 'http://%s:%s@gitea:3000\n' '${URL_ENCODED_USER}' '${URL_ENCODED_PASS}' > /home/coder/.git-credentials
     chmod 600 /home/coder/.git-credentials 2>/dev/null || true
-    git config --global credential.helper store 2>/dev/null || true
-    git -C /data push -u http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@gitea:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git main >/dev/null 2>&1
+    git config --global credential.helper 'store --file=/data/.git/credentials' 2>/dev/null || true
+    git config --global push.default simple 2>/dev/null || true
+    git -C /data push -u '${PUSH_URL}' refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1
   " && PUSHED=true || true
 fi
 
 if [ "${PUSHED}" != "true" ]; then
   GITEA_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${GITEA_CONTAINER}" 2>/dev/null | awk '{print $1}')"
   if [ -n "${GITEA_IP}" ]; then
-    git -C "${DATA_ROOT}" push -u "http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@${GITEA_IP}:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git" main >/dev/null 2>&1 && PUSHED=true || true
+    PUSH_URL="http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@${GITEA_IP}:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git"
+    git -C "${DATA_ROOT}" push -u "${PUSH_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1 && PUSHED=true || true
   fi
 fi
 
 if [ "${PUSHED}" != "true" ]; then
   GITEA_HOST_PORT="${GITEA_HTTP_PORT:-3002}"
-  git -C "${DATA_ROOT}" push -u "http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@127.0.0.1:${GITEA_HOST_PORT}/${PRIMARY_USER}/${DEFAULT_REPO}.git" main >/dev/null 2>&1 && PUSHED=true || true
+  PUSH_URL="http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@127.0.0.1:${GITEA_HOST_PORT}/${PRIMARY_USER}/${DEFAULT_REPO}.git"
+  git -C "${DATA_ROOT}" push -u "${PUSH_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1 && PUSHED=true || true
+fi
+
+# Refresh remote tracking refs, upstream config, and permissions so VS Code sees main as published
+git -C "${DATA_ROOT}" update-ref refs/remotes/origin/main HEAD 2>/dev/null || true
+if [ -n "${INITIAL_SETUP_SHA:-}" ]; then
+  git -C "${DATA_ROOT}" update-ref refs/remotes/origin/initial-setup "${INITIAL_SETUP_SHA}" 2>/dev/null || true
+else
+  git -C "${DATA_ROOT}" update-ref refs/remotes/origin/initial-setup HEAD 2>/dev/null || true
+fi
+git -C "${DATA_ROOT}" config branch.main.remote origin
+git -C "${DATA_ROOT}" config branch.main.merge refs/heads/main
+git -C "${DATA_ROOT}" config branch.initial-setup.remote origin
+git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
+git -C "${DATA_ROOT}" config push.default simple
+git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
+chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || chmod -R a+rwX "${DATA_ROOT}/.git" 2>/dev/null || true
+chmod 664 "${CRED_FILE}" 2>/dev/null || true
+
+if docker inspect -f '{{.State.Running}}' brainsos-app-code-server 2>/dev/null | grep -q "true"; then
+  docker exec brainsos-app-code-server git config --global credential.helper "store --file=/data/.git/credentials" 2>/dev/null || true
 fi
 
 if [ "${PUSHED}" = "true" ]; then
-  log_success "Pushed '${DATA_ROOT}' (branch 'main') to Gitea repository '${PRIMARY_USER}/${DEFAULT_REPO}'."
+  log_success "Pushed '${DATA_ROOT}' (branches 'main' and 'initial-setup') to Gitea repository '${PRIMARY_USER}/${DEFAULT_REPO}'."
 else
   log_warn "Configured remote '${REMOTE_URL}', but initial push could not reach Gitea endpoint yet."
 fi

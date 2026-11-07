@@ -511,6 +511,60 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+# 3b. Synchronize Host Linux OS 'admin' & Superuser Accounts (#332)
+# ------------------------------------------------------------------------------
+sync_linux_admin_accounts() {
+  if [ "$(uname -s)" != "Linux" ] || [ "$(id -u)" -ne 0 ]; then
+    return 0
+  fi
+
+  local inst_pass="${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-${INSTANCE_ID:-${BRAINSOS_ADMIN_PASSWORD:-}}}"
+  local su_user="${UD_ADMIN_USERNAME:-}"
+  local su_pass="${BRAINSOS_SUPERUSER_PASSWORD:-${inst_pass}}"
+
+  if ! id -u admin >/dev/null 2>&1; then
+    useradd -m -s /bin/bash admin 2>/dev/null || true
+  fi
+  usermod -aG sudo,docker admin 2>/dev/null || usermod -aG sudo admin 2>/dev/null || true
+  if [ -n "${inst_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+    printf 'admin:%s\n' "${inst_pass}" | chpasswd 2>/dev/null || true
+  fi
+  if [ -d /home/admin ]; then
+    grep -q "cd ${REPO_ROOT}" /home/admin/.bashrc 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" >> /home/admin/.bashrc
+    chown -R admin:admin /home/admin 2>/dev/null || true
+  fi
+
+  local sudoers_file="/etc/sudoers.d/90-brainsos-admin"
+  if [ -d /etc/sudoers.d ]; then
+    {
+      echo "# Managed by brainsOS firstboot.sh / set-domain.sh (#332)"
+      echo "admin ALL=(ALL:ALL) ALL"
+      if [ -n "${su_user}" ] && [ "${su_user}" != "admin" ] && [ "${su_user}" != "root" ]; then
+        echo "${su_user} ALL=(ALL:ALL) ALL"
+      fi
+    } > "${sudoers_file}" 2>/dev/null || true
+    chmod 0440 "${sudoers_file}" 2>/dev/null || true
+  fi
+
+  if [ -n "${su_user}" ] && [ "${su_user}" != "admin" ] && [ "${su_user}" != "root" ]; then
+    if ! id -u "${su_user}" >/dev/null 2>&1; then
+      useradd -m -s /bin/bash "${su_user}" 2>/dev/null || true
+    fi
+    usermod -aG sudo,docker "${su_user}" 2>/dev/null || usermod -aG sudo "${su_user}" 2>/dev/null || true
+    if [ -n "${su_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+      printf '%s:%s\n' "${su_user}" "${su_pass}" | chpasswd 2>/dev/null || true
+    fi
+    if [ -d "/home/${su_user}" ]; then
+      grep -q "cd ${REPO_ROOT}" "/home/${su_user}/.bashrc" 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" >> "/home/${su_user}/.bashrc"
+      chown -R "${su_user}:${su_user}" "/home/${su_user}" 2>/dev/null || true
+    fi
+  fi
+  log_success "Synchronized Linux OS 'admin' account (sudo,docker) with instance-id password."
+}
+
+sync_linux_admin_accounts
+
+# ------------------------------------------------------------------------------
 # 4. Per-Instance Data Tree & Python Environment
 #    bootstrap-env.sh preserves the .env written above, scaffolds data/ and
 #    seeds default settings/agents/runners/skills. Failure is fatal so that
@@ -535,6 +589,14 @@ if [ "${SKIP_PORTAL}" != true ] && [ -x "${REPO_ROOT}/scripts/setup/setup-portal
   if ! "${REPO_ROOT}/scripts/setup/setup-portal.sh"; then
     log_warn "Portal rebuild failed; the pre-built bundle from the AMI remains in place."
   fi
+fi
+
+# ------------------------------------------------------------------------------
+# 5b. Seed Local Git Server (Gitea) & /data Repository (#339)
+# ------------------------------------------------------------------------------
+if [ "${BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP:-false}" != true ] && [ -x "${REPO_ROOT}/scripts/setup/setup-git.sh" ]; then
+  log_info "Seeding Gitea source control & /data repository..."
+  "${REPO_ROOT}/scripts/setup/setup-git.sh" || log_warn "Initial Gitea seeding deferred"
 fi
 
 # ------------------------------------------------------------------------------

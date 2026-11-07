@@ -73,7 +73,7 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
     if (item.id === 'security' || item.route.includes('/proxy') || item.route.includes('/ui')) {
-      return `${proto}//${host}${port}/ui/`;
+      return `${proto}//${host}${port}/sso/key/generate`;
     }
     return item.route;
   };
@@ -247,11 +247,77 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
               onLoad={(e) => {
                 try {
                   const doc = e.currentTarget.contentDocument;
+                  const win = e.currentTarget.contentWindow as any;
                   if (doc) {
                     doc.documentElement.classList.add('dark');
                     doc.documentElement.setAttribute('data-theme', 'dark');
                     doc.documentElement.style.colorScheme = 'dark';
                     doc.body?.classList.add('dark');
+                  }
+                  if (doc && win && key === 'comms' && !win.__brainsosMailtoBound) {
+                    win.__brainsosMailtoBound = true;
+                    doc.addEventListener(
+                      'click',
+                      (ev: MouseEvent) => {
+                        const target = ev.target as HTMLElement | null;
+                        const link = target?.closest
+                          ? (target.closest('a[href^="mailto:"], a[href^="MAILTO:"]') as HTMLAnchorElement | null)
+                          : null;
+                        if (!link) return;
+                        const href = link.getAttribute('href');
+                        if (!href || !/^mailto:/i.test(href)) return;
+
+                        link.removeAttribute('target');
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (typeof ev.stopImmediatePropagation === 'function') {
+                          ev.stopImmediatePropagation();
+                        }
+
+                        const synthEvent = {
+                          target: link,
+                          currentTarget: link,
+                          stopPropagation: () => {},
+                          preventDefault: () => {},
+                        };
+
+                        if (win.$messageController && typeof win.$messageController.newMessage === 'function') {
+                          win.$messageController.newMessage(synthEvent, href);
+                          return;
+                        }
+
+                        const mbCtrl = win.$mailboxController;
+                        if (mbCtrl?.account?.$newMessage && win.angular) {
+                          const bodyEl = win.angular.element(doc.body);
+                          const injector = bodyEl.injector?.();
+                          const scope = bodyEl.scope?.();
+                          if (injector) {
+                            const $mdDialog = injector.get('$mdDialog');
+                            const $q = injector.get('$q');
+                            mbCtrl.account.$newMessage({ mailto: href }).then((message: any) => {
+                              const onCompleteDeferred = $q.defer();
+                              $mdDialog.show({
+                                parent: bodyEl,
+                                targetEvent: ev,
+                                clickOutsideToClose: false,
+                                escapeToClose: false,
+                                templateUrl: 'UIxMailEditor',
+                                controller: 'MessageEditorController',
+                                controllerAs: 'editor',
+                                onComplete: (_s: any, el: any) => onCompleteDeferred.resolve(el),
+                                locals: {
+                                  stateParent: scope,
+                                  stateAccount: mbCtrl.account,
+                                  stateMessage: message,
+                                  onCompletePromise: () => onCompleteDeferred.promise,
+                                },
+                              });
+                            });
+                          }
+                        }
+                      },
+                      true
+                    );
                   }
                 } catch {}
               }}

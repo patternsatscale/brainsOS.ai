@@ -363,6 +363,18 @@ if [ -n "${EFFECTIVE_CODE_PASS}" ]; then
   fi
 fi
 
+# Ensure SYSTEM_API_TOKEN and BRAINSOS_UNIT_NAME exist in .env before docker compose up -d
+if [ -z "${SYSTEM_API_TOKEN:-}" ]; then
+  SYSTEM_API_TOKEN="$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')"
+  "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN}" >/dev/null 2>&1 || true
+  export SYSTEM_API_TOKEN
+fi
+if [ -z "${BRAINSOS_UNIT_NAME:-}" ]; then
+  BRAINSOS_UNIT_NAME="Enterprise Agent Box"
+  "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "BRAINSOS_UNIT_NAME=${BRAINSOS_UNIT_NAME}" >/dev/null 2>&1 || true
+  export BRAINSOS_UNIT_NAME
+fi
+
 # ------------------------------------------------------------------------------
 # 4. Recreate / Update Docker Compose Services
 # ------------------------------------------------------------------------------
@@ -491,7 +503,7 @@ fi
 
 # Synchronize Local Git Server (Gitea) & /data Repository (#332)
 if [ -x "${REPO_ROOT}/scripts/setup/setup-git.sh" ]; then
-  "${REPO_ROOT}/scripts/setup/setup-git.sh" --seed-only || log_warn "Gitea seed sync encountered a warning."
+  "${REPO_ROOT}/scripts/setup/setup-git.sh" || log_warn "Gitea seed sync encountered a warning."
 fi
 
 # Synchronize Authentik Identity & Master Credentials
@@ -526,7 +538,11 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
   SUPERUSER_USER="${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}"
   ADMIN_USER="${SUPERUSER_USER}"
   SUPERUSER_DISPLAY_NAME="${BRAINSOS_SUPERUSER_NAME:-${SUPERUSER_USER}}"
-  LOCAL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-brainsos.ai}}"
+  LOCAL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${EFFECTIVE_DOMAIN:-brainsos.ai}}"
+  BREAKGLASS_ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${EFFECTIVE_DOMAIN:-${LOCAL_DOM}}}"
+  if [[ "${BREAKGLASS_ADMIN_EMAIL}" == *.local ]]; then
+    BREAKGLASS_ADMIN_EMAIL="admin@brainsos.ai"
+  fi
   ADMIN_EMAIL="${BRAINSOS_SUPERUSER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-${SUPERUSER_USER}@${LOCAL_DOM}}}"
   if [[ "${ADMIN_EMAIL}" == *.local ]]; then
     ADMIN_EMAIL="${SUPERUSER_USER}@brainsos.ai"
@@ -549,8 +565,8 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
 from authentik.core.models import User, Group
 admin_group = Group.objects.filter(name='authentik Admins').first()
 
-admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': 'admin@${LOCAL_DOM}'})
-admin_u.email = 'admin@${LOCAL_DOM}' if not '${LOCAL_DOM}'.endswith('.local') else 'admin@brainsos.ai'
+admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': '${BREAKGLASS_ADMIN_EMAIL}'})
+admin_u.email = '${BREAKGLASS_ADMIN_EMAIL}'
 admin_u.set_password('${INSTANCE_ADMIN_PASS}')
 admin_u.is_active = True
 if admin_group:
@@ -573,7 +589,7 @@ if '${SUPERUSER_USER}' and '${SUPERUSER_USER}' != 'admin':
 
 ak_u = User.objects.filter(username='akadmin').first()
 if ak_u:
-    ak_u.email = 'admin@${LOCAL_DOM}' if not '${LOCAL_DOM}'.endswith('.local') else 'admin@brainsos.ai'
+    ak_u.email = 'akadmin@${EFFECTIVE_DOMAIN:-brainsos.ai}'
     ak_u.set_password('${INSTANCE_ADMIN_PASS}')
     ak_u.save()
 
@@ -642,6 +658,10 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue)..."
 "${SCRIPT_DIR}/start-control-plane.sh" restart
+
+if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" || true
+fi
 
 # Synchronize Operator IDE (code-server) with active LiteLLM virtual key
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(app-)?code-server$'; then

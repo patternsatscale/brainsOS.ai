@@ -193,10 +193,31 @@ import tls_policy.caddy
 		reverse_proxy authentik-server:9000
 	}
 	# Subsystem 9: System Telemetry & Universal Update Engine API
+	handle /healthz {
+		respond "OK" 200
+	}
+	@system_public_status {
+		method GET
+		path /api/v1/system/jobs/* /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf
+	}
+	handle @system_public_status {
+		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
+			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {host}
+			flush_interval -1
+		}
+	}
+
 	handle /api/v1/system/* {
 		import firstboot_portal_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
 			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
+			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up X-Authentik-Email {header.X-Authentik-Email}
+			header_up Remote-User {header.Remote-User}
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {host}
 			flush_interval -1
 		}
 	}
@@ -240,15 +261,19 @@ import tls_policy.caddy
 	@git_no_slash path /git
 	redir @git_no_slash /git/ 308
 	handle /git/* {
-		import authentik_forward_auth
-		uri strip_prefix /git
-		reverse_proxy gitea:3000 {
-			header_up X-Authentik-Username {header.X-Authentik-Username}
-			header_up X-Authentik-Email {header.X-Authentik-Email}
-			header_up X-Authentik-Name {header.X-Authentik-Name}
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		@git_reserved_admin header_regexp X-Authentik-Username ^(admin|akadmin)$
+		route {
+			import authentik_forward_auth
+			request_header @git_reserved_admin X-Authentik-Username operator
+			uri strip_prefix /git
+			reverse_proxy gitea:3000 {
+				header_up X-Authentik-Username {header.X-Authentik-Username}
+				header_up X-Authentik-Email {header.X-Authentik-Email}
+				header_up X-Authentik-Name {header.X-Authentik-Name}
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
 		}
 	}
 
@@ -280,7 +305,7 @@ import tls_policy.caddy
 
 	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
 	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui
-	redir @proxy_ui_defaults /ui/ 308
+	redir @proxy_ui_defaults /sso/key/generate 302
 	handle /proxy/ui/* {
 		uri strip_prefix /proxy
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
@@ -290,6 +315,14 @@ import tls_policy.caddy
 		}
 	}
 	handle /ui/* {
+		@ui_entry_needs_sso {
+			method GET
+			path /ui/
+			not query login=success
+			not query page=*
+			not header_regexp Referer /ui/
+		}
+		redir @ui_entry_needs_sso /sso/key/generate 302
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
 			header_down -content-security-policy
@@ -599,6 +632,7 @@ import tls_policy.caddy
 		import authentik_forward_auth
 		uri strip_prefix /runner
 		reverse_proxy runner-hermes:9119 {
+			header_up X-Forwarded-Prefix /runner
 			header_up Remote-User {header.Remote-User}
 			header_up X-Authentik-Username {header.X-Authentik-Username}
 			header_down -x-frame-options

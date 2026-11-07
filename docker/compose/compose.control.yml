@@ -65,15 +65,19 @@ services:
       # Authentik OIDC Single Sign-On
       - AUTO_REDIRECT_UI_LOGIN_TO_SSO=true
       - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}
-      - PROXY_ADMIN_ID=${BRAINSOS_ADMIN_USERNAME:-admin}
+      - PROXY_ADMIN_ID=${LITELLM_PROXY_ADMIN_ID:-admin}
       - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
-      - PROXY_ADMIN_EMAILS=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}},operator@brainsos.ai,admin
+      - PROXY_ADMIN_EMAILS=admin@${BRAINSOS_LOCAL_DOMAIN:-dgx.local.brainsos.ai},admin@brainsos.ai,operator@${BRAINSOS_LOCAL_DOMAIN:-dgx.local.brainsos.ai},${BRAINSOS_SUPERUSER_EMAIL:-admin@brainsos.ai}
       - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
       - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
       - GENERIC_AUTHORIZATION_ENDPOINT=https://${BRAINSOS_DOMAIN:-brainsos.local}/application/o/authorize/
       - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
       - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
       - GENERIC_USER_ID_ATTRIBUTE=preferred_username
+      - GENERIC_INCLUDE_TOKEN_CLAIMS=true
+      - GENERIC_ROLE_MAPPINGS_GROUP_CLAIM=groups
+      - GENERIC_ROLE_MAPPINGS_DEFAULT_ROLE=proxy_admin
+      - "GENERIC_ROLE_MAPPINGS_ROLES={'proxy_admin': ['authentik Admins', 'admins', 'admin', 'appliance-admins']}"
       # Langfuse Observability Tracing (#299: native OTel v4 header for real-time ingestion)
       - LANGFUSE_HOST=${LITELLM_LANGFUSE_HOST:-http://host.docker.internal:3001}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}

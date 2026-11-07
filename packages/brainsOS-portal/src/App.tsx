@@ -33,6 +33,7 @@ export function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [user, setUser] = useState<AuthenticatedUser>(DEFAULT_USER);
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
+  const [hasUpdateAvailable, setHasUpdateAvailable] = useState<boolean>(false);
 
   // Live mode is enabled by default across all hosts (localhost, LAN IPs, custom domains)
   // Mock mode is only active when explicitly requested via ?mock=true
@@ -69,6 +70,9 @@ export function App() {
           if (res.ok) {
             const data = await res.json();
             if (cancelled) return;
+            if (data && typeof data.overall_update_available === 'boolean') {
+              setHasUpdateAvailable(data.overall_update_available);
+            }
             if (data && data.firstboot_wizard_completed === false) {
               setWizardGate('required');
             } else {
@@ -89,6 +93,30 @@ export function App() {
     checkWizardState();
     return () => {
       cancelled = true;
+    };
+  }, [isMockMode]);
+
+  // Keep OS update badge synchronized with System API & SystemManager updates
+  useEffect(() => {
+    if (isMockMode) return;
+    fetch('/api/v1/system/status', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.overall_update_available === 'boolean') {
+          setHasUpdateAvailable(data.overall_update_available);
+        }
+      })
+      .catch(() => {});
+
+    const handleSystemStatusEvent = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ overall_update_available?: boolean }>).detail;
+      if (detail && typeof detail.overall_update_available === 'boolean') {
+        setHasUpdateAvailable(detail.overall_update_available);
+      }
+    };
+    window.addEventListener('brainsos:system-status', handleSystemStatusEvent);
+    return () => {
+      window.removeEventListener('brainsos:system-status', handleSystemStatusEvent);
     };
   }, [isMockMode]);
 
@@ -222,6 +250,7 @@ export function App() {
         onOpenProfile={() => setProfileModalOpen(true)}
         isProfileOpen={profileModalOpen}
         user={user}
+        hasUpdateAvailable={hasUpdateAvailable}
       />
 
       {/* 2. Slide-Over Frosted Glass HUD Drawer */}

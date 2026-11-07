@@ -145,7 +145,9 @@ echo "[BRAINSOS-SOGO] Spawning background sogo-ealarms-notify daemon (60s cycle)
 ) &
 
 # 5. Start nginx web server for WebServerResources static assets & reverse proxy
-echo "[BRAINSOS-SOGO] Starting in-container nginx dispatcher on port 20000..."
+echo "[BRAINSOS-SOGO] Patching SOGo strict-mode mailto handler and starting nginx dispatcher on port 20000..."
+sed -i 's/delete e\.target\.attributes\.target/e.target.removeAttribute("target")/g' /usr/lib/GNUstep/SOGo/WebServerResources/js/Mailer.services.js 2>/dev/null || true
+sed -i 's/delete \$event\.target\.attributes\.target/$event.target.removeAttribute("target")/g' /usr/lib/GNUstep/SOGo/WebServerResources/js/Mailer/MessageController.js 2>/dev/null || true
 service nginx start
 
 # 5b. Render dynamic sogo.conf with live credentials if template exists

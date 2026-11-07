@@ -40,6 +40,7 @@ ENV_UPSERT="${REPO_ROOT}/scripts/control/env-upsert.sh"
 
 DOMAIN=""
 URL_INPUT=""
+UNIT_NAME=""
 LOCAL_DOMAIN=""
 SUPERUSER_NAME=""
 ADMIN_USERNAME=""
@@ -71,6 +72,7 @@ Usage:
 Options:
   --domain FQDN              External web URL / domain (alias for --url)
   --url URL                  External web access URL or hostname (BRAINSOS_URL, e.g. https://ec2-...amazonaws.com)
+  --unit-name NAME           Logical unit display name (BRAINSOS_UNIT_NAME, e.g. "Enterprise Agent Box")
   --local-domain FQDN        Coherent appliance unit FQDN & local mail domain (BRAINSOS_LOCAL_DOMAIN, e.g. jsm.aws.cloud.brainsos.ai)
   --superuser-name NAME      Superuser full display name (BRAINSOS_SUPERUSER_NAME, e.g. "Jane Smith")
   --superuser-username USER  Named superuser username (BRAINSOS_SUPERUSER_USERNAME; 'admin' stays bound to EC2 Instance ID)
@@ -110,6 +112,10 @@ while [ $# -gt 0 ]; do
       ;;
     --url)
       URL_INPUT="${2:-}"
+      shift 2
+      ;;
+    --unit-name)
+      UNIT_NAME="${2:-}"
       shift 2
       ;;
     --local-domain)
@@ -177,13 +183,16 @@ fi
 if [ -z "${SUPERUSER_NAME}" ] && [ -n "${BRAINSOS_SUPERUSER_NAME:-}" ]; then
   SUPERUSER_NAME="${BRAINSOS_SUPERUSER_NAME}"
 fi
+if [ -z "${UNIT_NAME}" ] && [ -n "${BRAINSOS_UNIT_NAME:-}" ]; then
+  UNIT_NAME="${BRAINSOS_UNIT_NAME}"
+fi
 
 if [ -n "${URL_INPUT}" ] && [ -z "${DOMAIN}" ]; then
   DOMAIN="${URL_INPUT}"
 fi
 
 if [ -z "${DOMAIN}" ]; then
-  if [ "${INTERNAL_MODE}" = true ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ]; then
+  if [ "${INTERNAL_MODE}" = true ] || [ -n "${UNIT_NAME}" ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ]; then
     if [ -f "${ENV_FILE}" ]; then
       CURRENT_URL="$(grep -E '^BRAINSOS_URL=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
       CURRENT_DOMAIN="$(grep -E '^BRAINSOS_DOMAIN=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
@@ -362,6 +371,9 @@ fi
 if [ -n "${SUPERUSER_NAME}" ]; then
   ENV_CHANGES+=("BRAINSOS_SUPERUSER_NAME=${SUPERUSER_NAME}")
 fi
+if [ -n "${UNIT_NAME}" ]; then
+  ENV_CHANGES+=("BRAINSOS_UNIT_NAME=${UNIT_NAME}")
+fi
 
 if [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${SUPERUSER_NAME}" ]; then
   TARGET_ADMIN_EMAIL="${EFFECTIVE_ADMIN_USER}@${EFFECTIVE_LOCAL_DOM}"
@@ -465,6 +477,65 @@ log_info "Updating .env configuration..."
   "${ENV_CHANGES[@]}"
 log_success "Updated ${ENV_FILE}."
 
+# Synchronize Linux OS 'admin' and Superuser accounts (#332)
+sync_linux_admin_accounts() {
+  if [ "$(uname -s)" != "Linux" ]; then
+    return 0
+  fi
+  local sudo_prefix=""
+  if [ "$(id -u)" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo_prefix="sudo -n"
+    else
+      return 0
+    fi
+  fi
+
+  local inst_pass="${DETECTED_INSTANCE_ID:-}"
+  local su_user="${EFFECTIVE_ADMIN_USER:-}"
+  local su_pass="${ADMIN_PASSWORD:-}"
+
+  if ! id -u admin >/dev/null 2>&1; then
+    ${sudo_prefix} useradd -m -s /bin/bash admin 2>/dev/null || true
+  fi
+  ${sudo_prefix} usermod -aG sudo,docker admin 2>/dev/null || ${sudo_prefix} usermod -aG sudo admin 2>/dev/null || true
+  if [ -n "${inst_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+    printf 'admin:%s\n' "${inst_pass}" | ${sudo_prefix} chpasswd 2>/dev/null || true
+  fi
+  if [ -d /home/admin ]; then
+    grep -q "cd ${REPO_ROOT}" /home/admin/.bashrc 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" | ${sudo_prefix} tee -a /home/admin/.bashrc >/dev/null 2>&1 || true
+    ${sudo_prefix} chown -R admin:admin /home/admin 2>/dev/null || true
+  fi
+
+  if [ -n "${su_user}" ] && [ "${su_user}" != "admin" ] && [ "${su_user}" != "root" ]; then
+    if ! id -u "${su_user}" >/dev/null 2>&1; then
+      ${sudo_prefix} useradd -m -s /bin/bash "${su_user}" 2>/dev/null || true
+    fi
+    ${sudo_prefix} usermod -aG sudo,docker "${su_user}" 2>/dev/null || ${sudo_prefix} usermod -aG sudo "${su_user}" 2>/dev/null || true
+    if [ -n "${su_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+      printf '%s:%s\n' "${su_user}" "${su_pass}" | ${sudo_prefix} chpasswd 2>/dev/null || true
+    fi
+    if [ -d "/home/${su_user}" ]; then
+      grep -q "cd ${REPO_ROOT}" "/home/${su_user}/.bashrc" 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" | ${sudo_prefix} tee -a "/home/${su_user}/.bashrc" >/dev/null 2>&1 || true
+      ${sudo_prefix} chown -R "${su_user}:${su_user}" "/home/${su_user}" 2>/dev/null || true
+    fi
+  fi
+
+  if [ -d /etc/sudoers.d ]; then
+    {
+      echo "# Managed by brainsOS set-domain.sh (#332)"
+      echo "admin ALL=(ALL:ALL) ALL"
+      if [ -n "${su_user}" ] && [ "${su_user}" != "admin" ] && [ "${su_user}" != "root" ]; then
+        echo "${su_user} ALL=(ALL:ALL) ALL"
+      fi
+    } | ${sudo_prefix} tee /etc/sudoers.d/90-brainsos-admin >/dev/null 2>&1 || true
+    ${sudo_prefix} chmod 0440 /etc/sudoers.d/90-brainsos-admin 2>/dev/null || true
+  fi
+  log_success "Synchronized Linux OS 'admin' and '${su_user}' accounts with sudo/docker access."
+}
+
+sync_linux_admin_accounts
+
 # Apply reboot-persistent OS hostname & cloud-init preserve_hostname (#332)
 if [ -n "${LOCAL_DOMAIN}" ]; then
   SHORT_HOST="${LOCAL_DOMAIN%%.*}"
@@ -540,6 +611,17 @@ fi
 # Reload environment and restart Caddy ingress
 log_info "Reloading Caddy ingress gateway & synchronizing credentials..."
 RELOAD_ENV_SKIP_PULL=true "${REPO_ROOT}/scripts/control/reload-env.sh" --no-urls
+
+# Synchronize LiteLLM proxy_admin privileges for both admin and Superuser (#332)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
+  log_info "Synchronizing LiteLLM proxy_admin SSO roles for admin & superuser..."
+  "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" || true
+fi
+
+# Refresh high-contrast Welcome Email in administrator & superuser Maildirs (#332)
+if [ -f "${REPO_ROOT}/scripts/control/send-welcome-email.py" ]; then
+  python3 "${REPO_ROOT}/scripts/control/send-welcome-email.py" --repo-root "${REPO_ROOT}" >/dev/null 2>&1 || true
+fi
 
 if [ "${MARK_WIZARD_COMPLETED}" = true ]; then
   date -u +"%Y-%m-%dT%H:%M:%SZ" > "${WIZARD_FLAG}"
