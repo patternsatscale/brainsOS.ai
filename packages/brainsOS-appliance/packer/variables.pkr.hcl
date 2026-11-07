@@ -10,6 +10,18 @@ variable "ami_name_prefix" {
   default     = "brainsos-arm64"
 }
 
+variable "ami_name" {
+  type        = string
+  description = "Explicit AMI name (e.g. brainsos-v0.1.5-arm64-rc1). When empty, defaults to ami_name_prefix-YYYYMMDD-hhmm."
+  default     = ""
+}
+
+variable "ami_display_name" {
+  type        = string
+  description = "EC2 Name tag displayed in the AWS Console (e.g. brainsOS 0.1.5 RC1 (ARM64))."
+  default     = "brainsOS Turnkey Appliance (ARM64)"
+}
+
 variable "instance_type" {
   type        = string
   description = "EC2 ARM64 Graviton instance type used for the Packer builder"

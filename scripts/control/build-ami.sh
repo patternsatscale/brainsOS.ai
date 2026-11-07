@@ -69,6 +69,8 @@ VERIFY_COLDBOOT=false
 VERIFY_VULNERABILITIES=false
 BUILD_REF=""
 PROMOTE_AMI=""
+AMI_NAME=""
+AMI_DISPLAY_NAME=""
 
 usage() {
   cat <<EOF
@@ -79,6 +81,8 @@ Usage:
 
 Options:
   --ref REF                   Git tag/branch/commit to bake (Default: latest v* tag)
+  --name NAME                 Explicit EC2 AMI name (e.g. brainsos-v0.1.5-arm64-rc1)
+  --display-name LABEL        EC2 Console Name tag (e.g. "brainsOS 0.1.5 RC1 (ARM64)")
   --allow-dirty               Permit building while the working tree has local changes
   --region REGION             Target AWS region (Default: ${AWS_REGION})
   --instance-type TYPE        EC2 instance type for builder (Default: ${INSTANCE_TYPE})
@@ -110,6 +114,8 @@ require_arg() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref)            require_arg "$1" "${2:-}"; BUILD_REF="$2"; shift 2 ;;
+    --name)           require_arg "$1" "${2:-}"; AMI_NAME="$2"; shift 2 ;;
+    --display-name)   require_arg "$1" "${2:-}"; AMI_DISPLAY_NAME="$2"; shift 2 ;;
     --allow-dirty)    ALLOW_DIRTY=true; shift ;;
     --region)         require_arg "$1" "${2:-}"; AWS_REGION="$2"; shift 2 ;;
     --instance-type)  require_arg "$1" "${2:-}"; INSTANCE_TYPE="$2"; shift 2 ;;
@@ -252,6 +258,7 @@ trap cleanup_stage EXIT
 
 packer_vars() {
   local source_dir="$1" ref="$2" commit="$3"
+  local effective_display_name="${AMI_DISPLAY_NAME:-brainsOS Turnkey Appliance (ARM64)}"
   printf '%s\n' \
     "-var=aws_region=${AWS_REGION}" \
     "-var=instance_type=${INSTANCE_TYPE}" \
@@ -260,7 +267,9 @@ packer_vars() {
     "-var=ssh_interface=${SSH_INTERFACE}" \
     "-var=source_dir=${source_dir}" \
     "-var=brainsos_ref=${ref}" \
-    "-var=brainsos_commit=${commit}"
+    "-var=brainsos_commit=${commit}" \
+    "-var=ami_name=${AMI_NAME}" \
+    "-var=ami_display_name=${effective_display_name}"
 }
 
 # --validate-only does not need a staged artifact; an empty directory suffices.
