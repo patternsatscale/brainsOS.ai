@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 from typing import Any
 
 from providers import _REGISTRY, register_provider  # type: ignore[attr-defined]
@@ -29,6 +30,25 @@ logger = logging.getLogger("brainsos.hermes.litellm_session")
 # LiteLLM per-request flag (litellm_params["no-log"]): skips logging callbacks except proxy spend tracking.
 NO_LOG_FIELD = "no-log"
 
+_AGENT_KEY_ENV_MAP = {
+    "bawtford": "BAWTFORD_LITELLM_KEY",
+    "terrastella": "TERRASTELLA_LITELLM_KEY",
+    "marvin": "MARVIN_LITELLM_KEY",
+}
+
+
+def _resolve_agent_virtual_key(session_id: str | None) -> str | None:
+    """Resolve the tenant virtual key for a Hermes session_id (e.g. 'mail-bawtford-...')."""
+    sid = (session_id or "").strip().lower()
+    for agent_id, env_var in _AGENT_KEY_ENV_MAP.items():
+        if sid.startswith(f"mail-{agent_id}-") or f"-{agent_id}-" in sid or sid == agent_id:
+            val = (os.environ.get(env_var) or "").strip()
+            if val:
+                return val
+    default_vkey = (os.environ.get("BAWTFORD_LITELLM_KEY") or "").strip()
+    return default_vkey or None
+
+
 _base = _REGISTRY.get("custom")
 
 if _base is None:  # pragma: no cover - bundled provider missing
@@ -37,7 +57,7 @@ else:
     _BaseCls = type(_base)
 
     class BrainsOSLiteLLMSessionProfile(_BaseCls):  # type: ignore[misc, valid-type]
-        """``custom`` provider + LiteLLM tags + ``no-log`` (Hermes owns the Langfuse trace)."""
+        """``custom`` provider + LiteLLM tags + ``no-log`` + per-agent virtual key attribution."""
 
         def build_extra_body(self, *, session_id: str | None = None, **context: Any) -> dict[str, Any]:
             body = dict(super().build_extra_body(session_id=session_id, **context) or {})
@@ -46,6 +66,27 @@ else:
             body["metadata"] = metadata
             body[NO_LOG_FIELD] = True
             return body
+
+        def build_api_kwargs_extras(
+            self,
+            *,
+            reasoning_config: dict | None = None,
+            **context: Any,
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            parent_fn = getattr(super(), "build_api_kwargs_extras", None)
+            if callable(parent_fn):
+                extra_body, top_level = parent_fn(reasoning_config=reasoning_config, **context)
+                extra_body = dict(extra_body or {})
+                top_level = dict(top_level or {})
+            else:
+                extra_body, top_level = {}, {}
+
+            vkey = _resolve_agent_virtual_key(context.get("session_id"))
+            if vkey:
+                headers = dict(top_level.get("extra_headers") or {})
+                headers.setdefault("Authorization", f"Bearer {vkey}")
+                top_level["extra_headers"] = headers
+            return extra_body, top_level
 
     _fields = {f.name: getattr(_base, f.name) for f in dataclasses.fields(_base) if f.init}
     register_provider(BrainsOSLiteLLMSessionProfile(**_fields))

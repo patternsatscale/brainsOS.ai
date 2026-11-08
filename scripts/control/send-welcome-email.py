@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""brainsOS: Interactive 5-Email Onboarding Seeder (#332 / #357).
+"""brainsOS: Editable Markdown 5-Email Onboarding Seeder (#332 / #357 / #359).
 
-Seeds or updates 5 friendly, useful, slightly silly, and interactive onboarding
-emails in the administrator and superuser Maildir inboxes with high-contrast
-typography (#f8fafc, #e2e8f0, #cbd5e1) on dark cards and deterministic
-Message-IDs (<brainsos-welcome-1@{mail_domain}> .. <brainsos-welcome-5@{mail_domain}>).
+Loads onboarding email templates from Markdown files (`config/default_emails/*.md`
+or live overrides in `${BRAINSOS_DATA_DIR}/settings/emails/*.md` /
+`BRAINSOS_EMAIL_TEMPLATES_DIR`), renders both clean plain-text and high-contrast
+dark-mode HTML bodies, and seeds them into the administrator and superuser
+Maildir inboxes with deterministic Message-IDs
+(<brainsos-welcome-1@{mail_domain}> .. <brainsos-welcome-5@{mail_domain}>).
 """
 
 import argparse
 import glob
+import html
 import os
+import re
 import smtplib
 import time
 from dataclasses import dataclass
@@ -17,17 +21,86 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
 class OnboardingEmailSpec:
     index: int
+    id: str
     sender_name: str
     sender_local: str
+    reply_to_user: str
     subject: str
+    preheader: str
+    badge: str
+    accent: str
+    footer: str
+    age_minutes: int
     message_id: str
+    text_body: str
     html_body: str
     timestamp: float
+
+    @property
+    def from_name(self) -> str:
+        return self.sender_name
+
+    @property
+    def from_user(self) -> str:
+        return self.sender_local
+
+    @property
+    def text(self) -> str:
+        return self.text_body
+
+    @property
+    def html(self) -> str:
+        return self.html_body
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "index": self.index,
+            "id": self.id,
+            "from_name": self.sender_name,
+            "from_user": self.sender_local,
+            "sender_name": self.sender_name,
+            "sender_local": self.sender_local,
+            "reply_to_user": self.reply_to_user,
+            "subject": self.subject,
+            "preheader": self.preheader,
+            "badge": self.badge,
+            "accent": self.accent,
+            "footer": self.footer,
+            "age_minutes": self.age_minutes,
+            "message_id": self.message_id,
+            "text": self.text_body,
+            "text_body": self.text_body,
+            "html": self.html_body,
+            "html_body": self.html_body,
+            "timestamp": self.timestamp,
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        d = self.to_dict()
+        if key in d:
+            return d[key]
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and key in self.to_dict()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
+    def keys(self):
+        return self.to_dict().keys()
+
+    def items(self):
+        return self.to_dict().items()
+
+    def values(self):
+        return self.to_dict().values()
 
 
 def parse_env(env_path: Path) -> dict[str, str]:
@@ -43,6 +116,143 @@ def parse_env(env_path: Path) -> dict[str, str]:
     return vals
 
 
+def discover_email_markdown_files(
+    repo_root: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> list[Path]:
+    """Discover onboarding Markdown files from override dirs or config/default_emails/."""
+    resolved_root = repo_root or Path(__file__).resolve().parents[2]
+    resolved_env = env if env is not None else parse_env(resolved_root / ".env")
+
+    candidates: list[Path] = []
+
+    custom_dir = os.environ.get("BRAINSOS_EMAIL_TEMPLATES_DIR") or resolved_env.get(
+        "BRAINSOS_EMAIL_TEMPLATES_DIR"
+    )
+    if custom_dir:
+        candidates.append(
+            Path(custom_dir)
+            if os.path.isabs(custom_dir)
+            else (resolved_root / custom_dir)
+        )
+
+    data_dir_raw = (
+        os.environ.get("BRAINSOS_DATA_DIR")
+        or resolved_env.get("BRAINSOS_DATA_DIR")
+        or str(resolved_root / "data")
+    )
+    data_dir = (
+        Path(data_dir_raw)
+        if os.path.isabs(data_dir_raw)
+        else (resolved_root / data_dir_raw)
+    )
+    candidates.append(data_dir / "settings" / "emails")
+    candidates.append(resolved_root / "config" / "default_emails")
+
+    for directory in candidates:
+        if directory.is_dir():
+            md_files = sorted(p for p in directory.glob("*.md") if p.is_file())
+            if md_files:
+                return md_files
+
+    return []
+
+
+def parse_markdown_email(raw_text: str) -> tuple[dict[str, str], str]:
+    """Parse YAML-style frontmatter between `---` lines and return (meta, markdown_body)."""
+    lines = raw_text.splitlines()
+    meta: dict[str, str] = {}
+    body_start = 0
+
+    if lines and lines[0].strip() == "---":
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                body_start = idx + 1
+                break
+            line = lines[idx].strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip().strip('"').strip("'")
+
+    body = "\n".join(lines[body_start:]).strip()
+    return meta, body
+
+
+_PLACEHOLDER_RE = re.compile(
+    r"\{(domain|local_domain|user|base_url|unit_name|portal_domain|mail_domain|recipient_name|recipient_user)\}"
+)
+
+
+def _substitute_placeholders(text: str, context: dict[str, str]) -> str:
+    return _PLACEHOLDER_RE.sub(lambda m: context.get(m.group(1), m.group(0)), text)
+
+
+def _header_gradient_for_accent(accent_color: str) -> str:
+    accent = accent_color.strip().lower()
+    gradients = {
+        "#a855f7": "linear-gradient(135deg, #4c1d95 0%, #0f172a 100%)",
+        "#ec4899": "linear-gradient(135deg, #831843 0%, #0f172a 100%)",
+        "#10b981": "linear-gradient(135deg, #064e3b 0%, #0f172a 100%)",
+        "#f97316": "linear-gradient(135deg, #7c2d12 0%, #0f172a 100%)",
+        "#38bdf8": "linear-gradient(135deg, #0f766e 0%, #0f172a 100%)",
+        "#00f2fe": "linear-gradient(135deg, #0f766e 0%, #0f172a 100%)",
+    }
+    return gradients.get(accent, "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)")
+
+
+def _wrap_email_html(
+    badge: str,
+    title: str,
+    subtitle: str,
+    inner_html: str,
+    accent_color: str = "#38bdf8",
+    header_gradient: str | None = None,
+    preheader: str = "",
+    footer: str = "",
+) -> str:
+    resolved_gradient = header_gradient or _header_gradient_for_accent(accent_color)
+    preheader_html = ""
+    if preheader:
+        escaped_pre = html.escape(preheader)
+        preheader_html = (
+            f'<div style="display:none;font-size:1px;color:#0b0f19;line-height:1px;'
+            f'max-height:0px;max-width:0px;opacity:0;overflow:hidden;">{escaped_pre}</div>'
+        )
+    footer_html = ""
+    if footer:
+        escaped_footer = html.escape(footer)
+        footer_html = (
+            f'<div style="padding: 14px 28px; background-color: #090d16; '
+            f'border-top: 1px solid #1e293b; color: #94a3b8; font-size: 12px; text-align: center;">'
+            f"{escaped_footer}</div>"
+        )
+    return f"""<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; background-color: #0b0f19; padding: 24px; line-height: 1.65; margin: 0;">
+  {preheader_html}
+  <div style="max-width: 700px; margin: 0 auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; overflow: hidden;">
+    <div style="background: {resolved_gradient}; padding: 24px 28px; border-bottom: 1px solid #334155;">
+      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: {html.escape(accent_color)}; margin-bottom: 4px;">
+        {html.escape(badge)}
+      </div>
+      <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #f8fafc;">
+        {title}
+      </h1>
+      <p style="margin: 6px 0 0 0; font-size: 14px; color: #e2e8f0;">
+        {html.escape(subtitle)}
+      </p>
+    </div>
+    <div style="padding: 28px; color: #f8fafc; font-size: 14px;">
+      {inner_html}
+    </div>
+    {footer_html}
+  </div>
+</body>
+</html>
+"""
+
+
 def _wrap_card(
     badge: str,
     title: str,
@@ -51,28 +261,547 @@ def _wrap_card(
     accent_color: str = "#38bdf8",
     header_gradient: str = "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)",
 ) -> str:
-    return f"""<!DOCTYPE html>
-<html>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; background-color: #0b0f19; padding: 24px; line-height: 1.65; margin: 0;">
-  <div style="max-width: 700px; margin: 0 auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; overflow: hidden;">
-    <div style="background: {header_gradient}; padding: 24px 28px; border-bottom: 1px solid #334155;">
-      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: {accent_color}; margin-bottom: 4px;">
-        {badge}
-      </div>
-      <h2 style="margin: 0; font-size: 22px; font-weight: 700; color: #f8fafc;">
-        {title}
-      </h2>
-      <p style="margin: 6px 0 0 0; font-size: 14px; color: #e2e8f0;">
-        {subtitle}
-      </p>
-    </div>
-    <div style="padding: 28px; color: #f8fafc; font-size: 14px;">
-      {inner_html}
-    </div>
-  </div>
-</body>
-</html>
-"""
+    """Backward-compatible wrapper around _wrap_email_html."""
+    return _wrap_email_html(
+        badge=badge,
+        title=title,
+        subtitle=subtitle,
+        inner_html=inner_html,
+        accent_color=accent_color,
+        header_gradient=header_gradient,
+    )
+
+
+_CODE_SPAN_STYLE = (
+    "color: #38bdf8; background-color: #1e293b; padding: 2px 6px; "
+    "border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 13px;"
+)
+
+
+def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> str:
+    """Render inline Markdown (`code`, [link](url), **bold**, *italic*) safely to HTML."""
+    tokens: list[str] = []
+
+    def _stash(fragment: str) -> str:
+        idx = len(tokens)
+        tokens.append(fragment)
+        return f"\x00TOK{idx}\x00"
+
+    # 1. Inline code: `...`
+    def _repl_code(m: re.Match[str]) -> str:
+        code_txt = html.escape(m.group(1))
+        return _stash(f'<code style="{_CODE_SPAN_STYLE}">{code_txt}</code>')
+
+    text = re.sub(r"`([^`]+)`", _repl_code, text)
+
+    # 2. Links: [label](url)
+    def _repl_link(m: re.Match[str]) -> str:
+        label_raw = m.group(1)
+        url_raw = html.escape(m.group(2), quote=True)
+        label_html = _render_inline_markdown_html(label_raw, accent_color=accent_color)
+        return _stash(
+            f'<a href="{url_raw}" style="color: #38bdf8; font-weight: 600; text-decoration: none;">{label_html}</a>'
+        )
+
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _repl_link, text)
+
+    # 3. Escape remaining HTML characters
+    escaped = html.escape(text)
+
+    # 4. Bold: **...**
+    escaped = re.sub(
+        r"\*\*([^*]+)\*\*",
+        r'<strong style="color: #ffffff;">\1</strong>',
+        escaped,
+    )
+
+    # 5. Italic: *...*
+    escaped = re.sub(
+        r"(?<!\*)\*([^*]+)\*(?!\*)",
+        r'<em style="color: #f8fafc;">\1</em>',
+        escaped,
+    )
+
+    # Restore stashed tokens
+    for idx, tok in enumerate(tokens):
+        escaped = escaped.replace(f"\x00TOK{idx}\x00", tok)
+
+    return escaped
+
+
+def _render_inline_markdown_text(text: str) -> str:
+    """Convert inline Markdown into clean readable plain text."""
+    # Convert [label](url) -> label (url) unless label already contains url or mailto:
+    def _repl_link(m: re.Match[str]) -> str:
+        label = m.group(1).strip()
+        url = m.group(2).strip()
+        clean_url = url[7:] if url.startswith("mailto:") else url
+        if clean_url in label or label in clean_url:
+            return label
+        return f"{label} ({clean_url})"
+
+    out = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _repl_link, text)
+    out = re.sub(r"`([^`]+)`", r"\1", out)
+    out = re.sub(r"\*\*([^*]+)\*\*", r"\1", out)
+    out = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", out)
+    return out
+
+
+def _split_table_row(line: str) -> list[str]:
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _is_table_divider(line: str) -> bool:
+    cells = _split_table_row(line)
+    if not cells:
+        return False
+    return all(bool(re.match(r"^:?-{2,}:?$", c)) for c in cells)
+
+
+def render_markdown_to_html(
+    md_body: str,
+    accent_color: str = "#38bdf8",
+) -> tuple[str, str]:
+    """Convert Markdown body to (hero_title_html, inner_body_html)."""
+    lines = md_body.splitlines()
+    hero_title = ""
+    blocks: list[str] = []
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        raw_line = lines[i]
+        stripped = raw_line.strip()
+
+        if not stripped:
+            i += 1
+            continue
+
+        # Fenced code block: ```lang ... ```
+        if stripped.startswith("```"):
+            fence_lang = stripped[3:].strip().lower()
+            code_lines: list[str] = []
+            i += 1
+            while i < n and not lines[i].strip().startswith("```"):
+                code_lines.append(lines[i])
+                i += 1
+            if i < n:
+                i += 1  # skip closing ```
+            code_escaped = html.escape("\n".join(code_lines))
+            if fence_lang == "prompt":
+                blocks.append(
+                    f'<div style="background-color: #1e293b; border: 1px solid {html.escape(accent_color)}; '
+                    f'border-radius: 8px; padding: 14px 16px; margin: 16px 0;">'
+                    f'<div style="font-size: 11px; font-weight: 700; text-transform: uppercase; '
+                    f'letter-spacing: 0.08em; color: {html.escape(accent_color)}; margin-bottom: 8px;">'
+                    f"📋 Copy-Paste Prompt</div>"
+                    f'<pre style="margin: 0; white-space: pre-wrap; word-break: break-word; '
+                    f"font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #f8fafc; "
+                    f'line-height: 1.55;">{code_escaped}</pre>'
+                    f"</div>"
+                )
+            else:
+                blocks.append(
+                    f'<pre style="background-color: #1e293b; border: 1px solid #334155; '
+                    f"border-radius: 8px; padding: 14px 16px; margin: 16px 0; overflow-x: auto; "
+                    f"font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e2e8f0; "
+                    f'line-height: 1.55;"><code>{code_escaped}</code></pre>'
+                )
+            continue
+
+        # Heading 1: # Title
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            h1_text = stripped[2:].strip()
+            rendered_h1 = _render_inline_markdown_html(h1_text, accent_color=accent_color)
+            if not hero_title:
+                hero_title = rendered_h1
+            else:
+                blocks.append(
+                    f'<h2 style="margin: 20px 0 10px 0; font-size: 18px; font-weight: 700; color: #f8fafc;">'
+                    f"{rendered_h1}</h2>"
+                )
+            i += 1
+            continue
+
+        # Heading 2: ## Section
+        if stripped.startswith("## ") and not stripped.startswith("### "):
+            h2_text = stripped[3:].strip()
+            rendered_h2 = _render_inline_markdown_html(h2_text, accent_color=accent_color)
+            blocks.append(
+                f'<h3 style="margin: 22px 0 10px 0; font-size: 16px; font-weight: 700; '
+                f'color: #f8fafc; border-bottom: 1px solid #1e293b; padding-bottom: 6px;">'
+                f"{rendered_h2}</h3>"
+            )
+            i += 1
+            continue
+
+        # Heading 3: ### Subsection
+        if stripped.startswith("### "):
+            h3_text = stripped[4:].strip()
+            rendered_h3 = _render_inline_markdown_html(h3_text, accent_color=accent_color)
+            blocks.append(
+                f'<h4 style="margin: 18px 0 8px 0; font-size: 14px; font-weight: 700; color: #f8fafc;">'
+                f"{rendered_h3}</h4>"
+            )
+            i += 1
+            continue
+
+        # Blockquote / Callout: > ...
+        if stripped.startswith(">"):
+            quote_lines: list[str] = []
+            while i < n and lines[i].strip().startswith(">"):
+                q_line = re.sub(r"^>\s?", "", lines[i].strip())
+                quote_lines.append(q_line)
+                i += 1
+
+            callout_title = ""
+            if quote_lines:
+                m_alert = re.match(
+                    r"^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$",
+                    quote_lines[0],
+                    flags=re.IGNORECASE,
+                )
+                if m_alert:
+                    kind = m_alert.group(1).upper()
+                    custom_title = m_alert.group(2).strip()
+                    icon_map = {
+                        "TIP": "💡",
+                        "NOTE": "ℹ️",
+                        "IMPORTANT": "⚡",
+                        "WARNING": "⚠️",
+                        "CAUTION": "🛑",
+                    }
+                    icon = icon_map.get(kind, "💡")
+                    callout_title = f"{icon} {custom_title or kind.title()}"
+                    quote_lines = quote_lines[1:]
+
+            body_html = "<br>".join(
+                _render_inline_markdown_html(ql, accent_color=accent_color)
+                for ql in quote_lines
+                if ql.strip()
+            )
+            title_html = (
+                f'<div style="font-weight: 700; color: #f8fafc; margin-bottom: 6px;">'
+                f"{_render_inline_markdown_html(callout_title, accent_color=accent_color)}</div>"
+                if callout_title
+                else ""
+            )
+            blocks.append(
+                f'<div style="background-color: #1e293b; padding: 14px 16px; border-radius: 8px; '
+                f"border: 1px solid #334155; border-left: 4px solid {html.escape(accent_color)}; "
+                f'margin: 16px 0; color: #e2e8f0;">{title_html}<div>{body_html}</div></div>'
+            )
+            continue
+
+        # Markdown Table: | Col 1 | Col 2 |
+        if (
+            "|" in stripped
+            and stripped.startswith("|")
+            and (i + 1) < n
+            and _is_table_divider(lines[i + 1])
+        ):
+            headers = _split_table_row(lines[i])
+            i += 2  # skip header + divider
+            rows: list[list[str]] = []
+            while i < n and lines[i].strip().startswith("|"):
+                rows.append(_split_table_row(lines[i]))
+                i += 1
+
+            th_html = "".join(
+                f'<th style="padding: 9px 8px; color: #f8fafc; font-weight: 700;">'
+                f"{_render_inline_markdown_html(h, accent_color=accent_color)}</th>"
+                for h in headers
+            )
+            trs_html: list[str] = []
+            for r_idx, row in enumerate(rows):
+                border_style = (
+                    "border-bottom: 1px solid #1e293b;"
+                    if r_idx < len(rows) - 1
+                    else ""
+                )
+                tds = "".join(
+                    f'<td style="padding: 9px 8px; color: #e2e8f0;">'
+                    f"{_render_inline_markdown_html(cell, accent_color=accent_color)}</td>"
+                    for cell in row
+                )
+                trs_html.append(f'<tr style="{border_style}">{tds}</tr>')
+
+            blocks.append(
+                f'<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;">'
+                f'<thead><tr style="border-bottom: 1px solid #334155; text-align: left; color: #f8fafc;">'
+                f"{th_html}</tr></thead>"
+                f'<tbody>{"".join(trs_html)}</tbody></table>'
+            )
+            continue
+
+        # Unordered list: - item or * item
+        if re.match(r"^[-*]\s+", stripped):
+            items: list[str] = []
+            while i < n and re.match(r"^[-*]\s+", lines[i].strip()):
+                item_txt = re.sub(r"^[-*]\s+", "", lines[i].strip())
+                items.append(
+                    f'<li style="margin-bottom: 6px;">'
+                    f"{_render_inline_markdown_html(item_txt, accent_color=accent_color)}</li>"
+                )
+                i += 1
+            blocks.append(
+                f'<ul style="margin: 12px 0; padding-left: 20px; color: #e2e8f0;">'
+                f'{"".join(items)}</ul>'
+            )
+            continue
+
+        # Ordered list: 1. item
+        if re.match(r"^\d+\.\s+", stripped):
+            items = []
+            while i < n and re.match(r"^\d+\.\s+", lines[i].strip()):
+                item_txt = re.sub(r"^\d+\.\s+", "", lines[i].strip())
+                items.append(
+                    f'<li style="margin-bottom: 8px;">'
+                    f"{_render_inline_markdown_html(item_txt, accent_color=accent_color)}</li>"
+                )
+                i += 1
+            blocks.append(
+                f'<ol style="margin: 12px 0; padding-left: 20px; color: #e2e8f0;">'
+                f'{"".join(items)}</ol>'
+            )
+            continue
+
+        # Standard paragraph (merge consecutive plain lines)
+        para_lines: list[str] = []
+        while (
+            i < n
+            and lines[i].strip()
+            and not lines[i].strip().startswith(("#", ">", "```", "|"))
+            and not re.match(r"^([-*]|\d+\.)\s+", lines[i].strip())
+        ):
+            para_lines.append(lines[i].strip())
+            i += 1
+        para_html = "<br>".join(
+            _render_inline_markdown_html(pl, accent_color=accent_color)
+            for pl in para_lines
+        )
+        blocks.append(f'<p style="color: #e2e8f0; margin: 0 0 14px 0;">{para_html}</p>')
+
+    return hero_title, "\n".join(blocks)
+
+
+def render_markdown_to_text(md_body: str) -> str:
+    """Convert Markdown body into a clean, human-readable plain-text representation."""
+    lines = md_body.splitlines()
+    out_blocks: list[str] = []
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        stripped = lines[i].strip()
+        if not stripped:
+            i += 1
+            continue
+
+        # Fenced code block
+        if stripped.startswith("```"):
+            code_lines: list[str] = []
+            i += 1
+            while i < n and not lines[i].strip().startswith("```"):
+                code_lines.append("  " + lines[i])
+                i += 1
+            if i < n:
+                i += 1
+            out_blocks.append("\n".join(code_lines))
+            continue
+
+        # Headings
+        if stripped.startswith("#"):
+            heading_txt = _render_inline_markdown_text(re.sub(r"^#+\s*", "", stripped))
+            out_blocks.append(heading_txt)
+            i += 1
+            continue
+
+        # Blockquote / Callout
+        if stripped.startswith(">"):
+            q_lines: list[str] = []
+            while i < n and lines[i].strip().startswith(">"):
+                ql = re.sub(r"^>\s?", "", lines[i].strip())
+                m_alert = re.match(
+                    r"^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$",
+                    ql,
+                    flags=re.IGNORECASE,
+                )
+                if m_alert:
+                    kind = m_alert.group(1).upper()
+                    title = m_alert.group(2).strip() or kind
+                    q_lines.append(f"[{kind}] {title}")
+                else:
+                    q_lines.append(_render_inline_markdown_text(ql))
+                i += 1
+            out_blocks.append("\n".join(f"  | {ql}" for ql in q_lines if ql))
+            continue
+
+        # Markdown Table
+        if (
+            "|" in stripped
+            and stripped.startswith("|")
+            and (i + 1) < n
+            and _is_table_divider(lines[i + 1])
+        ):
+            headers = [
+                _render_inline_markdown_text(c) for c in _split_table_row(lines[i])
+            ]
+            i += 2
+            rows: list[list[str]] = []
+            while i < n and lines[i].strip().startswith("|"):
+                rows.append(
+                    [
+                        _render_inline_markdown_text(c)
+                        for c in _split_table_row(lines[i])
+                    ]
+                )
+                i += 1
+            col_count = max([len(headers)] + [len(r) for r in rows])
+            widths = [0] * col_count
+            for r in [headers] + rows:
+                for c_idx, cell in enumerate(r):
+                    widths[c_idx] = max(widths[c_idx], len(cell))
+            fmt_row = lambda r: "  | ".join(
+                (r[c_idx] if c_idx < len(r) else "").ljust(widths[c_idx])
+                for c_idx in range(col_count)
+            ).rstrip()
+            table_lines = [
+                fmt_row(headers),
+                "-+-".join("-" * w for w in widths),
+            ] + [fmt_row(r) for r in rows]
+            out_blocks.append("\n".join(table_lines))
+            continue
+
+        # Lists
+        if re.match(r"^([-*]|\d+\.)\s+", stripped):
+            list_lines: list[str] = []
+            while i < n and re.match(r"^([-*]|\d+\.)\s+", lines[i].strip()):
+                list_lines.append(_render_inline_markdown_text(lines[i].strip()))
+                i += 1
+            out_blocks.append("\n".join(list_lines))
+            continue
+
+        # Paragraph
+        para_lines: list[str] = []
+        while (
+            i < n
+            and lines[i].strip()
+            and not lines[i].strip().startswith(("#", ">", "```", "|"))
+            and not re.match(r"^([-*]|\d+\.)\s+", lines[i].strip())
+        ):
+            para_lines.append(_render_inline_markdown_text(lines[i].strip()))
+            i += 1
+        out_blocks.append("\n".join(para_lines))
+
+    return "\n\n".join(out_blocks).strip() + "\n"
+
+
+def build_onboarding_messages(
+    domain: str = "localhost",
+    local_domain: str = "brainsos.local",
+    user: str = "admin",
+    *,
+    recipient_name: str | None = None,
+    unit_name: str = "Enterprise Agent Box",
+    repo_root: Path | None = None,
+    base_ts: float | None = None,
+) -> list[OnboardingEmailSpec]:
+    """Load and render the 5 Markdown onboarding emails for the given domain and user."""
+    portal_domain = domain[5:] if domain.startswith("mail.") else domain
+    mail_domain = local_domain[5:] if local_domain.startswith("mail.") else local_domain
+    if portal_domain.startswith(("http://", "https://")):
+        base_url = portal_domain.rstrip("/")
+        clean_domain = re.sub(r"^https?://", "", base_url)
+    else:
+        clean_domain = portal_domain.rstrip("/")
+        base_url = f"https://{clean_domain}"
+
+    display_user = recipient_name or user
+    now_ts = float(base_ts if base_ts is not None else time.time())
+
+    context = {
+        "domain": clean_domain,
+        "local_domain": mail_domain,
+        "user": display_user,
+        "base_url": base_url,
+        "unit_name": unit_name,
+        "portal_domain": clean_domain,
+        "mail_domain": mail_domain,
+        "recipient_name": display_user,
+        "recipient_user": user,
+    }
+
+    md_files = discover_email_markdown_files(repo_root=repo_root)
+    specs: list[OnboardingEmailSpec] = []
+
+    for idx, md_path in enumerate(md_files, start=1):
+        raw_content = md_path.read_text(encoding="utf-8")
+        meta, raw_body = parse_markdown_email(raw_content)
+
+        sub_meta = {k: _substitute_placeholders(v, context) for k, v in meta.items()}
+        sub_body = _substitute_placeholders(raw_body, context)
+
+        email_id = sub_meta.get("id") or md_path.stem
+        sender_name = sub_meta.get("from_name") or "brainsOS"
+        sender_local = sub_meta.get("from_user") or "system"
+        reply_to_user = sub_meta.get("reply_to_user") or sender_local
+        subject = sub_meta.get("subject") or f"brainsOS Onboarding #{idx}"
+        preheader = sub_meta.get("preheader") or ""
+        badge = sub_meta.get("badge") or f"{unit_name} • Onboarding"
+        accent = sub_meta.get("accent") or "#38bdf8"
+        footer = (
+            sub_meta.get("footer")
+            or f"Sent by {sender_name} ({sender_local}@{mail_domain})"
+        )
+        try:
+            age_minutes = int(sub_meta.get("age_minutes", str((idx - 1) * 4)))
+        except ValueError:
+            age_minutes = (idx - 1) * 4
+
+        hero_title, inner_html = render_markdown_to_html(sub_body, accent_color=accent)
+        card_title = hero_title or html.escape(subject)
+        subtitle = preheader or f"From {sender_name} <{sender_local}@{mail_domain}>"
+
+        full_html = _wrap_email_html(
+            badge=badge,
+            title=card_title,
+            subtitle=subtitle,
+            inner_html=inner_html,
+            accent_color=accent,
+            preheader=preheader,
+            footer=footer,
+        )
+        plain_text = render_markdown_to_text(sub_body)
+        if footer:
+            plain_text = f"{plain_text}\n--\n{footer}\n"
+
+        specs.append(
+            OnboardingEmailSpec(
+                index=idx,
+                id=email_id,
+                sender_name=sender_name,
+                sender_local=sender_local,
+                reply_to_user=reply_to_user,
+                subject=subject,
+                preheader=preheader,
+                badge=badge,
+                accent=accent,
+                footer=footer,
+                age_minutes=age_minutes,
+                message_id=f"<brainsos-welcome-{idx}@{mail_domain}>",
+                text_body=plain_text,
+                html_body=full_html,
+                timestamp=now_ts - (age_minutes * 60.0),
+            )
+        )
+
+    return specs
 
 
 def build_onboarding_specs(
@@ -82,374 +811,18 @@ def build_onboarding_specs(
     portal_domain: str,
     unit_name: str = "Enterprise Agent Box",
     base_ts: float | None = None,
+    repo_root: Path | None = None,
 ) -> list[OnboardingEmailSpec]:
-    display_greeting = recipient_name or recipient_user
-    now_ts = float(base_ts if base_ts is not None else time.time())
-    code_style = (
-        "color: #38bdf8; background-color: #1e293b; padding: 2px 6px; "
-        "border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 13px;"
+    """Backward-compatible wrapper around build_onboarding_messages."""
+    return build_onboarding_messages(
+        domain=portal_domain,
+        local_domain=mail_domain,
+        user=recipient_user,
+        recipient_name=recipient_name or recipient_user,
+        unit_name=unit_name,
+        repo_root=repo_root,
+        base_ts=base_ts,
     )
-    box_style = (
-        "background-color: #1e293b; padding: 14px 16px; border-radius: 8px; "
-        "border: 1px solid #334155; margin: 16px 0; color: #e2e8f0;"
-    )
-
-    # -------------------------------------------------------------------------
-    # Email 1 (Newest / Top of Inbox): Robert Bawtford introduction
-    # -------------------------------------------------------------------------
-    email1_inner = f"""
-      <p style="margin-top: 0; font-size: 15px; color: #f8fafc;">
-        Good day, <strong style="color: #ffffff;">{display_greeting}</strong>! 🎩
-      </p>
-      <p style="color: #e2e8f0;">
-        Allow me to adjust my digital cufflinks and introduce myself: I am <strong style="color: #ffffff;">Robert Bawtford</strong> (<a href="mailto:bawtford@{mail_domain}" style="color: #38bdf8; text-decoration: none;">bawtford@{mail_domain}</a>), your resident autonomous research agent, creative director, and gentleman-in-the-loop.
-      </p>
-      <p style="color: #e2e8f0;">
-        Yes, I genuinely live inside this <strong style="color: #ffffff;">{unit_name}</strong> appliance. It is spacious, well-ventilated, and delightfully free of cloud surveillance—though I must apologize for not bringing a silver tray of Earl Grey; the Egress Firewall firmly informed me that porcelain teapots are not an approved MIME type.
-      </p>
-      <div style="{box_style}">
-        <div style="font-weight: 700; color: #f8fafc; margin-bottom: 6px;">How we work together:</div>
-        <ul style="margin: 0; padding-left: 20px; color: #e2e8f0;">
-          <li style="margin-bottom: 6px;">
-            <strong style="color: #ffffff;">Email is my command bus:</strong> Whenever you send or reply to an email at <code style="{code_style}">bawtford@{mail_domain}</code>, your local Postfix/Dovecot pipeline wakes me up, hands me your brief, and delivers my reply straight back to this inbox.
-          </li>
-          <li style="margin-bottom: 6px;">
-            <strong style="color: #ffffff;">Pure Markdown memory (<code style="{code_style}">/memories</code>):</strong> I keep every research note, synthesis brief, and task log in plain, human-auditable Open Knowledge Format (OKF) Markdown under <code style="{code_style}">/memories</code>. No mystery binary blobs, no hidden SQLite databases swept under the rug.
-          </li>
-          <li>
-            <strong style="color: #ffffff;">Full transparency:</strong> You can inspect my persona (<code style="{code_style}">SOUL.md</code>), read my notes in the Code Console (<a href="https://{portal_domain}/editor/" style="color: #38bdf8;">/editor/</a>), or peek at my mailbox anytime under the <em style="color: #ffffff;">Agent Fleet</em> folder on the left.
-          </li>
-        </ul>
-      </div>
-      <p style="color: #e2e8f0; margin-bottom: 18px;">
-        Whenever you require a research dossier, an architectural critique, or a bit of civilised wit, simply hit <strong style="color: #ffffff;">Reply</strong> or click below:
-      </p>
-      <p style="margin: 0 0 18px 0;">
-        <a href="mailto:bawtford@{mail_domain}?subject=Good%20day%20Bawtford%20%E2%80%94%20Quick%20Research%20Brief&amp;body=Hello%20Bawtford%2C%0A%0APlease%20introduce%20yourself%2C%20summarize%20how%20your%20%2Fmemories%20partition%20works%2C%20and%20give%20me%20a%203-bullet%20status%20report.%0A"
-           style="display: inline-block; background-color: #0284c7; color: #ffffff; font-weight: 700; text-decoration: none; padding: 10px 18px; border-radius: 8px; border: 1px solid #38bdf8;">
-          ✉️ Email Robert Bawtford (bawtford@{mail_domain})
-        </a>
-      </p>
-      <p style="margin-bottom: 0; color: #cbd5e1; font-size: 13px;">
-        At your service,<br>
-        <strong style="color: #f8fafc;">Robert Bawtford</strong><br>
-        <span style="color: #94a3b8;">Autonomous Research &amp; Creative Orchestrator • <code style="{code_style}">bawtford@{mail_domain}</code></span>
-      </p>
-    """
-    spec1 = OnboardingEmailSpec(
-        index=1,
-        sender_name="Robert Bawtford",
-        sender_local="bawtford",
-        subject="🎩 Reporting for duty! (Yes, I actually live inside this box)",
-        message_id=f"<brainsos-welcome-1@{mail_domain}>",
-        html_body=_wrap_card(
-            badge=f"{unit_name} • Resident Agent Introduction",
-            title="🎩 Reporting for duty! (Yes, I actually live inside this box)",
-            subtitle=f"From Robert Bawtford <bawtford@{mail_domain}> • Sovereign Agent Fleet",
-            inner_html=email1_inner,
-            accent_color="#38bdf8",
-            header_gradient="linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)",
-        ),
-        timestamp=now_ts,
-    )
-
-    # -------------------------------------------------------------------------
-    # Email 2 (now - 60s): brainsOS Field Guide — Try This First
-    # -------------------------------------------------------------------------
-    email2_inner = f"""
-      <p style="margin-top: 0; font-size: 15px; color: #f8fafc;">
-        Ready to take your appliance for a spin, <strong style="color: #ffffff;">{display_greeting}</strong>? 🧪
-      </p>
-      <p style="color: #e2e8f0;">
-        The fastest way to experience <strong style="color: #ffffff;">brainsOS</strong> is to click <strong style="color: #ffffff;">Compose</strong> (or <strong style="color: #ffffff;">New Message</strong>) right now and send an email to <a href="mailto:bawtford@{mail_domain}" style="color: #ec4899; font-weight: 600; text-decoration: none;">bawtford@{mail_domain}</a>. Your message stays 100% inside the appliance, triggers the autonomous agent queue, and delivers a researched response right back to your Inbox.
-      </p>
-      <div style="{box_style}">
-        <div style="font-weight: 700; color: #f8fafc; margin-bottom: 10px;">
-          📋 Copy-Paste (or Click) One of These Fun Prompts to <code style="{code_style}">bawtford@{mail_domain}</code>:
-        </div>
-        <ol style="margin: 0; padding-left: 20px; color: #e2e8f0;">
-          <li style="margin-bottom: 10px;">
-            <strong style="color: #ffffff;">The 7-Layer Box Tour:</strong><br>
-            <span style="color: #cbd5e1;">"Hey Bawtford, research how the 7-layer 'Enterprise Agent in a Box' architecture works in brainsOS and explain how each layer keeps an enterprise safe."</span>
-          </li>
-          <li style="margin-bottom: 10px;">
-            <strong style="color: #ffffff;">Guardrails vs. Firewalls Showdown:</strong><br>
-            <span style="color: #cbd5e1;">"Compare LiteLLM routing guardrails vs. the Egress Firewall in brainsOS—how do they team up so agents never leak API keys or call unapproved endpoints?"</span>
-          </li>
-          <li style="margin-bottom: 10px;">
-            <strong style="color: #ffffff;">The Rule 1 Haiku Challenge:</strong><br>
-            <span style="color: #cbd5e1;">"Write a dramatic haiku about why SQLite .db files are strictly banned in /memories, then explain Rule 1 (Memory Plane Purity) in plain English."</span>
-          </li>
-          <li>
-            <strong style="color: #ffffff;">Sovereign AI Executive Memo:</strong><br>
-            <span style="color: #cbd5e1;">"Draft a crisp 5-bullet briefing on why local-first sovereign agents beat opaque cloud SaaS bots, and note what you'd record in /memories."</span>
-          </li>
-        </ol>
-      </div>
-      <p style="color: #e2e8f0; margin-bottom: 8px;">
-        <strong style="color: #ffffff;">Meet the rest of your on-box Agent Fleet Directory:</strong>
-      </p>
-      <table style="width: 100%; border-collapse: collapse; margin: 12px 0 18px 0; font-size: 13px;">
-        <thead>
-          <tr style="border-bottom: 1px solid #334155; text-align: left; color: #f8fafc;">
-            <th style="padding: 8px; color: #f8fafc;">Agent</th>
-            <th style="padding: 8px; color: #f8fafc;">Address</th>
-            <th style="padding: 8px; color: #f8fafc;">Speciality</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">Robert Bawtford</td>
-            <td style="padding: 8px;"><a href="mailto:bawtford@{mail_domain}" style="color: #38bdf8; text-decoration: none;">bawtford@{mail_domain}</a></td>
-            <td style="padding: 8px; color: #e2e8f0;">Autonomous research agent, synthesis &amp; creative orchestration.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">Ping</td>
-            <td style="padding: 8px;"><a href="mailto:ping@{mail_domain}" style="color: #38bdf8; text-decoration: none;">ping@{mail_domain}</a></td>
-            <td style="padding: 8px; color: #e2e8f0;">Zero-GPU instant diagnostic echo &amp; mail-queue latency probe.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">Terrastella</td>
-            <td style="padding: 8px;"><a href="mailto:terrastella@{mail_domain}" style="color: #38bdf8; text-decoration: none;">terrastella@{mail_domain}</a></td>
-            <td style="padding: 8px; color: #e2e8f0;">Primary operations coordinator &amp; executive strategy synthesis.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">Marvin</td>
-            <td style="padding: 8px;"><a href="mailto:marvin@{mail_domain}" style="color: #38bdf8; text-decoration: none;">marvin@{mail_domain}</a></td>
-            <td style="padding: 8px; color: #e2e8f0;">Analytics, systems diagnostics &amp; boundary verification.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">Claude Demo</td>
-            <td style="padding: 8px;"><a href="mailto:claude@{mail_domain}" style="color: #38bdf8; text-decoration: none;">claude@{mail_domain}</a></td>
-            <td style="padding: 8px; color: #e2e8f0;">Claude SDK runner demo for reasoning, writing &amp; banter.</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">GPT Demo</td>
-            <td style="padding: 8px;"><a href="mailto:gpt@{mail_domain}" style="color: #38bdf8; text-decoration: none;">gpt@{mail_domain}</a></td>
-            <td style="padding: 8px; color: #e2e8f0;">OpenAI SDK runner demo for rapid drafting &amp; Q&amp;A.</td>
-          </tr>
-        </tbody>
-      </table>
-      <p style="font-size: 13px; color: #cbd5e1; margin-bottom: 0;">
-        💡 <strong style="color: #f8fafc;">Pro Tip:</strong> Want an instant 1-second sanity check before running a deep research prompt? Send <code style="{code_style}">ping</code> to <a href="mailto:ping@{mail_domain}?subject=Ping%20Check&amp;body=ping" style="color: #38bdf8;">ping@{mail_domain}</a>!
-      </p>
-    """
-    spec2 = OnboardingEmailSpec(
-        index=2,
-        sender_name="brainsOS Field Guide",
-        sender_local="guide",
-        subject=f"🧪 Try This First: Email bawtford@{mail_domain} and ask him to research something!",
-        message_id=f"<brainsos-welcome-2@{mail_domain}>",
-        html_body=_wrap_card(
-            badge="Interactive Onboarding • Step 1",
-            title=f"🧪 Try This First: Email bawtford@{mail_domain}!",
-            subtitle="Test the live autonomous agent loop right from your webmail client",
-            inner_html=email2_inner,
-            accent_color="#ec4899",
-            header_gradient="linear-gradient(135deg, #831843 0%, #0f172a 100%)",
-        ),
-        timestamp=now_ts - 60.0,
-    )
-
-    # -------------------------------------------------------------------------
-    # Email 3 (now - 120s): Perimeter Gatekeeper — Identity, Guardrails & Firewalls
-    # -------------------------------------------------------------------------
-    email3_inner = f"""
-      <p style="margin-top: 0; font-size: 15px; color: #f8fafc;">
-        Halt! Who goes there? Oh—it's <strong style="color: #ffffff;">{display_greeting}</strong>. Carry on! 🛡️
-      </p>
-      <p style="color: #e2e8f0;">
-        I'm the <strong style="color: #ffffff;">Perimeter Gatekeeper</strong> (<code style="{code_style}">security@{mail_domain}</code>). Most AI setups hand agents a pile of raw API keys, open internet access, and a polite request to "please behave." In <strong style="color: #ffffff;">brainsOS</strong>, nobody—not even Bawtford in his finest tuxedo—leaves the box without a hall pass.
-      </p>
-      <div style="{box_style}">
-        <div style="margin-bottom: 12px;">
-          <strong style="color: #a855f7;">1. Identity Management — Authentik (<a href="https://{portal_domain}/auth/if/admin/#/events/log" style="color: #38bdf8;">/auth/</a> • Alt+7)</strong><br>
-          <span style="color: #e2e8f0;">The front-door bouncer. Every operator dashboard is protected by zero-trust Single Sign-On (OAuth2/OIDC + forward-auth) with FIDO2/WebAuthn passkey support and full login event auditing.</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-          <strong style="color: #f59e0b;">2. Routing &amp; Guardrails — LiteLLM (<a href="https://{portal_domain}/ui/" style="color: #38bdf8;">/ui/</a> • Alt+4)</strong><br>
-          <span style="color: #e2e8f0;">The air-traffic controller. Agent containers can never call host inference engines directly (Rule 2). Every completion routes through LiteLLM using per-tenant virtual keys, strict monthly budgets, and hardware concurrency serialization (<code style="{code_style}">max_parallel_requests: 1</code>) so unified memory bandwidth never thrashes (Rule 3).</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-          <strong style="color: #10b981;">3. Network Firewalls — Egress Proxy (<a href="https://{portal_domain}/efw/" style="color: #38bdf8;">/efw/</a> • Alt+5)</strong><br>
-          <span style="color: #e2e8f0;">The hall-pass inspector. Agent containers hold <strong style="color: #ffffff;">zero ambient GitHub tokens or third-party secrets</strong> (Rule 10). All outbound HTTPS traffic flows through our <code style="{code_style}">mitmproxy</code> Egress Gateway, which verifies container IP identity, injects credentials in transit only for approved hosts, and masks tokens as <code style="{code_style}">[INJECTED_CINDY_TOKEN]</code> in the live traffic UI.</span>
-        </div>
-        <div>
-          <strong style="color: #3b82f6;">4. Telemetry Data — Langfuse (<a href="https://{portal_domain}/langfuse/" style="color: #38bdf8;">/langfuse/</a> • Alt+6)</strong><br>
-          <span style="color: #e2e8f0;">The flight data recorder. Every prompt, model call, tool invocation, token count, and latency span is captured via OpenTelemetry so you can audit every decision your agents make.</span>
-        </div>
-      </div>
-      <p style="margin-bottom: 0; font-size: 13px; color: #cbd5e1;">
-        🔒 <strong style="color: #f8fafc;">Try it yourself:</strong> After you email <code style="{code_style}">bawtford@{mail_domain}</code>, switch to <strong style="color: #ffffff;">Langfuse (Alt+6)</strong> or <strong style="color: #ffffff;">LiteLLM (Alt+4)</strong> in the left spine to watch the live trace and token accounting!
-      </p>
-    """
-    spec3 = OnboardingEmailSpec(
-        index=3,
-        sender_name="Perimeter Gatekeeper",
-        sender_local="security",
-        subject="🛡️ Nobody leaves the box without a hall pass (Identity, Guardrails & Firewalls)",
-        message_id=f"<brainsos-welcome-3@{mail_domain}>",
-        html_body=_wrap_card(
-            badge="Zero-Trust Security & Observability Tour",
-            title="🛡️ Nobody leaves the box without a hall pass",
-            subtitle="How Authentik Identity, LiteLLM Guardrails, Egress Firewalls & Langfuse Telemetry protect your fleet",
-            inner_html=email3_inner,
-            accent_color="#10b981",
-            header_gradient="linear-gradient(135deg, #064e3b 0%, #0f172a 100%)",
-        ),
-        timestamp=now_ts - 120.0,
-    )
-
-    # -------------------------------------------------------------------------
-    # Email 4 (now - 180s): Memory Librarian — Readable Memory & Git Time Travel
-    # -------------------------------------------------------------------------
-    email4_inner = f"""
-      <p style="margin-top: 0; font-size: 15px; color: #f8fafc;">
-        Greetings from the stacks, <strong style="color: #ffffff;">{display_greeting}</strong>! 📚
-      </p>
-      <p style="color: #e2e8f0;">
-        I am the <strong style="color: #ffffff;">Memory Librarian</strong> (<code style="{code_style}">librarian@{mail_domain}</code>), guardian of <strong style="color: #ffffff;">Rule 1: Memory Plane Purity</strong>. If an AI agent tries to sneak an opaque SQLite <code style="{code_style}">.db</code> file, a binary vector index, or a <code style="{code_style}">node_modules</code> folder into <code style="{code_style}">/memories</code>, I chase it out with a broom.
-      </p>
-      <div style="{box_style}">
-        <div style="margin-bottom: 12px;">
-          <strong style="color: #38bdf8;">Why Plain Markdown Beats Black-Box Databases:</strong><br>
-          <span style="color: #e2e8f0;">When an agent stores its knowledge in a proprietary vector blob, you can't read what it "knows" or fix a hallucinated memory without wiping the whole database. In <strong style="color: #ffffff;">brainsOS</strong>, every agent persona (<code style="{code_style}">SOUL.md</code>) and long-term memory (<code style="{code_style}">/memories/*.md</code>) is pure, human-auditable Open Knowledge Format (OKF) Markdown.</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-          <strong style="color: #00f2fe;">1. Readable Memory — Code Console (<a href="https://{portal_domain}/editor/" style="color: #38bdf8;">https://{portal_domain}/editor/</a> • Alt+2)</strong><br>
-          <span style="color: #e2e8f0;">Press <code style="{code_style}">Alt+2</code> (or click the Terminal icon on the left spine) to open the built-in VS Code Web IDE. You can browse <code style="{code_style}">data/agents/</code>, tweak an agent's <code style="{code_style}">SOUL.md</code> prompt, or edit its <code style="{code_style}">/memories</code> notes in real time—zero container rebuilds required!</span>
-        </div>
-        <div>
-          <strong style="color: #f97316;">2. Source Control — Git Server (<a href="https://{portal_domain}/git/" style="color: #38bdf8;">https://{portal_domain}/git/</a> • Alt+3)</strong><br>
-          <span style="color: #e2e8f0;">Press <code style="{code_style}">Alt+3</code> (or click the Git branch icon) to open your local Gitea server. Every persona update, fleet manifest change (<code style="{code_style}">agents.yaml</code>), and Markdown memory commit is versioned so you can inspect diffs and time-travel (<code style="{code_style}">git revert</code>) whenever an agent gets a little too poetic.</span>
-        </div>
-      </div>
-      <p style="margin-bottom: 0; font-size: 13px; color: #cbd5e1;">
-        📖 <strong style="color: #f8fafc;">Librarian's Challenge:</strong> Open <a href="https://{portal_domain}/editor/" style="color: #38bdf8;">Code Console (/editor/)</a>, inspect <code style="{code_style}">SOUL.md</code> for <code style="{code_style}">bawtford</code>, and see how his persona is defined in plain Markdown!
-      </p>
-    """
-    spec4 = OnboardingEmailSpec(
-        index=4,
-        sender_name="Memory Librarian",
-        sender_local="librarian",
-        subject="📚 No Black-Box Databases Allowed: Readable Memory & Git Time Travel",
-        message_id=f"<brainsos-welcome-4@{mail_domain}>",
-        html_body=_wrap_card(
-            badge="Rule 1 & Rule 14 • Auditable Knowledge Plane",
-            title="📚 No Black-Box Databases Allowed",
-            subtitle="Why Readable Memory (/editor/) and Local Git Time Travel (/git/) put humans in control",
-            inner_html=email4_inner,
-            accent_color="#f97316",
-            header_gradient="linear-gradient(135deg, #7c2d12 0%, #0f172a 100%)",
-        ),
-        timestamp=now_ts - 180.0,
-    )
-
-    # -------------------------------------------------------------------------
-    # Email 5 (now - 240s): brainsOS Appliance — Welcome & Quick-Reference Cheat Sheet
-    # -------------------------------------------------------------------------
-    email5_inner = f"""
-      <p style="margin-top: 0; font-size: 15px; color: #f8fafc;">
-        Hello <strong style="color: #ffffff;">{display_greeting}</strong>, and <strong style="color: #38bdf8;">Welcome to Your Sovereign AI Operating System</strong>! 🚀
-      </p>
-      <p style="color: #e2e8f0;">
-        Your <strong style="color: #ffffff;">{unit_name}</strong> appliance is online at <a href="https://{portal_domain}/" style="color: #38bdf8; font-weight: 600;">https://{portal_domain}/</a> with Single Sign-On active across all 7 architecture layers plus the System OS control center. Bookmark this cheat sheet for instant navigation:
-      </p>
-      <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13px;">
-        <thead>
-          <tr style="border-bottom: 1px solid #334155; text-align: left; color: #f8fafc;">
-            <th style="padding: 9px 8px; color: #f8fafc;">Shortcut</th>
-            <th style="padding: 9px 8px; color: #f8fafc;">Architecture Layer / Subsystem</th>
-            <th style="padding: 9px 8px; color: #f8fafc;">Direct URL</th>
-            <th style="padding: 9px 8px; color: #f8fafc;">What You Can Do There</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+1</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">Webmail (Comms)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/mail/" style="color: #38bdf8; text-decoration: none;">/mail/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Email autonomous agents &amp; audit shared <em>Agent Fleet</em> mailboxes.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+2</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">Code Console (Readable Memory)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/editor/" style="color: #38bdf8; text-decoration: none;">/editor/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Inspect &amp; edit <code style="{code_style}">/memories</code> Markdown, <code style="{code_style}">SOUL.md</code> &amp; <code style="{code_style}">agents.yaml</code> in VS Code.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+3</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">Git Server (Source Control)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/git/" style="color: #38bdf8; text-decoration: none;">/git/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Browse local Gitea repositories, commit history &amp; roll back agent state.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+4</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">LiteLLM (Routing &amp; Guardrails)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/ui/" style="color: #38bdf8; text-decoration: none;">/ui/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Manage model routing, virtual keys, budgets &amp; serialized concurrency.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+5</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">Egress Proxy (Network Firewalls)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/efw/" style="color: #38bdf8; text-decoration: none;">/efw/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Inspect outbound tool traffic &amp; in-transit credential injection.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+6</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">Langfuse (Telemetry Data)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/langfuse/" style="color: #38bdf8; text-decoration: none;">/langfuse/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Explore OpenTelemetry traces, prompt/completion tokens &amp; latencies.</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #1e293b;">
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+7</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">Authentik (Identity Management)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/auth/if/admin/#/events/log" style="color: #38bdf8; text-decoration: none;">/auth/</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">Govern SSO users, passkeys/MFA, tenant groups &amp; security audit logs.</td>
-          </tr>
-          <tr>
-            <td style="padding: 9px 8px;"><code style="{code_style}">Alt+8</code></td>
-            <td style="padding: 9px 8px; font-weight: 600; color: #f8fafc;">System (OS &amp; Host Console)</td>
-            <td style="padding: 9px 8px;"><a href="https://{portal_domain}/system" style="color: #38bdf8; text-decoration: none;">/system</a></td>
-            <td style="padding: 9px 8px; color: #e2e8f0;">System Manager, TLS &amp; domain config, updates &amp; XTerm Host Console.</td>
-          </tr>
-        </tbody>
-      </table>
-      <div style="{box_style}">
-        <div style="font-weight: 700; color: #f8fafc; margin-bottom: 6px;">
-          🖥️ Tips for the System Manager &amp; XTerm Host Console (<a href="https://{portal_domain}/system" style="color: #38bdf8;">/system</a>):
-        </div>
-        <ul style="margin: 0; padding-left: 20px; color: #e2e8f0; font-size: 13px;">
-          <li style="margin-bottom: 4px;">
-            <strong style="color: #ffffff;">Subsystems Drawer:</strong> Press <code style="{code_style}">Ctrl+K</code> / <code style="{code_style}">⌘K</code> (or click the top-left <strong style="color: #ffffff;">☰</strong> button) from anywhere in the portal to open the full 7-layer architecture drawer.
-          </li>
-          <li style="margin-bottom: 4px;">
-            <strong style="color: #ffffff;">XTerm Host Console:</strong> Open <strong style="color: #ffffff;">System (/system)</strong> and launch the interactive host terminal to run <code style="{code_style}">./scripts/control/show-urls.sh</code>, inspect <code style="{code_style}">docker compose ps</code>, or tail live agent runner logs.
-          </li>
-          <li>
-            <strong style="color: #ffffff;">Domain &amp; TLS Management:</strong> Updating your appliance hostname or TLS mode automatically re-syncs SSO redirect URIs and refreshes these onboarding emails for your active domain.
-          </li>
-        </ul>
-      </div>
-    """
-    spec5 = OnboardingEmailSpec(
-        index=5,
-        sender_name="brainsOS Appliance",
-        sender_local="system",
-        subject=f"🚀 Welcome to Your Sovereign AI Operating System ({portal_domain})",
-        message_id=f"<brainsos-welcome-5@{mail_domain}>",
-        html_body=_wrap_card(
-            badge=f"{unit_name} • Operator Cheat Sheet",
-            title=f"🚀 Welcome to Your Sovereign AI Operating System ({portal_domain})",
-            subtitle="Complete 7-Layer Architecture Directory, Keyboard Shortcuts (Alt+1..Alt+8) & Host Console Guide",
-            inner_html=email5_inner,
-            accent_color="#00f2fe",
-            header_gradient="linear-gradient(135deg, #0f766e 0%, #0f172a 100%)",
-        ),
-        timestamp=now_ts - 240.0,
-    )
-
-    return [spec1, spec2, spec3, spec4, spec5]
 
 
 def render_welcome_html(
@@ -477,16 +850,29 @@ def format_rfc822_from_spec(
     mail_domain: str,
 ) -> str:
     date_hdr = formatdate(spec.timestamp, localtime=False)
+    boundary = f"===============brainsos-welcome-{spec.index}=="
     headers = [
         f'From: "{spec.sender_name}" <{spec.sender_local}@{mail_domain}>',
+        f'Reply-To: "{spec.sender_name}" <{spec.reply_to_user}@{mail_domain}>',
         f'To: "{recipient_name or recipient_user}" <{recipient_user}@{mail_domain}>',
         f"Subject: {spec.subject}",
         f"Date: {date_hdr}",
         f"Message-ID: {spec.message_id}",
         "MIME-Version: 1.0",
-        "Content-Type: text/html; charset=UTF-8",
+        f'Content-Type: multipart/alternative; boundary="{boundary}"',
+        "",
+        f"--{boundary}",
+        'Content-Type: text/plain; charset="utf-8"',
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        spec.text_body,
+        f"--{boundary}",
+        'Content-Type: text/html; charset="utf-8"',
+        "Content-Transfer-Encoding: 8bit",
         "",
         spec.html_body,
+        f"--{boundary}--",
+        "",
     ]
     return "\n".join(headers)
 
@@ -537,6 +923,7 @@ def seed_maildir(
     mail_domain: str,
     unit_name: str,
     portal_domain: str | None = None,
+    repo_root: Path | None = None,
 ) -> list[Path]:
     resolved_portal_domain = portal_domain or (
         mail_domain[5:] if mail_domain.startswith("mail.") else mail_domain
@@ -567,6 +954,7 @@ def seed_maildir(
         mail_domain=mail_domain,
         portal_domain=resolved_portal_domain,
         unit_name=unit_name,
+        repo_root=repo_root,
     )
 
     written_paths: list[Path] = []
@@ -614,7 +1002,7 @@ def seed_maildir(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Seed 5 interactive onboarding emails into brainsOS Maildir inboxes"
+        description="Seed 5 editable Markdown onboarding emails into brainsOS Maildir inboxes"
     )
     parser.add_argument("--repo-root", default=None, help="Repository root path")
     parser.add_argument("--domain", default=None, help="Override local mail/portal domain")
@@ -682,6 +1070,7 @@ def main() -> int:
                     mail_domain=mail_domain,
                     unit_name=unit_name,
                     portal_domain=portal_domain,
+                    repo_root=repo_root,
                 )
             except PermissionError:
                 pass
@@ -693,15 +1082,18 @@ def main() -> int:
             mail_domain=mail_domain,
             portal_domain=portal_domain,
             unit_name=unit_name,
+            repo_root=repo_root,
         )
         for spec in reversed(specs):
             try:
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = spec.subject
                 msg["From"] = f'"{spec.sender_name}" <{spec.sender_local}@{mail_domain}>'
+                msg["Reply-To"] = f'"{spec.sender_name}" <{spec.reply_to_user}@{mail_domain}>'
                 msg["To"] = f'"{su_name}" <{su_user}@{mail_domain}>'
                 msg["Date"] = formatdate(spec.timestamp, localtime=False)
                 msg["Message-ID"] = spec.message_id
+                msg.attach(MIMEText(spec.text_body, "plain", "utf-8"))
                 msg.attach(MIMEText(spec.html_body, "html", "utf-8"))
                 with smtplib.SMTP("127.0.0.1", 25, timeout=3) as s:
                     s.sendmail(
