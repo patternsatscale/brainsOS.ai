@@ -1222,15 +1222,15 @@ def create_system_api_app():
         hdr_name = (request.headers.get("X-Authentik-Name") or "").strip()
         hdr_email = (request.headers.get("X-Authentik-Email") or "").strip()
 
-        username = hdr_username or ident.get("superuser_username") or ident.get("admin_username") or "admin"
+        username = str(hdr_username or ident.get("superuser_username") or ident.get("admin_username") or "admin")
         if hdr_name:
             name = hdr_name
         elif username == ident.get("superuser_username") and ident.get("superuser_name"):
-            name = ident.get("superuser_name")
+            name = str(ident.get("superuser_name"))
         elif username.lower() == "admin":
-            name = ident.get("superuser_name") or "Appliance Administrator"
+            name = str(ident.get("superuser_name") or "Appliance Administrator")
         else:
-            name = ident.get("superuser_name") or username
+            name = str(ident.get("superuser_name") or username)
 
         local_dom = ident.get("local_domain") or "brainsos.ai"
         email = hdr_email or f"{username}@{local_dom}"
