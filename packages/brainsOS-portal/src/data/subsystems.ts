@@ -10,12 +10,12 @@ export interface Subsystem {
 }
 
 export const SUBSYSTEMS: Record<string, Subsystem> = {
-  comms: {
-    id: "comms",
-    title: "Comms",
-    desc: "Agent Webmail Interface",
+  mail: {
+    id: "mail",
+    title: "Webmail",
+    desc: "Secure Communications — Encrypt and log every message in and out",
     route: "/mail/",
-    hotkey: "⌘1",
+    hotkey: "Alt+1",
     color: "#ec4899",
     icon: "Mail",
     previewHtml: `
@@ -23,18 +23,18 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
         <div style="width:200px; background:#111622; border-right:1px solid rgba(255,255,255,0.08); padding:16px 12px; display:flex; flex-direction:column; gap:6px;">
           <div style="font-weight:700; font-size:13px; color:#ec4899; padding:4px 8px; margin-bottom:8px;">SOGo Webmail</div>
           <div style="padding:8px 12px; background:rgba(236,72,153,0.15); border-radius:8px; font-size:12px; color:#fff; font-weight:600; display:flex; justify-content:space-between;">
-            <span>📥 Inbox</span><span style="background:#ec4899; color:#fff; border-radius:10px; padding:0 6px; font-size:10px;">3</span>
+            <span>📥 Inbox</span><span style="background:#ec4899; color:#fff; border-radius:10px; padding:0 6px; font-size:10px;">5</span>
           </div>
           <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📤 Sent</div>
           <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">📝 Drafts</div>
           <div style="padding:8px 12px; border-radius:8px; font-size:12px; color:#94a3b8;">🏷️ Ingress Tasks</div>
         </div>
         <div style="width:310px; background:#141a29; border-right:1px solid rgba(255,255,255,0.08); display:flex; flex-direction:column;">
-          <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:12px; font-weight:600; color:#fff;">Agent Inbox • cindy@brainsos.local</div>
+          <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.08); font-size:12px; font-weight:600; color:#fff;">Agent Inbox • bawtford@brainsos.local</div>
           <div style="padding:12px 14px; background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
-            <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Hermes Orchestrator</span><span style="font-size:10px; color:#94a3b8;">10:14 AM</span></div>
-            <div style="font-size:11px; color:#ec4899; margin-top:2px;">[TICKET #246] Portal Architecture</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Full-bleed iframe boundary verified on GX10...</div>
+            <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Robert Bawtford</span><span style="font-size:10px; color:#94a3b8;">10:14 AM</span></div>
+            <div style="font-size:11px; color:#ec4899; margin-top:2px;">Welcome to your Enterprise Agent Box</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Reply with any research question to test our 7-layer stack...</div>
           </div>
           <div style="padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
             <div style="font-size:12px; font-weight:600; color:#fff; display:flex; justify-content:space-between;"><span>Tool Egress Gateway</span><span style="font-size:10px; color:#94a3b8;">09:45 AM</span></div>
@@ -43,21 +43,241 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
           </div>
         </div>
         <div style="flex:1; padding:24px 32px; background:#0e131f; overflow-y:auto;">
-          <div style="font-size:18px; font-weight:700; color:#fff;">[TICKET #246] Portal Architecture Verification</div>
-          <div style="font-size:12px; color:#94a3b8; margin-top:6px;">From: <b>Hermes Orchestrator</b> &lt;hermes@brainsos.local&gt; • 10:14 AM</div>
+          <div style="font-size:18px; font-weight:700; color:#fff;">Welcome to your Enterprise Agent in a Box</div>
+          <div style="font-size:12px; color:#94a3b8; margin-top:6px;">From: <b>Robert Bawtford</b> &lt;bawtford@brainsos.local&gt; • 10:14 AM</div>
           <div style="margin-top:20px; font-size:13px; line-height:22px; color:#cbd5e1; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
-            Cindy,<br><br>The thin spine and expandable HUD drawer are live. The full-bleed iframe has 100% canvas real estate and zero layout shift.<br><br>Appliance Host: <b>ASUS Ascent GX10</b><br>Architecture: <b>ARM64</b>
+            Hello,<br><br>Every message in and out is encrypted, logged, and auditable across your 7-layer sovereign agent stack.<br><br>Appliance Host: <b>ASUS Ascent GX10</b><br>Architecture: <b>ARM64</b>
           </div>
         </div>
       </div>
     `
   },
-  console: {
-    id: "console",
-    title: "Console",
-    desc: "Web IDE & Terminal",
+  auth: {
+    id: "auth",
+    title: "Authentik",
+    desc: "Identity Management — Give each agent its own scoped credentials",
+    route: "/auth/if/admin/#/events/log",
+    hotkey: "Alt+2",
+    color: "#a855f7",
+    icon: "Users",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
+          <div>
+            <h1 style="font-size:20px; font-weight:700; margin:0; color:#a855f7;">Authentik Identity &amp; Access Governance</h1>
+            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Zero-Trust Single Sign-On • User &amp; Tenant Provisioning Engine</p>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <a href="/auth/if/admin/#/identity/users" target="_blank" style="text-decoration:none; background:rgba(168,85,247,0.15); border:1px solid #a855f7; color:#a855f7; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px;">
+              <span>+ Provision User</span>
+            </a>
+            <div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; color:#10b981; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
+              Embedded Outpost: ONLINE
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Provisioned Users</div>
+            <div style="font-size:24px; font-weight:700; color:#fff; margin-top:6px;">4 Accounts</div>
+            <div style="font-size:11px; color:#a855f7; margin-top:4px;">● 1 Superuser, 3 Service Tenants</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Active SSO Sessions</div>
+            <div style="font-size:24px; font-weight:700; color:#00f2fe; margin-top:6px;">1 Live Session</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">First-Party Cookie (*.local.brainsos.ai)</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">MFA &amp; Passkeys</div>
+            <div style="font-size:24px; font-weight:700; color:#10b981; margin-top:6px;">FIDO2 / WebAuthn</div>
+            <div style="font-size:11px; color:#10b981; margin-top:4px;">Hardware Enclave Ready</div>
+          </div>
+        </div>
+
+        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div style="font-weight:600; font-size:14px;">User Directory &amp; Tenant Accounts</div>
+            <span style="font-size:11px; color:#94a3b8; font-family:monospace;">Domain: local.brainsos.ai</span>
+          </div>
+          <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
+            <thead>
+              <tr style="text-align:left; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1);">
+                <th style="padding:8px;">Username</th>
+                <th style="padding:8px;">Display Name</th>
+                <th style="padding:8px;">Role / Groups</th>
+                <th style="padding:8px;">Auth Type</th>
+                <th style="padding:8px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
+                <td style="padding:10px 8px; color:#00f2fe; font-weight:bold;">admin</td>
+                <td style="padding:10px 8px;">Appliance Admin</td>
+                <td style="padding:10px 8px;"><span style="background:rgba(0,242,254,0.15); color:#00f2fe; padding:2px 8px; border-radius:4px; font-size:10px;">authentik Admins</span></td>
+                <td style="padding:10px 8px;">Password / FIDO2</td>
+                <td style="padding:10px 8px; color:#10b981;">Active</td>
+              </tr>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
+                <td style="padding:10px 8px; color:#ec4899;">bawtford</td>
+                <td style="padding:10px 8px;">Robert Bawtford</td>
+                <td style="padding:10px 8px;"><span style="background:rgba(236,72,153,0.15); color:#ec4899; padding:2px 8px; border-radius:4px; font-size:10px;">Agent Fleet</span></td>
+                <td style="padding:10px 8px;">Forward-Auth Proxy</td>
+                <td style="padding:10px 8px; color:#10b981;">Active</td>
+              </tr>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
+                <td style="padding:10px 8px; color:#a855f7;">hermes</td>
+                <td style="padding:10px 8px;">Hermes Orchestrator</td>
+                <td style="padding:10px 8px;"><span style="background:rgba(168,85,247,0.15); color:#a855f7; padding:2px 8px; border-radius:4px; font-size:10px;">Service Runner</span></td>
+                <td style="padding:10px 8px;">Internal Token</td>
+                <td style="padding:10px 8px; color:#10b981;">Active</td>
+              </tr>
+              <tr style="color:#fff;">
+                <td style="padding:10px 8px; color:#94a3b8;">akadmin</td>
+                <td style="padding:10px 8px;">Built-in System Admin</td>
+                <td style="padding:10px 8px;"><span style="background:rgba(255,255,255,0.1); color:#fff; padding:2px 8px; border-radius:4px; font-size:10px;">Superuser</span></td>
+                <td style="padding:10px 8px;">Bootstrap Secret</td>
+                <td style="padding:10px 8px; color:#10b981;">Active</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `
+  },
+  gateway: {
+    id: "gateway",
+    title: "LiteLLM",
+    desc: "Routing & Guardrails — Check every model call against policy",
+    route: "/ui/",
+    hotkey: "Alt+3",
+    color: "#f59e0b",
+    icon: "Shield",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
+          <div>
+            <h1 style="font-size:20px; font-weight:700; margin:0; color:#f59e0b;">LiteLLM Gateway &amp; Key Governance</h1>
+            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Hardware Concurrency Serialization • Rule 3 Protection</p>
+          </div>
+          <div style="background:rgba(245,158,11,0.15); border:1px solid #f59e0b; color:#f59e0b; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
+            max_parallel_requests: 1 [LOCKED]
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Active Virtual Keys</div>
+            <div style="font-size:24px; font-weight:700; color:#fff; margin-top:6px;">12 Tenants</div>
+            <div style="font-size:11px; color:#10b981; margin-top:4px;">● Isolated PostgreSQL Vault</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Memory Bandwidth</div>
+            <div style="font-size:24px; font-weight:700; color:#00f2fe; margin-top:6px;">273 GB/s</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">LPDDR5x Unified Bus</div>
+          </div>
+          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Loopback Inference</div>
+            <div style="font-size:24px; font-weight:700; color:#f59e0b; margin-top:6px;">127.0.0.1:11434</div>
+            <div style="font-size:11px; color:#10b981; margin-top:4px;">● Rule 2 Loopback Enforced</div>
+          </div>
+        </div>
+        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+          <div style="font-weight:600; font-size:14px; margin-bottom:12px;">Registered Models</div>
+          <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
+            <thead>
+              <tr style="text-align:left; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1);">
+                <th style="padding:8px;">Model Alias</th>
+                <th style="padding:8px;">Target Engine</th>
+                <th style="padding:8px;">Concurrency</th>
+                <th style="padding:8px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
+                <td style="padding:10px 8px; color:#00f2fe;">qwen2.5:32b</td>
+                <td style="padding:10px 8px;">Ollama (GB10 Natively)</td>
+                <td style="padding:10px 8px;">1 request max</td>
+                <td style="padding:10px 8px; color:#10b981;">Active</td>
+              </tr>
+              <tr style="color:#fff;">
+                <td style="padding:10px 8px; color:#ec4899;">llama-3.3:70b-instruct</td>
+                <td style="padding:10px 8px;">Host Ollama Loopback</td>
+                <td style="padding:10px 8px;">1 request max</td>
+                <td style="padding:10px 8px; color:#10b981;">Ready</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `
+  },
+  telemetry: {
+    id: "telemetry",
+    title: "Langfuse",
+    desc: "Telemetry Data — Trace decisions and benchmark performance",
+    route: "/langfuse/project/brainsos/sessions",
+    hotkey: "Alt+4",
+    color: "#3b82f6",
+    icon: "Activity",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+        <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h1 style="font-size:18px; font-weight:700; color:#3b82f6; margin:0;">Langfuse OpenTelemetry Observatory</h1>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Distributed Tracing &amp; Prompt Token Breakdown</div>
+          </div>
+          <div style="font-family:monospace; font-size:11px; background:rgba(59,130,246,0.15); border:1px solid #3b82f6; color:#3b82f6; padding:4px 10px; border-radius:6px;">OTEL Collector Online</div>
+        </div>
+        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px;">
+          <div style="font-weight:600; font-size:13px; margin-bottom:12px;">Latest Trace: hermes-subagent-dispatch-8841</div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; font-family:monospace; font-size:11px;">
+            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Total Latency:</span> <b style="color:#fff;">382ms</b></div>
+            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Prompt Tokens:</span> <b style="color:#00f2fe;">3,120</b></div>
+            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Completion:</span> <b style="color:#10b981;">284</b></div>
+            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#ec4899;">Cost:</span> <b style="color:#ec4899;">$0.0000 (Local)</b></div>
+          </div>
+          <div style="font-family:monospace; font-size:11px; color:#94a3b8; line-height:22px; background:#0e131d; padding:12px; border-radius:6px;">
+            &boxur;&boxh; root_span: run_turn (382ms)<br>
+            &nbsp;&nbsp;&boxur;&boxh; model_call: qwen2.5:32b (360ms) [LiteLLM Gateway Serialized]<br>
+            &nbsp;&nbsp;&boxur;&boxh; tool_execution: file_edit (14ms)<br>
+            &nbsp;&nbsp;&boxur;&boxh; memory_append: OKF Markdown (8ms) [Rule 1 Purity Verified]
+          </div>
+        </div>
+      </div>
+    `
+  },
+  egress: {
+    id: "egress",
+    title: "Egress Proxy",
+    desc: "Network Firewalls — Allow only approved destinations",
+    route: "/efw/",
+    hotkey: "Alt+5",
+    color: "#10b981",
+    icon: "Network",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:monospace; background:#0B0E14; color:#10b981; overflow-y:auto;">
+        <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h1 style="font-size:18px; font-weight:700; color:#10b981; margin:0;">mitmproxy Tool Egress Gateway</h1>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Rule 10 In-Transit Credential Injection &amp; Masking</div>
+          </div>
+          <span style="background:rgba(16,185,129,0.15); border:1px solid #10b981; padding:4px 10px; border-radius:6px; font-size:11px;">PROXY :8082 ACTIVE</span>
+        </div>
+        <div style="background:#111622; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px; line-height:22px;">
+          <div style="color:#94a3b8; margin-bottom:8px;">// Live Egress Inspection Stream:</div>
+          <div><span style="color:#fff;">[10:18:22]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#ec4899;">POST</span> https://api.github.com/graphql &rarr; <span style="color:#f59e0b;">INJECT: Authorization: Bearer [INJECTED_CINDY_TOKEN]</span> &rarr; <span style="color:#10b981;">200 OK (210ms)</span></div>
+          <div><span style="color:#fff;">[10:19:04]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#10b981;">GET</span> https://api.github.com/repos/brainsOS/issues &rarr; <span style="color:#f59e0b;">INJECT: Authorization</span> &rarr; <span style="color:#10b981;">200 OK (145ms)</span></div>
+          <div><span style="color:#fff;">[10:20:11]</span> <span style="color:#eab308;">192.168.128.99</span> <span style="color:#ec4899;">CONNECT</span> https://unauthorized-host.com &rarr; <span style="color:#ef4444; font-weight:bold;">403 FORBIDDEN (Egress Policy Blocked)</span></div>
+        </div>
+      </div>
+    `
+  },
+  editor: {
+    id: "editor",
+    title: "Code Console",
+    desc: "Readable Memory — Keep notes in readable files people can audit",
     route: "/editor/",
-    hotkey: "⌘2",
+    hotkey: "Alt+6",
     color: "#00f2fe",
     icon: "Terminal",
     previewHtml: `
@@ -120,37 +340,16 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
               &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#c586c0;">return await</span> <span style="color:#9cdcfe;">self</span>.<span style="color:#9cdcfe;">subsystems</span>.boot_stateless_runner(<span style="color:#9cdcfe;">tenant</span>)
             </div>
           </div>
-          <div style="height:150px; background:#181818; border-top:1px solid #333; display:flex; flex-direction:column; font-family:'JetBrains Mono',monospace; font-size:12px;">
-            <div style="padding:6px 12px; background:#252526; display:flex; align-items:center; justify-content:space-between; font-size:11px; color:#aaa; border-bottom:1px solid #1e1e1e;">
-              <div style="display:flex; gap:12px;">
-                <span style="color:#fff; font-weight:600; border-bottom:1px solid #00f2fe;">TERMINAL</span>
-                <span>OUTPUT</span>
-                <span>DEBUG CONSOLE</span>
-                <span>PORTS</span>
-              </div>
-              <div style="margin-left:auto; display:flex; gap:8px;">
-                <span>bash</span>
-                <span>+</span>
-                <span>×</span>
-              </div>
-            </div>
-            <div style="padding:10px 14px; color:#33ff33; line-height:19px; overflow-y:auto; user-select:text;">
-              <span style="color:#00f2fe;">admin@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ python3 -m pytest tests/ -q<br>
-              <span style="color:#fff;">................................................. [100%]</span><br>
-              <span style="color:#10b981; font-weight:bold;">49 passed in 0.84s (All Architectural Guardrails Satisfied)</span><br>
-              <span style="color:#00f2fe;">admin@brainsos-gx10</span>:<span style="color:#3b82f6;">~/Development/brainsOS.ai</span>$ <span style="animation:pulse 1s infinite;">█</span>
-            </div>
-          </div>
         </div>
       </div>
     `
   },
   git: {
     id: "git",
-    title: "Source Control",
-    desc: "Local Git Server & Prompt Versioning",
+    title: "Git Server",
+    desc: "Source Control — Version prompts and configs so changes roll back",
     route: "/git/",
-    hotkey: "⌘3",
+    hotkey: "Alt+7",
     color: "#f97316",
     icon: "GitBranch",
     previewHtml: `
@@ -202,139 +401,12 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
       </div>
     `
   },
-  security: {
-    id: "security",
-    title: "LiteLLM",
-    desc: "LiteLLM Gateway & Virtual Keys",
-    route: "/ui/",
-    hotkey: "⌘4",
-    color: "#f59e0b",
-    icon: "Shield",
-    previewHtml: `
-      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
-          <div>
-            <h1 style="font-size:20px; font-weight:700; margin:0; color:#f59e0b;">LiteLLM Gateway &amp; Key Governance</h1>
-            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Hardware Concurrency Serialization • Rule 3 Protection</p>
-          </div>
-          <div style="background:rgba(245,158,11,0.15); border:1px solid #f59e0b; color:#f59e0b; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
-            max_parallel_requests: 1 [LOCKED]
-          </div>
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:24px;">
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Active Virtual Keys</div>
-            <div style="font-size:24px; font-weight:700; color:#fff; margin-top:6px;">12 Tenants</div>
-            <div style="font-size:11px; color:#10b981; margin-top:4px;">● Isolated PostgreSQL Vault</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Memory Bandwidth</div>
-            <div style="font-size:24px; font-weight:700; color:#00f2fe; margin-top:6px;">273 GB/s</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">LPDDR5x Unified Bus</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Loopback Inference</div>
-            <div style="font-size:24px; font-weight:700; color:#f59e0b; margin-top:6px;">127.0.0.1:11434</div>
-            <div style="font-size:11px; color:#10b981; margin-top:4px;">● Rule 2 Loopback Enforced</div>
-          </div>
-        </div>
-        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
-          <div style="font-weight:600; font-size:14px; margin-bottom:12px;">Registered Models</div>
-          <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
-            <thead>
-              <tr style="text-align:left; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1);">
-                <th style="padding:8px;">Model Alias</th>
-                <th style="padding:8px;">Target Engine</th>
-                <th style="padding:8px;">Concurrency</th>
-                <th style="padding:8px;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
-                <td style="padding:10px 8px; color:#00f2fe;">qwen2.5:32b</td>
-                <td style="padding:10px 8px;">Ollama (GB10 Natively)</td>
-                <td style="padding:10px 8px;">1 request max</td>
-                <td style="padding:10px 8px; color:#10b981;">Active</td>
-              </tr>
-              <tr style="color:#fff;">
-                <td style="padding:10px 8px; color:#ec4899;">llama-3.3:70b-instruct</td>
-                <td style="padding:10px 8px;">Host Ollama Loopback</td>
-                <td style="padding:10px 8px;">1 request max</td>
-                <td style="padding:10px 8px; color:#10b981;">Ready</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `
-  },
-  network: {
-    id: "network",
-    title: "Network",
-    desc: "Egress Proxy & Tool Traffic",
-    route: "/efw/",
-    hotkey: "⌘5",
-    color: "#10b981",
-    icon: "Network",
-    previewHtml: `
-      <div style="height:100vh; padding:28px 36px; font-family:monospace; background:#0B0E14; color:#10b981; overflow-y:auto;">
-        <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <h1 style="font-size:18px; font-weight:700; color:#10b981; margin:0;">mitmproxy Tool Egress Gateway</h1>
-            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Rule 10 In-Transit Credential Injection &amp; Masking</div>
-          </div>
-          <span style="background:rgba(16,185,129,0.15); border:1px solid #10b981; padding:4px 10px; border-radius:6px; font-size:11px;">PROXY :8082 ACTIVE</span>
-        </div>
-        <div style="background:#111622; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px; line-height:22px;">
-          <div style="color:#94a3b8; margin-bottom:8px;">// Live Egress Inspection Stream:</div>
-          <div><span style="color:#fff;">[10:18:22]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#ec4899;">POST</span> https://api.github.com/graphql &rarr; <span style="color:#f59e0b;">INJECT: Authorization: Bearer [INJECTED_CINDY_TOKEN]</span> &rarr; <span style="color:#10b981;">200 OK (210ms)</span></div>
-          <div><span style="color:#fff;">[10:19:04]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#10b981;">GET</span> https://api.github.com/repos/brainsOS/issues &rarr; <span style="color:#f59e0b;">INJECT: Authorization</span> &rarr; <span style="color:#10b981;">200 OK (145ms)</span></div>
-          <div><span style="color:#fff;">[10:20:11]</span> <span style="color:#eab308;">192.168.128.99</span> <span style="color:#ec4899;">CONNECT</span> https://unauthorized-host.com &rarr; <span style="color:#ef4444; font-weight:bold;">403 FORBIDDEN (Egress Policy Blocked)</span></div>
-        </div>
-      </div>
-    `
-  },
-  trace: {
-    id: "trace",
-    title: "Trace",
-    desc: "Session Tracing & Observability",
-    route: "/langfuse/project/brainsos/sessions",
-    hotkey: "⌘6",
-    color: "#3b82f6",
-    icon: "Activity",
-    previewHtml: `
-      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
-        <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <h1 style="font-size:18px; font-weight:700; color:#3b82f6; margin:0;">Langfuse OpenTelemetry Observatory</h1>
-            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Distributed Tracing &amp; Prompt Token Breakdown</div>
-          </div>
-          <div style="font-family:monospace; font-size:11px; background:rgba(59,130,246,0.15); border:1px solid #3b82f6; color:#3b82f6; padding:4px 10px; border-radius:6px;">OTEL Collector Online</div>
-        </div>
-        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px;">
-          <div style="font-weight:600; font-size:13px; margin-bottom:12px;">Latest Trace: hermes-subagent-dispatch-8841</div>
-          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; font-family:monospace; font-size:11px;">
-            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Total Latency:</span> <b style="color:#fff;">382ms</b></div>
-            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Prompt Tokens:</span> <b style="color:#00f2fe;">3,120</b></div>
-            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#94a3b8;">Completion:</span> <b style="color:#10b981;">284</b></div>
-            <div style="background:#0e131d; padding:10px; border-radius:6px;"><span style="color:#ec4899;">Cost:</span> <b style="color:#ec4899;">$0.0000 (Local)</b></div>
-          </div>
-          <div style="font-family:monospace; font-size:11px; color:#94a3b8; line-height:22px; background:#0e131d; padding:12px; border-radius:6px;">
-            &boxur;&boxh; root_span: run_turn (382ms)<br>
-            &nbsp;&nbsp;&boxur;&boxh; model_call: qwen2.5:32b (360ms) [LiteLLM Gateway Serialized]<br>
-            &nbsp;&nbsp;&boxur;&boxh; tool_execution: file_edit (14ms)<br>
-            &nbsp;&nbsp;&boxur;&boxh; memory_append: OKF Markdown (8ms) [Rule 1 Purity Verified]
-          </div>
-        </div>
-      </div>
-    `
-  },
   system: {
     id: "system",
-    title: "System OS",
-    desc: "Appliance Operating System & Console",
+    title: "System",
+    desc: "System Manager, Updates & Host Console",
     route: "/system",
-    hotkey: "⌘0",
+    hotkey: "Alt+8",
     color: "#00f2fe",
     icon: "Cpu",
     previewHtml: `
@@ -351,105 +423,12 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
       </div>
     `
   },
-  users: {
-    id: "users",
-    title: "Identity",
-    desc: "Authentik IdP & Event Logs",
-    route: "/auth/if/admin/#/events/log",
-    hotkey: "⌘7",
-    color: "#a855f7",
-    icon: "Users",
-    previewHtml: `
-      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:24px;">
-          <div>
-            <h1 style="font-size:20px; font-weight:700; margin:0; color:#a855f7;">Authentik Identity &amp; Access Governance</h1>
-            <p style="font-size:12px; color:#94a3b8; margin:4px 0 0;">Zero-Trust Single Sign-On • User &amp; Tenant Provisioning Engine</p>
-          </div>
-          <div style="display:flex; gap:10px;">
-            <a href="/auth/if/admin/#/identity/users" target="_blank" style="text-decoration:none; background:rgba(168,85,247,0.15); border:1px solid #a855f7; color:#a855f7; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px;">
-              <span>+ Provision User</span>
-            </a>
-            <div style="background:rgba(16,185,129,0.15); border:1px solid #10b981; color:#10b981; padding:6px 14px; border-radius:8px; font-size:12px; font-family:monospace;">
-              Embedded Outpost: ONLINE
-            </div>
-          </div>
-        </div>
-
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:24px;">
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Provisioned Users</div>
-            <div style="font-size:24px; font-weight:700; color:#fff; margin-top:6px;">4 Accounts</div>
-            <div style="font-size:11px; color:#a855f7; margin-top:4px;">● 1 Superuser, 3 Service Tenants</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Active SSO Sessions</div>
-            <div style="font-size:24px; font-weight:700; color:#00f2fe; margin-top:6px;">1 Live Session</div>
-            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">First-Party Cookie (*.local.brainsos.ai)</div>
-          </div>
-          <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
-            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">MFA &amp; Passkeys</div>
-            <div style="font-size:24px; font-weight:700; color:#10b981; margin-top:6px;">FIDO2 / WebAuthn</div>
-            <div style="font-size:11px; color:#10b981; margin-top:4px;">Hardware Enclave Ready</div>
-          </div>
-        </div>
-
-        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <div style="font-weight:600; font-size:14px;">User Directory &amp; Tenant Accounts</div>
-            <span style="font-size:11px; color:#94a3b8; font-family:monospace;">Domain: local.brainsos.ai</span>
-          </div>
-          <table style="width:100%; font-size:12px; border-collapse:collapse; font-family:monospace;">
-            <thead>
-              <tr style="text-align:left; color:#94a3b8; border-bottom:1px solid rgba(255,255,255,0.1);">
-                <th style="padding:8px;">Username</th>
-                <th style="padding:8px;">Display Name</th>
-                <th style="padding:8px;">Role / Groups</th>
-                <th style="padding:8px;">Auth Type</th>
-                <th style="padding:8px;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
-                <td style="padding:10px 8px; color:#00f2fe; font-weight:bold;">admin</td>
-                <td style="padding:10px 8px;">Appliance Admin</td>
-                <td style="padding:10px 8px;"><span style="background:rgba(0,242,254,0.15); color:#00f2fe; padding:2px 8px; border-radius:4px; font-size:10px;">authentik Admins</span></td>
-                <td style="padding:10px 8px;">Password / FIDO2</td>
-                <td style="padding:10px 8px; color:#10b981;">Active</td>
-              </tr>
-              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
-                <td style="padding:10px 8px; color:#ec4899;">cindy</td>
-                <td style="padding:10px 8px;">Cindy Pawford</td>
-                <td style="padding:10px 8px;"><span style="background:rgba(236,72,153,0.15); color:#ec4899; padding:2px 8px; border-radius:4px; font-size:10px;">Agent Fleet</span></td>
-                <td style="padding:10px 8px;">Forward-Auth Proxy</td>
-                <td style="padding:10px 8px; color:#10b981;">Active</td>
-              </tr>
-              <tr style="border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;">
-                <td style="padding:10px 8px; color:#a855f7;">hermes</td>
-                <td style="padding:10px 8px;">Hermes Orchestrator</td>
-                <td style="padding:10px 8px;"><span style="background:rgba(168,85,247,0.15); color:#a855f7; padding:2px 8px; border-radius:4px; font-size:10px;">Service Runner</span></td>
-                <td style="padding:10px 8px;">Internal Token</td>
-                <td style="padding:10px 8px; color:#10b981;">Active</td>
-              </tr>
-              <tr style="color:#fff;">
-                <td style="padding:10px 8px; color:#94a3b8;">akadmin</td>
-                <td style="padding:10px 8px;">Built-in System Admin</td>
-                <td style="padding:10px 8px;"><span style="background:rgba(255,255,255,0.1); color:#fff; padding:2px 8px; border-radius:4px; font-size:10px;">Superuser</span></td>
-                <td style="padding:10px 8px;">Bootstrap Secret</td>
-                <td style="padding:10px 8px; color:#10b981;">Active</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `
-  },
   help: {
     id: "help",
-    title: "Help",
+    title: "Help & Architecture",
     desc: "FAQs & Architecture Matrix",
     route: "/docs/",
-    hotkey: "⌘H",
+    hotkey: "Alt+9",
     color: "#eab308",
     icon: "HelpCircle",
     previewHtml: `

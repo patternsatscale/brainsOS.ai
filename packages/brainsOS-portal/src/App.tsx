@@ -9,21 +9,33 @@ import { useHotkeys } from './hooks/useHotkeys';
 import { CheckCircle2, RefreshCw } from 'lucide-react';
 import { AuthenticatedUser, DEFAULT_USER } from './types/user';
 
+const LEGACY_KEY_MAP: Record<string, string> = {
+  comms: 'mail',
+  users: 'auth',
+  security: 'gateway',
+  trace: 'telemetry',
+  network: 'egress',
+  console: 'editor',
+};
+
 const getInitialKey = (): string => {
-  if (typeof window === 'undefined') return 'comms';
+  if (typeof window === 'undefined') return 'mail';
   const path = window.location.pathname.replace(/\/$/, '');
   const hash = window.location.hash.replace(/^#/, '');
-  if (hash && SUBSYSTEMS[hash]) return hash;
+  if (hash) {
+    if (SUBSYSTEMS[hash]) return hash;
+    if (LEGACY_KEY_MAP[hash] && SUBSYSTEMS[LEGACY_KEY_MAP[hash]]) return LEGACY_KEY_MAP[hash];
+  }
   if (path === '/system') return 'system';
   if (path === '/docs') return 'help';
-  if (path === '/editor') return 'console';
+  if (path === '/editor') return 'editor';
   if (path === '/git' || path.startsWith('/git/')) return 'git';
-  if (path === '/mail' || path.startsWith('/mail/') || path === '/kurrier') return 'comms';
-  if (path === '/proxy' || path.startsWith('/proxy/ui')) return 'security';
-  if (path === '/efw') return 'network';
-  if (path === '/langfuse') return 'trace';
-  if (path === '/auth' || path.startsWith('/auth/if')) return 'users';
-  return 'comms';
+  if (path === '/mail' || path.startsWith('/mail/') || path === '/kurrier') return 'mail';
+  if (path === '/proxy' || path.startsWith('/proxy/ui')) return 'gateway';
+  if (path === '/efw') return 'egress';
+  if (path === '/langfuse') return 'telemetry';
+  if (path === '/auth' || path.startsWith('/auth/if')) return 'auth';
+  return 'mail';
 };
 
 export function App() {
@@ -197,9 +209,9 @@ export function App() {
     setDrawerOpen(false);
     setCustomUrls((prev) => ({
       ...prev,
-      users: '/if/flow/default-user-settings-flow/?next=/if/flow/default-user-settings-flow/',
+      auth: '/if/flow/default-user-settings-flow/?next=/if/flow/default-user-settings-flow/',
     }));
-    setActiveKey('users');
+    setActiveKey('auth');
     showToast('Opened Profile Settings');
   }, [showToast]);
 
@@ -241,7 +253,7 @@ export function App() {
     profileOpen: profileModalOpen,
   });
 
-  const activeSubsystem = SUBSYSTEMS[activeKey] || SUBSYSTEMS.console;
+  const activeSubsystem = SUBSYSTEMS[activeKey] || SUBSYSTEMS.mail || SUBSYSTEMS.editor;
 
   if (wizardGate === 'checking') {
     return (

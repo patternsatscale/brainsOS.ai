@@ -1901,7 +1901,8 @@ def create_system_api_app():
             **os.environ,
             **parse_env_file_only(repo_root),
             "TERM": "xterm-256color",
-            "PS1": r"\u@\h:\w\$ ",
+            "HUSHLOGIN": "TRUE",
+            "PS1": r"\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ ",
             "BRAINSOS_HOME": str(work_dir),
             "BRAINSOS_DATA_DIR": str(data_dir),
             "PWD": str(work_dir),
@@ -1940,8 +1941,9 @@ def create_system_api_app():
         if target_pw is not None and not os.access(work_dir, os.R_OK | os.X_OK):
             spawn_cwd = target_pw.pw_dir if os.path.isdir(target_pw.pw_dir) else "/"
 
+        shell_cmd = [shell_bin, "--norc", "--noprofile", "-i"] if shell_bin.endswith("bash") else [shell_bin, "-i"]
         proc = subprocess.Popen(
-            [shell_bin, "-i"],
+            shell_cmd,
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
@@ -1973,7 +1975,7 @@ def create_system_api_app():
                 except Exception:
                     break
 
-        reader_task = asyncio.create_task(_pty_reader())
+        reader_task: Optional[asyncio.Task[None]] = None
         try:
             await websocket.send_text(
                 json.dumps(
@@ -1987,11 +1989,13 @@ def create_system_api_app():
                 )
             )
             banner = (
-                f"\r\n\x1b[1;36mbrainsOS Appliance Host Console\x1b[0m"
+                "\x1b[2J\x1b[H"
+                f"\x1b[1;36mbrainsOS Appliance Host Console\x1b[0m"
                 f" • Source: \x1b[1;32m{work_dir}\x1b[0m"
                 f" • Data: \x1b[1;32m{data_dir}\x1b[0m\r\n"
             )
             await websocket.send_text(json.dumps({"type": "output", "data": banner}))
+            reader_task = asyncio.create_task(_pty_reader())
             while True:
                 raw_msg = await websocket.receive_text()
                 try:
@@ -2017,7 +2021,8 @@ def create_system_api_app():
             pass
         finally:
             stop_event.set()
-            reader_task.cancel()
+            if reader_task is not None:
+                reader_task.cancel()
             try:
                 os.close(master_fd)
             except Exception:

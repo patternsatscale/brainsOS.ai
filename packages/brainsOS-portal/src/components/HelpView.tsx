@@ -10,6 +10,7 @@ import {
   Network,
   Lock,
   Cpu,
+  GitBranch,
   Github,
   Keyboard,
   Globe,
@@ -32,80 +33,91 @@ interface ToolItem {
 
 const TOOLS: ToolItem[] = [
   {
-    id: 'trace',
-    name: 'Langfuse Observatory',
-    category: 'Telemetry & Tracing',
-    desc: 'Distributed OpenTelemetry session tracing, token breakdown, and latency diagnostics.',
-    icon: Activity,
-    color: '#3b82f6',
-    path: '/project/brainsos/sessions',
-    port: '3001',
-    hotkey: '⌘5',
-  },
-  {
-    id: 'security',
-    name: 'LiteLLM Gateway',
-    category: 'Model Governance',
-    desc: 'Hardware-serialized LLM proxy, virtual tenant keys, model registration, and usage telemetry.',
-    icon: Shield,
-    color: '#f59e0b',
-    path: '/proxy/ui/usage',
-    port: '4000',
-    hotkey: '⌘3',
-  },
-  {
-    id: 'console',
-    name: 'Operator Studio (VS Code)',
-    category: 'Development Environment',
-    desc: 'Full-featured web IDE with integrated terminal, file tree, and workspace editing.',
-    icon: Terminal,
-    color: '#00f2fe',
-    path: '/editor/',
-    port: '8443',
-    hotkey: '⌘2',
-  },
-  {
-    id: 'comms',
-    name: 'SOGo Webmail & Groupware',
-    category: 'Agent Communications',
-    desc: 'Agent messaging, CalDAV calendar, CardDAV contacts, and scheduled reminders.',
+    id: 'mail',
+    name: 'Webmail (SOGo & Groupware)',
+    category: '1. Secure Communications',
+    desc: 'Encrypt and log every message in and out — Agent messaging, CalDAV calendar, and CardDAV directory.',
     icon: Mail,
     color: '#ec4899',
     path: '/mail/',
     port: '20000',
-    hotkey: '⌘1',
+    hotkey: 'Alt+1',
   },
   {
-    id: 'network',
-    name: 'Tool Egress Gateway (mitmweb)',
-    category: 'Egress Inspection',
-    desc: 'Live outbound HTTP/HTTPS inspection console, token redaction, and egress policy auditing.',
-    icon: Network,
-    color: '#10b981',
-    path: '/efw/',
-    port: '8081',
-    hotkey: '⌘4',
-  },
-  {
-    id: 'system',
-    name: 'System Manager & Update Center',
-    category: 'Platform Operations',
-    desc: 'Appliance version inspection, 1-click container & git updates, and live log drawer.',
-    icon: Cpu,
-    color: '#00f2fe',
-    path: '/system',
-    hotkey: '⌘6',
-  },
-  {
-    id: 'users',
+    id: 'auth',
     name: 'Authentik Identity Provider',
-    category: 'Identity & Access (IdP)',
-    desc: 'Single Sign-On (SSO) authority, user directory, and Forward-Auth audit event logs.',
+    category: '2. Identity Management',
+    desc: 'Give each agent its own scoped credentials — Single Sign-On (SSO) authority, user directory, and Forward-Auth audit logs.',
     icon: Lock,
     color: '#a855f7',
     path: '/auth/if/admin/#/events/log',
     port: '9000',
-    hotkey: '⌘7',
+    hotkey: 'Alt+2',
+  },
+  {
+    id: 'gateway',
+    name: 'LiteLLM Gateway',
+    category: '3. Routing & Guardrails',
+    desc: 'Check every model call against policy — Hardware-serialized LLM proxy, virtual tenant keys, and usage governance.',
+    icon: Shield,
+    color: '#f59e0b',
+    path: '/proxy/ui/usage',
+    port: '4000',
+    hotkey: 'Alt+3',
+  },
+  {
+    id: 'telemetry',
+    name: 'Langfuse Observatory',
+    category: '4. Telemetry Data',
+    desc: 'Trace decisions and benchmark performance — Distributed OpenTelemetry session tracing, token breakdown, and latency diagnostics.',
+    icon: Activity,
+    color: '#3b82f6',
+    path: '/project/brainsos/sessions',
+    port: '3001',
+    hotkey: 'Alt+4',
+  },
+  {
+    id: 'egress',
+    name: 'Egress Proxy (mitmweb)',
+    category: '5. Network Firewalls',
+    desc: 'Allow only approved destinations — Live outbound HTTP/HTTPS inspection console, token redaction, and egress policy auditing.',
+    icon: Network,
+    color: '#10b981',
+    path: '/efw/',
+    port: '8081',
+    hotkey: 'Alt+5',
+  },
+  {
+    id: 'editor',
+    name: 'Code Console (VS Code)',
+    category: '6. Readable Memory',
+    desc: 'Keep notes in readable files people can audit — Full-featured web IDE for inspecting OKF Markdown memories and workspaces.',
+    icon: Terminal,
+    color: '#00f2fe',
+    path: '/editor/',
+    port: '8443',
+    hotkey: 'Alt+6',
+  },
+  {
+    id: 'git',
+    name: 'Git Server (Gitea)',
+    category: '7. Source Control',
+    desc: 'Version prompts and configs so changes roll back — Local Git server for agent souls, fleet settings, and memory history.',
+    icon: GitBranch,
+    color: '#f97316',
+    path: '/git/',
+    port: '3000',
+    hotkey: 'Alt+7',
+  },
+  {
+    id: 'system',
+    name: 'System Manager & Host Console',
+    category: '8. Platform Operations',
+    desc: 'System Manager, Updates & Host Console — Appliance identity, 1-click container & OS security updates, and interactive XTerm.js shell.',
+    icon: Cpu,
+    color: '#00f2fe',
+    path: '/system',
+    hotkey: 'Alt+8',
   },
   {
     id: 'github',
@@ -128,14 +140,15 @@ interface HotkeyItem {
 }
 
 const HOTKEYS: HotkeyItem[] = [
-  { keys: ['⌘', '1'], action: 'Switch to Comms', target: 'SOGo Webmail & Calendar', color: '#ec4899', category: 'subsystem' },
-  { keys: ['⌘', '2'], action: 'Switch to Console', target: 'VS Code IDE & Terminal', color: '#00f2fe', category: 'subsystem' },
-  { keys: ['⌘', '3'], action: 'Switch to Security', target: 'LiteLLM Gateway & Usage', color: '#f59e0b', category: 'subsystem' },
-  { keys: ['⌘', '4'], action: 'Switch to Network', target: 'Tool Egress Gateway (mitmweb)', color: '#10b981', category: 'subsystem' },
-  { keys: ['⌘', '5'], action: 'Switch to Trace', target: 'Langfuse Observatory', color: '#3b82f6', category: 'subsystem' },
-  { keys: ['⌘', '6'], action: 'Switch to System', target: 'System Manager & Update Center', color: '#00f2fe', category: 'subsystem' },
-  { keys: ['⌘', '7'], action: 'Switch to Identity', target: 'Authentik IdP & Event Logs', color: '#a855f7', category: 'subsystem' },
-  { keys: ['⌘', 'H'], action: 'Toggle Help & URLs', target: 'This Tool Reference Page', color: '#eab308', category: 'subsystem' },
+  { keys: ['Alt', '1'], action: 'Switch to Webmail', target: 'Secure Communications — Encrypt and log every message in and out', color: '#ec4899', category: 'subsystem' },
+  { keys: ['Alt', '2'], action: 'Switch to Authentik', target: 'Identity Management — Give each agent its own scoped credentials', color: '#a855f7', category: 'subsystem' },
+  { keys: ['Alt', '3'], action: 'Switch to LiteLLM', target: 'Routing & Guardrails — Check every model call against policy', color: '#f59e0b', category: 'subsystem' },
+  { keys: ['Alt', '4'], action: 'Switch to Langfuse', target: 'Telemetry Data — Trace decisions and benchmark performance', color: '#3b82f6', category: 'subsystem' },
+  { keys: ['Alt', '5'], action: 'Switch to Egress Proxy', target: 'Network Firewalls — Allow only approved destinations', color: '#10b981', category: 'subsystem' },
+  { keys: ['Alt', '6'], action: 'Switch to Code Console', target: 'Readable Memory — Keep notes in readable files people can audit', color: '#00f2fe', category: 'subsystem' },
+  { keys: ['Alt', '7'], action: 'Switch to Git Server', target: 'Source Control — Version prompts and configs so changes roll back', color: '#f97316', category: 'subsystem' },
+  { keys: ['Alt', '8'], action: 'Switch to System', target: 'System Manager, Updates & Host Console', color: '#00f2fe', category: 'subsystem' },
+  { keys: ['Alt', '9'], action: 'Switch to Help & Architecture', target: 'FAQs & Architecture Matrix', color: '#eab308', category: 'subsystem' },
   { keys: ['⌘', 'K'], action: 'Toggle HUD Drawer', target: 'Subsystems Slide-Over Palette', color: '#00f2fe', category: 'hud' },
   { keys: ['⌘', 'U'], action: 'Toggle Account Popout', target: 'Operator Profile & Settings', color: '#ec4899', category: 'hud' },
   { keys: ['ESC'], action: 'Close Modal / Drawer', target: 'Dismiss any open HUD overlay', color: '#94a3b8', category: 'hud' },
@@ -156,7 +169,7 @@ export const HelpView: React.FC = () => {
     const proto = window.location.protocol;
     const port = window.location.port ? `:${window.location.port}` : '';
 
-    if (tool.id === 'trace') {
+    if (tool.id === 'telemetry' || tool.id === 'trace') {
       if (!host.startsWith('langfuse.')) {
         return `${proto}//langfuse.${host}${port}/project/brainsos/sessions`;
       }
@@ -176,7 +189,9 @@ export const HelpView: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toUpperCase();
-      if (e.metaKey || e.ctrlKey) {
+      if (e.altKey) {
+        setActivePressed(`Alt${key}`);
+      } else if (e.metaKey || e.ctrlKey) {
         setActivePressed(`⌘${key}`);
       } else if (key === 'ESCAPE') {
         setActivePressed('ESC');
@@ -373,7 +388,7 @@ export const HelpView: React.FC = () => {
             <div>
               <h2 className="font-headline font-bold text-xs uppercase tracking-wider text-slate-400 mb-3 px-1 flex items-center gap-2">
                 <Command className="w-3.5 h-3.5 text-[#00f2fe]" />
-                <span>Subsystem Direct Navigation (⌘1 – ⌘6, ⌘H)</span>
+                <span>Subsystem Direct Navigation (Alt+1 – Alt+9)</span>
               </h2>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

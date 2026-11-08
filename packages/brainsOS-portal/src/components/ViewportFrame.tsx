@@ -39,20 +39,26 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
   const renderIcon = (id: string, color: string) => {
     const props = { className: "w-4 h-4", style: { color } };
     switch (id) {
+      case 'editor':
       case 'console':
         return <Terminal {...props} />;
+      case 'mail':
       case 'comms':
         return <Mail {...props} />;
       case 'git':
         return <GitBranch {...props} />;
+      case 'gateway':
       case 'security':
         return <Shield {...props} />;
+      case 'egress':
       case 'network':
         return <Network {...props} />;
+      case 'telemetry':
       case 'trace':
         return <Activity {...props} />;
       case 'system':
         return <Cpu {...props} />;
+      case 'auth':
       case 'users':
         return <Users {...props} />;
       case 'help':
@@ -69,10 +75,10 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
     const proto = window.location.protocol;
     const port = window.location.port ? `:${window.location.port}` : '';
 
-    if (item.id === 'trace' || item.route.includes('/langfuse')) {
+    if (item.id === 'telemetry' || item.id === 'trace' || item.route.includes('/langfuse')) {
       return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
-    if (item.id === 'security' || item.route.includes('/proxy') || item.route.includes('/ui')) {
+    if (item.id === 'gateway' || item.id === 'security' || item.route.includes('/proxy') || item.route.includes('/ui')) {
       return `${proto}//${host}${port}/sso/key/generate`;
     }
     return item.route;
@@ -110,10 +116,10 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       }
       return `${host}${currentCustomUrl.startsWith('/') ? '' : '/'}${currentCustomUrl}`;
     }
-    if (subsystem.id === 'trace') {
+    if (subsystem.id === 'telemetry' || subsystem.id === 'trace') {
       return `${host}/project/brainsos/sessions`;
     }
-    if (subsystem.id === 'security') {
+    if (subsystem.id === 'gateway' || subsystem.id === 'security') {
       return `${host}/proxy/ui/usage/`;
     }
     if (subsystem.route.startsWith('/')) {
@@ -254,7 +260,7 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
                     doc.documentElement.style.colorScheme = 'dark';
                     doc.body?.classList.add('dark');
                   }
-                  if (doc && win && key === 'comms' && !win.__brainsosMailtoBound) {
+                  if (doc && win && (key === 'mail' || key === 'comms') && !win.__brainsosMailtoBound) {
                     win.__brainsosMailtoBound = true;
                     doc.addEventListener(
                       'click',

@@ -58,17 +58,20 @@ export function useHotkeys({
         return;
       }
 
-      // Subsystem number hotkeys: ⌘1 through ⌘7, ⌘I, and ⌘H
-      if (e.metaKey || e.ctrlKey) {
+      // Subsystem number hotkeys: Alt+1 through Alt+9 (plus ⌘/Ctrl+1..9, I, and H)
+      if (e.altKey || e.metaKey || e.ctrlKey) {
         const keyMap: Record<string, string> = {
-          '1': 'comms',
-          '2': 'console',
-          '3': 'security',
-          '4': 'network',
-          '5': 'trace',
-          '6': 'system',
-          '7': 'users',
-          'i': 'users',
+          '1': 'mail',
+          '2': 'auth',
+          '3': 'gateway',
+          '4': 'telemetry',
+          '5': 'egress',
+          '6': 'editor',
+          '7': 'git',
+          '8': 'system',
+          '9': 'help',
+          '0': 'system',
+          'i': 'auth',
           'h': 'help',
         };
 
