@@ -162,6 +162,10 @@ def test_websocket_pty_fallback_username_when_sso_header_absent(tmp_path, monkey
             ready_msg = ws.receive_json()
             assert ready_msg["type"] == "ready"
             assert ready_msg["user"] == "su"
+            banner_msg = ws.receive_json()
+            assert banner_msg["type"] == "output"
+            assert banner_msg["data"].startswith("\x1b[2J\x1b[H")
+            assert "brainsOS Appliance Host Console" in banner_msg["data"]
 
 
 def test_system_me_endpoint(tmp_path):

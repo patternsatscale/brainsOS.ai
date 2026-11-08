@@ -39,20 +39,26 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
 }) => {
   const renderIcon = (sub: Subsystem) => {
     switch (sub.id) {
+      case 'editor':
       case 'console':
         return <Terminal className="w-5 h-5" />;
+      case 'mail':
       case 'comms':
         return <Mail className="w-5 h-5" />;
       case 'git':
         return <GitBranch className="w-5 h-5" />;
+      case 'gateway':
       case 'security':
         return <Shield className="w-5 h-5" />;
+      case 'egress':
       case 'network':
         return <Network className="w-5 h-5" />;
+      case 'telemetry':
       case 'trace':
         return <Activity className="w-5 h-5" />;
       case 'system':
         return <Cpu className="w-5 h-5" />;
+      case 'auth':
       case 'users':
         return <Users className="w-5 h-5" />;
       case 'help':

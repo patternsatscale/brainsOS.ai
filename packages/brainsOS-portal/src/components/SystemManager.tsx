@@ -862,14 +862,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
   // Interactive XTerm.js Host Console State (#333)
   const [consoleViewMode, setConsoleViewMode] = useState<'interactive' | 'jobs'>('interactive');
-  const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([
-    {
-      id: 1,
-      type: 'system',
-      timestamp: new Date().toLocaleTimeString(),
-      text: 'brainsOS Appliance Host Console (ARM64) — Interactive XTerm.js PTY & HTTP Fallback Ready.',
-    },
-  ]);
+  const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([]);
   const [consoleInput, setConsoleInput] = useState<string>('');
   const [consoleHistory, setConsoleHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
@@ -880,7 +873,6 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const localLineBufferRef = useRef<string>('');
-  const consoleEndRef = useRef<HTMLDivElement | null>(null);
   const consoleInputRef = useRef<HTMLInputElement | null>(null);
 
   const normalizedRunners = useMemo(() => normalizeRunners(status?.runners), [status?.runners]);
@@ -890,13 +882,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     if (autoScroll && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, autoScroll]);
-
-  useEffect(() => {
-    if (consoleEndRef.current) {
-      consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [consoleEntries]);
+  }, [logs, consoleEntries, autoScroll]);
 
   // Fetch CSRF token on mount
   const fetchCsrfToken = useCallback(async () => {
@@ -990,19 +976,15 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     fetchCsrfToken();
   }, [fetchStatus, fetchCsrfToken]);
 
-  // Execute a command via HTTP fallback (/api/v1/system/terminal/exec) or send into active PTY
+  // Execute a command for System Output or as the HTTP fallback inside term.onData when WS is disconnected
   const executeConsoleCommand = useCallback(
-    async (rawCmd: string) => {
+    async (rawCmd: string, fromXtermFallback: boolean = false) => {
       const cmd = rawCmd.trim();
       if (!cmd) return;
 
-      // If WebSocket PTY is open, send directly over WS as JSON input
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'input', data: `${cmd}\r` }));
-        setConsoleInput('');
-        xtermRef.current?.focus();
-        return;
-      }
+      const writeToXtermOnly =
+        fromXtermFallback &&
+        (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN);
 
       const ts = new Date().toLocaleTimeString();
       const promptHost = (status?.hostname || status?.local_domain || 'brainsos').split('.')[0];
@@ -1010,22 +992,27 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         status?.console_user || status?.superuser_username || status?.admin_username || 'admin';
       const promptRepoRoot = status?.repo_root || '/opt/brainsos';
 
-      setConsoleEntries((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          type: 'input',
-          timestamp: ts,
-          text: `${promptUser}@${promptHost}:${promptRepoRoot}$ ${cmd}`,
-        },
-      ]);
+      if (!writeToXtermOnly) {
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            type: 'input',
+            timestamp: ts,
+            text: `${promptUser}@${promptHost}:${promptRepoRoot}$ ${cmd}`,
+          },
+        ]);
+      }
       setConsoleHistory((prev) => [cmd, ...prev.filter((c) => c !== cmd)].slice(0, 50));
       setHistoryIdx(-1);
       setConsoleInput('');
 
       if (cmd === 'clear' || cmd === 'cls') {
-        setConsoleEntries([]);
-        xtermRef.current?.clear();
+        if (writeToXtermOnly) {
+          xtermRef.current?.clear();
+        } else {
+          setConsoleEntries([]);
+        }
         return;
       }
 
@@ -1040,16 +1027,21 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           '  uname -a                 Display Linux kernel and ARM64 hardware architecture',
           '  clear                    Clear terminal scrollback buffer',
         ].join('\r\n');
-        xtermRef.current?.writeln(`\r\n${helpLines}\r\n`);
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            type: 'output',
-            timestamp: ts,
-            text: helpLines,
-          },
-        ]);
+        if (writeToXtermOnly) {
+          xtermRef.current?.writeln(`\r\n${helpLines}\r\n`);
+          const prompt = `\r\n\x1b[1;32m${promptUser}@${promptHost}\x1b[0m:\x1b[1;34m${promptRepoRoot}\x1b[0m$ `;
+          xtermRef.current?.write(prompt);
+        } else {
+          setConsoleEntries((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 1,
+              type: 'output',
+              timestamp: ts,
+              text: helpLines,
+            },
+          ]);
+        }
         return;
       }
 
@@ -1066,16 +1058,19 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         if (res.ok) {
           const data = await res.json();
           const out = data.output || data.stdout || data.stderr || '(command completed with exit code 0)';
-          xtermRef.current?.writeln(`\r\n${String(out).replace(/\r?\n/g, '\r\n')}`);
-          setConsoleEntries((prev) => [
-            ...prev,
-            {
-              id: Date.now() + 2,
-              type: data.exit_code && data.exit_code !== 0 ? 'error' : 'output',
-              timestamp: new Date().toLocaleTimeString(),
-              text: out,
-            },
-          ]);
+          if (writeToXtermOnly) {
+            xtermRef.current?.writeln(`\r\n${String(out).replace(/\r?\n/g, '\r\n')}`);
+          } else {
+            setConsoleEntries((prev) => [
+              ...prev,
+              {
+                id: Date.now() + 2,
+                type: data.exit_code && data.exit_code !== 0 ? 'error' : 'output',
+                timestamp: new Date().toLocaleTimeString(),
+                text: out,
+              },
+            ]);
+          }
         } else {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -1103,20 +1098,25 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         } else {
           simulated = `[HTTP Fallback] Executed: ${cmd}`;
         }
-        xtermRef.current?.writeln(`\r\n${simulated.replace(/\r?\n/g, '\r\n')}`);
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 2,
-            type: 'output',
-            timestamp: new Date().toLocaleTimeString(),
-            text: simulated,
-          },
-        ]);
+        if (writeToXtermOnly) {
+          xtermRef.current?.writeln(`\r\n${simulated.replace(/\r?\n/g, '\r\n')}`);
+        } else {
+          setConsoleEntries((prev) => [
+            ...prev,
+            {
+              id: Date.now() + 2,
+              type: 'output',
+              timestamp: new Date().toLocaleTimeString(),
+              text: simulated,
+            },
+          ]);
+        }
       } finally {
         setConsoleBusy(false);
-        const prompt = `\r\n\x1b[1;32m${promptUser}@${promptHost}\x1b[0m:\x1b[1;34m${promptRepoRoot}\x1b[0m$ `;
-        xtermRef.current?.write(prompt);
+        if (writeToXtermOnly) {
+          const prompt = `\r\n\x1b[1;32m${promptUser}@${promptHost}\x1b[0m:\x1b[1;34m${promptRepoRoot}\x1b[0m$ `;
+          xtermRef.current?.write(prompt);
+        }
       }
     },
     [csrfToken, status]
@@ -1156,6 +1156,12 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       ws.onopen = () => {
         if (wsRef.current !== ws) return;
         setWsConnected(true);
+        if (xtermRef.current) {
+          try {
+            xtermRef.current.reset();
+            xtermRef.current.clear();
+          } catch {}
+        }
         if (fitAddonRef.current && xtermRef.current) {
           try {
             fitAddonRef.current.fit();
@@ -1177,7 +1183,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         try {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
-            if (parsed.type === 'pong') return;
+            if (parsed.type === 'pong' || parsed.type === 'ready') return;
             if (parsed.type === 'output' && typeof parsed.data === 'string') {
               xtermRef.current?.write(parsed.data);
               return;
@@ -1214,6 +1220,14 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     const container = xtermContainerRef.current;
     if (!container) return;
 
+    if (xtermRef.current && xtermRef.current.element && !container.contains(xtermRef.current.element)) {
+      try {
+        xtermRef.current.dispose();
+      } catch {}
+      xtermRef.current = null;
+      fitAddonRef.current = null;
+    }
+
     if (!xtermRef.current) {
       const term = new XTerm({
         cursorBlink: true,
@@ -1240,12 +1254,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(container);
+      term.reset();
+      term.clear();
       try {
         fitAddon.fit();
       } catch {}
-
-      term.writeln('\x1b[1;36mbrainsOS Operating System • Interactive XTerm.js Host Console (ARM64)\x1b[0m');
-      term.writeln('\x1b[90mConnecting to /api/v1/system/terminal/ws PTY session...\x1b[0m\r\n');
 
       term.onData((data) => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -1257,7 +1270,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             localLineBufferRef.current = '';
             term.write('\r\n');
             if (cmdToRun.trim()) {
-              executeConsoleCommandRef.current(cmdToRun);
+              executeConsoleCommandRef.current(cmdToRun, true);
             } else {
               const curStatus = statusRef.current;
               const promptHost = (curStatus?.hostname || curStatus?.local_domain || 'brainsos').split('.')[0];
@@ -1785,7 +1798,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   };
 
   const handleCopyLogs = () => {
-    const text = logs.map((l) => `[${l.timestamp}] ${l.text}`).join('\n');
+    const logLines = logs.map((l) => `[${l.timestamp}] ${l.text}`);
+    const entryLines = consoleEntries.map((e) => `[${e.timestamp}] ${e.text}`);
+    const text = [...logLines, ...entryLines].join('\n');
     navigator.clipboard.writeText(text);
     setCopiedLogs(true);
     setTimeout(() => setCopiedLogs(false), 2000);
@@ -1793,6 +1808,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
   const handleClearLogs = () => {
     setLogs([]);
+    setConsoleEntries([]);
     setExecutionStatus('idle');
   };
 
@@ -3332,7 +3348,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                     }`}
                   >
                     <Activity className="w-3.5 h-3.5" />
-                    <span>System Job Output Stream ({logs.length})</span>
+                    <span>System Job Output Stream ({logs.length + consoleEntries.length})</span>
                     {executionStatus === 'running' && (
                       <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
                     )}
@@ -3380,16 +3396,15 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                       type="button"
                       onClick={() => {
                         if (wsConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                          wsRef.current.send(JSON.stringify({ type: 'input', data: 'clear\r' }));
-                          xtermRef.current?.focus();
-                        } else {
-                          xtermRef.current?.clear();
-                          setConsoleEntries([]);
+                          wsRef.current.send(JSON.stringify({ type: 'input', data: 'clear\n' }));
                         }
+                        xtermRef.current?.clear();
+                        xtermRef.current?.focus();
                       }}
                       className="px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white"
+                      title="Clear XTerm terminal buffer"
                     >
-                      Clear
+                      Clear Terminal
                     </button>
                     <button
                       type="button"
@@ -3430,94 +3445,119 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 )}
               </div>
 
-              {/* XTerm.js Interactive PTY Viewport Box */}
-              {consoleViewMode === 'interactive' ? (
-                <div className="flex-1 rounded-xl border border-white/15 bg-[#05070B] flex flex-col overflow-hidden shadow-2xl font-mono text-xs">
-                  <div className="px-4 py-2 bg-[#0D111A] border-b border-white/10 flex items-center justify-between text-[11px] text-slate-400 select-none shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                      <span className="text-slate-200 font-semibold">
-                        {status?.console_user || status?.superuser_username || status?.admin_username || 'admin'}@{(status?.hostname || status?.local_domain || 'brainsos').split('.')[0]}:{status?.repo_root || '/opt/brainsos'}
-                      </span>
-                    </div>
-                    <span>
-                      {wsConnected ? 'XTerm.js PTY WebSocket (/api/v1/system/terminal/ws)' : 'HTTP Exec Fallback (/api/v1/system/terminal/exec)'}
+              {/* XTerm.js Interactive PTY Viewport Box (kept mounted to preserve PTY state) */}
+              <div
+                className={`flex-1 rounded-xl border border-white/15 bg-[#05070B] flex flex-col overflow-hidden shadow-2xl font-mono text-xs ${
+                  consoleViewMode === 'interactive' ? '' : 'hidden'
+                }`}
+              >
+                <div className="px-4 py-2 bg-[#0D111A] border-b border-white/10 flex items-center justify-between text-[11px] text-slate-400 select-none shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    <span className="text-slate-200 font-semibold">
+                      {status?.console_user || status?.superuser_username || status?.admin_username || 'admin'}@{(status?.hostname || status?.local_domain || 'brainsos').split('.')[0]}:{status?.repo_root || '/opt/brainsos'}
                     </span>
                   </div>
-
-                  {/* Full Interactive XTerm Canvas */}
-                  <div
-                    ref={xtermContainerRef}
-                    onClick={() => xtermRef.current?.focus()}
-                    className="flex-1 w-full bg-[#05070B] p-2 overflow-hidden"
-                  />
-
-                  {/* HTTP /api/v1/system/terminal/exec Line-by-Line Fallback Input Bar when WebSocket PTY is closed */}
-                  {!wsConnected && (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        executeConsoleCommand(consoleInput);
-                      }}
-                      className="px-4 py-2 bg-[#0A0E17] border-t border-white/10 flex items-center gap-2 shrink-0"
-                    >
-                      <span className="text-amber-400 font-bold shrink-0 text-[11px]">
-                        HTTP Fallback $
-                      </span>
-                      <input
-                        ref={consoleInputRef}
-                        type="text"
-                        value={consoleInput}
-                        disabled={consoleBusy}
-                        onChange={(e) => setConsoleInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            if (consoleHistory.length > 0) {
-                              const nextIdx = Math.min(historyIdx + 1, consoleHistory.length - 1);
-                              setHistoryIdx(nextIdx);
-                              setConsoleInput(consoleHistory[nextIdx]);
-                            }
-                          } else if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            if (historyIdx > 0) {
-                              const nextIdx = historyIdx - 1;
-                              setHistoryIdx(nextIdx);
-                              setConsoleInput(consoleHistory[nextIdx]);
-                            } else {
-                              setHistoryIdx(-1);
-                              setConsoleInput('');
-                            }
-                          }
-                        }}
-                        placeholder="WebSocket offline — run host command via HTTP fallback (e.g. docker ps, df -h, git -C /data status)..."
-                        className="flex-1 bg-transparent text-white focus:outline-none font-mono text-xs"
-                      />
-                      <button
-                        type="submit"
-                        disabled={consoleBusy || !consoleInput.trim()}
-                        className="px-3 py-1 rounded bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] text-[11px] font-semibold disabled:opacity-40"
-                      >
-                        {consoleBusy ? 'Running...' : 'Run ↵'}
-                      </button>
-                    </form>
-                  )}
+                  <span>
+                    {wsConnected ? 'XTerm.js PTY WebSocket (/api/v1/system/terminal/ws)' : 'HTTP Exec Fallback (/api/v1/system/terminal/exec)'}
+                  </span>
                 </div>
-              ) : (
+
+                {/* Full Interactive XTerm Canvas */}
+                <div
+                  ref={xtermContainerRef}
+                  onClick={() => xtermRef.current?.focus()}
+                  className="flex-1 w-full bg-[#05070B] p-2 overflow-hidden"
+                />
+
+                {/* HTTP /api/v1/system/terminal/exec Line-by-Line Fallback Input Bar when WebSocket PTY is closed */}
+                {!wsConnected && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      executeConsoleCommand(consoleInput);
+                    }}
+                    className="px-4 py-2 bg-[#0A0E17] border-t border-white/10 flex items-center gap-2 shrink-0"
+                  >
+                    <span className="text-amber-400 font-bold shrink-0 text-[11px]">
+                      HTTP Fallback $
+                    </span>
+                    <input
+                      ref={consoleInputRef}
+                      type="text"
+                      value={consoleInput}
+                      disabled={consoleBusy}
+                      onChange={(e) => setConsoleInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          if (consoleHistory.length > 0) {
+                            const nextIdx = Math.min(historyIdx + 1, consoleHistory.length - 1);
+                            setHistoryIdx(nextIdx);
+                            setConsoleInput(consoleHistory[nextIdx]);
+                          }
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          if (historyIdx > 0) {
+                            const nextIdx = historyIdx - 1;
+                            setHistoryIdx(nextIdx);
+                            setConsoleInput(consoleHistory[nextIdx]);
+                          } else {
+                            setHistoryIdx(-1);
+                            setConsoleInput('');
+                          }
+                        }
+                      }}
+                      placeholder="WebSocket offline — run host command via HTTP fallback (e.g. docker ps, df -h, git -C /data status)..."
+                      className="flex-1 bg-transparent text-white focus:outline-none font-mono text-xs"
+                    />
+                    <button
+                      type="submit"
+                      disabled={consoleBusy || !consoleInput.trim()}
+                      className="px-3 py-1 rounded bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] text-[11px] font-semibold disabled:opacity-40"
+                    >
+                      {consoleBusy ? 'Running...' : 'Run ↵'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Decoupled Plain Monospace System Job Output View */}
+              {consoleViewMode === 'jobs' && (
                 <div className="flex-1 rounded-xl border border-white/15 bg-[#05070B] p-4 overflow-y-auto font-mono text-xs space-y-1.5">
-                  {logs.length === 0 ? (
+                  {logs.length === 0 && consoleEntries.length === 0 ? (
                     <div className="text-slate-500 italic py-12 text-center">
                       No background job output recorded in this session. Trigger an OS patch, service update, or log prune to view real-time SSE output.
                     </div>
                   ) : (
-                    logs.map((log) => (
-                      <div key={log.id} className="flex items-start gap-2.5">
-                        <span className="text-slate-600 select-none text-[10px] shrink-0">
-                          [{log.timestamp}]
-                        </span>
-                        <div className="break-all">{renderAnsiLine(log.text)}</div>
-                      </div>
-                    ))
+                    <>
+                      {logs.map((log) => (
+                        <div key={`job-${log.id}`} className="flex items-start gap-2.5">
+                          <span className="text-slate-600 select-none text-[10px] shrink-0">
+                            [{log.timestamp}]
+                          </span>
+                          <div className="break-all whitespace-pre-wrap text-slate-200">{renderAnsiLine(log.text)}</div>
+                        </div>
+                      ))}
+                      {consoleEntries.map((entry) => (
+                        <div key={`cmd-${entry.id}`} className="flex items-start gap-2.5">
+                          <span className="text-slate-600 select-none text-[10px] shrink-0">
+                            [{entry.timestamp}]
+                          </span>
+                          <div
+                            className={`break-all whitespace-pre-wrap ${
+                              entry.type === 'input'
+                                ? 'text-[#00f2fe] font-semibold'
+                                : entry.type === 'error'
+                                ? 'text-red-400'
+                                : 'text-slate-300'
+                            }`}
+                          >
+                            {entry.text}
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
                   <div ref={logsEndRef} />
                 </div>
