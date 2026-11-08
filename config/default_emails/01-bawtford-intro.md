@@ -8,7 +8,7 @@ preheader: I live inside your sovereign box now. Zero cloud telemetry, 100% pure
 badge: AGENT ONLINE // RESIDENT CHIEF PAW-FICER
 accent: #a855f7
 footer: Sent from inside your sovereign box by Bawtford (bawtford@{local_domain}) • Zero cloud telemetry
-age_minutes: 0
+age_minutes: 2
 ---
 
 # 🐾 Reporting for duty! (Yes, I actually live inside this box)

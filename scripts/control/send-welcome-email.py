@@ -958,11 +958,12 @@ def seed_maildir(
     )
 
     written_paths: list[Path] = []
+    total_specs = len(specs)
     for spec in specs:
-        # Reverse-order filename prefix (1794074505 down to 1794074501) so lexical,
-        # mtime, and Date header sorting all place Email #1 first in the inbox.
-        seq_epoch = 1794074506 - spec.index
-        file_prefix = f"{seq_epoch}.M00000{spec.index}P1.brainsos"
+        # Reverse-order filename prefix so lexical, mtime, and Date header sorting
+        # all place Email #1 first in the inbox regardless of template count.
+        seq_epoch = 1794074500 + total_specs + 1 - spec.index
+        file_prefix = f"{seq_epoch}.M{spec.index:06d}P1.brainsos"
         msg_id_token = f"<brainsos-welcome-{spec.index}@"
 
         cur_matches = _find_matching_messages(cur_dir, file_prefix, msg_id_token)
