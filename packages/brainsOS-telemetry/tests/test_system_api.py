@@ -162,3 +162,41 @@ def test_websocket_pty_fallback_username_when_sso_header_absent(tmp_path, monkey
             ready_msg = ws.receive_json()
             assert ready_msg["type"] == "ready"
             assert ready_msg["user"] == "su"
+
+
+def test_system_me_endpoint(tmp_path):
+    """Verify GET /api/v1/system/me resolves SSO headers and falls back to configured superuser identity."""
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_LOCAL_DOMAIN=jsm.aws.cloud.brainsos.ai\n"
+        "BRAINSOS_SUPERUSER_USERNAME=jsm\n"
+        "BRAINSOS_SUPERUSER_NAME=Jane Smith\n",
+        encoding="utf-8",
+    )
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+
+        # 1. With Authentik headers
+        res_sso = client.get(
+            "/api/v1/system/me",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "jsm",
+                "X-Authentik-Name": "Jane Smith",
+                "X-Authentik-Email": "jsm@jsm.aws.cloud.brainsos.ai",
+            },
+        )
+        assert res_sso.status_code == 200
+        assert res_sso.json()["username"] == "jsm"
+        assert res_sso.json()["name"] == "Jane Smith"
+        assert res_sso.json()["email"] == "jsm@jsm.aws.cloud.brainsos.ai"
+
+        # 2. Fallback to .env superuser identity when headers are absent
+        res_fb = client.get(
+            "/api/v1/system/me",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert res_fb.status_code == 200
+        assert res_fb.json()["username"] == "jsm"
+        assert res_fb.json()["name"] == "Jane Smith"
+        assert res_fb.json()["email"] == "jsm@jsm.aws.cloud.brainsos.ai"

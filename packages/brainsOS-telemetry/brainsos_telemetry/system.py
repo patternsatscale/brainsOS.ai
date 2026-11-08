@@ -995,7 +995,14 @@ def verify_internal_auth(request: Request):
         )
 
     provided = request.headers.get("X-BrainsOS-Internal")
-    if not provided or not secrets.compare_digest(provided, expected_token):
+    valid_tokens = {expected_token}
+    try:
+        disk_token = parse_env_file_only(get_repo_root()).get("SYSTEM_API_TOKEN", "").strip()
+        if disk_token:
+            valid_tokens.add(disk_token)
+    except Exception:
+        pass
+    if not provided or not any(secrets.compare_digest(provided, tok) for tok in valid_tokens if tok):
         raise HTTPException(
             status_code=401,
             detail="Unauthorized: invalid or missing internal system API token",
@@ -1203,6 +1210,38 @@ def create_system_api_app():
     @app.get("/api/v1/system/identity", dependencies=[Depends(verify_internal_auth)])
     async def identity():
         return JSONResponse(content=get_appliance_identity(repo_root))
+
+    @app.get("/api/v1/system/me", dependencies=[Depends(verify_internal_auth)])
+    async def current_user_me(request: Request):
+        ident = get_appliance_identity(repo_root)
+        hdr_username = (
+            request.headers.get("X-Authentik-Username")
+            or request.headers.get("Remote-User")
+            or ""
+        ).strip()
+        hdr_name = (request.headers.get("X-Authentik-Name") or "").strip()
+        hdr_email = (request.headers.get("X-Authentik-Email") or "").strip()
+
+        username = hdr_username or ident.get("superuser_username") or ident.get("admin_username") or "admin"
+        if hdr_name:
+            name = hdr_name
+        elif username == ident.get("superuser_username") and ident.get("superuser_name"):
+            name = ident.get("superuser_name")
+        elif username.lower() == "admin":
+            name = ident.get("superuser_name") or "Appliance Administrator"
+        else:
+            name = ident.get("superuser_name") or username
+
+        local_dom = ident.get("local_domain") or "brainsos.ai"
+        email = hdr_email or f"{username}@{local_dom}"
+        return JSONResponse(
+            content={
+                "username": username,
+                "name": name,
+                "email": email,
+                "is_superuser": True,
+            }
+        )
 
     @app.post("/api/v1/system/dns-check", dependencies=[Depends(verify_internal_auth)])
     async def dns_check(req: DnsCheckRequest):
@@ -1825,7 +1864,14 @@ def create_system_api_app():
         expected_token = os.environ.get("SYSTEM_API_TOKEN")
         provided_internal = websocket.headers.get("X-BrainsOS-Internal") or websocket.query_params.get("internal_token")
         if expected_token and os.environ.get("BRAINSOS_STAGE") != "test":
-            if not provided_internal or not secrets.compare_digest(provided_internal, expected_token):
+            valid_tokens = {expected_token}
+            try:
+                disk_token = parse_env_file_only(repo_root).get("SYSTEM_API_TOKEN", "").strip()
+                if disk_token:
+                    valid_tokens.add(disk_token)
+            except Exception:
+                pass
+            if not provided_internal or not any(secrets.compare_digest(provided_internal, tok) for tok in valid_tokens if tok):
                 await websocket.close(code=1008)
                 return
         elif provided_internal and expected_token and not secrets.compare_digest(provided_internal, expected_token):

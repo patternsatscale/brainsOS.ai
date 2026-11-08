@@ -83,7 +83,7 @@ RESET_VERSION=false
 UNATTENDED=false
 NO_BACKUP=false
 DRY_RUN=false
-HEALTH_TIMEOUT=90
+HEALTH_TIMEOUT=120
 
 show_help() {
   echo -e "${BOLD}brainsOS Universal Appliance & Platform Update Engine${NC}"
@@ -1175,18 +1175,28 @@ if [ "${DRY_RUN}" = false ]; then
       fi
     done
 
-    # 2. Fast LiteLLM probe
+    # 2. Fast LiteLLM probe (supports both published host port and appliance internal-only container network)
     if docker ps -q --filter "name=^/brainsos-control-litellm$" 2>/dev/null | grep -q .; then
-      if curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LITELLM_PORT:-4000}/health/liveness" >/dev/null 2>&1; then
+      litellm_hstate="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' brainsos-control-litellm 2>/dev/null || echo "none")"
+      if [ "${litellm_hstate}" = "healthy" ]; then
+        LITELLM_OK=true
+      elif curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LITELLM_PORT:-4000}/health/liveness" >/dev/null 2>&1; then
+        LITELLM_OK=true
+      elif docker exec brainsos-control-litellm python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveness', timeout=2)" >/dev/null 2>&1; then
         LITELLM_OK=true
       fi
     else
       LITELLM_OK=true
     fi
 
-    # 3. Fast Langfuse probe
+    # 3. Fast Langfuse probe (supports both published host port and appliance internal-only container network)
     if docker ps -q --filter "name=^/brainsos-telemetry-langfuse-web$" 2>/dev/null | grep -q .; then
-      if curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LANGFUSE_PORT:-3001}/api/public/health" >/dev/null 2>&1; then
+      langfuse_hstate="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' brainsos-telemetry-langfuse-web 2>/dev/null || echo "none")"
+      if [ "${langfuse_hstate}" = "healthy" ]; then
+        LANGFUSE_OK=true
+      elif curl -sf --connect-timeout 2 --max-time 2 "http://127.0.0.1:${LANGFUSE_PORT:-3001}/api/public/health" >/dev/null 2>&1; then
+        LANGFUSE_OK=true
+      elif docker exec brainsos-telemetry-langfuse-web wget -qO- -T 2 http://127.0.0.1:3000/api/public/health >/dev/null 2>&1; then
         LANGFUSE_OK=true
       fi
     else
@@ -1194,11 +1204,14 @@ if [ "${DRY_RUN}" = false ]; then
     fi
 
     # 4. Ingress (Caddy) non-5xx probe using active BRAINSOS_DOMAIN SNI & /healthz
-    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/healthz" 2>/dev/null || echo "000")"
-    if [ "${HTTP_CODE}" = "000" ] || [ "${HTTP_CODE}" -ge 500 ]; then
-      HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/api/v1/system/health" 2>/dev/null || curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:80/healthz" 2>/dev/null || echo "000")"
+    HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/healthz" 2>/dev/null || true)"
+    if [[ ! "${HTTP_CODE}" =~ ^[234][0-9][0-9]$ ]]; then
+      HTTP_CODE="$(curl -s -k -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 --resolve "${PROBE_DOMAIN}:443:127.0.0.1" "https://${PROBE_DOMAIN}:443/api/v1/system/health" 2>/dev/null || true)"
     fi
-    if [ "${HTTP_CODE}" != "000" ] && [ "${HTTP_CODE}" -lt 500 ]; then
+    if [[ ! "${HTTP_CODE}" =~ ^[234][0-9][0-9]$ ]]; then
+      HTTP_CODE="$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "http://127.0.0.1:80/healthz" 2>/dev/null || true)"
+    fi
+    if [[ "${HTTP_CODE}" =~ ^[234][0-9][0-9]$ ]]; then
       CADDY_OK=true
     fi
 

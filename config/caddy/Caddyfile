@@ -214,7 +214,9 @@ import tls_policy.caddy
 		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
 			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
 			header_up X-Authentik-Username {header.X-Authentik-Username}
+			header_up X-Authentik-Name {header.X-Authentik-Name}
 			header_up X-Authentik-Email {header.X-Authentik-Email}
+			header_up X-Authentik-Groups {header.X-Authentik-Groups}
 			header_up Remote-User {header.Remote-User}
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Host {host}

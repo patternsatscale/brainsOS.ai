@@ -140,6 +140,20 @@ op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KE
 master_key = os.environ.get("LITELLM_MASTER_KEY") or ""
 
 import urllib.request
+import time
+
+def wait_for_litellm(timeout_sec=30):
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        try:
+            req = urllib.request.Request("http://litellm:4000/health/liveness")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
 
 def key_works(k):
     if not k:
@@ -153,6 +167,8 @@ def key_works(k):
             return resp.status == 200
     except Exception:
         return False
+
+wait_for_litellm(30)
 
 # Preserve existing working key in chatLanguageModels.json if user configured one
 existing_key = ""
@@ -243,6 +259,12 @@ d["litellm-connector.enableModelOverrides"] = False
 d["litellm-connector.displayPricingInPicker"] = False
 d["litellm-connector.modelCapabilitiesOverrides"] = {
     "brainsos-core": "toolCalling",
+    "cindy-active-coding-model": "toolCalling",
+    "claude-sonnet-4-5": "toolCalling",
+    "claude-haiku-4-5": "toolCalling",
+    "claude-3-5-haiku": "toolCalling",
+    "amazon-nova-pro": "toolCalling",
+    "amazon-nova-lite": "toolCalling",
     "qwen3.8": "toolCalling",
     "qwen3.8:latest": "toolCalling",
     "qwen2.5": "toolCalling",
