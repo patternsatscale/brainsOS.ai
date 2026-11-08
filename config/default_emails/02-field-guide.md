@@ -17,16 +17,25 @@ Ready to take your appliance for a spin, **{user}**?
 
 The fastest way to experience **brainsOS** is to click **Compose** (or simply hit **Reply** on this email) and send a task to [bawtford@{local_domain}](mailto:bawtford@{local_domain}). Your message stays 100% inside the appliance, triggers the autonomous agent queue, and delivers a researched response right back to your Inbox.
 
-## Copy-Paste One of These Prompts to `bawtford@{local_domain}`
+## The Classic Bawtford Deep-Research Demo (Copy & Paste)
 
-1. **The 7-Layer Box Tour:** Ask Bawtford how each plane of the appliance keeps an enterprise safe.
-2. **Cindy Pawford Brand & Web Audit:** Ask Bawtford how he keeps `cindypawford.com` runway-ready and free of trackers.
-3. **The Rule 1 Haiku Challenge:** Ask for a poetic explanation of why binary databases are banned in `/memories`.
-4. **Sovereign AI Executive Memo:** Request a crisp 5-bullet briefing on local-first AI vs. opaque cloud SaaS bots.
+Hit **Reply** on this email (it automatically routes to `bawtford@{local_domain}`) and paste the prompt below—swap in your full name or handle for `{user}` if you want him to dig up real public facts:
 
 ```prompt
-Hey Bawtford, research how the 7-layer "Enterprise Agent in a Box" architecture works in brainsOS, explain how the "Talk to the Paw" protocol and Egress Firewall team up to protect Cindy Pawford's digital empire, and log a brief summary in /memories.
+Hi Bawtford,
+
+Do research on {user}. Find obscure facts, hobbies and their career trajectory. Put what you learn into memory and send me a summary. What do you think of the brand?
+
+Try to answer this question: has {user} ever had a dog? What's the name?
+
+Cheers,
+{user}
 ```
+
+### Why This Demo Is So Good
+- **LiteLLM (`Alt+3`) & Langfuse (`Alt+4`):** Generates a rich multi-step trace with tool calls, search spans, and virtual key token usage under `brainsos-bawtford`.
+- **Egress Firewall (`Alt+5`):** Watch Bawtford's live outbound search queries flow through the `mitmweb` inspector.
+- **Readable Memory (`Alt+6`) & Git (`Alt+7`):** Inspect the pure Markdown dossier he writes into `/memories` and commits to Gitea.
 
 ## Meet Your On-Box Agent Fleet Directory
 
