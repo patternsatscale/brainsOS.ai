@@ -58,7 +58,12 @@ USER root
 RUN LITELLM_PKG=$(find /opt/code-server/extensions -path "*/gethnet.litellm-connector-copilot-*/package.json" | head -1) && \
     python3 -c "import json, sys; f_path = sys.argv[1]; c = open(f_path).read().replace('\"secret\": true,', '').replace('\"secret\": true', ''); open(f_path, 'w').write(c); print('Patched:', f_path)" "${LITELLM_PKG}" && \
     FOAM_PKG=$(find /opt/code-server/extensions -path "*/foam.foam-vscode-*/package.json" | head -1) && \
-    python3 -c "import json, sys; p = sys.argv[1]; d = json.load(open(p)); [v.update({'when': 'false'}) for v in d.get('contributes', {}).get('views', {}).get('explorer', [])]; json.dump(d, open(p, 'w'), indent=2); print('Patched foam views:', p)" "${FOAM_PKG}"
+    python3 -c "import json, sys; p = sys.argv[1]; d = json.load(open(p)); [v.update({'when': 'false'}) for v in d.get('contributes', {}).get('views', {}).get('explorer', [])]; json.dump(d, open(p, 'w'), indent=2); print('Patched foam views:', p)" "${FOAM_PKG}" && \
+    if [ -f /usr/lib/code-server/lib/vscode/extensions/copilot/package.json ]; then \
+        jq '.contributes.chatViewsWelcome = [] | .contributes.chatSessions = []' \
+          /usr/lib/code-server/lib/vscode/extensions/copilot/package.json > /tmp/copilot_pkg.json \
+        && mv /tmp/copilot_pkg.json /usr/lib/code-server/lib/vscode/extensions/copilot/package.json; \
+    fi
 
 # Copy entrypoint wrapper
 USER root

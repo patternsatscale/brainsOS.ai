@@ -37,7 +37,10 @@ services:
       - HERMES_UID=1000
       - HERMES_GID=1000
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
-      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - OPENAI_API_KEY=${BAWTFORD_LITELLM_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
+      - BAWTFORD_LITELLM_KEY=${BAWTFORD_LITELLM_KEY:-}
+      - TERRASTELLA_LITELLM_KEY=${TERRASTELLA_LITELLM_KEY:-}
+      - MARVIN_LITELLM_KEY=${MARVIN_LITELLM_KEY:-}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
       # Web search & crawling provider keys (#334)
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
@@ -112,7 +115,10 @@ services:
       - "127.0.0.1:${OPENAI_RUNNER_PORT:-8002}:8002"
     environment:
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
-      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - OPENAI_API_KEY=${BAWTFORD_LITELLM_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
+      - BAWTFORD_LITELLM_KEY=${BAWTFORD_LITELLM_KEY:-}
+      - TERRASTELLA_LITELLM_KEY=${TERRASTELLA_LITELLM_KEY:-}
+      - MARVIN_LITELLM_KEY=${MARVIN_LITELLM_KEY:-}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082

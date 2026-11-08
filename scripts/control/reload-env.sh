@@ -665,7 +665,7 @@ fi
 
 # Synchronize Operator IDE (code-server) with active LiteLLM virtual key
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(app-)?code-server$'; then
-  docker compose restart code-server >/dev/null 2>&1 || true
+  docker compose up -d code-server >/dev/null 2>&1 || true
   log_success "Operator IDE (code-server) synchronized with LiteLLM virtual key."
 fi
 

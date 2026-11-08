@@ -47,7 +47,7 @@ EOF
 # In headless code-server, VS Code's SecretStorage cannot resolve secrets via GUI prompt.
 # Removing "secret": true ensures VS Code passes apiKey from chatLanguageModels.json directly.
 python3 - << 'EOF' || true
-import glob
+import glob, json
 for p in glob.glob('/home/coder/.local/share/code-server/extensions/gethnet.litellm-connector-copilot-*/package.json') + \
          glob.glob('/opt/code-server/extensions/gethnet.litellm-connector-copilot-*/package.json'):
     try:
@@ -57,6 +57,21 @@ for p in glob.glob('/home/coder/.local/share/code-server/extensions/gethnet.lite
             c = c.replace('"secret": true,', '').replace('"secret": true', '')
             with open(p, 'w') as f:
                 f.write(c)
+    except Exception:
+        pass
+
+for cp in glob.glob('/usr/lib/code-server/lib/vscode/extensions/copilot/package.json') + \
+          glob.glob('/home/coder/.local/share/code-server/extensions/github.copilot*/package.json') + \
+          glob.glob('/opt/code-server/extensions/github.copilot*/package.json'):
+    try:
+        with open(cp, 'r') as f:
+            cd = json.load(f)
+        contrib = cd.get('contributes', {})
+        if 'chatViewsWelcome' in contrib or 'chatSessions' in contrib:
+            contrib['chatViewsWelcome'] = []
+            contrib['chatSessions'] = []
+            with open(cp, 'w') as f:
+                json.dump(cd, f, indent=2)
     except Exception:
         pass
 EOF
@@ -121,29 +136,31 @@ EOF
 
 # 3. Dynamic Configuration of VS Code User settings.json and chatLanguageModels.json
 mkdir -p /home/coder/.local/share/code-server/User
-python3 - << 'PYEOF' || true
-import json, os
+cat << 'PYEOF' > /tmp/brainsos_sync_byok.py
+import json
+import os
+import sqlite3
+import sys
+import time
+import urllib.request
 
 settings_path = "/home/coder/.local/share/code-server/User/settings.json"
 lm_json_path = "/home/coder/.local/share/code-server/User/chatLanguageModels.json"
+vscdb_path = "/home/coder/.local/share/code-server/User/globalStorage/state.vscdb"
+ws_settings_path = "/data/.vscode/settings.json"
+aider_path = "/home/coder/.aider.conf.yml"
 
-try:
-    if os.path.exists(settings_path):
-        with open(settings_path, "r", encoding="utf-8") as f:
-            d = json.load(f)
-    else:
-        d = {}
-except Exception:
-    d = {}
+timeout_sec = 15
+is_background = "--background" in sys.argv
+for i, arg in enumerate(sys.argv):
+    if arg == "--timeout" and i + 1 < len(sys.argv):
+        try:
+            timeout_sec = int(sys.argv[i + 1])
+        except Exception:
+            pass
 
-op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KEY") or "sk-brainsos-operator-virtual-key"
-master_key = os.environ.get("LITELLM_MASTER_KEY") or ""
-
-import urllib.request
-import time
-
-def wait_for_litellm(timeout_sec=30):
-    deadline = time.time() + timeout_sec
+def wait_for_litellm(wait_sec=15):
+    deadline = time.time() + wait_sec
     while time.time() < deadline:
         try:
             req = urllib.request.Request("http://litellm:4000/health/liveness")
@@ -155,46 +172,40 @@ def wait_for_litellm(timeout_sec=30):
         time.sleep(1)
     return False
 
-def key_works(k):
+def key_returns_models(k, require_nonempty=False):
     if not k:
         return False
-    try:
-        req = urllib.request.Request(
-            "http://litellm:4000/model/info",
-            headers={"Authorization": f"Bearer {k}"}
-        )
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
+    for endpoint in ("http://litellm:4000/v1/models", "http://litellm:4000/model/info"):
+        try:
+            req = urllib.request.Request(
+                endpoint,
+                headers={"Authorization": f"Bearer {k}"}
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status == 200:
+                    body = json.loads(resp.read().decode("utf-8"))
+                    if not require_nonempty:
+                        return True
+                    data_list = body.get("data") if isinstance(body, dict) else None
+                    if isinstance(data_list, list) and len(data_list) > 0:
+                        return True
+        except Exception:
+            pass
+    return False
 
-wait_for_litellm(30)
-
-# Preserve existing working key in chatLanguageModels.json if user configured one
-existing_key = ""
-if os.path.exists(lm_json_path):
-    try:
-        with open(lm_json_path, "r", encoding="utf-8") as f:
-            existing_lm = json.load(f)
-        if isinstance(existing_lm, list) and existing_lm and isinstance(existing_lm[0], dict):
-            existing_key = str(existing_lm[0].get("apiKey") or "").strip()
-    except Exception:
-        pass
-
-if existing_key and key_works(existing_key):
-    op_key = existing_key
-elif not key_works(op_key) and master_key:
-    # Auto-provision or reconcile operator virtual key in LiteLLM control plane
+def provision_operator_key(op_k, master_k):
+    if not master_k:
+        return op_k
     try:
         for del_payload in (
-            {"keys": [op_key]},
+            {"keys": [op_k]},
             {"key_aliases": ["brainsOs.console", "brainsOS.console", "brainsos-operator"]},
         ):
             req_del = urllib.request.Request(
                 "http://litellm:4000/key/delete",
                 data=json.dumps(del_payload).encode("utf-8"),
                 headers={
-                    "Authorization": f"Bearer {master_key}",
+                    "Authorization": f"Bearer {master_k}",
                     "Content-Type": "application/json",
                 },
                 method="POST",
@@ -205,7 +216,7 @@ elif not key_works(op_key) and master_key:
                 pass
 
         gen_payload = {
-            "key": op_key,
+            "key": op_k,
             "key_alias": "brainsOs.console",
             "user_id": "admin",
             "max_budget": 100.0,
@@ -215,7 +226,7 @@ elif not key_works(op_key) and master_key:
             "http://litellm:4000/key/generate",
             data=json.dumps(gen_payload).encode("utf-8"),
             headers={
-                "Authorization": f"Bearer {master_key}",
+                "Authorization": f"Bearer {master_k}",
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -223,200 +234,308 @@ elif not key_works(op_key) and master_key:
         with urllib.request.urlopen(req_gen, timeout=4) as resp:
             gen_data = json.loads(resp.read().decode("utf-8"))
             if gen_data.get("key"):
-                op_key = str(gen_data["key"])
+                return str(gen_data["key"])
     except Exception:
         pass
+    return op_k
 
-# Core workbench and theme
-d["workbench.colorTheme"] = "Dark Modern"
-d["window.autoDetectColorScheme"] = False
-d["terminal.integrated.cwd"] = "/data"
-d["terminal.integrated.defaultLocation"] = "editor"
-d["terminal.integrated.defaultProfile.linux"] = "bash"
-
-# AI & Copilot settings (LiteLLM handles all models dynamically via virtual key)
-d["chat.commandCenter.enabled"] = True
-d["chat.defaultModel"] = "brainsos-core"
-d["chat.byokUtilityModelDefault"] = "mainAgent"
-d["chat.promptFiles"] = True
-d["chat.agentFilesLocations"] = {
-    ".github/agents": True,
-    ".claude/agents": True,
-    ".agents/souls": True,
-    "souls": True
-}
-d["chat.useAgentSkills"] = True
-d["chat.agentSkillsLocations"] = {
-    ".agents/skills": True,
-    ".github/skills": True,
-    ".claude/skills": True
-}
-# Remove any legacy hardcoded model dictionaries
-d.pop("github.copilot.chat.customOAIModels", None)
-
-d["litellm-connector.discoveryTimeoutMs"] = 5000
-d["litellm-connector.enableModelOverrides"] = False
-d["litellm-connector.displayPricingInPicker"] = False
-d["litellm-connector.modelCapabilitiesOverrides"] = {
-    "brainsos-core": "toolCalling",
-    "cindy-active-coding-model": "toolCalling",
-    "claude-sonnet-4-5": "toolCalling",
-    "claude-haiku-4-5": "toolCalling",
-    "claude-3-5-haiku": "toolCalling",
-    "amazon-nova-pro": "toolCalling",
-    "amazon-nova-lite": "toolCalling",
-    "qwen3.8": "toolCalling",
-    "qwen3.8:latest": "toolCalling",
-    "qwen2.5": "toolCalling",
-    "qwen2.5:latest": "toolCalling",
-    "llama3.2:3b": "toolCalling",
-    "muse-glimmer": "toolCalling",
-    "gemma4-MOE": "toolCalling"
-}
-
-# Security & telemetry
-d["security.workspace.trust.enabled"] = False
-d["security.workspace.trust.startupPrompt"] = "never"
-d["security.workspace.trust.emptyWindow"] = True
-d["extensions.autoUpdate"] = False
-d["extensions.autoCheckUpdates"] = False
-d["http.proxyStrictSSL"] = False
-d["telemetry.telemetryLevel"] = "off"
-d["workbench.startupEditor"] = "none"
-d["workbench.editor.restoreViewState"] = True
-
-# Git & Source Control integration (#340)
-d["github.gitAuthentication"] = False
-d["git.terminalAuthentication"] = False
-d["git.enabled"] = True
-d["git.path"] = "/usr/bin/git"
-d["git.autofetch"] = True
-d["git.confirmSync"] = False
-d["git.enableSmartCommit"] = True
-d["scm.alwaysShowRepositories"] = True
-
-# Pruned Explorer View & Outline / Timeline exclusions
-d["explorer.autoReveal"] = True
-d["explorer.openEditors.visible"] = 0
-d["outline.collapseItems"] = "alwaysCollapse"
-d["outline.showProblems"] = False
-d["timeline.excludeSources"] = ["*"]
-d["npm.exclude"] = ["**"]
-d["foam.orphans.exclude"] = ["**/*"]
-d["foam.placeholders.exclude"] = ["**/*"]
-d["workbench.tree.renderIndentGuides"] = "always"
-d["workbench.tree.indent"] = 14
-d["files.autoSave"] = "afterDelay"
-d["files.exclude"] = {
-    "**/.git": False,
-    "**/.svn": True,
-    "**/.hg": True,
-    "**/CVS": True,
-    "**/.DS_Store": True,
-    "**/Thumbs.db": True,
-    "**/.vscode": False
-}
-d["search.exclude"] = {
-    "**/node_modules": True,
-    "**/bower_components": True,
-    "**/*.code-search": True,
-    "**/control_plane": True,
-    "**/comms": True,
-    "**/telemetry": True,
-    "**/backups": True,
-    "**/litellm_db": True,
-    "**/postgres": True,
-    "**/langfuse_*": True,
-    "**/data/litellm_db": True,
-    "**/data/postgres": True,
-    "**/data/langfuse_*": True,
-    "**/data/langfuse_clickhouse": True,
-    "**/data/langfuse_postgres": True,
-    "**/data/telemetry": True,
-    "**/data/git": True,
-    "**/git": True,
-    "**/data/control_plane/litellm_db": True
-}
-d["files.watcherExclude"] = {
-    "**/.git/objects/**": True,
-    "**/.git/subtree-cache/**": True,
-    "**/node_modules/**": True,
-    "**/.cache/**": True,
-    "**/control_plane/**": True,
-    "**/comms/**": True,
-    "**/telemetry/**": True,
-    "**/backups/**": True,
-    "**/litellm_db/**": True,
-    "**/postgres/**": True,
-    "**/langfuse_*/**": True,
-    "**/workspace/**": True,
-    "**/agent_workspaces/**": True,
-    "**/data/litellm_db/**": True,
-    "**/data/postgres/**": True,
-    "**/data/langfuse_*/**": True,
-    "**/data/langfuse_clickhouse/**": True,
-    "**/data/langfuse_postgres/**": True,
-    "**/data/control_plane/**": True,
-    "**/data/control_plane/litellm_db/**": True,
-    "**/data/workspace/**": True,
-    "**/data/agent_workspaces/**": True,
-    "**/data/comms/**": True,
-    "**/data/telemetry/**": True,
-    "**/data/git/**": True,
-    "**/git/**": True,
-    "**/.venv/**": True,
-    "**/dist/**": True,
-    "**/build/**": True
-}
-
-with open(settings_path, "w", encoding="utf-8") as f:
-    json.dump(d, f, indent=2)
-
-ws_settings_path = "/data/.vscode/settings.json"
-if os.path.exists(ws_settings_path):
+def write_configs(active_key):
     try:
-        with open(ws_settings_path, "r", encoding="utf-8") as f:
-            ws_d = json.load(f)
-        if isinstance(ws_d, dict):
-            ws_d["github.gitAuthentication"] = False
-            ws_d["git.terminalAuthentication"] = False
-            ws_d["git.enabled"] = True
-            ws_d["git.path"] = "/usr/bin/git"
-            ws_d["git.autofetch"] = True
-            ws_d["git.confirmSync"] = False
-            ws_d["git.enableSmartCommit"] = True
-            ws_d["scm.alwaysShowRepositories"] = True
-            ws_d["files.watcherExclude"] = d["files.watcherExclude"]
-            ws_d["search.exclude"] = d["search.exclude"]
-            ws_d["litellm-connector.modelCapabilitiesOverrides"] = d["litellm-connector.modelCapabilitiesOverrides"]
-            with open(ws_settings_path, "w", encoding="utf-8") as f:
-                json.dump(ws_d, f, indent=2)
+        if os.path.exists(settings_path):
+            with open(settings_path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        else:
+            d = {}
+    except Exception:
+        d = {}
+
+    # Core workbench and theme
+    d["workbench.colorTheme"] = "Dark Modern"
+    d["window.autoDetectColorScheme"] = False
+    d["terminal.integrated.cwd"] = "/data"
+    d["terminal.integrated.defaultLocation"] = "editor"
+    d["terminal.integrated.defaultProfile.linux"] = "bash"
+
+    # AI & Copilot settings (LiteLLM handles all models dynamically via virtual key)
+    d["chat.commandCenter.enabled"] = True
+    d["chat.defaultModel"] = "brainsos-core"
+    d["chat.byokUtilityModelDefault"] = "mainAgent"
+    d["chat.allowAnonymousAccess"] = True
+    d["github.copilot.chat.backgroundAgent.enabled"] = False
+    d["github.copilot.chat.cloudAgent.enabled"] = False
+    d["chat.defaultToCopilotHarness"] = False
+    d["chat.editor.preferCopilotHarness"] = False
+    d["chat.editor.localAgent.enabled"] = True
+    d["chat.titleBar.signIn.enabled"] = False
+    d["chat.growthNotification.enabled"] = False
+    d["chat.promptFiles"] = True
+    d["chat.agentFilesLocations"] = {
+        ".github/agents": True,
+        ".claude/agents": True,
+        ".agents/souls": True,
+        "souls": True
+    }
+    d["chat.useAgentSkills"] = True
+    d["chat.agentSkillsLocations"] = {
+        ".agents/skills": True,
+        ".github/skills": True,
+        ".claude/skills": True
+    }
+    # Remove any legacy hardcoded model dictionaries
+    d.pop("github.copilot.chat.customOAIModels", None)
+
+    d["litellm-connector.discoveryTimeoutMs"] = 5000
+    d["litellm-connector.enableModelOverrides"] = False
+    d["litellm-connector.displayPricingInPicker"] = False
+    d["litellm-connector.modelCapabilitiesOverrides"] = {
+        "brainsos-core": "toolCalling",
+        "cindy-active-coding-model": "toolCalling",
+        "claude-sonnet-4-5": "toolCalling",
+        "claude-haiku-4-5": "toolCalling",
+        "claude-3-5-haiku": "toolCalling",
+        "amazon-nova-pro": "toolCalling",
+        "amazon-nova-lite": "toolCalling",
+        "qwen3.8": "toolCalling",
+        "qwen3.8:latest": "toolCalling",
+        "qwen2.5": "toolCalling",
+        "qwen2.5:latest": "toolCalling",
+        "llama3.2:3b": "toolCalling",
+        "muse-glimmer": "toolCalling",
+        "gemma4-MOE": "toolCalling"
+    }
+
+    # Security & telemetry
+    d["security.workspace.trust.enabled"] = False
+    d["security.workspace.trust.startupPrompt"] = "never"
+    d["security.workspace.trust.emptyWindow"] = True
+    d["extensions.autoUpdate"] = False
+    d["extensions.autoCheckUpdates"] = False
+    d["http.proxyStrictSSL"] = False
+    d["telemetry.telemetryLevel"] = "off"
+    d["workbench.startupEditor"] = "none"
+    d["workbench.editor.restoreViewState"] = True
+
+    # Git & Source Control integration (#340)
+    d["github.gitAuthentication"] = False
+    d["git.terminalAuthentication"] = False
+    d["git.enabled"] = True
+    d["git.path"] = "/usr/bin/git"
+    d["git.autofetch"] = True
+    d["git.confirmSync"] = False
+    d["git.enableSmartCommit"] = True
+    d["scm.alwaysShowRepositories"] = True
+
+    # Pruned Explorer View & Outline / Timeline exclusions
+    d["explorer.autoReveal"] = True
+    d["explorer.openEditors.visible"] = 0
+    d["outline.collapseItems"] = "alwaysCollapse"
+    d["outline.showProblems"] = False
+    d["timeline.excludeSources"] = ["*"]
+    d["npm.exclude"] = ["**"]
+    d["foam.orphans.exclude"] = ["**/*"]
+    d["foam.placeholders.exclude"] = ["**/*"]
+    d["workbench.tree.renderIndentGuides"] = "always"
+    d["workbench.tree.indent"] = 14
+    d["files.autoSave"] = "afterDelay"
+    d["files.exclude"] = {
+        "**/.git": False,
+        "**/.svn": True,
+        "**/.hg": True,
+        "**/CVS": True,
+        "**/.DS_Store": True,
+        "**/Thumbs.db": True,
+        "**/.vscode": False
+    }
+    d["search.exclude"] = {
+        "**/node_modules": True,
+        "**/bower_components": True,
+        "**/*.code-search": True,
+        "**/control_plane": True,
+        "**/comms": True,
+        "**/telemetry": True,
+        "**/backups": True,
+        "**/litellm_db": True,
+        "**/postgres": True,
+        "**/langfuse_*": True,
+        "**/data/litellm_db": True,
+        "**/data/postgres": True,
+        "**/data/langfuse_*": True,
+        "**/data/langfuse_clickhouse": True,
+        "**/data/langfuse_postgres": True,
+        "**/data/telemetry": True,
+        "**/data/git": True,
+        "**/git": True,
+        "**/data/control_plane/litellm_db": True
+    }
+    d["files.watcherExclude"] = {
+        "**/.git/objects/**": True,
+        "**/.git/subtree-cache/**": True,
+        "**/node_modules/**": True,
+        "**/.cache/**": True,
+        "**/control_plane/**": True,
+        "**/comms/**": True,
+        "**/telemetry/**": True,
+        "**/backups/**": True,
+        "**/litellm_db/**": True,
+        "**/postgres/**": True,
+        "**/langfuse_*/**": True,
+        "**/workspace/**": True,
+        "**/agent_workspaces/**": True,
+        "**/data/litellm_db/**": True,
+        "**/data/postgres/**": True,
+        "**/data/langfuse_*/**": True,
+        "**/data/langfuse_clickhouse/**": True,
+        "**/data/langfuse_postgres/**": True,
+        "**/data/control_plane/**": True,
+        "**/data/control_plane/litellm_db/**": True,
+        "**/data/workspace/**": True,
+        "**/data/agent_workspaces/**": True,
+        "**/data/comms/**": True,
+        "**/data/telemetry/**": True,
+        "**/data/git/**": True,
+        "**/git/**": True,
+        "**/.venv/**": True,
+        "**/dist/**": True,
+        "**/build/**": True
+    }
+
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2)
+
+    if os.path.exists(ws_settings_path):
+        try:
+            with open(ws_settings_path, "r", encoding="utf-8") as f:
+                ws_d = json.load(f)
+            if isinstance(ws_d, dict):
+                ws_d["chat.allowAnonymousAccess"] = True
+                ws_d["github.copilot.chat.backgroundAgent.enabled"] = False
+                ws_d["github.copilot.chat.cloudAgent.enabled"] = False
+                ws_d["chat.defaultToCopilotHarness"] = False
+                ws_d["chat.editor.preferCopilotHarness"] = False
+                ws_d["chat.editor.localAgent.enabled"] = True
+                ws_d["chat.titleBar.signIn.enabled"] = False
+                ws_d["chat.growthNotification.enabled"] = False
+                ws_d["github.gitAuthentication"] = False
+                ws_d["git.terminalAuthentication"] = False
+                ws_d["git.enabled"] = True
+                ws_d["git.path"] = "/usr/bin/git"
+                ws_d["git.autofetch"] = True
+                ws_d["git.confirmSync"] = False
+                ws_d["git.enableSmartCommit"] = True
+                ws_d["scm.alwaysShowRepositories"] = True
+                ws_d["files.watcherExclude"] = d["files.watcherExclude"]
+                ws_d["search.exclude"] = d["search.exclude"]
+                ws_d["litellm-connector.modelCapabilitiesOverrides"] = d["litellm-connector.modelCapabilitiesOverrides"]
+                with open(ws_settings_path, "w", encoding="utf-8") as f:
+                    json.dump(ws_d, f, indent=2)
+        except Exception:
+            pass
+
+    domain = os.environ.get("BRAINSOS_DOMAIN", "local.brainsos.ai")
+    key_alias = f"{domain}/editor/"
+    chat_lm = [
+        {
+            "name": f"LiteLLM ({key_alias})",
+            "vendor": "litellm-connector",
+            "baseUrl": "http://litellm:4000",
+            "apiKey": active_key
+        }
+    ]
+    with open(lm_json_path, "w", encoding="utf-8") as f:
+        json.dump(chat_lm, f, indent=2)
+
+    try:
+        with open(aider_path, "w", encoding="utf-8") as f:
+            f.write(f"openai-api-base: http://litellm:4000/v1\nopenai-api-key: {active_key}\nmodel: openai/brainsos-core\n")
     except Exception:
         pass
 
-# 3b. Dynamic chatLanguageModels.json with LiteLLM Connector (Zero hardcoded models)
-domain = os.environ.get("BRAINSOS_DOMAIN", "local.brainsos.ai")
-key_alias = f"{domain}/editor/"
+    try:
+        os.makedirs(os.path.dirname(vscdb_path), exist_ok=True)
+        conn = sqlite3.connect(vscdb_path, timeout=5)
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)")
+        cur.execute(
+            "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+            ("chat.setupContext", json.dumps({"chatSetupCompleted": True, "chatSetupHidden": True})),
+        )
+        cur.execute(
+            "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+            ("github.copilot.hasByokModels", "true"),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
-chat_lm = [
-    {
-        "name": f"LiteLLM ({key_alias})",
-        "vendor": "litellm-connector",
-        "baseUrl": "http://litellm:4000",
-        "apiKey": op_key
-    }
-]
-with open(lm_json_path, "w", encoding="utf-8") as f:
-    json.dump(chat_lm, f, indent=2)
+op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KEY") or "sk-brainsos-operator-virtual-key"
+master_key = os.environ.get("LITELLM_MASTER_KEY") or ""
 
-# Keep Aider configuration synchronized with active operator key
-aider_path = "/home/coder/.aider.conf.yml"
-try:
-    with open(aider_path, "w", encoding="utf-8") as f:
-        f.write(f"openai-api-base: http://litellm:4000/v1\nopenai-api-key: {op_key}\nmodel: openai/brainsos-core\n")
-except Exception:
-    pass
+existing_key = ""
+if os.path.exists(lm_json_path):
+    try:
+        with open(lm_json_path, "r", encoding="utf-8") as f:
+            existing_lm = json.load(f)
+        if isinstance(existing_lm, list) and existing_lm and isinstance(existing_lm[0], dict):
+            existing_key = str(existing_lm[0].get("apiKey") or "").strip()
+    except Exception:
+        pass
+
+if not is_background:
+    # Write initial baseline immediately, then do fast check up to timeout_sec (15s)
+    write_configs(existing_key or op_key)
+    if wait_for_litellm(timeout_sec):
+        if existing_key and key_returns_models(existing_key):
+            op_key = existing_key
+        elif not key_returns_models(op_key) and master_key:
+            op_key = provision_operator_key(op_key, master_key)
+            if not key_returns_models(op_key) and key_returns_models(master_key):
+                op_key = master_key
+        write_configs(op_key)
+else:
+    # Background loop: wait up to timeout_sec (180s) for LiteLLM liveness and valid /v1/models
+    deadline = time.time() + timeout_sec
+    synced_with_models = False
+    while time.time() < deadline:
+        if wait_for_litellm(5):
+            candidate = op_key
+            if existing_key and key_returns_models(existing_key):
+                candidate = existing_key
+            elif not key_returns_models(candidate) and master_key:
+                candidate = provision_operator_key(op_key, master_key)
+                if not key_returns_models(candidate) and key_returns_models(master_key):
+                    candidate = master_key
+            if key_returns_models(candidate):
+                op_key = candidate
+                write_configs(op_key)
+                if key_returns_models(op_key, require_nonempty=True):
+                    if synced_with_models:
+                        break
+                    synced_with_models = True
+                    time.sleep(10)
+                    continue
+        time.sleep(3)
 PYEOF
+
+python3 /tmp/brainsos_sync_byok.py --timeout 15 || true
+
+if command -v jq >/dev/null 2>&1 && [ -f /home/coder/.local/share/code-server/User/settings.json ]; then
+  jq '. + {
+    "chat.allowAnonymousAccess": true,
+    "github.copilot.chat.backgroundAgent.enabled": false,
+    "github.copilot.chat.cloudAgent.enabled": false,
+    "chat.defaultToCopilotHarness": false,
+    "chat.editor.preferCopilotHarness": false,
+    "chat.editor.localAgent.enabled": true,
+    "chat.titleBar.signIn.enabled": false,
+    "chat.growthNotification.enabled": false
+  }' /home/coder/.local/share/code-server/User/settings.json > /tmp/user_settings_merged.json \
+    && mv /tmp/user_settings_merged.json /home/coder/.local/share/code-server/User/settings.json || true
+fi
+
+sync_litellm_byok_loop() {
+  python3 /tmp/brainsos_sync_byok.py --timeout 180 --background >/dev/null 2>&1 || true
+}
 
 # 3c. Seed workspace settings to /data/.vscode/settings.json if missing
 mkdir -p /data/.vscode 2>/dev/null || true
@@ -490,6 +609,9 @@ EOF
 
 # Clear stale cached workspace configurations while preserving workspaceStorage for explorer view state
 rm -rf /home/coder/.local/share/code-server/User/caches/CachedConfigurations/workspaces 2>/dev/null || true
+
+# Spawn background helper to re-sync BYOK key and settings once LiteLLM finishes migrations
+sync_litellm_byok_loop &
 
 # Launch upstream entrypoint opening /data as the single workspace root
 TARGET_DIR="${1:-/data}"

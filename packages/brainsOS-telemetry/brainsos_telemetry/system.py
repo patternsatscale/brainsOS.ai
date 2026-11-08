@@ -1896,12 +1896,18 @@ def create_system_api_app():
         console_user = ident.get("console_user") or username
 
         master_fd, slave_fd = pty.openpty()
+        try:
+            fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 32, 120, 0, 0))
+        except OSError:
+            pass
         shell_bin = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
         env = {
             **os.environ,
             **parse_env_file_only(repo_root),
             "TERM": "xterm-256color",
             "HUSHLOGIN": "TRUE",
+            "BASH_SILENCE_DEPRECATION_WARNING": "1",
+            "PYTHONWARNINGS": "ignore",
             "PS1": r"\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ ",
             "BRAINSOS_HOME": str(work_dir),
             "BRAINSOS_DATA_DIR": str(data_dir),
@@ -1924,9 +1930,17 @@ def create_system_api_app():
             env["USER"] = target_pw.pw_name
             env["LOGNAME"] = target_pw.pw_name
             console_user = target_pw.pw_name
+            try:
+                os.fchown(slave_fd, target_pw.pw_uid, target_pw.pw_gid)
+            except OSError:
+                pass
 
-            def _preexec():
+            def _preexec() -> None:
                 os.setsid()
+                try:
+                    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+                except OSError:
+                    pass
                 try:
                     os.initgroups(target_pw.pw_name, target_pw.pw_gid)
                     os.setgid(target_pw.pw_gid)
@@ -1934,8 +1948,12 @@ def create_system_api_app():
                 except Exception:
                     pass
         else:
-            def _preexec():
+            def _preexec() -> None:
                 os.setsid()
+                try:
+                    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+                except OSError:
+                    pass
 
         spawn_cwd = work_dir
         if target_pw is not None and not os.access(work_dir, os.R_OK | os.X_OK):
@@ -1989,10 +2007,13 @@ def create_system_api_app():
                 )
             )
             banner = (
-                "\x1b[2J\x1b[H"
-                f"\x1b[1;36mbrainsOS Appliance Host Console\x1b[0m"
-                f" • Source: \x1b[1;32m{work_dir}\x1b[0m"
-                f" • Data: \x1b[1;32m{data_dir}\x1b[0m\r\n"
+                "\x1b[2J\x1b[H\x1b[3J"
+                "\x1b[1;32m● brainsOS Appliance Host Console\x1b[0m"
+                f" \x1b[90m({spawn_cwd})\x1b[0m\r\n"
+                f"\x1b[90m  Source: \x1b[32m{work_dir}\x1b[90m • Data: \x1b[32m{data_dir}\x1b[0m\r\n"
+                "\x1b[90m  Helpful commands: \x1b[36mdocker compose ps\x1b[90m • "
+                "\x1b[36m./scripts/control/start-control-plane.sh status\x1b[90m • "
+                "\x1b[36mclear\x1b[0m\r\n\r\n"
             )
             await websocket.send_text(json.dumps({"type": "output", "data": banner}))
             reader_task = asyncio.create_task(_pty_reader())

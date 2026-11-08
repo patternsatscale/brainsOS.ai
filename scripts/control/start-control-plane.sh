@@ -669,6 +669,9 @@ start_services() {
 
     OPERATOR_KEY_ALIAS="brainsOs.console"
     provision_vkey "${OPERATOR_LITELLM_KEY}" "${OPERATOR_KEY_ALIAS}" 100.0
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^brainsos-(app-)?code-server$'; then
+      docker compose up -d code-server >/dev/null 2>&1 || true
+    fi
     provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella"
     provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin"
     provision_vkey "${BAWTFORD_LITELLM_KEY}" "brainsos-bawtford"
