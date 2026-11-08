@@ -457,7 +457,25 @@ def write_configs(active_key):
         cur.execute("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)")
         cur.execute(
             "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
-            ("chat.setupContext", json.dumps({"chatSetupCompleted": True, "chatSetupHidden": True})),
+            (
+                "chat.setupContext",
+                json.dumps(
+                    {
+                        "entitlement": 9,
+                        "installed": True,
+                        "completed": True,
+                        "registered": True,
+                        "hidden": False,
+                        "disabled": False,
+                        "untrusted": False,
+                        "sku": "enterprise",
+                    }
+                ),
+            ),
+        )
+        cur.execute(
+            "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+            ("chat.setupContext.migrated.v1", "true"),
         )
         cur.execute(
             "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",

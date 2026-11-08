@@ -7,8 +7,10 @@ const CHAT_CONTEXT_KEYS = [
   ['nonCopilotLanguageModelsAreUserSelectable', true],
   ['github.copilot.interactiveSession.disabled', false],
   ['github.copilot.interactiveSession.gitHubLoginFailed', false],
+  ['chatEntitlementSignedOut', false],
+  ['chatSetupInstalled', true],
   ['chatSetupCompleted', true],
-  ['chatSetupHidden', true]
+  ['chatSetupHidden', false]
 ];
 
 let lastSyncedLmContent = '';

@@ -648,11 +648,12 @@ start_services() {
         -d "{\"key_aliases\": ${del_aliases}}" || true
 
       log_info "Registering LiteLLM virtual key '${alias}' in database..."
+      local key_owner="${BRAINSOS_SUPERUSER_USERNAME:-admin}"
       local payload
       if [ -n "${budget}" ]; then
-        payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"max_budget\": ${budget}, \"models\": []}"
+        payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"user_id\": \"${key_owner}\", \"max_budget\": ${budget}, \"models\": []}"
       else
-        payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"models\": []}"
+        payload="{\"key\": \"${key}\", \"key_alias\": \"${alias}\", \"user_id\": \"${key_owner}\", \"models\": []}"
       fi
       local res
       res=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \

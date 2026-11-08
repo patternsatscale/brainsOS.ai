@@ -19,10 +19,13 @@ last-writer-wins.
 from __future__ import annotations
 
 import dataclasses
+import importlib.util
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
+import providers  # type: ignore[import-not-found]
 from providers import _REGISTRY, register_provider  # type: ignore[attr-defined]
 
 logger = logging.getLogger("brainsos.hermes.litellm_session")
@@ -37,9 +40,22 @@ _AGENT_KEY_ENV_MAP = {
 }
 
 
+def _resolve_session_id(session_id: str | None) -> str:
+    sid = (session_id or "").strip()
+    if sid:
+        return sid
+    try:
+        from agent.portal_tags import get_conversation_context  # type: ignore[import-not-found]
+
+        ctx = get_conversation_context() or {}
+        return str(ctx.get("session_id") or "").strip()
+    except Exception:
+        return ""
+
+
 def _resolve_agent_virtual_key(session_id: str | None) -> str | None:
     """Resolve the tenant virtual key for a Hermes session_id (e.g. 'mail-bawtford-...')."""
-    sid = (session_id or "").strip().lower()
+    sid = _resolve_session_id(session_id).lower()
     for agent_id, env_var in _AGENT_KEY_ENV_MAP.items():
         if sid.startswith(f"mail-{agent_id}-") or f"-{agent_id}-" in sid or sid == agent_id:
             val = (os.environ.get(env_var) or "").strip()
@@ -49,7 +65,25 @@ def _resolve_agent_virtual_key(session_id: str | None) -> str | None:
     return default_vkey or None
 
 
-_base = _REGISTRY.get("custom")
+def _ensure_bundled_custom_provider() -> Any:
+    base = _REGISTRY.get("custom")
+    if base is not None:
+        return base
+    bundled_custom = Path(__file__).resolve().parent.parent / "custom" / "__init__.py"
+    if not bundled_custom.is_file():
+        bundled_custom = Path("/opt/hermes/plugins/model-providers/custom/__init__.py")
+    if bundled_custom.is_file():
+        try:
+            spec = importlib.util.spec_from_file_location("_hermes_bundled_custom_provider", bundled_custom)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+        except Exception as exc:
+            logger.debug("brainsOS litellm-session plugin: eager custom provider load failed: %s", exc)
+    return _REGISTRY.get("custom")
+
+
+_base = _ensure_bundled_custom_provider()
 
 if _base is None:  # pragma: no cover - bundled provider missing
     logger.warning("brainsOS litellm-session plugin: bundled 'custom' provider not found; skipping")
@@ -88,6 +122,27 @@ else:
                 top_level["extra_headers"] = headers
             return extra_body, top_level
 
-    _fields = {f.name: getattr(_base, f.name) for f in dataclasses.fields(_base) if f.init}
-    register_provider(BrainsOSLiteLLMSessionProfile(**_fields))
+    def _wrap_custom_profile(profile_obj: Any) -> Any:
+        if isinstance(profile_obj, BrainsOSLiteLLMSessionProfile):
+            return profile_obj
+        fields = {f.name: getattr(profile_obj, f.name) for f in dataclasses.fields(profile_obj) if f.init}
+        return BrainsOSLiteLLMSessionProfile(**fields)
+
+    register_provider(_wrap_custom_profile(_base))
+
+    # Guard against bundled plugin alphabetical load order ('brainsos-litellm-session' < 'custom'):
+    # if bundled 'custom' registers after us during _discover_providers(), keep it wrapped.
+    _orig_register = getattr(providers, "register_provider", None)
+    if callable(_orig_register) and not getattr(_orig_register, "_brainsos_wrapped", False):
+
+        def _guarded_register_provider(profile_obj: Any) -> Any:
+            if getattr(profile_obj, "name", None) == "custom" and not isinstance(
+                profile_obj, BrainsOSLiteLLMSessionProfile
+            ):
+                profile_obj = _wrap_custom_profile(profile_obj)
+            return _orig_register(profile_obj)
+
+        _guarded_register_provider._brainsos_wrapped = True  # type: ignore[attr-defined]
+        providers.register_provider = _guarded_register_provider  # type: ignore[attr-defined]
+
     logger.info("brainsOS litellm-session plugin: 'custom' provider configured (tags + no-log)")

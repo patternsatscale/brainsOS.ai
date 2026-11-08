@@ -228,3 +228,12 @@ def test_hermes_provider_plugin_sets_no_log(monkeypatch: pytest.MonkeyPatch) -> 
     assert body["metadata"]["tags"] == ["hermes", "brainsos"]
     assert body["metadata"]["existing"] is True
     assert "session_id" not in body["metadata"]
+
+    monkeypatch.setenv("BAWTFORD_LITELLM_KEY", "sk-virt-bawt-test1234")
+    _, top_level = registry["custom"].build_api_kwargs_extras(session_id="mail-bawtford-1")
+    assert top_level["extra_headers"]["Authorization"] == "Bearer sk-virt-bawt-test1234"
+
+    # Re-registering plain FakeProfile via providers.register_provider keeps it wrapped
+    fake_providers.register_provider(FakeProfile())
+    assert registry["custom"].build_extra_body(session_id="mail-x-y")["no-log"] is True
+

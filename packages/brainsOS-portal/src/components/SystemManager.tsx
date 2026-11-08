@@ -1671,6 +1671,13 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
   const handleSaveIdentityUnitName = async () => {
     const cleanUnitName = identityUnitName.trim() || 'Enterprise Agent Box';
+    if (cleanUnitName.includes("'") || cleanUnitName.includes('"')) {
+      setIdentitySaveBanner({
+        type: 'error',
+        text: 'Unit Name cannot contain single or double quotes (e.g. use "Alex Agent Box").',
+      });
+      return;
+    }
     setSavingIdentityUnitName(true);
     setIdentitySaveBanner(null);
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -1847,11 +1854,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   // Auto-derive Superuser Username & Suggested Domain when typing Superuser Full Name (while !wizardUsernameTouched)
   const handleSuperuserFullNameChange = (val: string) => {
     setSetupSuperuserName(val);
-    const firstWordRaw = val.trim().split(/\s+/)[0] || '';
+    const firstWordRaw = (val.trim().split(/\s+/)[0] || '').replace(/['"`]/g, '');
     if (!wizardUnitNameTouched) {
       if (firstWordRaw.length >= 2) {
         const capitalized = firstWordRaw.charAt(0).toUpperCase() + firstWordRaw.slice(1);
-        setSetupUnitName(`${capitalized}'s Agent Box`);
+        setSetupUnitName(`${capitalized} Agent Box`);
       } else {
         setSetupUnitName('Enterprise Agent Box');
       }
@@ -2009,12 +2016,22 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       setWizardStep(1);
       return;
     }
+    if (cleanName.includes("'") || cleanName.includes('"')) {
+      setSetupError('Superuser Display Name cannot contain single or double quotes.');
+      setWizardStep(1);
+      return;
+    }
     if (setupAdminPassword || isInitialBoot) {
       if (!passwordChecks.allValid) {
         setSetupError('Please satisfy all Superuser password complexity requirements and ensure both passwords match.');
         setWizardStep(1);
         return;
       }
+    }
+    if (cleanUnitName.includes("'") || cleanUnitName.includes('"')) {
+      setSetupError('Unit Name cannot contain single or double quotes (e.g. use "Alex Agent Box").');
+      setWizardStep(2);
+      return;
     }
     if (!cleanLocal || !/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(cleanLocal)) {
       setSetupError('Please enter a valid fully-qualified local domain (e.g. jdoe.aws.cloud.brainsos.ai).');
@@ -2465,7 +2482,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                     Unit Name (<code className="text-[#00f2fe]">unit_name</code>)
                   </label>
                   <p className="text-[11px] text-slate-400 font-sans">
-                    Logical display identity of this Agent-in-a-Box appliance (e.g. &quot;Enterprise Agent Box&quot; or &quot;Alex&apos;s Agent Box&quot;).
+                    Logical display identity of this Agent-in-a-Box appliance (e.g. &quot;Enterprise Agent Box&quot; or &quot;Alex Agent Box&quot;).
                   </p>
                   <input
                     type="text"
@@ -2473,10 +2490,22 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                     onChange={(e) => {
                       setWizardUnitNameTouched(true);
                       setSetupUnitName(e.target.value);
+                      if (setupError && !e.target.value.includes("'") && !e.target.value.includes('"')) {
+                        setSetupError(null);
+                      }
                     }}
                     placeholder="e.g. Enterprise Agent Box"
-                    className="w-full px-3.5 py-2 rounded-xl bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                    className={`w-full px-3.5 py-2 rounded-xl bg-[#0B0E14] border focus:outline-none text-white font-mono text-sm ${
+                      setupUnitName.includes("'") || setupUnitName.includes('"')
+                        ? 'border-rose-500/70 focus:border-rose-400'
+                        : 'border-white/15 focus:border-[#00f2fe]'
+                    }`}
                   />
+                  {(setupUnitName.includes("'") || setupUnitName.includes('"')) && (
+                    <p className="text-[11px] text-rose-400 font-sans mt-1">
+                      Single or double quotes are not permitted in Unit Name (e.g. use &quot;Alex Agent Box&quot;).
+                    </p>
+                  )}
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-0.5">
                   <span className="text-[10px] uppercase text-slate-500 block">Immutable Hardware ID</span>
@@ -2742,7 +2771,18 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             {wizardStep < 3 ? (
               <button
                 type="button"
-                onClick={() => setWizardStep((prev) => (prev === 1 ? 2 : 3))}
+                onClick={() => {
+                  if (wizardStep === 1 && (setupSuperuserName.includes("'") || setupSuperuserName.includes('"'))) {
+                    setSetupError('Superuser Display Name cannot contain single or double quotes.');
+                    return;
+                  }
+                  if (wizardStep === 2 && (setupUnitName.includes("'") || setupUnitName.includes('"'))) {
+                    setSetupError('Unit Name cannot contain single or double quotes (e.g. use "Alex Agent Box").');
+                    return;
+                  }
+                  setSetupError(null);
+                  setWizardStep((prev) => (prev === 1 ? 2 : 3));
+                }}
                 className="px-5 py-2 rounded-xl bg-[#00f2fe]/20 hover:bg-[#00f2fe]/30 border border-[#00f2fe]/50 text-[#00f2fe] font-mono text-xs font-bold transition-all"
               >
                 Next Step →
