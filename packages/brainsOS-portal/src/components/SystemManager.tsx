@@ -1122,14 +1122,31 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     [csrfToken, status]
   );
 
+  const executeConsoleCommandRef = useRef(executeConsoleCommand);
+  useEffect(() => {
+    executeConsoleCommandRef.current = executeConsoleCommand;
+  }, [executeConsoleCommand]);
+
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   // Connect interactive WebSocket to XTerm PTY
   const connectTerminalWs = useCallback(() => {
     if (typeof window === 'undefined') return;
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
     if (wsRef.current) {
-      try {
-        wsRef.current.close();
-      } catch {}
+      const oldWs = wsRef.current;
       wsRef.current = null;
+      try {
+        oldWs.close();
+      } catch {}
     }
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${proto}//${window.location.host}/api/v1/system/terminal/ws`;
@@ -1137,6 +1154,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       ws.onopen = () => {
+        if (wsRef.current !== ws) return;
         setWsConnected(true);
         if (fitAddonRef.current && xtermRef.current) {
           try {
@@ -1153,11 +1171,13 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         }
       };
       ws.onmessage = (evt) => {
+        if (wsRef.current !== ws) return;
         const raw = typeof evt.data === 'string' ? evt.data : '';
         if (!raw) return;
         try {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
+            if (parsed.type === 'pong') return;
             if (parsed.type === 'output' && typeof parsed.data === 'string') {
               xtermRef.current?.write(parsed.data);
               return;
@@ -1173,9 +1193,12 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         xtermRef.current?.write(raw);
       };
       ws.onerror = () => {
+        if (wsRef.current !== ws) return;
         setWsConnected(false);
       };
       ws.onclose = () => {
+        if (wsRef.current !== ws) return;
+        wsRef.current = null;
         setWsConnected(false);
       };
     } catch {
@@ -1234,12 +1257,13 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             localLineBufferRef.current = '';
             term.write('\r\n');
             if (cmdToRun.trim()) {
-              executeConsoleCommand(cmdToRun);
+              executeConsoleCommandRef.current(cmdToRun);
             } else {
-              const promptHost = (status?.hostname || status?.local_domain || 'brainsos').split('.')[0];
+              const curStatus = statusRef.current;
+              const promptHost = (curStatus?.hostname || curStatus?.local_domain || 'brainsos').split('.')[0];
               const promptUser =
-                status?.console_user || status?.superuser_username || status?.admin_username || 'admin';
-              const promptRepoRoot = status?.repo_root || '/opt/brainsos';
+                curStatus?.console_user || curStatus?.superuser_username || curStatus?.admin_username || 'admin';
+              const promptRepoRoot = curStatus?.repo_root || '/opt/brainsos';
               term.write(`\x1b[1;32m${promptUser}@${promptHost}\x1b[0m:\x1b[1;34m${promptRepoRoot}\x1b[0m$ `);
             }
           } else if (data === '\x7f' || data === '\b') {
@@ -1268,6 +1292,16 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
     connectTerminalWs();
 
+    const keepAliveTimer = window.setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: 'ping' }));
+        } catch {}
+      } else if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+        connectTerminalWs();
+      }
+    }, 15000);
+
     const resizeObserver = new ResizeObserver(() => {
       if (fitAddonRef.current && xtermRef.current) {
         try {
@@ -1287,9 +1321,10 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     resizeObserver.observe(container);
 
     return () => {
+      window.clearInterval(keepAliveTimer);
       resizeObserver.disconnect();
     };
-  }, [activePane, consoleViewMode, connectTerminalWs, executeConsoleCommand, status]);
+  }, [activePane, consoleViewMode, connectTerminalWs]);
 
   useEffect(() => {
     return () => {
@@ -2240,7 +2275,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <span>Instance Admin Account (<code className="text-white">admin</code>) is permanently bound to your EC2 Instance ID (<code className="text-white">i-...</code>)</span>
               </div>
               <p className="font-sans text-slate-300 leading-relaxed">
-                For break-glass recovery, <code className="font-mono text-white">admin</code> always authenticates using your AWS EC2 Instance ID. Below, create your personal <strong>Superuser</strong> account for day-to-day SSO, SOGo Webmail, Gitea Source Control, and Operator IDE.
+                For break-glass recovery, <code className="font-mono text-white">admin</code> always authenticates using your AWS EC2 Instance ID. Below, create your personal <strong>Superuser</strong> account for day-to-day SSO, Kurrier Workspace, Gitea Source Control, and Operator IDE.
               </p>
             </div>
 
@@ -2354,7 +2389,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <span>Show passwords in plain text</span>
               </label>
               <span className="text-[11px] text-slate-500">
-                Synchronized across Authentik SSO, SOGo Mail, Gitea &amp; Console
+                Synchronized across Authentik SSO, Kurrier Workspace, Gitea &amp; Console
               </span>
             </div>
 
@@ -2519,7 +2554,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                     </div>
                   </div>
                   <div>
-                    <span className="text-slate-400 text-[11px] block mb-1.5">Provisioned Postfix / Dovecot / SOGo Mailboxes:</span>
+                    <span className="text-slate-400 text-[11px] block mb-1.5">Provisioned Postfix / Dovecot / Kurrier Mailboxes:</span>
                     <div className="flex flex-wrap gap-1.5">
                       {mailboxes.map((mb, i) => (
                         <span
@@ -2758,7 +2793,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                   </h3>
                   <p className="font-mono text-xs text-slate-400 mt-0.5">
                     {executionStatus === 'running'
-                      ? 'Configuring OS hostname, Postfix/Dovecot/SOGo mailboxes, Authentik SSO, Gitea, and Caddy TLS'
+                      ? 'Configuring OS hostname, Postfix/Dovecot/Kurrier mailboxes, Authentik SSO, Gitea, and Caddy TLS'
                       : executionStatus === 'success'
                       ? 'All identity, mail, source control, observability, and ingress planes are synchronized.'
                       : 'Review the execution log below and return to the wizard to adjust settings.'}

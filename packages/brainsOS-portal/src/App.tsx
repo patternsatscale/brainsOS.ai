@@ -18,7 +18,7 @@ const getInitialKey = (): string => {
   if (path === '/docs') return 'help';
   if (path === '/editor') return 'console';
   if (path === '/git' || path.startsWith('/git/')) return 'git';
-  if (path === '/mail' || path === '/SOGo') return 'comms';
+  if (path === '/mail' || path.startsWith('/mail/') || path === '/kurrier') return 'comms';
   if (path === '/proxy' || path.startsWith('/proxy/ui')) return 'security';
   if (path === '/efw') return 'network';
   if (path === '/langfuse') return 'trace';
@@ -131,29 +131,41 @@ export function App() {
     };
   }, [isMockMode]);
 
-  // Fetch real authenticated user identity from Authentik API once wizard is completed
+  // Fetch real authenticated user identity from Authentik API (with System API fallback) once wizard is completed
   useEffect(() => {
     if (wizardGate !== 'completed') return;
+    const applyUserPayload = (raw: any) => {
+      const u = raw?.user && typeof raw.user === 'object' ? raw.user : raw;
+      if (u && typeof u.username === 'string' && u.username.trim()) {
+        const uname = u.username.trim();
+        setUser({
+          username: uname,
+          name: u.name || (uname.toLowerCase() === 'admin' ? 'Appliance Administrator' : uname),
+          email: u.email || `${uname}@brainsos.ai`,
+          isSuperuser: u.is_superuser !== undefined ? Boolean(u.is_superuser) : true,
+          lastLogin: u.last_login
+            ? new Date(u.last_login).toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : 'Active SSO Session',
+          avatarUrl: u.avatar || undefined,
+        });
+        return true;
+      }
+      return false;
+    };
+
     fetch('/api/v3/core/users/me/', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && data.username) {
-          setUser({
-            username: data.username,
-            name: data.name || (data.username.toLowerCase() === 'admin' ? 'Appliance Administrator' : data.username),
-            email: data.email || `${data.username}@brainsos.ai`,
-            isSuperuser: Boolean(data.is_superuser),
-            lastLogin: data.last_login
-              ? new Date(data.last_login).toLocaleString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : 'Active SSO Session',
-            avatarUrl: data.avatar || undefined,
-          });
-        }
+        if (applyUserPayload(data)) return null;
+        return fetch('/api/v1/system/me', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null));
+      })
+      .then((fallbackData) => {
+        if (fallbackData) applyUserPayload(fallbackData);
       })
       .catch(() => {
         // Fallback gracefully on local preview or connection error

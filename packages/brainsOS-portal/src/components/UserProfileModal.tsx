@@ -34,35 +34,47 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   }, [initialUser]);
 
-  // If user prop was not provided, fetch user directly
+  // Refresh authenticated user identity when modal opens so it stays in sync with Authentik
   useEffect(() => {
-    if (!isOpen || initialUser) return;
+    if (!isOpen) return;
+
+    const applyUserPayload = (raw: any) => {
+      const u = raw?.user && typeof raw.user === 'object' ? raw.user : raw;
+      if (u && typeof u.username === 'string' && u.username.trim()) {
+        const uname = u.username.trim();
+        setInternalUser({
+          username: uname,
+          name: u.name || (uname.toLowerCase() === 'admin' ? 'Appliance Administrator' : uname),
+          email: u.email || `${uname}@brainsos.ai`,
+          isSuperuser: u.is_superuser !== undefined ? Boolean(u.is_superuser) : true,
+          lastLogin: u.last_login
+            ? new Date(u.last_login).toLocaleString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : 'Active SSO Session',
+          avatarUrl: u.avatar || undefined,
+        });
+        return true;
+      }
+      return false;
+    };
 
     fetch('/api/v3/core/users/me/', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && data.username) {
-          setInternalUser({
-            username: data.username,
-            name: data.name || (data.username.toLowerCase() === 'admin' ? 'Appliance Administrator' : data.username),
-            email: data.email || `${data.username}@brainsos.ai`,
-            isSuperuser: Boolean(data.is_superuser),
-            lastLogin: data.last_login
-              ? new Date(data.last_login).toLocaleString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : 'Active SSO Session',
-            avatarUrl: data.avatar || undefined,
-          });
-        }
+        if (applyUserPayload(data)) return null;
+        return fetch('/api/v1/system/me', { credentials: 'include' }).then((r) => (r.ok ? r.json() : null));
+      })
+      .then((fallbackData) => {
+        if (fallbackData) applyUserPayload(fallbackData);
       })
       .catch(() => {
         // Keep default user on preview / error
       });
-  }, [isOpen, initialUser]);
+  }, [isOpen]);
 
   // Close on Escape key
   useEffect(() => {
