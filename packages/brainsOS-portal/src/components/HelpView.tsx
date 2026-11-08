@@ -36,6 +36,8 @@ interface ToolItem {
   port?: string;
   hotkey?: string;
   isExternal?: boolean;
+  productName?: string;
+  productUrl?: string;
 }
 
 const TOOLS: ToolItem[] = [
@@ -49,6 +51,8 @@ const TOOLS: ToolItem[] = [
     path: '/mail/',
     port: '20000',
     hotkey: 'Alt+1',
+    productName: 'SOGo + Postfix/Dovecot',
+    productUrl: 'https://sogo.nu',
   },
   {
     id: 'auth',
@@ -60,6 +64,8 @@ const TOOLS: ToolItem[] = [
     path: '/auth/if/admin/#/events/log',
     port: '9000',
     hotkey: 'Alt+2',
+    productName: 'goauthentik.io',
+    productUrl: 'https://goauthentik.io',
   },
   {
     id: 'gateway',
@@ -71,6 +77,8 @@ const TOOLS: ToolItem[] = [
     path: '/proxy/ui/usage',
     port: '4000',
     hotkey: 'Alt+3',
+    productName: 'litellm.ai',
+    productUrl: 'https://www.litellm.ai',
   },
   {
     id: 'telemetry',
@@ -82,6 +90,8 @@ const TOOLS: ToolItem[] = [
     path: '/project/brainsos/sessions',
     port: '3001',
     hotkey: 'Alt+4',
+    productName: 'langfuse.com',
+    productUrl: 'https://langfuse.com',
   },
   {
     id: 'egress',
@@ -93,6 +103,8 @@ const TOOLS: ToolItem[] = [
     path: '/efw/',
     port: '8081',
     hotkey: 'Alt+5',
+    productName: 'mitmproxy.org',
+    productUrl: 'https://mitmproxy.org',
   },
   {
     id: 'editor',
@@ -104,6 +116,8 @@ const TOOLS: ToolItem[] = [
     path: '/editor/',
     port: '8443',
     hotkey: 'Alt+6',
+    productName: 'coder/code-server',
+    productUrl: 'https://coder.com/docs/code-server',
   },
   {
     id: 'git',
@@ -115,6 +129,8 @@ const TOOLS: ToolItem[] = [
     path: '/git/',
     port: '3000',
     hotkey: 'Alt+7',
+    productName: 'about.gitea.com',
+    productUrl: 'https://about.gitea.com',
   },
   {
     id: 'system',
@@ -125,6 +141,8 @@ const TOOLS: ToolItem[] = [
     color: '#00f2fe',
     path: '/system',
     hotkey: 'Alt+8',
+    productName: 'Caddy + XTerm.js',
+    productUrl: 'https://caddyserver.com',
   },
   {
     id: 'github',
@@ -135,6 +153,8 @@ const TOOLS: ToolItem[] = [
     color: '#f8fafc',
     path: 'https://github.com/patternsatscale/brainsOS.ai',
     isExternal: true,
+    productName: 'Nous Hermes + Ollama',
+    productUrl: 'https://github.com/NousResearch/hermes-agent',
   },
 ];
 
@@ -525,6 +545,21 @@ export const HelpView: React.FC = () => {
                       <p className="text-xs text-slate-400 mt-3 leading-relaxed">
                         {tool.desc}
                       </p>
+
+                      {tool.productName && tool.productUrl && (
+                        <div className="mt-2.5 flex items-center gap-1.5 font-mono text-[11px] text-slate-500">
+                          <span>Powered by</span>
+                          <a
+                            href={tool.productUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-300 hover:text-[#00f2fe] underline decoration-white/20 hover:decoration-[#00f2fe] inline-flex items-center gap-1 transition-colors"
+                          >
+                            <span>{tool.productName}</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        </div>
+                      )}
                     </div>
 
                     {/* Bottom URL Capsule & Actions */}

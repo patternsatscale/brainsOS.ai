@@ -4,10 +4,10 @@ from_name: brainsOS Appliance
 from_user: system
 reply_to_user: bawtford
 subject: 🚀 Welcome to Your Sovereign AI Operating System ({domain})
-preheader: Complete 7-Layer Architecture Directory, Keyboard Shortcuts (Alt+1..Alt+8), and Host Console Guide.
-badge: OPERATOR CHEAT SHEET // 7-LAYER ARCHITECTURE
+preheader: Complete 7-Layer Architecture Directory, Upstream Open-Source Ecosystem Attribution, and Operator Shortcuts (Alt+1..Alt+8).
+badge: OPERATOR CHEAT SHEET // 7-LAYER ARCHITECTURE & OPEN-SOURCE STACK
 accent: #38bdf8
-footer: brainsOS Sovereign Appliance ({domain}) • System Operator Quick Reference
+footer: brainsOS Sovereign Appliance ({domain}) • Built on Best-of-Breed Open-Source Projects
 age_minutes: 18
 ---
 
@@ -15,26 +15,31 @@ age_minutes: 18
 
 Hello **{user}**, and **Welcome to Your Sovereign AI Operating System**!
 
-Your **{unit_name}** appliance is online at [{base_url}/]({base_url}/) with Single Sign-On active across all 7 architecture layers plus the System OS control center. Bookmark this cheat sheet for instant navigation:
+**brainsOS** ([brainsOS.ai](https://brainsos.ai)) demonstrates how best-of-breed open-source projects can be woven together into a single, cohesive, zero-trust **Enterprise Agent in a Box**. Your **{unit_name}** appliance is online at [{base_url}/]({base_url}/) with Single Sign-On active across all 7 architecture layers.
 
-## 7-Layer Architecture & Operator Shortcuts
+## 1. 7-Layer Architecture, Shortcuts & Upstream Open-Source Projects
 
-| Shortcut | Architecture Layer / Subsystem | Direct URL | What You Can Do There |
-| :--- | :--- | :--- | :--- |
-| `Alt+1` | **1. Secure Communications (Webmail)** | [{base_url}/mail/]({base_url}/mail/) | Email **Bawtford** (`bawtford@{local_domain}`) & audit shared *Agent Fleet* mailboxes. |
-| `Alt+2` | **2. Identity Management (Authentik)** | [{base_url}/auth/]({base_url}/auth/if/admin/#/events/log) | Govern SSO users, passkeys/MFA, tenant groups & security audit logs. |
-| `Alt+3` | **3. Routing & Guardrails (LiteLLM)** | [{base_url}/proxy/ui/usage]({base_url}/proxy/ui/usage) | Manage model routing, virtual keys, budgets & serialized concurrency. |
-| `Alt+4` | **4. Telemetry Data (Langfuse)** | [{base_url}/langfuse/]({base_url}/langfuse/) | Explore OpenTelemetry traces, prompt/completion tokens & latencies. |
-| `Alt+5` | **5. Network Firewalls (Egress Proxy)** | [{base_url}/efw/]({base_url}/efw/) | Inspect outbound tool traffic & in-transit credential injection (`[INJECTED_CINDY_TOKEN]`). |
-| `Alt+6` | **6. Readable Memory (Code Console)** | [{base_url}/editor/]({base_url}/editor/) | Inspect & edit `/memories` Markdown, `SOUL.md` & `agents.yaml` in VS Code. |
-| `Alt+7` | **7. Source Control (Git Server)** | [{base_url}/git/]({base_url}/git/) | Browse local Gitea repositories, commit history & roll back agent state. |
-| `Alt+8` | **8. System Manager & Host Console** | [{base_url}/system]({base_url}/system) | System Manager, TLS & domain config, updates & XTerm Host Console. |
+Every plane in **brainsOS** is powered by battle-tested open-source containers working in concert:
 
-> [!TIP] System Manager & XTerm Host Console (`/system`)
-> Press `Ctrl+K` / `⌘K` (or click the top-left **☰** button) from anywhere in the portal to open the full 7-layer architecture drawer, or jump to [System (`/system`)]({base_url}/system) to launch the interactive host terminal.
+| Shortcut | Architecture Layer | Appliance URL | Upstream Open-Source Product | Role in the Ecosystem |
+| :--- | :--- | :--- | :--- | :--- |
+| `Alt+1` | **1. Secure Communications** | [{base_url}/mail/]({base_url}/mail/) | **[SOGo](https://sogo.nu)** + **[Postfix](https://www.postfix.org)** / **[Dovecot](https://www.dovecot.org)** | Encrypted webmail, IMAP/SMTP & Sieve agent hooks. |
+| `Alt+2` | **2. Identity Management** | [{base_url}/auth/]({base_url}/auth/if/admin/#/events/log) | **[Authentik](https://goauthentik.io)** | Zero-trust OAuth2/OIDC SSO, MFA/Passkeys & forward-auth. |
+| `Alt+3` | **3. Routing & Guardrails** | [{base_url}/proxy/ui/usage]({base_url}/proxy/ui/usage) | **[LiteLLM](https://www.litellm.ai)** ([GitHub](https://github.com/BerriAI/litellm)) | AI Gateway, scoped virtual keys, budgets & rate limits. |
+| `Alt+4` | **4. Telemetry Data** | [{base_url}/langfuse/]({base_url}/langfuse/) | **[Langfuse](https://langfuse.com)** ([GitHub](https://github.com/langfuse/langfuse)) | OpenTelemetry LLM tracing, evaluations & latency analytics. |
+| `Alt+5` | **5. Network Firewalls** | [{base_url}/efw/]({base_url}/efw/) | **[mitmproxy](https://mitmproxy.org)** ([GitHub](https://github.com/mitmproxy/mitmproxy)) | Outbound HTTPS inspection, allowlists & in-transit auth injection. |
+| `Alt+6` | **6. Readable Memory** | [{base_url}/editor/]({base_url}/editor/) | **[code-server](https://coder.com/docs/code-server)** ([GitHub](https://github.com/coder/code-server)) | Browser VS Code IDE for pure OKF Markdown in `/memories`. |
+| `Alt+7` | **7. Source Control** | [{base_url}/git/]({base_url}/git/) | **[Gitea](https://about.gitea.com)** ([GitHub](https://github.com/go-gitea/gitea)) | Self-hosted Git server versioning `SOUL.md` & memories. |
+| `Alt+8` | **8. System & Ingress** | [{base_url}/system]({base_url}/system) | **[Caddy](https://caddyserver.com)** + **[XTerm.js](https://xtermjs.org)** | Automated TLS reverse proxy, System Manager & Host Console. |
 
-## Quick Operator Commands
+## 2. Cognitive Runtimes & Storage Engine Attribution
 
-- **Subsystems Drawer:** Press `Ctrl+K` or `⌘K` anywhere in the portal to switch planes.
-- **XTerm Host Console:** Open [System (`/system`)]({base_url}/system) to run `./scripts/control/show-urls.sh`, inspect `docker compose ps`, or tail live agent runner logs.
-- **Domain & TLS Management:** Updating your appliance hostname or TLS mode automatically re-syncs SSO redirect URIs and refreshes these onboarding emails for your active domain.
+Under the hood, the agent and telemetry planes also build upon these foundational open-source projects:
+
+- **Autonomous Agent Runtime:** **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** (Nous Research) — Sandboxed tool execution, MCP client, and multi-turn session orchestration.
+- **Local Inference Engine:** **[Ollama](https://ollama.com)** ([GitHub](https://github.com/ollama/ollama)) — Host loopback model server for local weights alongside AWS Bedrock / cloud gateways.
+- **Data & Analytics Stores:** **[PostgreSQL](https://www.postgresql.org)**, **[ClickHouse](https://clickhouse.com)**, **[Redis](https://redis.io)**, and **[MinIO](https://min.io)** — Isolated persistence engines powering LiteLLM, Authentik, and Langfuse v4.
+- **Platform Orchestration:** **[brainsOS.ai](https://github.com/patternsatscale/brainsOS.ai)** — Open-source Thin-Spine Portal, Zero-Trust Docker Compose topology, and OKF Memory SDK.
+
+> [!TIP] Quick Navigation Anywhere in the Portal
+> Press `Ctrl+K` / `⌘K` (or click the top-left **☰** button) to open the 7-layer architecture drawer, or click **Help (`?`)** in the bottom-left spine for live Tool URLs, Hotkeys, Architecture Diagrams, and GitHub Bug/Feature reporting.
