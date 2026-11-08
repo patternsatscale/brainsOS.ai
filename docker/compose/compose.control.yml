@@ -65,8 +65,8 @@ services:
       # Authentik OIDC Single Sign-On
       - AUTO_REDIRECT_UI_LOGIN_TO_SSO=true
       - PROXY_BASE_URL=https://${BRAINSOS_DOMAIN:-brainsos.local}
-      - PROXY_ADMIN_ID=${LITELLM_PROXY_ADMIN_ID:-admin}
-      - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
+      - PROXY_ADMIN_ID=${LITELLM_PROXY_ADMIN_ID:-${BRAINSOS_SUPERUSER_USERNAME:-admin}}
+      - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_SUPERUSER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}}
       - PROXY_ADMIN_EMAILS=admin@${BRAINSOS_LOCAL_DOMAIN:-dgx.local.brainsos.ai},admin@brainsos.ai,operator@${BRAINSOS_LOCAL_DOMAIN:-dgx.local.brainsos.ai},${BRAINSOS_SUPERUSER_EMAIL:-admin@brainsos.ai}
       - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
       - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}

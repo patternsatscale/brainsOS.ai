@@ -449,3 +449,46 @@ class LangfuseOtelLogger(OpenTelemetry):
         """
         Langfuse should not receive service failure logs.
         """
+
+
+def _apply_brainsos_proxy_db_logger_no_log_fix() -> None:
+    """Fix upstream LiteLLM v1.105.0 bug where ``_ProxyDBLogger`` is skipped on ``no-log: true``.
+
+    In LiteLLM v1.105.0, ``Logging.should_run_callback`` checks
+    ``isinstance(callback, CustomLogger) and "_PROXY_" in callback.__class__.__name__``
+    when ``litellm_params.get("no-log") is True``, intending for proxy cost/spend
+    tracking callbacks to still run. However, the proxy spend logger class in
+    ``litellm.proxy.hooks.proxy_track_cost_callback`` is named ``_ProxyDBLogger``
+    (mixed case ``_Proxy`` instead of ``_PROXY_``), causing 100% of Hermes
+    requests (which set ``no-log: true`` to avoid duplicate Langfuse root traces)
+    to be dropped from ``LiteLLM_SpendLogs`` and daily activity tables.
+    """
+    try:
+        from litellm.proxy.hooks.proxy_track_cost_callback import _ProxyDBLogger
+
+        _ProxyDBLogger.__name__ = "_PROXY_DBLogger"
+        _ProxyDBLogger.__qualname__ = "_PROXY_DBLogger"
+    except Exception as exc:
+        verbose_logger.debug("brainsOS: could not rename _ProxyDBLogger: %s", exc)
+
+    try:
+        from litellm.integrations.custom_logger import CustomLogger
+        from litellm.litellm_core_utils.litellm_logging import Logging
+
+        _orig_should_run = getattr(Logging, "should_run_callback", None)
+        if callable(_orig_should_run) and not getattr(_orig_should_run, "_brainsos_patched", False):
+
+            def _patched_should_run_callback(self, callback: Any, litellm_params: dict, event_hook: str) -> bool:
+                if isinstance(litellm_params, dict) and litellm_params.get("no-log", False) is True:
+                    if isinstance(callback, CustomLogger) and "_PROXY" in callback.__class__.__name__.upper():
+                        return True
+                return _orig_should_run(self, callback, litellm_params, event_hook)
+
+            _patched_should_run_callback._brainsos_patched = True  # type: ignore[attr-defined]
+            Logging.should_run_callback = _patched_should_run_callback  # type: ignore[method-assign]
+    except Exception as exc:
+        verbose_logger.debug("brainsOS: could not patch Logging.should_run_callback: %s", exc)
+
+
+_apply_brainsos_proxy_db_logger_no_log_fix()
+

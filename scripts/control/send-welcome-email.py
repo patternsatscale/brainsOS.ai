@@ -227,8 +227,12 @@ def _wrap_email_html(
             f'border-top: 1px solid #1e293b; color: #94a3b8; font-size: 12px; text-align: center;">'
             f"{escaped_footer}</div>"
         )
-    return f"""<!DOCTYPE html>
+    doc = f"""<!DOCTYPE html>
 <html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; background-color: #0b0f19; padding: 24px; line-height: 1.65; margin: 0;">
   {preheader_html}
   <div style="max-width: 700px; margin: 0 auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; overflow: hidden;">
@@ -251,6 +255,7 @@ def _wrap_email_html(
 </body>
 </html>
 """
+    return doc.encode("ascii", "xmlcharrefreplace").decode("ascii")
 
 
 def _wrap_card(
@@ -285,7 +290,7 @@ def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> st
     def _stash(fragment: str) -> str:
         idx = len(tokens)
         tokens.append(fragment)
-        return f"\x00TOK{idx}\x00"
+        return f"@@BRAINSOS_TOK_{idx}@@"
 
     # 1. Inline code: `...`
     def _repl_code(m: re.Match[str]) -> str:
@@ -297,8 +302,19 @@ def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> st
     # 2. Links: [label](url)
     def _repl_link(m: re.Match[str]) -> str:
         label_raw = m.group(1)
-        url_raw = html.escape(m.group(2), quote=True)
+        url_clean = m.group(2).strip()
+        if url_clean.lower().startswith("mailto:"):
+            url_clean = url_clean.replace(" ", "%20")
+        url_raw = html.escape(url_clean, quote=True)
         label_html = _render_inline_markdown_html(label_raw, accent_color=accent_color)
+        if url_clean.lower().startswith("mailto:") and (
+            "click here" in label_raw.lower() or "✉️" in label_raw or "→" in label_raw
+        ):
+            return _stash(
+                f'<a href="{url_raw}" style="display: inline-block; background-color: {html.escape(accent_color)}; '
+                f'color: #0b0f19; font-weight: 700; font-size: 14px; padding: 10px 18px; '
+                f'border-radius: 8px; text-decoration: none; margin: 6px 0;">{label_html}</a>'
+            )
         return _stash(
             f'<a href="{url_raw}" style="color: #38bdf8; font-weight: 600; text-decoration: none;">{label_html}</a>'
         )
@@ -322,9 +338,9 @@ def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> st
         escaped,
     )
 
-    # Restore stashed tokens
-    for idx, tok in enumerate(tokens):
-        escaped = escaped.replace(f"\x00TOK{idx}\x00", tok)
+    # Restore stashed tokens in reverse order so inner tokens inside link labels are expanded after outer links
+    for idx in range(len(tokens) - 1, -1, -1):
+        escaped = escaped.replace(f"@@BRAINSOS_TOK_{idx}@@", tokens[idx])
 
     return escaped
 

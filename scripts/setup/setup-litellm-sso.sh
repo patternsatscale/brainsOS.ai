@@ -198,8 +198,10 @@ if [ -n "${DB_CONTAINER}" ]; then
   LITELLM_DB_NAME="${LITELLM_DB_NAME:-litellm}"
 
   KEEP_USERS="'admin', 'default_user_id'"
+  KEY_OWNER_USER="admin"
   if [ -n "${SUPERUSER_USERNAME}" ] && [ "${SUPERUSER_USERNAME}" != "admin" ]; then
     KEEP_USERS="${KEEP_USERS}, '${SUPERUSER_USERNAME}'"
+    KEY_OWNER_USER="${SUPERUSER_USERNAME}"
   fi
 
   SQL_STMTS="
@@ -216,9 +218,10 @@ if [ -n "${DB_CONTAINER}" ]; then
   fi
   SQL_STMTS="${SQL_STMTS}
     UPDATE \"LiteLLM_VerificationToken\"
-    SET user_id = 'admin'
-    WHERE user_id IS NOT NULL
-      AND user_id NOT IN (${KEEP_USERS});
+    SET user_id = '${KEY_OWNER_USER}'
+    WHERE user_id IS NULL
+       OR user_id = 'default_user_id'
+       OR user_id NOT IN (${KEEP_USERS});
 
     DELETE FROM \"LiteLLM_UserTable\"
     WHERE user_id NOT IN (${KEEP_USERS});
@@ -240,7 +243,7 @@ if [ -n "${DB_CONTAINER}" ]; then
       'a6cfd544eb4907689db9d97002fc4f7beaa1edcd7b2f9abad21ea1008b6933f5',
       'sk-...admin-ui',
       'admin-ui-session',
-      'admin',
+      '${KEY_OWNER_USER}',
       'litellm-dashboard',
       ARRAY['all-proxy-models']::text[],
       '{}'::jsonb,
@@ -250,23 +253,29 @@ if [ -n "${DB_CONTAINER}" ]; then
       '{}'::jsonb
     )
     ON CONFLICT (token) DO UPDATE
-      SET user_id = 'admin',
+      SET user_id = '${KEY_OWNER_USER}',
           team_id = 'litellm-dashboard',
           models = ARRAY['all-proxy-models']::text[];
   "
-  if [ -n "${OPERATOR_LITELLM_KEY:-}" ]; then
-    OP_KEY_HASH="$(python3 -c "import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" "${OPERATOR_LITELLM_KEY}")"
-    OP_KEY_MASK="sk-...${OPERATOR_LITELLM_KEY: -4}"
+
+  upsert_vkey_sql() {
+    local raw_key="$1"
+    local alias_name="$2"
+    local legacy_aliases="${3:-'${alias_name}'}"
+    [ -z "${raw_key}" ] && return 0
+    local key_hash
+    key_hash="$(python3 -c "import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" "${raw_key}")"
+    local key_mask="sk-...${raw_key: -4}"
     SQL_STMTS="${SQL_STMTS}
-      DELETE FROM \"LiteLLM_DeletedVerificationToken\" WHERE token = '${OP_KEY_HASH}' OR key_alias IN ('brainsOs.console', 'brainsOS.console', 'brainsos-operator');
-      DELETE FROM \"LiteLLM_VerificationToken\" WHERE key_alias IN ('brainsOs.console', 'brainsOS.console', 'brainsos-operator') AND token <> '${OP_KEY_HASH}';
+      DELETE FROM \"LiteLLM_DeletedVerificationToken\" WHERE token = '${key_hash}' OR key_alias IN (${legacy_aliases});
+      DELETE FROM \"LiteLLM_VerificationToken\" WHERE key_alias IN (${legacy_aliases}) AND token <> '${key_hash}';
       INSERT INTO \"LiteLLM_VerificationToken\" (
         token, key_name, key_alias, user_id, models, aliases, config, spend, permissions, metadata
       ) VALUES (
-        '${OP_KEY_HASH}',
-        '${OP_KEY_MASK}',
-        'brainsOs.console',
-        'admin',
+        '${key_hash}',
+        '${key_mask}',
+        '${alias_name}',
+        '${KEY_OWNER_USER}',
         ARRAY[]::text[],
         '{}'::jsonb,
         '{}'::jsonb,
@@ -275,11 +284,23 @@ if [ -n "${DB_CONTAINER}" ]; then
         '{}'::jsonb
       )
       ON CONFLICT (token) DO UPDATE
-        SET key_alias = 'brainsOs.console',
-            user_id = 'admin',
+        SET key_alias = '${alias_name}',
+            user_id = '${KEY_OWNER_USER}',
             models = ARRAY[]::text[];
     "
-  fi
+  }
+
+  upsert_vkey_sql "${OPERATOR_LITELLM_KEY:-}" "brainsOs.console" "'brainsOs.console', 'brainsOS.console', 'brainsos-operator'"
+  upsert_vkey_sql "${BAWTFORD_LITELLM_KEY:-}" "brainsos-bawtford" "'brainsos-bawtford'"
+  upsert_vkey_sql "${TERRASTELLA_LITELLM_KEY:-}" "brainsos-terrastella" "'brainsos-terrastella'"
+  upsert_vkey_sql "${MARVIN_LITELLM_KEY:-}" "brainsos-marvin" "'brainsos-marvin'"
+  upsert_vkey_sql "${HERMES_LITELLM_KEY:-}" "hermes-agent" "'hermes-agent'"
+
+  SQL_STMTS="${SQL_STMTS}
+    UPDATE \"LiteLLM_SpendLogs\"
+    SET \"user\" = '${KEY_OWNER_USER}'
+    WHERE \"user\" IS NULL OR \"user\" = '' OR \"user\" = 'default_user_id';
+  "
   docker exec -i "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" <<< "${SQL_STMTS}" >/dev/null 2>&1 || true
   log_success "Database LiteLLM_UserTable synchronized with proxy_admin privileges."
 fi
