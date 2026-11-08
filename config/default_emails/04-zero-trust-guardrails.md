@@ -1,5 +1,5 @@
 ---
-id: 03-zero-trust-guardrails
+id: 04-zero-trust-guardrails
 from_name: Perimeter Gatekeeper
 from_user: security
 reply_to_user: bawtford
@@ -8,7 +8,7 @@ preheader: How Authentik Identity, LiteLLM Guardrails, Egress Firewalls, and Lan
 badge: ZERO-TRUST SECURITY // OBSERVABILITY TOUR
 accent: #10b981
 footer: Perimeter Gatekeeper (security@{local_domain}) • Zero Ambient Secrets enforced
-age_minutes: 8
+age_minutes: 9
 ---
 
 # 🛡️ Nobody leaves the box without a hall pass

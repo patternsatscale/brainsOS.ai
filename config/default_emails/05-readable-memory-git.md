@@ -1,5 +1,5 @@
 ---
-id: 04-readable-memory-git
+id: 05-readable-memory-git
 from_name: Memory Librarian
 from_user: librarian
 reply_to_user: bawtford
@@ -8,7 +8,7 @@ preheader: Why pure Markdown in /memories and local Gitea version control keep h
 badge: RULE 1 & RULE 14 // AUDITABLE KNOWLEDGE PLANE
 accent: #f97316
 footer: Memory Librarian (librarian@{local_domain}) • Rule 1 Memory Plane Purity enforced
-age_minutes: 12
+age_minutes: 13
 ---
 
 # 📚 No Black-Box Databases Allowed

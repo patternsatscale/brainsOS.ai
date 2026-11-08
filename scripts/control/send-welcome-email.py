@@ -970,8 +970,12 @@ def seed_maildir(
         new_matches = _find_matching_messages(new_dir, file_prefix, msg_id_token)
 
         if cur_matches:
-            target_path = cur_matches[0]
-            extras = cur_matches[1:] + new_matches
+            existing = cur_matches[0]
+            suffix = ""
+            if ":" in existing.name:
+                suffix = ":" + existing.name.split(":", 1)[1]
+            target_path = cur_dir / f"{file_prefix}{suffix}"
+            extras = [p for p in (cur_matches + new_matches) if p != target_path]
         else:
             target_path = new_dir / file_prefix
             extras = [p for p in new_matches if p != target_path]
@@ -989,6 +993,18 @@ def seed_maildir(
         except OSError:
             pass
         written_paths.append(target_path)
+
+    # Remove any leftover welcome emails from higher indices if template count decreased
+    written_set = {p.resolve() for p in written_paths}
+    for old_f in glob.glob(str(cur_dir / "17940745*.M*P1.brainsos*")) + glob.glob(
+        str(new_dir / "17940745*.M*P1.brainsos*")
+    ):
+        old_p = Path(old_f)
+        if old_p.resolve() not in written_set:
+            try:
+                old_p.unlink()
+            except OSError:
+                pass
 
     # Clear Dovecot index cache if permitted so updated subjects/bodies appear immediately
     cache_file = maildir_root / "dovecot.index.cache"

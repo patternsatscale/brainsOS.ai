@@ -1,5 +1,5 @@
 ---
-id: 05-appliance-cheat-sheet
+id: 06-appliance-cheat-sheet
 from_name: brainsOS Appliance
 from_user: system
 reply_to_user: bawtford
@@ -8,7 +8,7 @@ preheader: Complete 7-Layer Architecture Directory, Keyboard Shortcuts (Alt+1..A
 badge: OPERATOR CHEAT SHEET // 7-LAYER ARCHITECTURE
 accent: #38bdf8
 footer: brainsOS Sovereign Appliance ({domain}) • System Operator Quick Reference
-age_minutes: 16
+age_minutes: 18
 ---
 
 # 🚀 Welcome to Your Sovereign AI Operating System ({domain})

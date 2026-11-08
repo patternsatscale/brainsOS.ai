@@ -1,5 +1,5 @@
 ---
-id: 02-field-guide
+id: 03-field-guide
 from_name: brainsOS Field Guide
 from_user: guide
 reply_to_user: bawtford
@@ -8,7 +8,7 @@ preheader: Copy-paste a test prompt to Bawtford or explore your on-box autonomou
 badge: INTERACTIVE ONBOARDING // STEP 1
 accent: #ec4899
 footer: brainsOS Field Guide • Reply directly to route your message to bawtford@{local_domain}
-age_minutes: 4
+age_minutes: 5
 ---
 
 # 🧪 Try This First: Email `bawtford@{local_domain}`!
