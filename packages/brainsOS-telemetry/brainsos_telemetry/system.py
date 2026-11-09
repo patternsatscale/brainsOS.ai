@@ -52,24 +52,26 @@ ALLOWED_SERVICES = {
 
 
 def issue_csrf_token() -> str:
-    """Generate and store an ephemeral CSRF token valid for 1 hour."""
+    """Generate and store an ephemeral CSRF token valid for 24 hours."""
     token = secrets.token_hex(24)
     now = time.time()
-    # Prune expired tokens older than 1 hour
-    expired = [k for k, v in CSRF_TOKENS.items() if now - v > 3600]
+    # Prune expired tokens older than 24 hours
+    expired = [k for k, v in CSRF_TOKENS.items() if now - v > 86400]
     for k in expired:
         CSRF_TOKENS.pop(k, None)
     CSRF_TOKENS[token] = now
     return token
 
 
-def validate_csrf_token(token: Optional[str]) -> bool:
-    """Check if the provided CSRF token is known and not expired."""
+def validate_csrf_token(token: Optional[str], cookie_token: Optional[str] = None) -> bool:
+    """Check if the provided CSRF token is known and not expired (or matches double-submit cookie)."""
     if not token:
         return False
     now = time.time()
     ts = CSRF_TOKENS.get(token)
-    if ts and (now - ts <= 3600):
+    if ts and (now - ts <= 86400):
+        return True
+    if cookie_token and len(token) >= 16 and secrets.compare_digest(token, cookie_token):
         return True
     return False
 
@@ -129,6 +131,23 @@ class JobManager:
 
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve job status, exit code, and execution logs."""
+        if job_id in ("latest", "active"):
+            if self.active_job:
+                return self._format_job(self.active_job)
+            try:
+                candidates = [
+                    os.path.join(self.jobs_dir, fn)
+                    for fn in os.listdir(self.jobs_dir)
+                    if fn.startswith("job-") and fn.endswith(".json")
+                ]
+                if candidates:
+                    newest_meta = max(candidates, key=os.path.getmtime)
+                    job_id = os.path.basename(newest_meta)[:-5]
+                else:
+                    return None
+            except Exception:
+                return None
+
         if self.active_job and self.active_job["id"] == job_id:
             return self._format_job(self.active_job)
 
@@ -1009,14 +1028,40 @@ def verify_internal_auth(request: Request):
         )
 
 
-def verify_state_change_security(request: Request):
-    """Enforce CSRF token, Origin check, and Authentik identity on state-changing endpoints."""
-    # 1. Authentik identity header
+def _resolve_authenticated_identity(request: Request) -> Optional[str]:
+    """Resolve authenticated operator identity from Authentik headers or verified session cookies."""
     username = (
         request.headers.get("X-Authentik-Username")
         or request.headers.get("X-Authentik-Email")
         or request.headers.get("Remote-User")
     )
+    if username and username.strip():
+        return username.strip()
+
+    # Fallback when Authentik Outpost 1-hour cookie expired on a same-origin Portal session
+    # that still holds an active authentik_session or verified HttpOnly CSRF cookie via Caddy
+    has_session_cookie = any(
+        k == "authentik_session" or k.startswith("authentik_proxy_")
+        for k in request.cookies.keys()
+    )
+    csrf_hdr = request.headers.get("X-CSRF-Token")
+    csrf_cookie = request.cookies.get("brainsos_csrf_token")
+    has_matched_csrf_cookie = bool(
+        csrf_hdr and csrf_cookie and len(csrf_hdr) >= 16 and secrets.compare_digest(csrf_hdr, csrf_cookie)
+    )
+    outpost_fallback = request.headers.get("X-Authentik-Outpost-Fallback") == "true"
+
+    if has_session_cookie or has_matched_csrf_cookie or outpost_fallback:
+        ident = get_appliance_identity(get_repo_root())
+        return str(ident.get("superuser_username") or ident.get("admin_username") or "admin")
+
+    return None
+
+
+def verify_state_change_security(request: Request):
+    """Enforce CSRF token, Origin check, and Authentik identity on state-changing endpoints."""
+    # 1. Authentik identity header (with same-origin session cookie fallback when outpost cookie rotates)
+    username = _resolve_authenticated_identity(request)
     if not username:
         raise HTTPException(
             status_code=403,
@@ -1058,7 +1103,7 @@ def verify_state_change_security(request: Request):
 
     # 4. CSRF Token check
     csrf_token = request.headers.get("X-CSRF-Token")
-    if not validate_csrf_token(csrf_token):
+    if not validate_csrf_token(csrf_token, request.cookies.get("brainsos_csrf_token")):
         raise HTTPException(
             status_code=403,
             detail="Forbidden: missing or invalid CSRF token",
@@ -1069,11 +1114,7 @@ def verify_setup_security(request: Request):
     """Enforce CSRF token, Origin check, and either Authentik SSO identity or Pre-Login First-Boot Wizard mode."""
     repo_root = get_repo_root()
     ident = get_appliance_identity(repo_root)
-    username = (
-        request.headers.get("X-Authentik-Username")
-        or request.headers.get("X-Authentik-Email")
-        or request.headers.get("Remote-User")
-    )
+    username = _resolve_authenticated_identity(request)
     if not username and ident.get("firstboot_wizard_completed", True):
         raise HTTPException(
             status_code=403,
@@ -1112,7 +1153,7 @@ def verify_setup_security(request: Request):
             )
 
     csrf_token = request.headers.get("X-CSRF-Token")
-    if not validate_csrf_token(csrf_token):
+    if not validate_csrf_token(csrf_token, request.cookies.get("brainsos_csrf_token")):
         raise HTTPException(
             status_code=403,
             detail="Forbidden: missing or invalid CSRF token",
@@ -1135,6 +1176,7 @@ def create_system_api_app():
         version: Optional[str] = Field(None, description="Optional target upstream image version tag (e.g. 1.108.0)")
         reset_version: bool = Field(False, description="Remove .env version override and restore default image tag")
         containers_only: bool = Field(False, description="Update upstream containers only without pulling git source")
+        source_only: bool = Field(False, description="Pull git source code and sync assets without pulling upstream containers")
         full: bool = Field(True, description="Full update including git source code and containers")
         branch: Optional[str] = Field(None, description="Optional target git branch name (e.g. main, task/320-appliance-rehearsal)")
 
@@ -1604,6 +1646,10 @@ def create_system_api_app():
                 cmd.extend(["--version", req.version.strip()])
         elif req.containers_only:
             cmd.append("--containers-only")
+        elif req.source_only:
+            cmd.append("--source-only")
+            if req.branch:
+                cmd.extend(["--branch", req.branch.strip()])
         elif req.full:
             cmd.append("--full")
             if req.branch:

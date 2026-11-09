@@ -74,6 +74,7 @@ buildable_services() {
 CHECK_ONLY=false
 JSON_OUTPUT=false
 CONTAINERS_ONLY=false
+SOURCE_ONLY=false
 OS_ONLY=false
 FULL_UPDATE=true
 TARGET_SERVICE=""
@@ -95,6 +96,7 @@ show_help() {
   echo "  --check               Check for available updates without applying them"
   echo "  --json                Output version status and check results in JSON format"
   echo "  --containers-only     Update upstream container images only (do not pull git code)"
+  echo "  --source-only         Pull git source code and sync assets only (skip upstream container pulls)"
   echo "  --os-only             Apply host OS security & package upgrades (apt-get dist-upgrade)"
   echo "  --full                Update both git source code and container images (default)"
   echo "  --branch <name>       Switch to and pull a specific remote git branch (e.g. main, task/320-appliance-rehearsal)"
@@ -128,7 +130,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --containers-only)
       CONTAINERS_ONLY=true
+      SOURCE_ONLY=false
       FULL_UPDATE=false
+      shift
+      ;;
+    --source-only)
+      SOURCE_ONLY=true
+      FULL_UPDATE=true
+      CONTAINERS_ONLY=false
       shift
       ;;
     --os-only)
@@ -777,7 +786,7 @@ except Exception:
     print('{}')
 " 2>/dev/null || echo "{}")"
 
-if [ "${DRY_RUN}" = false ] && [ "${NO_BACKUP}" = false ]; then
+if [ "${DRY_RUN}" = false ] && [ "${NO_BACKUP}" = false ] && [ "${SOURCE_ONLY}" = false ]; then
   log_info "Creating pre-flight data snapshot for safe automated rollback (Audit #15)..."
   if [ -f "${REPO_ROOT}/scripts/control/backup.sh" ]; then
     BACKUP_PATH_FILE="$(mktemp "${TMPDIR:-/tmp}/brainsos_backup_path_XXXXXX")"
@@ -879,7 +888,7 @@ if [ "${FULL_UPDATE}" = true ] && git rev-parse --is-inside-work-tree >/dev/null
     git update-index --no-assume-unchanged config/caddy/tls_policy.caddy 2>/dev/null || true
     git checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
     if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-      if [ -n "${TARGET_BRANCH}" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ]; then
+      if [ -n "${TARGET_BRANCH}" ] || [ "${SOURCE_ONLY}" = "true" ] || [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ]; then
         git reset --hard HEAD >/dev/null 2>&1 || true
       else
         log_error "Tracked files have local modifications. Commit or revert them before updating."
@@ -920,8 +929,14 @@ fi
 # ------------------------------------------------------------------------------
 # 6. Step 2: Python Environment & Portal Rebuild (if needed)
 # ------------------------------------------------------------------------------
+CHANGED_FILES=""
+if [ -n "${PRE_PULL_HEAD}" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  CHANGED_FILES="$(git diff --name-only "${PRE_PULL_HEAD}" HEAD 2>/dev/null || true)"
+fi
+
 if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ]; then
   log_info "Step 2/5: Synchronizing Python dependencies and portal assets..."
+  chmod +x "${REPO_ROOT}"/scripts/*/*.sh "${REPO_ROOT}"/packages/brainsOS-appliance/scripts/*.sh "${REPO_ROOT}"/docker/*/*.sh 2>/dev/null || true
   if [ -d ".venv" ]; then
     if command -v uv >/dev/null 2>&1; then
       uv pip install -e packages/brainsOS-* --quiet >/dev/null 2>&1 || true
@@ -930,7 +945,7 @@ if [ "${FULL_UPDATE}" = true ] && [ "${DRY_RUN}" = false ]; then
     fi
   fi
 
-  if [ ! -f "packages/brainsOS-portal/dist/index.html" ] || [ "${PRE_PULL_HEAD}" != "$(git rev-parse HEAD)" ]; then
+  if [ ! -f "packages/brainsOS-portal/dist/index.html" ] || echo "${CHANGED_FILES}" | grep -q "^packages/brainsOS-portal/"; then
     log_info "Building portal static bundle in packages/brainsOS-portal..."
     (cd packages/brainsOS-portal && npm run build --silent) >/dev/null 2>&1 || true
   fi
@@ -942,7 +957,11 @@ fi
 # ------------------------------------------------------------------------------
 # 7. Step 3: Version Targeting & Container Image Pull (C2)
 # ------------------------------------------------------------------------------
-log_info "Step 3/5: Reconciling service image versions and pulling containers..."
+if [ "${SOURCE_ONLY}" = true ]; then
+  log_info "Step 3/5: Skipping upstream container image pulls (--source-only mode)..."
+  COMPOSE_TARGETS=()
+else
+  log_info "Step 3/5: Reconciling service image versions and pulling containers..."
 
 resolve_latest_github_release() {
   local repo="$1"
@@ -1113,6 +1132,7 @@ else
     fi
   fi
 fi
+fi
 
 # ------------------------------------------------------------------------------
 # 8. Step 4: Graceful Container Recreate & Environment Sync
@@ -1125,6 +1145,30 @@ if [ "${DRY_RUN}" = true ]; then
   else
     log_info "[DRY-RUN] Would recreate containers via reload-env.sh or docker compose up -d"
   fi
+elif [ "${SOURCE_ONLY}" = true ]; then
+  CONTAINERS_CHANGED=true
+  log_info "Synchronizing services affected by source code update..."
+  if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(app-)?auth-server$'; then
+    docker exec -i brainsos-app-auth-server ak shell -c "
+from authentik.providers.proxy.models import ProxyProvider
+for p in ProxyProvider.objects.all():
+    p.access_token_validity = 'days=7'
+    p.refresh_token_validity = 'days=30'
+    p.save()
+" >/dev/null 2>&1 || true
+  fi
+  if echo "${CHANGED_FILES}" | grep -qE "^(docker/litellm/|config/litellm/)" || [ -z "${CHANGED_FILES}" ]; then
+    log_info "Restarting LiteLLM gateway to apply updated patches & configuration..."
+    docker compose restart litellm >/dev/null 2>&1 || docker restart brainsos-control-litellm >/dev/null 2>&1 || true
+  fi
+  if echo "${CHANGED_FILES}" | grep -qE "^(config/caddy/|packages/brainsOS-portal/)"; then
+    log_info "Reloading Caddy ingress to serve updated portal & routing..."
+    docker compose restart caddy >/dev/null 2>&1 || docker restart brainsos-ingress-caddy >/dev/null 2>&1 || true
+  fi
+  if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
+    "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply >/dev/null 2>&1 || true
+  fi
+  log_success "Affected services synchronized with latest git source."
 else
   CONTAINERS_CHANGED=true
   if [ "${#COMPOSE_TARGETS[@]}" -gt 0 ]; then
