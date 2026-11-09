@@ -198,7 +198,11 @@ apt-get install -y --no-install-recommends \
   socat \
   python3 \
   tar \
-  gzip
+  gzip \
+  ec2-hibinit-agent \
+  acpid
+
+systemctl enable hibinit-agent.service acpid.service 2>/dev/null || true
 
 log_info "Installing Node.js 22 LTS from NodeSource (bundles npm without Debian node-lodash packages)..."
 install -m 0755 -d /etc/apt/keyrings
@@ -283,7 +287,7 @@ log_info "4. Configuring brainsOS systemd units..."
 mkdir -p "${APP_DIR}/data/"{settings,souls,agents,agent_memories,agent_workspaces,agent_apps}
 chown -R root:root "${APP_DIR}"
 
-for unit in brainsos.service brainsos-firstboot.service brainsos-system-api.service; do
+for unit in brainsos.service brainsos-firstboot.service brainsos-system-api.service brainsos-resume.service; do
   if [ ! -f "${CONFIGS_DIR}/${unit}" ]; then
     log_error "Missing systemd unit template: ${CONFIGS_DIR}/${unit}"
     exit 1
@@ -297,7 +301,8 @@ systemctl daemon-reload
 systemctl enable brainsos-firstboot.service
 systemctl enable brainsos.service
 systemctl enable brainsos-system-api.service
-log_success "Systemd services enabled."
+systemctl enable brainsos-resume.service
+log_success "Systemd services enabled (including post-hibernation resume sync)."
 
 # ------------------------------------------------------------------------------
 # 5. Host Hardening & Log Safeguards
@@ -400,6 +405,11 @@ ln -sf /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null || true
 if command -v cloud-init >/dev/null 2>&1; then
   cloud-init clean --logs --seed || true
 fi
+
+# Ensure no builder-sized hibernation swapfile persists in the snapshot
+# (hibinit-agent creates /swap-hibinit sized to the launched instance's RAM on first boot)
+swapoff /swap-hibinit 2>/dev/null || true
+rm -f /swap-hibinit
 
 # Purge superseded AWS kernel packages so only the latest patched kernel remains in /var/lib/dpkg/status
 LATEST_IMAGE="$(dpkg-query -W -f='${Package}\t${Status}\n' 2>/dev/null | awk '$2=="install" && $3=="ok" && $4=="installed" && $1 ~ /^linux-image-[0-9]+.*-aws$/ {print $1}' | sort -V | tail -n 1)"

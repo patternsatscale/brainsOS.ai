@@ -149,12 +149,19 @@ if [[ "${BRAINSOS_AUTO_PULL_ON_BOOT:-false}" =~ ^(true|1|yes)$ ]] && [ "${RELOAD
 fi
 
 # ------------------------------------------------------------------------------
-# 0b. AWS EC2 Dynamic Public IP / Public DNS Reconciliation on Reboot
+# 0b. AWS EC2 Dynamic Public IP / Public DNS Reconciliation on Boot or Resume
 # ------------------------------------------------------------------------------
 if command -v curl >/dev/null 2>&1 && [ -f "${REPO_ROOT}/scripts/control/env-upsert.sh" ]; then
-  _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" \
-    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
-    --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+  _IMDS_TOK=""
+  _IMDS_ATTEMPTS=1
+  [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] && _IMDS_ATTEMPTS=5
+  for (( _i=1; _i<=_IMDS_ATTEMPTS; _i++ )); do
+    _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" \
+      -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+      --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+    [ -n "${_IMDS_TOK}" ] && break
+    [ "${_i}" -lt "${_IMDS_ATTEMPTS}" ] && sleep 1
+  done
   if [ -n "${_IMDS_TOK}" ]; then
     _PUB_IP="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" \
       "http://169.254.169.254/latest/meta-data/public-ipv4" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
