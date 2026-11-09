@@ -1,0 +1,17 @@
+[Unit]
+Description=brainsOS Appliance Post-Hibernation / Resume IP & Environment Sync
+Documentation=https://brainsos.ai
+After=hibernate.target suspend.target hybrid-sleep.target suspend-then-hibernate.target network-online.target docker.service
+Wants=network-online.target
+ConditionPathExists=/opt/brainsos/.env
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/brainsos
+Environment=HOME=/root
+ExecStart=/opt/brainsos/scripts/control/reload-env.sh --no-urls
+ExecStartPost=/opt/brainsos/scripts/setup/imds-guard.sh --apply
+TimeoutStartSec=600
+
+[Install]
+WantedBy=hibernate.target suspend.target hybrid-sleep.target suspend-then-hibernate.target

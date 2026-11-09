@@ -81,7 +81,8 @@ def test_caddyfiles_route_git_and_hermes_runner():
         assert "reverse_proxy runner-hermes:9119" in content, f"Missing runner-hermes:9119 in {caddy_path}"
         assert "header_up X-Forwarded-Prefix /runner" in content, f"Missing X-Forwarded-Prefix /runner in {caddy_path}"
         assert "runner-hermes:8787" not in content, f"Stale runner-hermes:8787 found in {caddy_path}"
-        assert "path /api/v1/system/jobs/* /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf" in content
+        assert "(system_api_auth_true)" in content
+        assert "path /api/v1/system/jobs/* /api/v1/system/jobs-active /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf" in content
         assert "header_up X-Authentik-Email {header.X-Authentik-Email}" in content
 
 
