@@ -744,6 +744,7 @@ interface UpdateTarget {
   targetVersion?: string;
   service?: string;
   containersOnly?: boolean;
+  sourceOnly?: boolean;
   full?: boolean;
   branch?: string;
   resetVersion?: boolean;
@@ -1473,14 +1474,61 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     };
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    let effectiveCsrf = csrfToken;
+    if (!effectiveCsrf) {
+      try {
+        const csrfRes = await fetch('/api/v1/system/csrf', { credentials: 'include' });
+        if (csrfRes.ok) {
+          const csrfData = await csrfRes.json();
+          if (csrfData?.csrf_token) {
+            effectiveCsrf = csrfData.csrf_token;
+            setCsrfToken(csrfData.csrf_token);
+          }
+        }
+      } catch {}
+    }
+    if (effectiveCsrf) headers['X-CSRF-Token'] = effectiveCsrf;
+
+    let activeJobId = '';
+    let completedCleanly = false;
 
     try {
-      const res = await fetch(endpoint, {
+      let res = await fetch(endpoint, {
         method: 'POST',
         headers,
+        credentials: 'include',
         body: JSON.stringify(bodyPayload),
       });
+
+      if (res.status === 403) {
+        try {
+          const csrfRes = await fetch('/api/v1/system/csrf', { credentials: 'include' });
+          if (csrfRes.ok) {
+            const csrfData = await csrfRes.json();
+            if (csrfData?.csrf_token) {
+              setCsrfToken(csrfData.csrf_token);
+              headers['X-CSRF-Token'] = csrfData.csrf_token;
+              res = await fetch(endpoint, {
+                method: 'POST',
+                headers,
+                credentials: 'include',
+                body: JSON.stringify(bodyPayload),
+              });
+            }
+          }
+        } catch {}
+      }
+
+      if (res.status === 409) {
+        try {
+          const conflictData = await res.json();
+          if (conflictData?.active_job_id) {
+            addLog(`ℹ️ Attaching to active background job ${conflictData.active_job_id}...`, 'info');
+            await pollJobUntilComplete(conflictData.active_job_id, addLog, onSuccess);
+            return;
+          }
+        } catch {}
+      }
 
       if (!res.ok) {
         let errorDetail = res.statusText;
@@ -1493,11 +1541,10 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
       if (!res.body) throw new Error('Response body is null');
 
-      const activeJobId = res.headers.get('X-Job-ID') || '';
+      activeJobId = res.headers.get('X-Job-ID') || '';
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let completedCleanly = false;
 
       try {
         while (true) {
@@ -1512,6 +1559,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             if (line.startsWith('data: ')) {
               try {
                 const payload = JSON.parse(line.slice(6));
+                if (payload.job_id && !activeJobId) {
+                  activeJobId = String(payload.job_id);
+                }
                 if (payload.type === 'log') {
                   addLog(payload.line, 'log');
                 } else if (payload.type === 'start') {
@@ -1538,16 +1588,33 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           }
         }
       } catch (streamErr: unknown) {
-        if (activeJobId && !completedCleanly) {
-          await pollJobUntilComplete(activeJobId, addLog, onSuccess);
+        if (!completedCleanly) {
+          await pollJobUntilComplete(activeJobId || 'latest', addLog, onSuccess);
           return;
         }
         throw streamErr;
       }
 
+      if (!completedCleanly && activeJobId) {
+        await pollJobUntilComplete(activeJobId, addLog, onSuccess);
+        return;
+      }
+
       fetchStatus();
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      if (!completedCleanly && /failed to fetch|network|load failed/i.test(errMsg)) {
+        try {
+          const probeRes = await fetch(`/api/v1/system/jobs/${activeJobId || 'latest'}`, { credentials: 'include' });
+          if (probeRes.ok) {
+            const probeJob = await probeRes.json();
+            if (probeJob?.id && (probeJob.status === 'running' || activeJobId)) {
+              await pollJobUntilComplete(probeJob.id, addLog, onSuccess);
+              return;
+            }
+          }
+        } catch {}
+      }
       if (import.meta.env.DEV) {
         addLog(`[Local Simulation Mode: ${errMsg}]`, 'info');
         await new Promise((r) => setTimeout(r, 500));
@@ -1574,6 +1641,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         version: target.targetVersion,
         reset_version: target.resetVersion || false,
         containers_only: target.containersOnly,
+        source_only: target.sourceOnly || false,
         full: target.full,
         branch: target.branch,
       },
@@ -4016,6 +4084,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                         setConfirmTarget({
                           id: 'git-source',
                           name: `Sync Platform Core (origin/${targetBranch})`,
+                          sourceOnly: true,
                           full: true,
                           branch: targetBranch,
                         });

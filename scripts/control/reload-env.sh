@@ -626,6 +626,8 @@ for o in Outpost.objects.all():
 for p in ProxyProvider.objects.all():
     p.external_host = f'https://{domain}'
     p.cookie_domain = cookie_dom
+    p.access_token_validity = 'days=7'
+    p.refresh_token_validity = 'days=30'
     p.redirect_uris = f'https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://{domain}?X-authentik-auth-callback=true\nhttps://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://local.brainsos.ai?X-authentik-auth-callback=true\n.*'
     p.save()
 

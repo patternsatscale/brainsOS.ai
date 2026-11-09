@@ -15,6 +15,7 @@ Environment=HOME=/root
 # Sources .env for BRAINSOS_SYSTEM_API_HOST, BRAINSOS_SYSTEM_API_PORT, SYSTEM_API_TOKEN
 EnvironmentFile=-/opt/brainsos/.env
 ExecStart=/opt/brainsos/.venv/bin/brainsos-system-api
+KillMode=process
 Restart=always
 RestartSec=5
 StandardOutput=journal

@@ -73,6 +73,22 @@
 	request_header X-BrainsOS-Prelogin-Wizard "true"
 }
 
+(system_api_auth_true) {
+	forward_auth authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
+		trusted_proxies private_ranges
+		@outpost_non2xx status 302 401 403 404 502 503 504
+		handle_response @outpost_non2xx {
+			request_header X-Authentik-Outpost-Fallback "true"
+		}
+	}
+}
+
+(system_api_auth_false) {
+	request_header X-BrainsOS-Prelogin-Wizard "true"
+}
+
 (authentik_backend) {
 	encode gzip zstd
 	log {
@@ -241,7 +257,7 @@
 	# Subsystem: System Telemetry & Universal Update Engine API (Ticket #310 / #311)
 	@system_public_status {
 		method GET
-		path /api/v1/system/jobs/* /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf
+		path /api/v1/system/jobs/* /api/v1/system/jobs-active /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf
 	}
 	handle @system_public_status {
 		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
@@ -253,7 +269,7 @@
 	}
 
 	handle /api/v1/system/* {
-		import firstboot_portal_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
+		import system_api_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
 			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
 			header_up X-Authentik-Username {header.X-Authentik-Username}

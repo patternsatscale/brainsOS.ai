@@ -42,6 +42,8 @@ entries:
       internal_host: "http://brainsos-caddy:80"
       mode: "forward_domain"
       cookie_domain: !Env [AUTHENTIK_COOKIE_DOMAIN, ""]
+      access_token_validity: "days=7"
+      refresh_token_validity: "days=30"
       redirect_uris: |
         https://.*
         http://.*
