@@ -3,6 +3,7 @@
 	auto_https disable_redirects
 	# Clients connecting by bare IP send no SNI; serve the primary site certificate.
 	default_sni {$BRAINSOS_DOMAIN:localhost}
+	fallback_sni {$BRAINSOS_DOMAIN:localhost}
 }
 
 # ==============================================================================

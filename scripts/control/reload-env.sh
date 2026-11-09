@@ -149,6 +149,65 @@ if [[ "${BRAINSOS_AUTO_PULL_ON_BOOT:-false}" =~ ^(true|1|yes)$ ]] && [ "${RELOAD
 fi
 
 # ------------------------------------------------------------------------------
+# 0b. AWS EC2 Dynamic Public IP / Public DNS Reconciliation on Reboot
+# ------------------------------------------------------------------------------
+if command -v curl >/dev/null 2>&1 && [ -f "${REPO_ROOT}/scripts/control/env-upsert.sh" ]; then
+  _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+    --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+  if [ -n "${_IMDS_TOK}" ]; then
+    _PUB_IP="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" \
+      "http://169.254.169.254/latest/meta-data/public-ipv4" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+    _LOC_IP="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" \
+      "http://169.254.169.254/latest/meta-data/local-ipv4" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+    _PUB_HOST="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" \
+      "http://169.254.169.254/latest/meta-data/public-hostname" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+
+    _EFFECTIVE_NEW_HOST="${_PUB_HOST:-${_PUB_IP}}"
+    _CUR_DOMAIN="${BRAINSOS_DOMAIN:-}"
+    _NEW_DOMAIN="${_CUR_DOMAIN}"
+
+    if [ -n "${_EFFECTIVE_NEW_HOST}" ]; then
+      if [[ "${_CUR_DOMAIN}" == *.amazonaws.com ]] || [[ "${_CUR_DOMAIN}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || [ -z "${_CUR_DOMAIN}" ]; then
+        _NEW_DOMAIN="${_EFFECTIVE_NEW_HOST}"
+      fi
+    fi
+
+    _NEW_IP_SITES=""
+    for _ip in "${_PUB_IP}" "${_LOC_IP}"; do
+      if [[ "${_ip}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] && [ "${_ip}" != "${_NEW_DOMAIN}" ]; then
+        case " ${_NEW_IP_SITES} " in *" ${_ip} "*) ;; *) _NEW_IP_SITES="${_NEW_IP_SITES:+${_NEW_IP_SITES} }${_ip}" ;; esac
+      fi
+    done
+    [ -z "${_NEW_IP_SITES}" ] && _NEW_IP_SITES="127.0.0.1"
+
+    _ENV_UPDATES=()
+    if [ -n "${_NEW_DOMAIN}" ] && [ "${_NEW_DOMAIN}" != "${_CUR_DOMAIN}" ]; then
+      log_info "Detected EC2 public hostname/IP change on reboot (${_CUR_DOMAIN} -> ${_NEW_DOMAIN}); updating .env..."
+      _ENV_UPDATES+=(
+        "BRAINSOS_DOMAIN=${_NEW_DOMAIN}"
+        "BRAINSOS_URL=${_NEW_DOMAIN}"
+        "NEXTAUTH_URL=https://${_NEW_DOMAIN}"
+      )
+    fi
+    if [ "${_NEW_IP_SITES}" != "${BRAINSOS_IP_SITES:-}" ]; then
+      _ENV_UPDATES+=("BRAINSOS_IP_SITES=${_NEW_IP_SITES}")
+    fi
+
+    if [ "${#_ENV_UPDATES[@]}" -gt 0 ]; then
+      "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "${_ENV_UPDATES[@]}" >/dev/null 2>&1 || true
+      set -a
+      . "${ENV_FILE}"
+      set +a
+      if [ "${_NEW_DOMAIN}" != "${_CUR_DOMAIN}" ] && [ -x "${REPO_ROOT}/scripts/setup/setup-portal.sh" ]; then
+        log_info "Rebuilding Portal bundle for new EC2 hostname (${_NEW_DOMAIN})..."
+        "${REPO_ROOT}/scripts/setup/setup-portal.sh" >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
+fi
+
+# ------------------------------------------------------------------------------
 # 0. Ensure Persistence Stores & Databases Are Running
 # ------------------------------------------------------------------------------
 log_info "Ensuring persistence stores and database engines are running..."
@@ -760,6 +819,7 @@ git -C "${REPO_ROOT}" update-index --assume-unchanged config/caddy/tls_policy.ca
 
 
 if docker ps --format '{{.Names}}' | grep -qE '^brainsos-(ingress-|net-)?caddy$'; then
+  docker compose up -d caddy >/dev/null 2>&1 || true
   docker compose restart caddy >/dev/null 2>&1
   log_success "Caddy ingress reloaded."
 fi
