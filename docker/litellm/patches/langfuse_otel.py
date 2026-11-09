@@ -489,6 +489,38 @@ def _apply_brainsos_proxy_db_logger_no_log_fix() -> None:
     except Exception as exc:
         verbose_logger.debug("brainsOS: could not patch Logging.should_run_callback: %s", exc)
 
+    try:
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        from litellm.repositories import daily_activity_repository as _dar
+        from litellm.repositories import daily_activity_sql as _das
+
+        def _brainsos_adjust_dates_for_timezone(
+            start_date: str,
+            end_date: str,
+            timezone_offset_minutes: int | None,
+            include_current_utc_day: bool = True,
+            utc_now: _dt | None = None,
+        ) -> tuple[str, str]:
+            """Always extend local-today end_date to the current UTC day bucket.
+
+            Upstream LiteLLM v1.105.0's Usage dashboard (`NewUsagePage`) omits
+            `include_current_utc_day=true` when calling `/user/daily/activity/aggregated`,
+            `/tag/daily/activity/aggregated`, and `/team/daily/activity/aggregated`,
+            causing evening queries in Americas timezones (after 00:00 UTC) to miss
+            all rows written under the new UTC date.
+            """
+            now = utc_now if utc_now is not None else _dt.now(_tz.utc)
+            offset_mins = timezone_offset_minutes if timezone_offset_minutes is not None else 840
+            caller_local_today = (now - _td(minutes=offset_mins)).date().isoformat()
+            if end_date < caller_local_today:
+                return start_date, end_date
+            return start_date, max(end_date, now.date().isoformat())
+
+        _das.adjust_dates_for_timezone = _brainsos_adjust_dates_for_timezone  # type: ignore[attr-defined]
+        _dar.adjust_dates_for_timezone = _brainsos_adjust_dates_for_timezone  # type: ignore[attr-defined]
+    except Exception as exc:
+        verbose_logger.debug("brainsOS: could not patch adjust_dates_for_timezone: %s", exc)
+
 
 _apply_brainsos_proxy_db_logger_no_log_fix()
 
