@@ -132,6 +132,7 @@ if [ "${SKIP_IMDS}" != true ] && command -v curl >/dev/null 2>&1; then
     --connect-timeout 2 --max-time 3 2>/dev/null || true)"
 fi
 
+INSTANCE_NAME_TAG=""
 if [ -n "${IMDS_TOKEN}" ]; then
   log_success "Acquired IMDSv2 session token from AWS EC2 metadata service."
   INSTANCE_ID="$(imds_get instance-id)"
@@ -139,6 +140,7 @@ if [ -n "${IMDS_TOKEN}" ]; then
   LOCAL_IPV4="$(imds_get local-ipv4)"
   PUBLIC_IPV4="$(imds_get public-ipv4)"
   AWS_REGION_DETECTED="$(imds_get placement/region)"
+  INSTANCE_NAME_TAG="$(imds_get tags/instance/Name)"
   USER_DATA="$(curl -s -f -H "X-aws-ec2-metadata-token: ${IMDS_TOKEN}" \
     "http://169.254.169.254/latest/user-data" --connect-timeout 2 --max-time 3 2>/dev/null || true)"
 else
@@ -146,7 +148,10 @@ else
   USER_DATA=""
 fi
 
-# Test hook / non-EC2 hosts: user-data supplied from a local file
+# Test hooks / non-EC2 overrides
+[ -n "${BRAINSOS_FIRSTBOOT_INSTANCE_ID:-}" ] && INSTANCE_ID="${BRAINSOS_FIRSTBOOT_INSTANCE_ID}"
+[ -n "${BRAINSOS_FIRSTBOOT_PUBLIC_IPV4:-}" ] && PUBLIC_IPV4="${BRAINSOS_FIRSTBOOT_PUBLIC_IPV4}"
+[ -n "${BRAINSOS_FIRSTBOOT_NAME_TAG:-}" ] && INSTANCE_NAME_TAG="${BRAINSOS_FIRSTBOOT_NAME_TAG}"
 if [ -n "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE:-}" ] && [ -f "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE}" ]; then
   USER_DATA="$(cat "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE}")"
 fi
@@ -172,6 +177,9 @@ normalize_url_host() {
 UD_DOMAIN=""
 UD_URL=""
 UD_LOCAL_DOMAIN=""
+UD_BASE_DOMAIN=""
+UD_ROUTE53_ZONE_ID=""
+UD_ROUTE53_FORCE="false"
 UD_ADMIN_USERNAME=""
 UD_ACME_EMAIL=""
 UD_TLS_MODE=""
@@ -244,6 +252,41 @@ if [ -n "${USER_DATA}" ]; then
       git_branch:*)
         val="${ud_trimmed#git_branch:}"
         UD_GIT_BRANCH="$(strip_value "${val}")"
+        ;;
+      RECORD_NAME=*|RECORD_NAME:*)
+        val="${ud_trimmed#RECORD_NAME[=:]}"
+        UD_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      BRAINSOS_BASE_DOMAIN=*|BRAINSOS_BASE_DOMAIN:*)
+        val="${ud_trimmed#BRAINSOS_BASE_DOMAIN[=:]}"
+        UD_BASE_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      base_domain:*)
+        val="${ud_trimmed#base_domain:}"
+        UD_BASE_DOMAIN="$(normalize_url_host "$(strip_value "${val}")")"
+        ;;
+      BRAINSOS_ROUTE53_ZONE_ID=*|BRAINSOS_ROUTE53_ZONE_ID:*)
+        val="${ud_trimmed#BRAINSOS_ROUTE53_ZONE_ID[=:]}"
+        val="$(strip_value "${val}")"
+        UD_ROUTE53_ZONE_ID="${val##*hostedzone/}"
+        ;;
+      route53_zone_id:*)
+        val="${ud_trimmed#route53_zone_id:}"
+        val="$(strip_value "${val}")"
+        UD_ROUTE53_ZONE_ID="${val##*hostedzone/}"
+        ;;
+      HOSTED_ZONE_ID=*|HOSTED_ZONE_ID:*)
+        val="${ud_trimmed#HOSTED_ZONE_ID[=:]}"
+        val="$(strip_value "${val}")"
+        UD_ROUTE53_ZONE_ID="${val##*hostedzone/}"
+        ;;
+      BRAINSOS_ROUTE53_FORCE=*|BRAINSOS_ROUTE53_FORCE:*)
+        val="${ud_trimmed#BRAINSOS_ROUTE53_FORCE[=:]}"
+        UD_ROUTE53_FORCE="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      route53_force:*)
+        val="${ud_trimmed#route53_force:}"
+        UD_ROUTE53_FORCE="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
         ;;
     esac
   done <<< "${USER_DATA}"
@@ -319,16 +362,33 @@ fi
 
 APPLIANCE_REGION="${AWS_REGION_DETECTED:-${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}}"
 
-# Primary external URL hostname: BRAINSOS_URL or BRAINSOS_DOMAIN from user-data, else EC2 public DNS / IP
+# Primary external URL hostname: BRAINSOS_URL or BRAINSOS_DOMAIN from user-data,
+# else BRAINSOS_BASE_DOMAIN + EC2 Name tag / short instance-id (#373), else EC2 public DNS / IP
+SHORT_INSTANCE_ID="$(printf '%s' "${INSTANCE_ID}" | tr '[:upper:]' '[:lower:]' | cut -c1-12)"
 EFFECTIVE_UD_URL="${UD_URL:-${UD_DOMAIN}}"
+if [ -z "${EFFECTIVE_UD_URL}" ] && [ -n "${UD_BASE_DOMAIN}" ] && is_fqdn "${UD_BASE_DOMAIN}"; then
+  NAME_SLUG="$(printf '%s' "${INSTANCE_NAME_TAG}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//' | cut -c1-32)"
+  if [ "${#NAME_SLUG}" -ge 2 ] && [ "${NAME_SLUG}" != "admin" ] && [ "${NAME_SLUG}" != "akadmin" ]; then
+    EFFECTIVE_UD_URL="${NAME_SLUG}.${UD_BASE_DOMAIN}"
+  else
+    EFFECTIVE_UD_URL="${SHORT_INSTANCE_ID}.${UD_BASE_DOMAIN}"
+  fi
+  UD_DOMAIN="${EFFECTIVE_UD_URL}"
+fi
+
 APPLIANCE_DOMAIN="${PUBLIC_HOSTNAME}"
+USERDATA_ROUTING="false"
 if [ -n "${EFFECTIVE_UD_URL}" ]; then
   if is_fqdn "${EFFECTIVE_UD_URL}" || is_ipv4 "${EFFECTIVE_UD_URL}"; then
     APPLIANCE_DOMAIN="${EFFECTIVE_UD_URL}"
+    if is_fqdn "${EFFECTIVE_UD_URL}" && [[ "${EFFECTIVE_UD_URL}" != *.amazonaws.com ]]; then
+      USERDATA_ROUTING="true"
+    fi
   else
     log_warn "Ignoring invalid BRAINSOS_URL/BRAINSOS_DOMAIN in user-data: '${EFFECTIVE_UD_URL}'"
   fi
 fi
+[ -n "${UD_ROUTE53_ZONE_ID}" ] && USERDATA_ROUTING="true"
 
 # Internal unit local domain & hostname (#332): never default to ec2-*.compute-1.amazonaws.com
 APPLIANCE_LOCAL_DOMAIN="local.brainsos.ai"
@@ -340,6 +400,8 @@ if [ -n "${UD_LOCAL_DOMAIN}" ]; then
   fi
 elif [ -n "${UD_DOMAIN}" ] && is_fqdn "${UD_DOMAIN}" && [[ "${UD_DOMAIN}" != *.amazonaws.com ]]; then
   APPLIANCE_LOCAL_DOMAIN="${UD_DOMAIN}"
+elif [ -n "${EFFECTIVE_UD_URL}" ] && is_fqdn "${EFFECTIVE_UD_URL}" && [[ "${EFFECTIVE_UD_URL}" != *.amazonaws.com ]]; then
+  APPLIANCE_LOCAL_DOMAIN="${EFFECTIVE_UD_URL}"
 elif [ -n "${UD_ADMIN_USERNAME}" ] && [ "${UD_ADMIN_USERNAME}" != "admin" ] && [[ "${UD_ADMIN_USERNAME}" =~ ^[a-zA-Z0-9._-]{2,64}$ ]]; then
   APPLIANCE_LOCAL_DOMAIN="$(printf '%s' "${UD_ADMIN_USERNAME}" | tr '[:upper:]' '[:lower:]').aws.cloud.brainsos.ai"
 elif [ -n "${IMDS_TOKEN}" ]; then
@@ -355,25 +417,85 @@ if [ -n "${UD_ADMIN_USERNAME}" ]; then
   fi
 fi
 
-# TLS mode: internal CA unless a complete BYOD request was supplied
+# TLS mode: default to acme when Route 53 + custom domain is supplied via user-data (#373),
+# unless internal CA was explicitly requested.
+EFFECTIVE_TLS_MODE="${UD_TLS_MODE}"
+if [ -z "${EFFECTIVE_TLS_MODE}" ] && [ -n "${UD_ROUTE53_ZONE_ID}" ] && is_fqdn "${APPLIANCE_DOMAIN}" && [[ "${APPLIANCE_DOMAIN}" != *.amazonaws.com ]]; then
+  EFFECTIVE_TLS_MODE="acme"
+fi
+
+APEX_DOMAIN="$(printf '%s' "${APPLIANCE_DOMAIN}" | awk -F. '{if (NF>=2) print $(NF-1)"."$NF; else print $0}')"
+DEFAULT_ACME_EMAIL="ops@${APEX_DOMAIN}"
+
 TLS_MODE="internal"
 ACME_EMAIL_VALUE=""
-case "${UD_TLS_MODE}" in
+case "${EFFECTIVE_TLS_MODE}" in
   ""|internal) ;;
   acme|route53)
     if [ "${APPLIANCE_DOMAIN}" != "${EFFECTIVE_UD_URL}" ] || [ -z "${EFFECTIVE_UD_URL}" ]; then
-      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid BRAINSOS_URL or BRAINSOS_DOMAIN in user-data; using internal CA."
-    elif [[ ! "${UD_ACME_EMAIL}" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
-      log_warn "BRAINSOS_TLS_MODE=${UD_TLS_MODE} requires a valid ACME_EMAIL in user-data; using internal CA."
+      log_warn "BRAINSOS_TLS_MODE=${EFFECTIVE_TLS_MODE} requires a valid BRAINSOS_URL or BRAINSOS_DOMAIN in user-data; using internal CA."
     else
-      TLS_MODE="${UD_TLS_MODE}"
-      ACME_EMAIL_VALUE="${UD_ACME_EMAIL}"
+      CANDIDATE_EMAIL="${UD_ACME_EMAIL:-${DEFAULT_ACME_EMAIL}}"
+      if [[ ! "${CANDIDATE_EMAIL}" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then
+        log_warn "BRAINSOS_TLS_MODE=${EFFECTIVE_TLS_MODE} requires a valid ACME_EMAIL in user-data; using internal CA."
+      else
+        TLS_MODE="${EFFECTIVE_TLS_MODE}"
+        ACME_EMAIL_VALUE="${CANDIDATE_EMAIL}"
+      fi
     fi
     ;;
   *)
-    log_warn "Unknown BRAINSOS_TLS_MODE '${UD_TLS_MODE}' in user-data; using internal CA."
+    log_warn "Unknown BRAINSOS_TLS_MODE '${EFFECTIVE_TLS_MODE}' in user-data; using internal CA."
     ;;
 esac
+
+# ------------------------------------------------------------------------------
+# 1d. Route 53 Dynamic DNS Registration on First Boot (#373)
+#     Runs before brainsos.service starts Caddy so TLS-ALPN-01 / HTTP-01 resolves.
+# ------------------------------------------------------------------------------
+SYNC_DDNS_SCRIPT="${REPO_ROOT}/scripts/control/sync-route53-ddns.py"
+PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+[ ! -x "${PYTHON_BIN}" ] && PYTHON_BIN="$(command -v python3 || echo python3)"
+LAST_SYNCED_IP=""
+
+if [ -n "${UD_ROUTE53_ZONE_ID}" ] && is_fqdn "${APPLIANCE_DOMAIN}" && [[ "${APPLIANCE_DOMAIN}" != *.amazonaws.com ]]; then
+  if [ "${DRY_RUN}" = true ]; then
+    log_info "[DRY-RUN] Would sync Route 53 A record: ${APPLIANCE_DOMAIN} -> ${PUBLIC_IPV4:-<public-ipv4>} (zone=${UD_ROUTE53_ZONE_ID})"
+  elif [ -n "${PUBLIC_IPV4}" ] && is_ipv4 "${PUBLIC_IPV4}" && [ -f "${SYNC_DDNS_SCRIPT}" ]; then
+    log_info "Synchronizing Route 53 A record (${APPLIANCE_DOMAIN} -> ${PUBLIC_IPV4})..."
+    DDNS_FORCE_ARGS=()
+    [[ "${UD_ROUTE53_FORCE}" =~ ^(true|1|yes)$ ]] && DDNS_FORCE_ARGS+=("--force")
+    set +e
+    "${PYTHON_BIN}" "${SYNC_DDNS_SCRIPT}" \
+      --domain "${APPLIANCE_DOMAIN}" \
+      --ip "${PUBLIC_IPV4}" \
+      --zone-id "${UD_ROUTE53_ZONE_ID}" \
+      --instance-id "${INSTANCE_ID}" \
+      "${DDNS_FORCE_ARGS[@]}"
+    DDNS_RC=$?
+    set -e
+    if [ "${DDNS_RC}" -eq 0 ]; then
+      LAST_SYNCED_IP="${PUBLIC_IPV4}"
+      log_success "Route 53 A record active: ${APPLIANCE_DOMAIN} -> ${PUBLIC_IPV4}"
+    elif [ "${DDNS_RC}" -eq 2 ]; then
+      FALLBACK_BASE="${UD_BASE_DOMAIN:-${APPLIANCE_DOMAIN#*.}}"
+      FALLBACK_FQDN="${SHORT_INSTANCE_ID}.${FALLBACK_BASE}"
+      log_warn "Domain ${APPLIANCE_DOMAIN} is already owned by another EC2 instance; falling back to ${FALLBACK_FQDN}..."
+      if is_fqdn "${FALLBACK_FQDN}" && "${PYTHON_BIN}" "${SYNC_DDNS_SCRIPT}" \
+        --domain "${FALLBACK_FQDN}" \
+        --ip "${PUBLIC_IPV4}" \
+        --zone-id "${UD_ROUTE53_ZONE_ID}" \
+        --instance-id "${INSTANCE_ID}"; then
+        APPLIANCE_DOMAIN="${FALLBACK_FQDN}"
+        [ "${APPLIANCE_LOCAL_DOMAIN}" = "${EFFECTIVE_UD_URL}" ] && APPLIANCE_LOCAL_DOMAIN="${FALLBACK_FQDN}"
+        LAST_SYNCED_IP="${PUBLIC_IPV4}"
+        log_success "Fallback Route 53 A record active: ${APPLIANCE_DOMAIN} -> ${PUBLIC_IPV4}"
+      fi
+    else
+      log_warn "Route 53 DNS sync returned code ${DDNS_RC}; continuing first-boot sequence."
+    fi
+  fi
+fi
 
 # Bare-IP site addresses (internal CA), excluding the primary hostname itself
 IP_SITES=""
@@ -415,6 +537,10 @@ if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
   log_info "[DRY-RUN] BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
   log_info "[DRY-RUN] BRAINSOS_WIZARD_COMPLETED=false"
+  log_info "[DRY-RUN] BRAINSOS_USERDATA_ROUTING=${USERDATA_ROUTING}"
+  if [ -n "${UD_ROUTE53_ZONE_ID}" ]; then
+    log_info "[DRY-RUN] BRAINSOS_ROUTE53_ZONE_ID=${UD_ROUTE53_ZONE_ID}"
+  fi
   log_info "[DRY-RUN] CADDYFILE=Caddyfile.appliance BRAINSOS_TLS_MODE=${TLS_MODE} BRAINSOS_IP_SITES=${IP_SITES}"
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
     log_info "[DRY-RUN] ACME_EMAIL=${ACME_EMAIL_VALUE}"
@@ -490,6 +616,10 @@ else
     "BRAINSOS_MAIL_DOMAIN=${APPLIANCE_LOCAL_DOMAIN}"
     "BRAINSOS_DOMAIN=${APPLIANCE_DOMAIN}"
     "BRAINSOS_WIZARD_COMPLETED=false"
+    "BRAINSOS_USERDATA_ROUTING=${USERDATA_ROUTING}"
+    "BRAINSOS_ROUTE53_ZONE_ID=${UD_ROUTE53_ZONE_ID}"
+    "BRAINSOS_ROUTE53_FORCE=${UD_ROUTE53_FORCE}"
+    "BRAINSOS_LAST_SYNCED_IP=${LAST_SYNCED_IP}"
     "AUTHENTIK_COOKIE_DOMAIN="
     "CADDYFILE=Caddyfile.appliance"
     "BRAINSOS_TLS_MODE=${TLS_MODE}"

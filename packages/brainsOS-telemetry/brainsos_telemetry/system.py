@@ -861,10 +861,20 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         if "@" in admin_email:
             eu, ed = admin_email.split("@", 1)
             admin_email = f"{eu}@{_strip_mail_prefix(ed)}"
-    tls_mode = env.get("BRAINSOS_TLS_MODE") or (
-        "route53" if env.get("ACME_DNS_PROVIDER") == "route53" else "internal"
-    )
-    acme_email = env.get("ACME_EMAIL") or ""
+    env_file_exists = os.path.isfile(os.path.join(repo_root, ".env"))
+    raw_tls = file_env.get("BRAINSOS_TLS_MODE") if env_file_exists else env.get("BRAINSOS_TLS_MODE")
+    raw_dns_prov = file_env.get("ACME_DNS_PROVIDER") if env_file_exists else env.get("ACME_DNS_PROVIDER")
+    tls_mode = raw_tls or ("route53" if raw_dns_prov == "route53" else "internal")
+    acme_email = (file_env.get("ACME_EMAIL") if env_file_exists else env.get("ACME_EMAIL")) or ""
+    route53_zone_id = (
+        (file_env.get("BRAINSOS_ROUTE53_ZONE_ID") if env_file_exists else env.get("BRAINSOS_ROUTE53_ZONE_ID"))
+        or ""
+    ).strip()
+    raw_userdata_routing = (
+        (file_env.get("BRAINSOS_USERDATA_ROUTING") if env_file_exists else env.get("BRAINSOS_USERDATA_ROUTING"))
+        or ""
+    ).strip().lower()
+    userdata_routing_configured = raw_userdata_routing in ("true", "1", "yes")
 
     cloud_cfg_dir = env.get("BRAINSOS_CLOUD_CFG_DIR") or "/etc/cloud/cloud.cfg.d"
     preserve_cfg_path = os.path.join(cloud_cfg_dir, "99-brainsos-hostname.cfg")
@@ -915,6 +925,8 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "admin_bound_to_instance_id": True,
         "tls_mode": tls_mode,
         "acme_email": acme_email,
+        "route53_zone_id": route53_zone_id,
+        "userdata_routing_configured": userdata_routing_configured,
         "hostname": os_hostname,
         "preserve_hostname": preserve_hostname,
         "public_ipv4": imds.get("public_ipv4", ""),
@@ -1198,7 +1210,7 @@ def create_system_api_app():
         admin_username: Optional[str] = Field(None, description="Primary administrator username (alias for superuser_username)")
         admin_password: Optional[str] = Field(None, description="New primary administrator password (alias for superuser_password)")
         url: Optional[str] = Field(None, description="External web access URL or hostname (BRAINSOS_URL)")
-        tls_mode: Optional[str] = Field("internal", description="TLS mode: internal, acme, public_acme, or route53")
+        tls_mode: Optional[str] = Field(None, description="TLS mode: internal, acme, public_acme, or route53")
         acme_email: Optional[str] = Field(None, description="ACME contact email for Let's Encrypt / Route 53")
         mark_wizard_completed: bool = Field(True, description="Mark First-Boot Setup Wizard as completed")
         dismiss_only: bool = Field(False, description="Only dismiss the First-Boot Setup Wizard without reconfiguring")
@@ -1480,6 +1492,8 @@ def create_system_api_app():
                     status_code=400,
                     detail=f"Invalid local_domain '{req.local_domain}'. Must be a valid FQDN (e.g. jsm.aws.cloud.brainsos.ai).",
                 )
+        elif ident.get("userdata_routing_configured") and ident.get("local_domain") and fqdn_re.match(str(ident["local_domain"])):
+            local_domain = str(ident["local_domain"])
         elif admin_username and admin_username.lower() != "admin":
             if ident.get("local_domain") in ("local.brainsos.ai", "admin.aws.cloud.brainsos.ai"):
                 local_domain = f"{admin_username.lower()}.aws.cloud.brainsos.ai"
@@ -1500,7 +1514,8 @@ def create_system_api_app():
                 detail=f"Invalid external URL / hostname '{req.url}'.",
             )
 
-        tls_mode = (req.tls_mode or "internal").strip().lower()
+        default_tls = str(ident.get("tls_mode") or "internal") if ident.get("userdata_routing_configured") else "internal"
+        tls_mode = (req.tls_mode or default_tls).strip().lower()
         if tls_mode == "public_acme":
             tls_mode = "acme"
         if tls_mode not in ("internal", "acme", "route53"):
@@ -1509,8 +1524,11 @@ def create_system_api_app():
                 detail=f"Invalid tls_mode '{req.tls_mode}'. Must be one of: internal, acme, public_acme, route53.",
             )
 
-        acme_email = (req.acme_email or "").strip()
+        default_acme_email = str(ident.get("acme_email") or "") if ident.get("userdata_routing_configured") else ""
+        acme_email = (req.acme_email or default_acme_email).strip()
         if tls_mode in ("acme", "route53"):
+            if not acme_email and local_domain and "." in local_domain:
+                acme_email = f"{(admin_username or 'ops')}@{local_domain}"
             if not acme_email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", acme_email):
                 raise HTTPException(
                     status_code=400,

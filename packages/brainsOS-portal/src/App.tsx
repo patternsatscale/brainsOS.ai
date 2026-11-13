@@ -50,9 +50,13 @@ export function App() {
   // Live mode is enabled by default across all hosts (localhost, LAN IPs, custom domains)
   // Mock mode is only active when explicitly requested via ?mock=true
   const isMockMode = typeof window !== 'undefined' && window.location.search.includes('mock=true');
+  const isDevWizardPreview =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    (window.location.search.includes('wizard=userdata') || window.location.search.includes('wizard=standard'));
   const isLiveHost = !isMockMode;
   const [wizardGate, setWizardGate] = useState<'checking' | 'required' | 'completed'>(
-    isMockMode || import.meta.env.DEV ? 'completed' : 'checking'
+    isDevWizardPreview ? 'required' : isMockMode || import.meta.env.DEV ? 'completed' : 'checking'
   );
 
   // Enforce obsidian dark theme across appliance and same-origin frames
@@ -67,6 +71,10 @@ export function App() {
 
   // Gate the entire Portal on First-Boot Setup Wizard completion (#333)
   useEffect(() => {
+    if (isDevWizardPreview) {
+      setWizardGate('required');
+      return;
+    }
     if (isMockMode) {
       setWizardGate('completed');
       return;

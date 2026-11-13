@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Route53DynamicApplianceSubdomainSync",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets"
+      ],
+      "Resource": "arn:aws:route53:::hostedzone/REPLACE_WITH_HOSTED_ZONE_ID",
+      "Condition": {
+        "ForAllValues:StringLike": {
+          "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
+            "*.demo.infotechlabs.io",
+            "_brainsos-owner.*.demo.infotechlabs.io"
+          ],
+          "route53:ChangeResourceRecordSetsRecordTypes": [
+            "A",
+            "TXT"
+          ]
+        }
+      }
+    }
+  ]
+}
