@@ -111,6 +111,8 @@ export interface ApplianceIdentity {
   admin_instance_bound?: boolean;
   tls_mode?: string;
   acme_email?: string;
+  route53_zone_id?: string;
+  userdata_routing_configured?: boolean;
   public_ipv4?: string;
   local_ipv4?: string;
   repo_root?: string;
@@ -134,6 +136,8 @@ interface SystemStatus {
   admin_instance_bound?: boolean;
   tls_mode?: string;
   acme_email?: string;
+  route53_zone_id?: string;
+  userdata_routing_configured?: boolean;
   hostname?: string;
   preserve_hostname?: boolean;
   public_ipv4?: string;
@@ -596,6 +600,10 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
   const localIpv4 = String(nestedIdentity.local_ipv4 ?? data.local_ipv4 ?? '').trim();
   const tlsMode = String(nestedIdentity.tls_mode ?? data.tls_mode ?? 'internal').trim();
   const acmeEmail = String(nestedIdentity.acme_email ?? data.acme_email ?? '').trim();
+  const route53ZoneId = String(nestedIdentity.route53_zone_id ?? data.route53_zone_id ?? '').trim();
+  const userdataRoutingConfigured = Boolean(
+    nestedIdentity.userdata_routing_configured ?? data.userdata_routing_configured ?? false
+  );
   const superuserName = String(nestedIdentity.superuser_name ?? data.superuser_name ?? '').trim();
   const preserveHostname = Boolean(
     nestedIdentity.preserve_hostname ?? data.preserve_hostname ?? true
@@ -636,6 +644,8 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     admin_instance_bound: true,
     tls_mode: tlsMode,
     acme_email: acmeEmail,
+    route53_zone_id: route53ZoneId,
+    userdata_routing_configured: userdataRoutingConfigured,
     public_ipv4: publicIpv4,
     local_ipv4: localIpv4,
     repo_root: repoRoot,
@@ -704,6 +714,8 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     admin_instance_bound: true,
     tls_mode: tlsMode,
     acme_email: acmeEmail,
+    route53_zone_id: route53ZoneId,
+    userdata_routing_configured: userdataRoutingConfigured,
     hostname,
     preserve_hostname: preserveHostname,
     public_ipv4: publicIpv4,
@@ -797,9 +809,67 @@ export interface SystemManagerProps {
   standaloneWizard?: boolean;
 }
 
+const getDevInitialStatus = (): SystemStatus | null => {
+  if (!import.meta.env.DEV) return null;
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const wizardMode = params.get('wizard');
+    if (wizardMode === 'userdata') {
+      return {
+        ...DEFAULT_STATUS,
+        firstboot_wizard_completed: false,
+        url: 'alice.demo.infotechlabs.io',
+        local_domain: 'alice.demo.infotechlabs.io',
+        hostname: 'alice.demo.infotechlabs.io',
+        superuser_name: '',
+        superuser_username: '',
+        admin_username: 'admin',
+        tls_mode: 'acme',
+        acme_email: 'ops@infotechlabs.io',
+        route53_zone_id: 'Z0987654321DEMO',
+        userdata_routing_configured: true,
+        identity: {
+          ...DEFAULT_STATUS.identity,
+          firstboot_wizard_completed: false,
+          url: 'alice.demo.infotechlabs.io',
+          local_domain: 'alice.demo.infotechlabs.io',
+          hostname: 'alice.demo.infotechlabs.io',
+          superuser_name: '',
+          superuser_username: '',
+          admin_username: 'admin',
+          tls_mode: 'acme',
+          acme_email: 'ops@infotechlabs.io',
+          route53_zone_id: 'Z0987654321DEMO',
+          userdata_routing_configured: true,
+        },
+      };
+    }
+    if (wizardMode === 'standard') {
+      return {
+        ...DEFAULT_STATUS,
+        firstboot_wizard_completed: false,
+        superuser_name: '',
+        superuser_username: '',
+        admin_username: 'admin',
+        userdata_routing_configured: false,
+        identity: {
+          ...DEFAULT_STATUS.identity,
+          firstboot_wizard_completed: false,
+          superuser_name: '',
+          superuser_username: '',
+          admin_username: 'admin',
+          userdata_routing_configured: false,
+        },
+      };
+    }
+  }
+  return DEFAULT_STATUS;
+};
+
 const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = false }) => {
+  const initialDevStatus = useMemo(() => getDevInitialStatus(), []);
   const [activePane, setActivePane] = useState<OsPane>('overview');
-  const [status, setStatus] = useState<SystemStatus | null>(import.meta.env.DEV ? DEFAULT_STATUS : null);
+  const [status, setStatus] = useState<SystemStatus | null>(initialDevStatus);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState<boolean>(false);
@@ -826,11 +896,17 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   const [setupAdminPassword, setSetupAdminPassword] = useState<string>('');
   const [setupAdminPasswordConfirm, setSetupAdminPasswordConfirm] = useState<string>('');
   const [showSetupPasswords, setShowSetupPasswords] = useState<boolean>(false);
-  const [setupLocalDomain, setSetupLocalDomain] = useState<string>('local.brainsos.ai');
+  const [setupLocalDomain, setSetupLocalDomain] = useState<string>(
+    initialDevStatus?.local_domain || 'local.brainsos.ai'
+  );
   const [localDomainManuallyEdited, setLocalDomainManuallyEdited] = useState<boolean>(false);
-  const [setupUrl, setSetupUrl] = useState<string>('local.brainsos.ai');
-  const [setupTlsMode, setSetupTlsMode] = useState<'internal' | 'acme' | 'route53'>('internal');
-  const [setupAcmeEmail, setSetupAcmeEmail] = useState<string>('');
+  const [setupUrl, setSetupUrl] = useState<string>(
+    initialDevStatus?.url || 'local.brainsos.ai'
+  );
+  const [setupTlsMode, setSetupTlsMode] = useState<'internal' | 'acme' | 'route53'>(
+    (initialDevStatus?.tls_mode as 'internal' | 'acme' | 'route53') || 'internal'
+  );
+  const [setupAcmeEmail, setSetupAcmeEmail] = useState<string>(initialDevStatus?.acme_email || '');
   const [setupError, setSetupError] = useState<string | null>(null);
   const [dnsChecking, setDnsChecking] = useState<boolean>(false);
   const [dnsCheckResult, setDnsCheckResult] = useState<DnsCheckResult | null>(null);
@@ -924,7 +1000,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           setIdentityUnitName(data.unit_name);
         }
         if (data?.local_domain) {
-          setSetupLocalDomain((prev) => (prev === 'local.brainsos.ai' ? data.local_domain! : prev));
+          setSetupLocalDomain((prev) =>
+            data.userdata_routing_configured || prev === 'local.brainsos.ai'
+              ? data.local_domain!
+              : prev
+          );
         }
         // Superuser username must NEVER default to 'admin'
         const isFirstBootIncomplete = data?.firstboot_wizard_completed === false || data?.identity?.firstboot_wizard_completed === false;
@@ -938,7 +1018,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           setSetupSuperuserName((prev) => prev || data.superuser_name!);
         }
         if (data?.url) {
-          setSetupUrl((prev) => (prev === 'local.brainsos.ai' ? data.url! : prev));
+          setSetupUrl((prev) =>
+            data.userdata_routing_configured || prev === 'local.brainsos.ai'
+              ? data.url!
+              : prev
+          );
         }
         if (data?.tls_mode && ['internal', 'acme', 'route53'].includes(data.tls_mode)) {
           setSetupTlsMode(data.tls_mode as 'internal' | 'acme' | 'route53');
@@ -1919,6 +2003,10 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     setWizardOpen(true);
   };
 
+  const isUserdataRouting = Boolean(
+    status?.userdata_routing_configured || status?.identity?.userdata_routing_configured
+  );
+
   // Auto-derive Superuser Username & Suggested Domain when typing Superuser Full Name (while !wizardUsernameTouched)
   const handleSuperuserFullNameChange = (val: string) => {
     setSetupSuperuserName(val);
@@ -1934,7 +2022,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     if (!wizardUsernameTouched) {
       const derived = deriveUsernameFromFullName(val);
       setSetupAdminUsername(derived);
-      if (!localDomainManuallyEdited) {
+      if (!localDomainManuallyEdited && !isUserdataRouting) {
         if (derived.length >= 2) {
           setSetupLocalDomain(`${derived}.aws.cloud.brainsos.ai`);
         } else {
@@ -1949,7 +2037,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     setWizardUsernameTouched(true);
     setSetupAdminUsername(val);
     const clean = val.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    if (!localDomainManuallyEdited) {
+    if (!localDomainManuallyEdited && !isUserdataRouting) {
       if (clean.length >= 2 && clean !== 'admin' && clean !== 'akadmin') {
         setSetupLocalDomain(`${clean}.aws.cloud.brainsos.ai`);
       } else {
@@ -2285,6 +2373,22 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       cleanWizardSlug && cleanWizardSlug !== 'admin' && cleanWizardSlug !== 'akadmin'
         ? `${cleanWizardSlug}.aws.cloud.brainsos.ai`
         : 'username.aws.cloud.brainsos.ai';
+    const totalWizardSteps = isUserdataRouting ? 2 : 3;
+    const preconfiguredHost = (
+      setupUrl.trim() ||
+      status?.url ||
+      setupLocalDomain.trim() ||
+      status?.local_domain ||
+      suggestedDom
+    )
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/.*$/, '');
+    const tlsModeLabel =
+      setupTlsMode === 'acme'
+        ? "Let's Encrypt Public ACME"
+        : setupTlsMode === 'route53'
+          ? "Let's Encrypt Route 53 DNS-01"
+          : 'Internal Private CA';
 
     return (
       <div className="w-full max-w-2xl bg-[#0D111A] border border-white/15 rounded-2xl p-6 sm:p-7 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -2300,11 +2404,13 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                   brainsOS Operating System • First-Boot Superuser Setup
                 </h3>
                 <span className="px-2 py-0.5 rounded bg-[#00f2fe]/15 border border-[#00f2fe]/40 font-mono text-[10px] text-[#00f2fe] font-semibold">
-                  STEP {wizardStep} OF 3
+                  STEP {wizardStep} OF {totalWizardSteps}
                 </span>
               </div>
               <p className="font-mono text-xs text-slate-400 mt-0.5">
-                Provision your personal Superuser account, Unit Identity, Appliance Hostname (FQDN), and HTTPS ingress
+                {isUserdataRouting
+                  ? 'Provision your personal Superuser account and Unit Identity — DNS & SSL are pre-configured via EC2 User Data'
+                  : 'Provision your personal Superuser account, Unit Identity, Appliance Hostname (FQDN), and HTTPS ingress'}
               </p>
             </div>
           </div>
@@ -2320,7 +2426,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         </div>
 
         {/* Step Progress Pills */}
-        <div className="grid grid-cols-3 gap-2 font-mono text-xs">
+        <div className={`grid ${isUserdataRouting ? 'grid-cols-2' : 'grid-cols-3'} gap-2 font-mono text-xs`}>
           <button
             type="button"
             onClick={() => setWizardStep(1)}
@@ -2342,21 +2448,27 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
             }`}
           >
-            <div className="text-[10px] text-[#00f2fe] font-bold">2. UNIT &amp; HOSTNAME</div>
-            <div className="truncate font-semibold mt-0.5">Unit Identity &amp; FQDN</div>
+            <div className="text-[10px] text-[#00f2fe] font-bold">
+              {isUserdataRouting ? '2. UNIT & LAUNCH ROUTING' : '2. UNIT & HOSTNAME'}
+            </div>
+            <div className="truncate font-semibold mt-0.5">
+              {isUserdataRouting ? 'Unit Identity & SSL Summary' : 'Unit Identity & FQDN'}
+            </div>
           </button>
-          <button
-            type="button"
-            onClick={() => setWizardStep(3)}
-            className={`p-2.5 rounded-xl border text-left transition-all ${
-              wizardStep === 3
-                ? 'bg-[#00f2fe]/15 border-[#00f2fe] text-white'
-                : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
-            }`}
-          >
-            <div className="text-[10px] text-[#00f2fe] font-bold">3. WEB ACCESS &amp; TLS</div>
-            <div className="truncate font-semibold mt-0.5">Browser URL &amp; Certificates</div>
-          </button>
+          {!isUserdataRouting && (
+            <button
+              type="button"
+              onClick={() => setWizardStep(3)}
+              className={`p-2.5 rounded-xl border text-left transition-all ${
+                wizardStep === 3
+                  ? 'bg-[#00f2fe]/15 border-[#00f2fe] text-white'
+                  : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              <div className="text-[10px] text-[#00f2fe] font-bold">3. WEB ACCESS &amp; TLS</div>
+              <div className="truncate font-semibold mt-0.5">Browser URL &amp; Certificates</div>
+            </button>
+          )}
         </div>
 
         {setupError && (
@@ -2434,11 +2546,23 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               </div>
             </div>
 
-            {setupAdminUsername.trim() && (
-              <div className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-[11px] flex items-center justify-between">
-                <span className="text-slate-400">Suggested Appliance Hostname / FQDN (Step 2):</span>
-                <span className="text-[#00f2fe] font-semibold">{suggestedDom}</span>
+            {isUserdataRouting ? (
+              <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] flex flex-wrap items-center justify-between gap-2">
+                <span className="text-emerald-200 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Pre-configured Appliance URL &amp; SSL (EC2 User Data):</span>
+                </span>
+                <span className="text-white font-semibold">
+                  https://{preconfiguredHost}/ <span className="text-emerald-400">({tlsModeLabel})</span>
+                </span>
               </div>
+            ) : (
+              setupAdminUsername.trim() && (
+                <div className="px-3 py-2 rounded-lg bg-white/[0.03] border border-white/10 text-[11px] flex items-center justify-between">
+                  <span className="text-slate-400">Suggested Appliance Hostname / FQDN (Step 2):</span>
+                  <span className="text-[#00f2fe] font-semibold">{suggestedDom}</span>
+                </div>
+              )
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2586,49 +2710,90 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             </div>
 
             {/* Concept 2: Appliance Hostname (FQDN) & External Routing */}
-            <div className="p-4 rounded-xl bg-[#07090E] border border-white/10 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-bold">
-                  2. Appliance Hostname (FQDN) &amp; External Routing
-                </span>
-                {localDomainManuallyEdited && setupAdminUsername.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLocalDomainManuallyEdited(false);
-                      setSetupLocalDomain(suggestedDom);
-                    }}
-                    className="text-[10px] text-[#00f2fe] hover:underline"
-                  >
-                    Reset to {suggestedDom}
-                  </button>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-slate-200 font-semibold">
-                  Appliance Hostname / Local Domain (<code className="text-[#00f2fe]">local_domain</code>)
-                </label>
+            {isUserdataRouting ? (
+              <div className="p-4 rounded-xl bg-[#07090E] border border-emerald-500/30 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-bold flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>2. Launch Routing, Custom DNS &amp; SSL (Pre-Configured via EC2 User Data)</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/40 text-[10px] text-emerald-300 font-semibold">
+                    Managed at Launch
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-400 font-sans">
-                  Network FQDN (<code className="font-mono text-[#00f2fe]">&lt;username&gt;.aws.cloud.brainsos.ai</code>), TLS certificate SAN, OS <code className="font-mono">hostname -f</code>, and internal mail domain.
+                  Your organization provisioned this appliance&apos;s permanent DNS hostname and TLS certificate policy via EC2 User Data. Dynamic Route 53 <code className="font-mono text-slate-200">A</code> record sync keeps this URL live across reboots and hibernation.
                 </p>
-                <input
-                  type="text"
-                  value={setupLocalDomain}
-                  onChange={(e) => {
-                    setLocalDomainManuallyEdited(true);
-                    setSetupLocalDomain(e.target.value);
-                  }}
-                  placeholder="e.g. jdoe.aws.cloud.brainsos.ai"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]">
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/10">
+                    <span className="text-slate-500 block">Permanent HTTPS Endpoint:</span>
+                    <span className="text-white font-semibold truncate block">https://{preconfiguredHost}/</span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/10">
+                    <span className="text-slate-500 block">SSL / TLS Certificate Policy:</span>
+                    <span className="text-emerald-400 font-semibold truncate block">{tlsModeLabel}</span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/10">
+                    <span className="text-slate-500 block">Appliance FQDN &amp; Mail Domain:</span>
+                    <span className="text-[#00f2fe] font-semibold truncate block">
+                      {(setupLocalDomain.trim() || preconfiguredHost).replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/10">
+                    <span className="text-slate-500 block">Dynamic DNS Reconciliation:</span>
+                    <span className="text-slate-200 font-semibold truncate block">
+                      {status?.route53_zone_id || status?.identity?.route53_zone_id
+                        ? `Route 53 (${status?.route53_zone_id || status?.identity?.route53_zone_id} • TTL 60s)`
+                        : 'EC2 User Data Routing'}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5 text-slate-400">
-                <span>External Web URL (<code className="text-slate-300">url</code>):</span>
-                <span className="text-white font-semibold">
-                  https://{(setupUrl.trim() || setupLocalDomain.trim() || suggestedDom).replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}/
-                </span>
+            ) : (
+              <div className="p-4 rounded-xl bg-[#07090E] border border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-wider text-emerald-400 font-bold">
+                    2. Appliance Hostname (FQDN) &amp; External Routing
+                  </span>
+                  {localDomainManuallyEdited && setupAdminUsername.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalDomainManuallyEdited(false);
+                        setSetupLocalDomain(suggestedDom);
+                      }}
+                      className="text-[10px] text-[#00f2fe] hover:underline"
+                    >
+                      Reset to {suggestedDom}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-slate-200 font-semibold">
+                    Appliance Hostname / Local Domain (<code className="text-[#00f2fe]">local_domain</code>)
+                  </label>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    Network FQDN (<code className="font-mono text-[#00f2fe]">&lt;username&gt;.aws.cloud.brainsos.ai</code>), TLS certificate SAN, OS <code className="font-mono">hostname -f</code>, and internal mail domain.
+                  </p>
+                  <input
+                    type="text"
+                    value={setupLocalDomain}
+                    onChange={(e) => {
+                      setLocalDomainManuallyEdited(true);
+                      setSetupLocalDomain(e.target.value);
+                    }}
+                    placeholder="e.g. jdoe.aws.cloud.brainsos.ai"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5 text-slate-400">
+                  <span>External Web URL (<code className="text-slate-300">url</code>):</span>
+                  <span className="text-white font-semibold">
+                    https://{(setupUrl.trim() || setupLocalDomain.trim() || suggestedDom).replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}/
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {(() => {
               const previewDom = (setupLocalDomain.trim() || suggestedDom).replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
@@ -2690,7 +2855,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         )}
 
         {/* STEP 3: External Web Access & TLS Mode */}
-        {wizardStep === 3 && (
+        {!isUserdataRouting && wizardStep === 3 && (
           <div className="space-y-4 font-mono text-xs">
             <div className="space-y-1.5">
               <label className="block text-slate-200 font-semibold">
@@ -2836,7 +3001,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               </button>
             )}
 
-            {wizardStep < 3 ? (
+            {wizardStep < totalWizardSteps ? (
               <button
                 type="button"
                 onClick={() => {
@@ -2881,15 +3046,22 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               brainsOS.ai • Operating System First-Boot Setup
             </span>
           </div>
-          <a
-            href="/system/ca.crt"
-            download="brainsos-caddy-root-ca.crt"
-            className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-[11px] font-mono transition-all flex items-center gap-1.5"
-            title="Download Caddy Root CA certificate to trust self-signed HTTPS in your browser/OS"
-          >
-            <Download className="w-3.5 h-3.5 text-[#00f2fe]" />
-            <span>Download Root CA</span>
-          </a>
+          {(!status?.tls_mode || status.tls_mode === 'internal') ? (
+            <a
+              href="/system/ca.crt"
+              download="brainsos-caddy-root-ca.crt"
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-[11px] font-mono transition-all flex items-center gap-1.5"
+              title="Download Caddy Root CA certificate to trust self-signed HTTPS in your browser/OS"
+            >
+              <Download className="w-3.5 h-3.5 text-[#00f2fe]" />
+              <span>Download Root CA</span>
+            </a>
+          ) : (
+            <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Let&apos;s Encrypt TLS Active</span>
+            </span>
+          )}
         </div>
 
         {executionStatus === 'idle' ? (

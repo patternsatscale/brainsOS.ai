@@ -91,16 +91,24 @@ You must also enable access to the models you plan to use in the Bedrock console
      # Revert to Caddy internal self-signed CA:
      make set-domain ARGS="--internal"
      ```
-   - **Launch-Time EC2 User-Data**:
-     Supply cloud-config or environment pairs in EC2 user-data at launch:
+   - **Launch-Time EC2 User-Data & Dynamic Fleet DNS (`v0.5.1` / #373)**:
+     Supply cloud-config or `KEY=VALUE` pairs in EC2 User Data at launch. When `BRAINSOS_ROUTE53_ZONE_ID` (or `HOSTED_ZONE_ID`) is supplied alongside `BRAINSOS_DOMAIN` (or `BRAINSOS_BASE_DOMAIN` + EC2 `Name` tag), the appliance automatically:
+     1. Registers/updates its Route 53 `A` record (`TTL=60`) and `_brainsos-owner.<fqdn>` `TXT` ownership lock on cold boot, reboot, stop/start, and hibernation wake-up (`scripts/control/sync-route53-ddns.py`), eliminating Elastic IP limits across 30+ instances.
+     2. Provisions Let's Encrypt public ACME TLS (`BRAINSOS_TLS_MODE=acme`) automatically.
+     3. Streamlines the First-Boot Setup Wizard into a **2-step flow** where end users create their personal Superuser account and Unit Name while keeping User-Data DNS + SSL locked in.
      ```yaml
      #cloud-config
      brainsos:
-       domain: brainsos.myorg.com
-       email: ops@myorg.com
-       tls_mode: acme
+       domain: alice.demo.infotechlabs.io
+       route53_zone_id: Z0123456789ABCDEFG
+       email: ops@infotechlabs.io
      ```
-     Caddy uses fallback-to-internal issuance, ensuring HTTPS remains available with zero downtime while ACME verification completes.
+     Or using a shared Launch Template across a multi-instance fleet (derives `<ec2-name-tag>.demo.infotechlabs.io` automatically):
+     ```ini
+     BRAINSOS_BASE_DOMAIN=demo.infotechlabs.io
+     BRAINSOS_ROUTE53_ZONE_ID=Z0123456789ABCDEFG
+     ```
+     Attach [`iam/route53-ddns-policy.json`](iam/route53-ddns-policy.json) to the EC2 Instance Role to scope `route53:ChangeResourceRecordSets` strictly to your target subdomain wildcard. Caddy uses fallback-to-internal issuance, ensuring HTTPS remains available with zero downtime while ACME verification completes.
 
 ## CLI Usage
 

@@ -383,12 +383,15 @@ To run brainsOS as a hardened, single-tenant cloud appliance in your own AWS VPC
    - Open `https://<public-ip-or-dns>/` in your browser.
    - Sign in with the break-glass `admin` account using your **EC2 Instance ID** (`i-0123456789abcdef0`) as the initial password.
    - Complete the **First-Boot Identity Wizard** to set your Appliance Unit Name, external domain/FQDN (e.g., `<username>.aws.cloud.brainsos.ai`), and provision your named **Superuser** across Authentik SSO, SOGo Webmail, Gitea (`/git/`), and LiteLLM.
-3. **Optional — Bring Your Own Domain (BYOD) & Public ACME TLS**:
+3. **Optional — Dynamic Fleet DNS via EC2 User Data (`30+` Instances, Zero Elastic IPs) or Post-Boot BYOD**:
+   ```ini
+   # Supply in EC2 Launch Template / Instance User Data (auto-updates Route 53 A record on every boot/reboot/resume
+   # and streamlines the First-Boot Wizard to Superuser + Unit Name setup while preserving Let's Encrypt SSL):
+   BRAINSOS_DOMAIN=alice.demo.myorg.com
+   BRAINSOS_ROUTE53_ZONE_ID=Z0123456789ABCDEFG
+   ```
    ```bash
-   # Connect via AWS SSM Session Manager (or use the browser XTerm.js PTY in /#system):
-   aws ssm start-session --target <instance-id>
-
-   # Configure Let's Encrypt / ZeroSSL HTTP-01 or keyless Route 53 DNS-01 TLS:
+   # Or configure interactively post-boot via AWS SSM Session Manager / browser XTerm.js PTY (/#system):
    make set-domain ARGS="--domain brainsos.myorg.com --email ops@myorg.com --dns route53"
    ```
 

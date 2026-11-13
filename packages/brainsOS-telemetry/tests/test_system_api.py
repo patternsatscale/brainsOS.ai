@@ -204,3 +204,67 @@ def test_system_me_endpoint(tmp_path):
         assert res_fb.json()["username"] == "jsm"
         assert res_fb.json()["name"] == "Jane Smith"
         assert res_fb.json()["email"] == "jsm@jsm.aws.cloud.brainsos.ai"
+
+
+def test_userdata_routing_preserved_during_wizard_setup(tmp_path, monkeypatch):
+    """Verify User-Data DNS/SSL settings are exposed and preserved when creating Superuser (#373)."""
+    mock_iid = "i-0" + ("b" * 16)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_URL=alice.demo.infotechlabs.io\n"
+        "BRAINSOS_DOMAIN=alice.demo.infotechlabs.io\n"
+        "BRAINSOS_LOCAL_DOMAIN=alice.demo.infotechlabs.io\n"
+        "BRAINSOS_TLS_MODE=acme\n"
+        "ACME_EMAIL=ops@infotechlabs.io\n"
+        "BRAINSOS_ROUTE53_ZONE_ID=Z0987654321DEMO\n"
+        "BRAINSOS_USERDATA_ROUTING=true\n"
+        "BRAINSOS_ADMIN_USERNAME=admin\n"
+        f"BRAINSOS_ADMIN_PASSWORD={mock_iid}\n"
+        f"BRAINSOS_INSTANCE_ID={mock_iid}\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text('#!/usr/bin/env bash\necho "UD_SETUP_ARGS: $*"\n', encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        id_res = client.get("/api/v1/system/identity", headers=headers)
+        assert id_res.status_code == 200
+        ident = id_res.json()
+        assert ident["userdata_routing_configured"] is True
+        assert ident["route53_zone_id"] == "Z0987654321DEMO"
+        assert ident["url"] == "alice.demo.infotechlabs.io"
+        assert ident["local_domain"] == "alice.demo.infotechlabs.io"
+        assert ident["tls_mode"] == "acme"
+        assert ident["acme_email"] == "ops@infotechlabs.io"
+
+        # Submitting Superuser + Unit Name preserves alice.demo.infotechlabs.io + ACME TLS
+        setup_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": mock_iid,
+                "unit_name": "Alice Demo Box",
+                "superuser_name": "Alice Operator",
+                "superuser_username": "alice",
+                "superuser_password": "StrongUserPass99!",
+            },
+            headers=headers,
+        )
+        assert setup_res.status_code == 200
+        assert "--url alice.demo.infotechlabs.io" in setup_res.text
+        assert "--local-domain alice.demo.infotechlabs.io" in setup_res.text
+        assert "--email ops@infotechlabs.io" in setup_res.text
+        assert "--internal" not in setup_res.text
+        assert "aws.cloud.brainsos.ai" not in setup_res.text

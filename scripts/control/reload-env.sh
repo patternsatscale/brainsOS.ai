@@ -169,6 +169,9 @@ if command -v curl >/dev/null 2>&1 && [ -f "${REPO_ROOT}/scripts/control/env-ups
       "http://169.254.169.254/latest/meta-data/local-ipv4" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
     _PUB_HOST="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" \
       "http://169.254.169.254/latest/meta-data/public-hostname" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+    _INST_ID="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" \
+      "http://169.254.169.254/latest/meta-data/instance-id" --connect-timeout 1 --max-time 2 2>/dev/null || true)"
+    [ -z "${_INST_ID}" ] && _INST_ID="${BRAINSOS_INSTANCE_ID:-}"
 
     _EFFECTIVE_NEW_HOST="${_PUB_HOST:-${_PUB_IP}}"
     _CUR_DOMAIN="${BRAINSOS_DOMAIN:-}"
@@ -199,6 +202,31 @@ if command -v curl >/dev/null 2>&1 && [ -f "${REPO_ROOT}/scripts/control/env-ups
     fi
     if [ "${_NEW_IP_SITES}" != "${BRAINSOS_IP_SITES:-}" ]; then
       _ENV_UPDATES+=("BRAINSOS_IP_SITES=${_NEW_IP_SITES}")
+    fi
+
+    # Route 53 Dynamic DNS (DDNS) auto-sync on reboot / stop-start / hibernation resume (#373)
+    if [ -n "${BRAINSOS_ROUTE53_ZONE_ID:-}" ] \
+      && [[ "${_NEW_DOMAIN}" =~ ^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$ ]] \
+      && [[ "${_NEW_DOMAIN}" != *.amazonaws.com ]] \
+      && [[ "${_PUB_IP}" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] \
+      && [ "${_PUB_IP}" != "${BRAINSOS_LAST_SYNCED_IP:-}" ] \
+      && [ -f "${REPO_ROOT}/scripts/control/sync-route53-ddns.py" ]; then
+      _DDNS_PY="${REPO_ROOT}/.venv/bin/python"
+      [ ! -x "${_DDNS_PY}" ] && _DDNS_PY="python3"
+      _DDNS_ARGS=(
+        --domain "${_NEW_DOMAIN}"
+        --ip "${_PUB_IP}"
+        --zone-id "${BRAINSOS_ROUTE53_ZONE_ID}"
+      )
+      [ -n "${_INST_ID}" ] && _DDNS_ARGS+=(--instance-id "${_INST_ID}")
+      [ "${BRAINSOS_ROUTE53_FORCE:-false}" = "true" ] && _DDNS_ARGS+=(--force)
+      log_info "Synchronizing Route 53 DNS A record: ${_NEW_DOMAIN} -> ${_PUB_IP} (zone ${BRAINSOS_ROUTE53_ZONE_ID})..."
+      if "${_DDNS_PY}" "${REPO_ROOT}/scripts/control/sync-route53-ddns.py" "${_DDNS_ARGS[@]}"; then
+        log_success "Route 53 DDNS updated: ${_NEW_DOMAIN} -> ${_PUB_IP}"
+        _ENV_UPDATES+=("BRAINSOS_LAST_SYNCED_IP=${_PUB_IP}")
+      else
+        log_warn "Route 53 DDNS sync failed on boot/resume (continuing startup without blocking)."
+      fi
     fi
 
     if [ "${#_ENV_UPDATES[@]}" -gt 0 ]; then
