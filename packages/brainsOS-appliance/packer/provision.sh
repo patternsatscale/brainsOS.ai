@@ -32,6 +32,7 @@ log_error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 DRY_RUN=false
 SCAN_ONLY=false
+INCREMENTAL_BUILD="${BRAINSOS_INCREMENTAL_BUILD:-false}"
 APP_DIR="${BRAINSOS_APP_DIR:-/opt/brainsos}"
 
 while [ $# -gt 0 ]; do
@@ -42,6 +43,10 @@ while [ $# -gt 0 ]; do
       ;;
     --scan-only)
       SCAN_ONLY=true
+      shift
+      ;;
+    --incremental)
+      INCREMENTAL_BUILD=true
       shift
       ;;
     --app-dir)
@@ -58,6 +63,7 @@ Usage:
 Options:
   --dry-run       Simulate provisioning steps without host modifications
   --scan-only     Run only the fail-closed snapshot secret scan (exit 1 on findings)
+  --incremental   Reuse pre-baked OS, Docker CE, Node.js & cached layers on a base brainsOS AMI
   --app-dir DIR   Appliance root (Default: /opt/brainsos)
   -h, --help      Show this help message
 EOF
@@ -161,57 +167,73 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 export HOME=/root
 
+IS_INCREMENTAL_HOST=false
+if [ "${INCREMENTAL_BUILD}" = "true" ] && command -v docker >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  IS_INCREMENTAL_HOST=true
+  log_info "Incremental Delta Build Mode active: reusing pre-baked OS, Docker CE, Node.js & cached image layers (#374)."
+fi
+
 # ------------------------------------------------------------------------------
-# 1. Base System Packages & Security Upgrades (Ticket #338)
+# 1. Base System Packages & Security Upgrades (Ticket #338 / #374)
 # ------------------------------------------------------------------------------
-log_info "1. Updating package lists, applying security dist-upgrade, and installing foundational dependencies..."
-apt-get update -y
-DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y \
-  -o Dpkg::Options::="--force-confdef" \
-  -o Dpkg::Options::="--force-confold"
+if [ "${IS_INCREMENTAL_HOST}" = "true" ]; then
+  log_info "1. [Incremental] Applying fast APT security delta updates..."
+  apt-get update -y
+  DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold"
+  apt-get install -y --no-install-recommends ec2-hibinit-agent acpid
+  systemctl enable hibinit-agent.service acpid.service 2>/dev/null || true
+else
+  log_info "1. Updating package lists, applying security dist-upgrade, and installing foundational dependencies..."
+  apt-get update -y
+  DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold"
 
-# Upgrade AWS kernel packages from noble-proposed when a newer linux-aws release is staged
-# (resolves all 2,732 pending linux-aws-7.0 / linux-image-aws CVEs tracked in Ubuntu OVAL)
-log_info "Upgrading AWS kernel packages from noble-proposed (if newer kernel is staged)..."
-echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://ports.ubuntu.com/ubuntu-ports noble-proposed main restricted" > /etc/apt/sources.list.d/noble-proposed-kernel.list
-apt-get update -y
-DEBIAN_FRONTEND=noninteractive apt-get install -y -t noble-proposed \
-  -o Dpkg::Options::="--force-confdef" \
-  -o Dpkg::Options::="--force-confold" \
-  linux-aws linux-image-aws linux-headers-aws || \
-  log_warn "noble-proposed kernel upgrade skipped; continuing with noble-security kernel."
-rm -f /etc/apt/sources.list.d/noble-proposed-kernel.list
-apt-get update -y
+  # Upgrade AWS kernel packages from noble-proposed when a newer linux-aws release is staged
+  # (resolves all 2,732 pending linux-aws-7.0 / linux-image-aws CVEs tracked in Ubuntu OVAL)
+  log_info "Upgrading AWS kernel packages from noble-proposed (if newer kernel is staged)..."
+  echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://ports.ubuntu.com/ubuntu-ports noble-proposed main restricted" > /etc/apt/sources.list.d/noble-proposed-kernel.list
+  apt-get update -y
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -t noble-proposed \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold" \
+    linux-aws linux-image-aws linux-headers-aws || \
+    log_warn "noble-proposed kernel upgrade skipped; continuing with noble-security kernel."
+  rm -f /etc/apt/sources.list.d/noble-proposed-kernel.list
+  apt-get update -y
 
-apt-get install -y --no-install-recommends \
-  apt-transport-https \
-  ca-certificates \
-  curl \
-  gnupg \
-  lsb-release \
-  git \
-  make \
-  jq \
-  iptables \
-  ufw \
-  logrotate \
-  socat \
-  python3 \
-  tar \
-  gzip \
-  ec2-hibinit-agent \
-  acpid
+  apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    git \
+    make \
+    jq \
+    iptables \
+    ufw \
+    logrotate \
+    socat \
+    python3 \
+    tar \
+    gzip \
+    ec2-hibinit-agent \
+    acpid
 
-systemctl enable hibinit-agent.service acpid.service 2>/dev/null || true
+  systemctl enable hibinit-agent.service acpid.service 2>/dev/null || true
 
-log_info "Installing Node.js 22 LTS from NodeSource (bundles npm without Debian node-lodash packages)..."
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
-chmod a+r /etc/apt/keyrings/nodesource.gpg
-echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | \
-  tee /etc/apt/sources.list.d/nodesource.list > /dev/null
-apt-get update -y
-apt-get install -y --no-install-recommends nodejs
+  log_info "Installing Node.js 22 LTS from NodeSource (bundles npm without Debian node-lodash packages)..."
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  chmod a+r /etc/apt/keyrings/nodesource.gpg
+  echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | \
+    tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+  apt-get update -y
+  apt-get install -y --no-install-recommends nodejs
+fi
 
 # Purge legacy system pip/wheel/venv (uv creates .venv natively without python3-pip-whl) and any Debian node-lodash packages
 apt-get purge -y --auto-remove \
@@ -240,19 +262,24 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Docker CE & Docker Compose Plugin, uv
 # ------------------------------------------------------------------------------
-log_info "3. Installing Docker CE and Docker Compose plugin..."
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
+if [ "${IS_INCREMENTAL_HOST}" = "true" ]; then
+  log_info "3. [Incremental] Verifying pre-installed Docker CE and Compose plugin..."
+  systemctl enable --now docker
+else
+  log_info "3. Installing Docker CE and Docker Compose plugin..."
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
 
-echo \
-  "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
+  echo \
+    "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-systemctl enable --now docker
+  apt-get update -y
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+fi
 
 if id -u ubuntu >/dev/null 2>&1; then
   usermod -aG docker ubuntu
@@ -336,6 +363,7 @@ make runner-base build
 # 6b. Upstream images (fail the build on any pull failure)
 docker compose pull --ignore-buildable
 docker pull gitea/gitea:1.22
+docker image prune -f >/dev/null 2>&1 || true
 
 # 6c. Verify every image referenced by the appliance topology (including gitea/gitea:1.22) is present locally
 MISSING_IMAGES=0
@@ -358,6 +386,9 @@ log_success "All appliance images are present locally."
 # 6e. Python .venv with editable platform packages (host queue worker, CLIs).
 #     bootstrap-env.sh preserves the provisioning .env; the data/ tree it seeds
 #     is wiped in step 7 and re-seeded per instance by firstboot.sh.
+if [ -d "${APP_DIR}/.venv" ] && ! "${APP_DIR}/.venv/bin/python" -V >/dev/null 2>&1; then
+  rm -rf "${APP_DIR}/.venv"
+fi
 "${APP_DIR}/scripts/control/bootstrap-env.sh" --skip-images --skip-portal --skip-models
 if [ ! -x "${APP_DIR}/.venv/bin/python" ]; then
   log_error "Python virtualenv was not created at ${APP_DIR}/.venv. Aborting."
@@ -381,7 +412,7 @@ if [ -x "${APP_DIR}/.venv/bin/python" ]; then
 fi
 
 # Repository runtime state that provisioning may have produced
-rm -f "${APP_DIR}/.env" "${APP_DIR}/.env.bak" "${APP_DIR}/.brainsos-initialized"
+rm -f "${APP_DIR}/.env" "${APP_DIR}/.env.bak" "${APP_DIR}/.brainsos-initialized" "${APP_DIR}/.brainsos-wizard-completed"
 find "${APP_DIR}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" -type f -exec rm -f {} + 2>/dev/null || true
 find "${APP_DIR}/data" -type f ! -name ".gitkeep" -delete 2>/dev/null || true
 find "${APP_DIR}/data" -depth -mindepth 1 -type d -empty -delete 2>/dev/null || true

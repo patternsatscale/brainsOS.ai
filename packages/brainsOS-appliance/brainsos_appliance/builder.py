@@ -103,6 +103,8 @@ def build_ami_command(
     ref: Optional[str] = None,
     allow_dirty: bool = False,
     promote: Optional[str] = None,
+    from_ami: Optional[str] = None,
+    incremental: bool = False,
 ) -> List[str]:
     """Compose the build-ami.sh invocation for the requested options."""
     cmd = [str(get_build_script()), "--region", region]
@@ -112,6 +114,10 @@ def build_ami_command(
         cmd += ["--instance-type", instance_type, "--volume-size", str(volume_size)]
         if ref:
             cmd += ["--ref", ref]
+        if from_ami:
+            cmd += ["--from-ami", from_ami]
+        elif incremental:
+            cmd.append("--incremental")
         if allow_dirty:
             cmd.append("--allow-dirty")
         if publish_community:
@@ -130,6 +136,8 @@ def build_ami(
     ref: Optional[str] = None,
     allow_dirty: bool = False,
     promote: Optional[str] = None,
+    from_ami: Optional[str] = None,
+    incremental: bool = False,
 ) -> Tuple[bool, str, List[str]]:
     """Build (or promote) the AMI by delegating to scripts/control/build-ami.sh.
 
@@ -150,6 +158,8 @@ def build_ami(
         ref=ref,
         allow_dirty=allow_dirty,
         promote=promote,
+        from_ami=from_ami,
+        incremental=incremental,
     )
     try:
         proc = subprocess.run(cmd, check=False)

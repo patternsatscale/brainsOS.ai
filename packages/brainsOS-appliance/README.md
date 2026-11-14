@@ -31,12 +31,17 @@
 The private-first release flow:
 
 ```bash
-# 1. Build a PRIVATE AMI from a release tag (default: latest v* tag)
-./scripts/control/build-ami.sh --ref v0.1.1
-make build-ami ARGS="--ref v0.1.1"
+# 1a. Fast incremental delta AMI (~5 min): builds atop newest self-owned brainsos-* AMI
+./scripts/control/build-ami.sh --incremental --ref v0.5.1
+# Or pin a specific base AMI explicitly:
+./scripts/control/build-ami.sh --from-ami ami-0eac84eb9a9415531 --ref v0.5.1
+
+# 1b. Clean-room baseline AMI (~35-40 min): builds from Canonical Ubuntu 24.04 LTS ARM64
+./scripts/control/build-ami.sh --ref v0.5.1
+make build-ami ARGS="--incremental --ref v0.5.1"
 
 # Inspect the staged artifact and the exact Packer command without touching AWS
-./scripts/control/build-ami.sh --ref v0.1.1 --dry-run
+./scripts/control/build-ami.sh --from-ami ami-0eac84eb9a9415531 --ref v0.5.1 --dry-run
 
 # 2. Rehearse the private AMI (launch, first boot, login, Bedrock completion)
 

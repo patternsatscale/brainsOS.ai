@@ -71,21 +71,40 @@ source "amazon-ebs" "brainsos" {
     }
   }
 
-  source_ami_filter {
-    filters = {
-      name                = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*"
-      root-device-type    = "ebs"
-      virtualization-type = "hvm"
-      architecture        = "arm64"
+  source_ami = var.source_ami != "" ? var.source_ami : null
+
+  dynamic "source_ami_filter" {
+    for_each = var.source_ami == "" ? [1] : []
+    content {
+      filters = {
+        name                = "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*"
+        root-device-type    = "ebs"
+        virtualization-type = "hvm"
+        architecture        = "arm64"
+      }
+      most_recent = true
+      owners      = ["099720109477"] # Canonical
     }
-    most_recent = true
-    owners      = ["099720109477"] # Canonical
   }
+
+  # Prevent brainsos-firstboot.service and brainsos.service from starting Docker
+  # topology while Packer builds incrementally on top of a previous brainsOS AMI (#374).
+  user_data = <<-EOT
+    #cloud-config
+    # BRAINSOS_PACKER_BUILD=true
+    bootcmd:
+      - systemctl mask --runtime brainsos-firstboot.service brainsos.service brainsos-system-api.service brainsos-resume.service || true
+      - mkdir -p /opt/brainsos
+      - touch /opt/brainsos/.brainsos-initialized
+      - rm -f /opt/brainsos/.env
+  EOT
 
   launch_block_device_mappings {
     device_name           = "/dev/sda1"
     volume_size           = var.volume_size
     volume_type           = "gp3"
+    throughput            = var.volume_throughput
+    iops                  = var.volume_iops
     delete_on_termination = true
     encrypted             = false # Public AMIs cannot reference encrypted snapshots
   }
@@ -111,6 +130,8 @@ source "amazon-ebs" "brainsos" {
     Repository     = "https://github.com/patternsatscale/brainsOS.ai"
     BrainsOSRef    = var.brainsos_ref
     BrainsOSCommit = var.brainsos_commit
+    BuildMode      = var.incremental_build ? "incremental" : "full"
+    BaseAMI        = var.source_ami != "" ? var.source_ami : "ubuntu-24.04-canonical"
   }
 }
 
@@ -118,10 +139,14 @@ build {
   name    = "brainsos-appliance"
   sources = ["source.amazon-ebs.brainsos"]
 
-  # Step 1: Prepare /opt/brainsos directory ownership
+  # Step 1: Quiesce any inherited appliance services (incremental mode) and prepare /opt/brainsos
   provisioner "shell" {
     inline = [
+      "sudo systemctl mask --runtime brainsos-firstboot.service brainsos.service brainsos-system-api.service brainsos-resume.service 2>/dev/null || true",
+      "sudo systemctl stop brainsos.service brainsos-firstboot.service brainsos-system-api.service 2>/dev/null || true",
+      "if command -v docker >/dev/null 2>&1; then sudo docker rm -f $(sudo docker ps -aq) 2>/dev/null || true; fi",
       "sudo mkdir -p /opt/brainsos",
+      "sudo find /opt/brainsos -mindepth 1 -maxdepth 1 ! -name '.venv' -exec rm -rf {} +",
       "sudo chown -R ubuntu:ubuntu /opt/brainsos"
     ]
   }
@@ -137,7 +162,8 @@ build {
   provisioner "shell" {
     environment_vars = [
       "DEBIAN_FRONTEND=noninteractive",
-      "BRAINSOS_REF=${var.brainsos_ref}"
+      "BRAINSOS_REF=${var.brainsos_ref}",
+      "BRAINSOS_INCREMENTAL_BUILD=${var.incremental_build}"
     ]
     execute_command = "{{ .Vars }} sudo -E bash '{{ .Path }}'"
     inline = [
