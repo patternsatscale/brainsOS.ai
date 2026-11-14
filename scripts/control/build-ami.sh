@@ -59,6 +59,8 @@ PUBLIC_REMOTE_URL="${BRAINSOS_PUBLIC_REMOTE:-https://github.com/patternsatscale/
 AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 INSTANCE_TYPE="c7g.xlarge"
 VOLUME_SIZE=50
+VOLUME_THROUGHPUT=500
+VOLUME_IOPS=4000
 SSH_INTERFACE="session_manager"
 PUBLISH_COMMUNITY=false
 VALIDATE_ONLY=false
@@ -67,6 +69,9 @@ ALLOW_DIRTY=false
 KEEP_STAGE=false
 VERIFY_COLDBOOT=false
 VERIFY_VULNERABILITIES=false
+INCREMENTAL_BUILD=false
+SOURCE_AMI=""
+AUTO_INCREMENTAL=false
 BUILD_REF=""
 PROMOTE_AMI=""
 AMI_NAME=""
@@ -74,19 +79,23 @@ AMI_DISPLAY_NAME=""
 
 usage() {
   cat <<EOF
-brainsOS ARM64 AMI Build, Staging & Promotion Wrapper (Tickets #313 / #322 / #338)
+brainsOS ARM64 AMI Build, Staging & Promotion Wrapper (Tickets #313 / #322 / #338 / #374)
 
 Usage:
   ./scripts/control/build-ami.sh [OPTIONS]
 
 Options:
   --ref REF                   Git tag/branch/commit to bake (Default: latest v* tag)
-  --name NAME                 Explicit EC2 AMI name (e.g. brainsos-v0.1.5-arm64-rc1)
-  --display-name LABEL        EC2 Console Name tag (e.g. "brainsOS 0.1.5 RC1 (ARM64)")
+  --name NAME                 Explicit EC2 AMI name (e.g. brainsos-v0.5.1-arm64)
+  --display-name LABEL        EC2 Console Name tag (e.g. "brainsOS 0.5.1 (ARM64)")
+  --incremental               Delta-build atop the newest self-owned brainsos-* ARM64 AMI (~5m)
+  --from-ami AMI_ID           Explicit base AMI ID for incremental delta builds
   --allow-dirty               Permit building while the working tree has local changes
   --region REGION             Target AWS region (Default: ${AWS_REGION})
   --instance-type TYPE        EC2 instance type for builder (Default: ${INSTANCE_TYPE})
   --volume-size SIZE          Root EBS volume size in GB (Default: ${VOLUME_SIZE})
+  --volume-throughput MBPS    gp3 builder volume throughput in MB/s (Default: ${VOLUME_THROUGHPUT})
+  --volume-iops IOPS          gp3 builder volume IOPS (Default: ${VOLUME_IOPS})
   --ssh-interface IFACE       Packer communicator interface (Default: ${SSH_INTERFACE})
   --publish-community         Publish publicly at build time (prefer --promote)
   --verify-coldboot           Automatically boot and verify the newly baked AMI
@@ -98,9 +107,9 @@ Options:
   -h, --help                  Show this help message
 
 Release flow:
-  1. build-ami.sh --ref v0.1.0            (private AMI)
-  2. rehearse the private AMI             (#320 / #338)
-  3. build-ami.sh --promote <ami-id>      (public)
+  1. build-ami.sh --incremental --ref v0.5.1   (fast ~5m delta AMI)
+  2. rehearse the private AMI                  (#320 / #338)
+  3. build-ami.sh --promote <ami-id>           (public)
 EOF
 }
 
@@ -116,10 +125,14 @@ while [ $# -gt 0 ]; do
     --ref)            require_arg "$1" "${2:-}"; BUILD_REF="$2"; shift 2 ;;
     --name)           require_arg "$1" "${2:-}"; AMI_NAME="$2"; shift 2 ;;
     --display-name)   require_arg "$1" "${2:-}"; AMI_DISPLAY_NAME="$2"; shift 2 ;;
+    --incremental)    INCREMENTAL_BUILD=true; AUTO_INCREMENTAL=true; shift ;;
+    --from-ami)       require_arg "$1" "${2:-}"; SOURCE_AMI="$2"; INCREMENTAL_BUILD=true; shift 2 ;;
     --allow-dirty)    ALLOW_DIRTY=true; shift ;;
     --region)         require_arg "$1" "${2:-}"; AWS_REGION="$2"; shift 2 ;;
     --instance-type)  require_arg "$1" "${2:-}"; INSTANCE_TYPE="$2"; shift 2 ;;
     --volume-size)    require_arg "$1" "${2:-}"; VOLUME_SIZE="$2"; shift 2 ;;
+    --volume-throughput) require_arg "$1" "${2:-}"; VOLUME_THROUGHPUT="$2"; shift 2 ;;
+    --volume-iops)    require_arg "$1" "${2:-}"; VOLUME_IOPS="$2"; shift 2 ;;
     --ssh-interface)  require_arg "$1" "${2:-}"; SSH_INTERFACE="$2"; shift 2 ;;
     --publish-community) PUBLISH_COMMUNITY=true; shift ;;
     --verify-coldboot) VERIFY_COLDBOOT=true; shift ;;
@@ -263,6 +276,10 @@ packer_vars() {
     "-var=aws_region=${AWS_REGION}" \
     "-var=instance_type=${INSTANCE_TYPE}" \
     "-var=volume_size=${VOLUME_SIZE}" \
+    "-var=volume_throughput=${VOLUME_THROUGHPUT}" \
+    "-var=volume_iops=${VOLUME_IOPS}" \
+    "-var=source_ami=${SOURCE_AMI}" \
+    "-var=incremental_build=${INCREMENTAL_BUILD}" \
     "-var=publish_community=${PUBLISH_COMMUNITY}" \
     "-var=ssh_interface=${SSH_INTERFACE}" \
     "-var=source_dir=${source_dir}" \
@@ -314,12 +331,41 @@ if [ -z "$(git -C "${REPO_ROOT}" branch -r --contains "${BUILD_COMMIT}" 2>/dev/n
   log_warn "Commit ${BUILD_COMMIT:0:12} is not on any known remote branch or tag; appliance updates may not resolve it."
 fi
 
+# 3.5 Resolve incremental base AMI (--from-ami or --incremental auto-discovery)
+if [ -n "${SOURCE_AMI}" ] && [[ ! "${SOURCE_AMI}" =~ ^ami-[0-9a-f]{8,17}$ ]]; then
+  log_error "Invalid --from-ami ID: ${SOURCE_AMI}"
+  exit 1
+fi
+
+if [ "${AUTO_INCREMENTAL}" = true ] && [ -z "${SOURCE_AMI}" ]; then
+  if command -v aws >/dev/null 2>&1; then
+    RESOLVED_BASE="$(aws ec2 describe-images --region "${AWS_REGION}" --owners self \
+      --filters "Name=name,Values=brainsos-*" "Name=architecture,Values=arm64" "Name=state,Values=available" \
+      --query 'Images | sort_by(@, &CreationDate) | [-1].[ImageId,Name]' --output text 2>/dev/null || true)"
+    if [ -n "${RESOLVED_BASE}" ] && [ "${RESOLVED_BASE}" != "None" ]; then
+      SOURCE_AMI="$(printf '%s' "${RESOLVED_BASE}" | awk '{print $1}')"
+      SOURCE_AMI_NAME="$(printf '%s' "${RESOLVED_BASE}" | awk '{print $2}')"
+      log_success "Auto-selected incremental base AMI: ${SOURCE_AMI} (${SOURCE_AMI_NAME})"
+    fi
+  fi
+  if [ -z "${SOURCE_AMI}" ]; then
+    if [ "${DRY_RUN}" = true ]; then
+      log_warn "[DRY-RUN] Could not auto-resolve a self-owned brainsos-* AMI in ${AWS_REGION}; pass --from-ami <ami-id> to simulate a specific base AMI."
+    else
+      log_error "No available self-owned brainsos-* ARM64 AMI found in ${AWS_REGION} for --incremental."
+      log_error "Run a full baseline build first or pass --from-ami <ami-id> explicitly."
+      exit 1
+    fi
+  fi
+fi
+
 log_info "brainsOS Appliance Golden AMI Builder"
 log_info "Git Ref:         ${BUILD_REF} (${BUILD_COMMIT:0:12})"
+log_info "Build Mode:      $([ "${INCREMENTAL_BUILD}" = true ] && echo "incremental (base: ${SOURCE_AMI:-<auto>})" || echo "full (Canonical Ubuntu 24.04 ARM64)")"
 log_info "Packer Binary:   ${PACKER_BIN:-<not found>}"
 log_info "AWS Region:      ${AWS_REGION}"
 log_info "Instance Type:   ${INSTANCE_TYPE}"
-log_info "Root Volume:     ${VOLUME_SIZE} GB"
+log_info "Root Volume:     ${VOLUME_SIZE} GB gp3 (${VOLUME_THROUGHPUT} MB/s, ${VOLUME_IOPS} IOPS)"
 log_info "Communicator:    ${SSH_INTERFACE}"
 log_info "Publish Public:  ${PUBLISH_COMMUNITY}"
 
@@ -403,8 +449,12 @@ if [ "${PUBLISH_COMMUNITY}" = true ]; then
 fi
 
 log_info "Starting Packer AMI build..."
+BUILD_START_TS="$(date +%s)"
 "${BUILD_CMD[@]}"
-log_success "brainsOS ARM64 golden AMI build completed (ref ${BUILD_REF}, commit ${BUILD_COMMIT:0:12})."
+BUILD_ELAPSED="$(( $(date +%s) - BUILD_START_TS ))"
+BUILD_MINS="$(( BUILD_ELAPSED / 60 ))"
+BUILD_SECS="$(( BUILD_ELAPSED % 60 ))"
+log_success "brainsOS ARM64 golden AMI build completed in ${BUILD_MINS}m ${BUILD_SECS}s (ref ${BUILD_REF}, commit ${BUILD_COMMIT:0:12})."
 
 if [ "${VERIFY_COLDBOOT}" = true ] || [ "${VERIFY_VULNERABILITIES}" = true ]; then
   NEW_AMI_ID="$(aws ec2 describe-images --region "${AWS_REGION}" --owners self \

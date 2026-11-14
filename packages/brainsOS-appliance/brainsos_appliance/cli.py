@@ -52,6 +52,17 @@ def create_parser() -> argparse.ArgumentParser:
         help="Git tag/branch/commit to bake (default: latest v* tag)",
     )
     build_p.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Delta-build atop the most recent self-owned brainsos-* ARM64 AMI",
+    )
+    build_p.add_argument(
+        "--from-ami",
+        metavar="AMI_ID",
+        default=None,
+        help="Explicit base AMI ID for incremental delta builds",
+    )
+    build_p.add_argument(
         "--allow-dirty",
         action="store_true",
         help="Permit building while the working tree has local changes",
@@ -122,6 +133,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ref=args.ref,
             allow_dirty=args.allow_dirty,
             promote=args.promote,
+            from_ami=args.from_ami,
+            incremental=args.incremental,
         )
         if success:
             print(f"[SUCCESS] {msg}")

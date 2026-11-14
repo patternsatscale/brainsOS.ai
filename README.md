@@ -378,7 +378,7 @@ While brainsOS provides the open-source software harness, Project mJ investigate
 To run brainsOS as a hardened, single-tenant cloud appliance in your own AWS VPC (see [`packages/brainsOS-appliance/README.md`](packages/brainsOS-appliance/README.md) for full details):
 
 1. **Attach the Least-Privilege Instance Role**:
-   Launch our Ubuntu 24.04 ARM64 Golden AMI (or build your own via `make build-ami ARGS="--ref v0.1.1"`) with an EC2 IAM Instance Profile attached to [`packages/brainsOS-appliance/iam/instance-policy.json`](packages/brainsOS-appliance/iam/instance-policy.json) (grants keyless **Amazon Bedrock** invoke + **AWS SSM Session Manager** with zero inbound SSH port `22`).
+   Launch our Ubuntu 24.04 ARM64 Golden AMI (or build your own via `make build-ami ARGS="--ref v0.5.1"` for a clean-room baseline, or `make build-ami ARGS="--incremental --ref v0.5.1"` for ~5 min delta builds) with an EC2 IAM Instance Profile attached to [`packages/brainsOS-appliance/iam/instance-policy.json`](packages/brainsOS-appliance/iam/instance-policy.json) (grants keyless **Amazon Bedrock** invoke + **AWS SSM Session Manager** with zero inbound SSH port `22`).
 2. **First-Boot Identity Wizard & Break-Glass Login**:
    - Open `https://<public-ip-or-dns>/` in your browser.
    - Sign in with the break-glass `admin` account using your **EC2 Instance ID** (`i-0123456789abcdef0`) as the initial password.

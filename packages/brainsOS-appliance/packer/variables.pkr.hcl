@@ -34,6 +34,30 @@ variable "volume_size" {
   default     = 50
 }
 
+variable "volume_throughput" {
+  type        = number
+  description = "Root gp3 builder volume throughput in MB/s (125-1000)"
+  default     = 500
+}
+
+variable "volume_iops" {
+  type        = number
+  description = "Root gp3 builder volume IOPS (3000-16000)"
+  default     = 4000
+}
+
+variable "source_ami" {
+  type        = string
+  description = "Optional base AMI ID (e.g. previous brainsOS Golden AMI) for ~5-minute incremental delta builds. Empty string uses latest Canonical Ubuntu 24.04 ARM64."
+  default     = ""
+}
+
+variable "incremental_build" {
+  type        = bool
+  description = "Enable fast incremental provisioning when building atop an existing brainsOS AMI"
+  default     = false
+}
+
 variable "publish_community" {
   type        = bool
   description = "Whether to publish AMI to the AWS Community Catalogue (public). Prefer 'build-ami.sh --promote <ami-id>' after rehearsal."

@@ -156,6 +156,11 @@ if [ -n "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE:-}" ] && [ -f "${BRAINSOS_FIRSTBOOT
   USER_DATA="$(cat "${BRAINSOS_FIRSTBOOT_USER_DATA_FILE}")"
 fi
 
+if [ -n "${USER_DATA}" ] && printf '%s\n' "${USER_DATA}" | grep -qE "BRAINSOS_PACKER_BUILD[=:][[:space:]]*true"; then
+  log_info "Packer build marker (BRAINSOS_PACKER_BUILD=true) detected in User Data — skipping firstboot.sh."
+  exit 0
+fi
+
 # ------------------------------------------------------------------------------
 # 1b. Optional bring-your-own-domain settings from EC2 user-data (#323)
 #     Only these KEY=VALUE lines are honoured; everything else (cloud-config,
