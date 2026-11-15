@@ -114,24 +114,25 @@ You must also enable access to the models you plan to use in the Bedrock console
      BRAINSOS_ROUTE53_ZONE_ID=Z0123456789ABCDEFG
      ```
      Attach [`iam/route53-ddns-policy.json`](iam/route53-ddns-policy.json) to the EC2 Instance Role to scope `route53:ChangeResourceRecordSets` strictly to your target subdomain wildcard. Caddy uses fallback-to-internal issuance, ensuring HTTPS remains available with zero downtime while ACME verification completes.
-   - **Bulk Meeting-Roster Fleet Launcher (`/launch-fleet` Skill & `scripts/control/launch-fleet.sh` — #377)**:
-     Drop a screenshot of meeting participants into VS Code (`/launch-fleet`) or invoke `scripts/control/launch-fleet.sh` directly to launch 5–30+ single-tenant appliances in one shot (or emit a zero-dependency AWS CloudShell script):
+   - **Standalone Interactive Launch-Template Wizard & Bulk Fleet CLI (`/launch-fleet` & `scripts/control/launch-fleet.sh` — #377 / #380)**:
+     Download `launch-fleet.sh` onto any work laptop with `aws` CLI configured (zero repo clone required) and run with no arguments for the interactive **EC2 Launch Template picker & sizing wizard**, or pass CLI flags directly:
      ```bash
-     # 1. Dry-run preview (sanitizes UI noise + disambiguates duplicate first names):
-     ./scripts/control/launch-fleet.sh \
-       --participants "Alice Morgan (Host), Alex Chen, Alex Rivera" \
-       --base-domain demo.infotechlabs.io
+     # Interactive CLI Wizard (pick Launch Template, enter instance count or names, launch & exit):
+     curl -fsSL https://raw.githubusercontent.com/patternsatscale/brainsOS.ai/main/scripts/control/launch-fleet.sh -o launch-fleet.sh
+     chmod +x launch-fleet.sh
+     ./launch-fleet.sh
 
-     # 2. Emit self-contained AWS CloudShell script (or pass --apply to launch directly):
-     ./scripts/control/launch-fleet.sh \
+     # Non-interactive Launch-Template mode (e.g. 10 numbered boxes user01..user10):
+     ./launch-fleet.sh --launch-template brainsos-demo --count 10 --base-domain demo.infotechlabs.io --apply
+
+     # Or named meeting participants:
+     ./launch-fleet.sh --launch-template brainsos-demo \
        --participants "Alice Morgan, Bob Patel, Charlie Kim" \
-       --base-domain demo.infotechlabs.io \
-       --fleet workshop-nov14 \
-       --emit-script ./launch-workshop-nov14.sh
+       --base-domain demo.infotechlabs.io --fleet workshop-nov14 --apply
 
-     # 3. Day-2 lifecycle (stop / hibernate / start / terminate by BrainsOSFleet tag):
-     ./scripts/control/launch-fleet.sh --stop --fleet workshop-nov14
-     ./scripts/control/launch-fleet.sh --terminate --fleet workshop-nov14 --yes
+     # Day-2 lifecycle (stop / hibernate / start / terminate by BrainsOSFleet tag):
+     ./launch-fleet.sh --stop --fleet workshop-nov14
+     ./launch-fleet.sh --terminate --fleet workshop-nov14 --yes
      ```
 
 ## CLI Usage
