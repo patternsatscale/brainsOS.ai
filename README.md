@@ -92,7 +92,7 @@ Most "agent platforms" force a false choice: either rent seats on a multi-tenant
 | **Tool & Egress Secrets** | Raw GitHub PATs and API keys injected into agent runtime containers | **Zero ambient container secrets** — Injected in transit by `brainsos-agent-egress-proxy:8082` (`SEC-02`) |
 | **Perimeter & Host Access** | Public multi-tenant endpoints; no host-level inspection | **Single-origin TLS (`:443`) + Authentik SSO**; port 22 closed; browser **OS Control Center (`/#system`)** with XTerm.js PTY |
 | **Runaway Containment** | Soft billing alerts after spend thresholds are already breached | **Deterministic Kill Switch (`SAF-02`)** — `make emergency-stop` halts containers and revokes virtual keys in `<5s` |
-| **Governance & Auditability** | Proprietary black-box logs | **COHUMAIN ACSG 25-Control Anchor** + self-hosted **Langfuse v4** OpenTelemetry tracing (ClickHouse/Redis/MinIO) |
+| **Governance & Auditability** | Proprietary black-box logs | **COHUMAIN ACSG 25-Control Anchor** + first-class **LiteLLM Lens** & **Langfuse v4** OpenTelemetry tracing (shared ClickHouse KeeperMap) |
 
 ### The Patterns at Scale Philosophy
 Rooted in the *Patterns at Scale Manifesto*, brainsOS enforces a physical computing paradigm:
@@ -146,9 +146,9 @@ brainsOS unifies 18 enterprise-grade open-source components into a single, pre-w
 |---|---|---|
 | **Thin-Spine Portal & OS Control Center** | Unified full-bleed workspace (`/`) + appliance administration (`/#system`) | Built-in First-Boot Superuser Wizard, interactive **XTerm.js** host PTY, APT security patch manager, runner/tool key manager, and universal update/rollback. |
 | **[Authentik](https://goauthentik.io) & [Caddy](https://caddyserver.com)** | Single-origin TLS (`:443`) reverse proxy & Zero-Trust Forward-Auth IdP | Enforces single sign-on across every appliance UI; supports internal Root CA, Let's Encrypt HTTP-01, and keyless Route 53 DNS-01 ACME. |
-| **[LiteLLM](https://github.com/BerriAI/litellm)** | Token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1`) for unified memory buses; routes to **Ambient AWS Bedrock (IMDSv2)** or loopback **Ollama/vLLM**. |
+| **[LiteLLM](https://github.com/BerriAI/litellm) (`v1.109.1`)** | Token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1`) for unified memory buses; routes to **Ambient AWS Bedrock (IMDSv2)** or loopback **Ollama/vLLM**. |
 | **IMDSv2 Firewall (`imds-guard.sh`)** | Kernel-level EC2 metadata isolation (`packages/brainsOS-appliance`) | `DOCKER-USER` → `BRAINSOS-IMDS` `iptables` chain allows only LiteLLM to reach `169.254.169.254/32` and drops all agent/app containers. |
-| **[Langfuse v4](https://langfuse.com)** | Distributed OpenTelemetry tracing (backed by ClickHouse, Redis, MinIO, Postgres) | Unified thread-level tracing across email runs, Hermes turns, tool spans, token latency, and error states. |
+| **[LiteLLM Lens](https://github.com/BerriAI/lens) & [Langfuse v4](https://langfuse.com)** | Dual OpenTelemetry GenAI tracing & spend correlation (shared ClickHouse `26.2` + `KeeperMap`) | First-class embedded Lens UI (`/proxy/ui/?page=lens`, rootless `65532:65532` `:4318`) correlating Hermes agent/tool spans 1:1 with gateway spend via W3C `traceparent`, side-by-side with Langfuse (`LANGFUSE_ENABLED=true\|false`). |
 | **In-Transit Egress Proxy ([mitmproxy](https://mitmproxy.org))** | Outbound L7 firewall & multi-tenant credential injection (`:8081`/`:8082`) | Containers hold **zero ambient secrets**; proxy injects GitHub/API credentials in transit by container IP and masks tokens in `mitmweb` logs. |
 | **[Postfix](https://www.postfix.org), [Dovecot](https://www.dovecot.org) & [SOGo](https://sogo.nu)** | Decoupled, auditable asynchronous email & CalDAV groupware backbone | Every inbound email triggers one checkpointed Hermes run and returns one reply—eliminating fragile synchronous polling loops. |
 | **Operator IDE ([code-server](https://github.com/coder/code-server))** | Browser-based VS Code workspace (`/editor/`) behind Authentik SSO | Pre-wired to `/data` (`operator/agent-box`) for inspecting and editing agent personas, skills, and OKF memories. |
@@ -504,8 +504,9 @@ Once running, all appliance services are unified behind single-origin HTTPS (`:4
 | **Gitea Source Control** | [https://local.brainsos.ai/git/](https://local.brainsos.ai/git/) | `3000` | Authentik SSO (Reverse-Proxy Auth) | Self-hosted Git server tracking `operator/agent-box` (`SOUL.md`, skills, memories) |
 | **SOGo Webmail & Groupware** | [https://local.brainsos.ai/mail/](https://local.brainsos.ai/mail/) | `20000` | Authentik SSO (Trusted Proxy) | Webmail, agent mailboxes & CalDAV calendars |
 | **LiteLLM Control Plane** | [https://local.brainsos.ai/proxy/ui](https://local.brainsos.ai/proxy/ui) | `4000` | Authentik SSO (Injected Key) | Hardware-serialized routing (Ollama / Ambient Bedrock), budgets & virtual keys |
+| **LiteLLM Lens Telemetry** | [https://local.brainsos.ai/proxy/ui/?page=lens](https://local.brainsos.ai/proxy/ui/?page=lens) | `4318` | Authentik SSO + Scoped Trace Key | Native embedded agent/tool trace inspector, gateway spend matching & evaluations |
 | **Tool Egress Proxy Console** | [https://local.brainsos.ai/efw/](https://local.brainsos.ai/efw/) | `8081` | Authentik SSO | Mitmweb real-time egress flow inspection & secret masking |
-| **Langfuse Observability** | [https://langfuse.local.brainsos.ai/](https://langfuse.local.brainsos.ai/) | `3001` | Authentik SSO | Distributed OpenTelemetry thread tracing & prompt token breakdown |
+| **Langfuse Observability** | [https://langfuse.local.brainsos.ai/](https://langfuse.local.brainsos.ai/) | `3001` | Authentik SSO | Distributed OpenTelemetry thread tracing & prompt token breakdown (`LANGFUSE_ENABLED`) |
 | **Hermes Runner WebUI** | [https://local.brainsos.ai/runner/](https://local.brainsos.ai/runner/) | `8787` | Authentik SSO | Multi-tenant stateless agent runner terminal & burn target |
 | **Agent Queue & System API** | `http://127.0.0.1:8000` | `8000` | *Internal Gateway* | Non-blocking email webhook ingestion, queue worker & host system API |
 
@@ -530,6 +531,8 @@ make test           # Run pytest suite across all packages
 make lint           # Run ruff check and mypy across all packages
 make langfuse       # Start Langfuse v4 distributed observability stack
 make langfuse-status# Check Langfuse health, container status, and OTel ingestion
+make lens-setup     # Provision ClickHouse KeeperMap, isolated 'lens' DB, and tenant tracing key
+make lens-status    # Check LiteLLM Lens /health/ready and gateway /lens/service connection
 make emergency-stop # Instantly terminate all agent containers
 
 # Fleet snapshots & backups
@@ -567,7 +570,7 @@ Every inbound email to an agent triggers **one** asynchronous Hermes run and pro
 2. It polls `GET /v1/runs/{run_id}` with no socket held open, so runs may last hours. A wall-clock budget (`HERMES_RUN_MAX_SEC`, default 4h) calls `/stop`. A worker restart resumes polling the same run instead of resubmitting.
 3. `completed` → the result is emailed and the turn is recorded in OKF. `failed` / `cancelled` / `interrupted` / timeout → the sender gets a plain failure email with recommendations; raw errors go to logs and Langfuse only.
 4. Concurrency is 1 at both layers: Hermes `max_concurrent_runs: 1` (the worker backs off on 429) and LiteLLM `max_parallel_requests: 1`.
-5. **Unified Langfuse Tracing**: Each email thread produces a single cohesive thread trace in Langfuse (`thread_trace_id(session_id) = sha256(f"{sid}::{sid}")[:16]`) named after the brainsOS event (`brainsos: email: <subject>`). The queue worker records an `email-run <agent_id>` span via OTLP (`/api/public/otel/v1/traces`, `x-langfuse-ingestion-version: 4`) with the sender as `user.id`, timing, and status directly onto the thread trace. Hermes' `observability/langfuse` plugin records the `Hermes turn` (LLM generations, tool calls) under this event trace. Hermes requests to LiteLLM send `no-log: true` via the `brainsos-litellm-session` plugin so LiteLLM avoids duplicating Hermes LLM calls, while LiteLLM's `langfuse_otel` callback directly traces non-Hermes callers (IDE / operator).
+5. **Dual OpenTelemetry Tracing (LiteLLM Lens + Langfuse)**: Each email thread produces a single deterministic thread trace (`thread_trace_id(session_id) = sha256(f"{sid}::{sid}")[:16]`). Both the queue worker (`invoke_workflow` / `email-run`) and Hermes (`invoke_agent`, `chat`, `execute_tool`, and `gateway.request` spans) export OTLP traces in parallel to **LiteLLM Lens** (`http://lens:4318/v1/traces` via `LITELLM_TRACING_KEY`) and **Langfuse v4** (`/api/public/otel/v1/traces`, gated by `LANGFUSE_ENABLED=true|false`). Hermes requests to LiteLLM attach W3C `traceparent` headers and `no-log: true` via the `brainsos-litellm-session` plugin so LiteLLM correlates gateway spend 1:1 with Lens `chat` spans via `LensExporter` without duplicating Langfuse root traces.
 
 ---
 
@@ -598,6 +601,7 @@ brainsOS/
 │   ├── templates/            # Seed templates for private data repos (data-repo.gitignore)
 │   ├── sample_agent_app/     # Sample agent web application templates (cindypawford)
 │   ├── caddy/                # Ingress reverse proxy configuration
+│   ├── clickhouse/           # Embedded ClickHouse Keeper (KeeperMap) config for LiteLLM Lens
 │   ├── editor/               # Operator IDE workspace and Continue configs
 │   ├── litellm/              # Rate-limiting, model aliases, Bedrock & DB settings
 │   └── egress/               # In-transit credential injection proxy rules
@@ -612,6 +616,7 @@ brainsOS/
 │   ├── brainsOS-skills/      # Hierarchical agent skills loader, validator & CLI
 │   └── brainsOS-telemetry/   # Decoupled Observer/Observable bus, System API & SyntheticEnergyObserver
 ├── docker/                   # Dockerfiles and modular Compose topologies
+│   ├── lens/                 # Multi-stage rootless ARM64 build for BerriAI/lens (:4318)
 │   └── compose/              # Modular Compose v2 files by plane (ingress, agents, control, apps, telemetry, appliance)
 ├── docs/  
 │   ├── brainsos-reference-architecture.html        # Interactive 5-tab "Enterprise Agent in a Box" keynote & audit blueprint

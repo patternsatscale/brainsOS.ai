@@ -40,6 +40,7 @@ from brainsos_agent.adapters import get_runtime_adapter
 from brainsos_agent.adapters.hermes import HermesMailAdapter, RunContext
 from brainsos_agent.config import get_comms_dir, get_control_plane_dir, get_data_dir
 from brainsos_agent.langfuse_trace import record_mail_run_trace
+from brainsos_agent.lens_trace import record_lens_mail_run_trace
 from brainsos_agent.mail_runs import (
     RUN_UNREACHABLE,
     canonical_session_id,
@@ -508,21 +509,25 @@ class AgentQueueWorkerDaemon:
     ) -> None:
         meta = outbound.metadata or {}
         status = meta.get("run_status", "completed")
-        await record_mail_run_trace(
-            session_id=meta.get("session_id")
+        trace_kwargs = {
+            "session_id": meta.get("session_id")
             or canonical_session_id(profile.id or profile.name, inbound_email.thread_id),
-            agent_id=profile.id or profile.name,
-            agent_name=profile.name,
-            sender=inbound_email.sender,
-            subject=inbound_email.subject,
-            run_id=meta.get("run_id"),
-            status=status,
-            input_text=meta.get("input") or inbound_email.clean_body,
-            output_text=outbound.body,
-            error=meta.get("run_error"),
-            usage=meta.get("usage"),
-            started_at=meta.get("started_at"),
-            ended_at=meta.get("ended_at"),
+            "agent_id": profile.id or profile.name,
+            "agent_name": profile.name,
+            "sender": inbound_email.sender,
+            "subject": inbound_email.subject,
+            "run_id": meta.get("run_id"),
+            "status": status,
+            "input_text": meta.get("input") or inbound_email.clean_body,
+            "output_text": outbound.body,
+            "error": meta.get("run_error"),
+            "usage": meta.get("usage"),
+            "started_at": meta.get("started_at"),
+            "ended_at": meta.get("ended_at"),
+        }
+        await asyncio.gather(
+            record_mail_run_trace(**trace_kwargs),
+            record_lens_mail_run_trace(**trace_kwargs),
         )
 
     def _send_reply(self, profile: AgentProfile, inbound_email: ParsedInboundEmail, outbound: OutboundEmail) -> None:

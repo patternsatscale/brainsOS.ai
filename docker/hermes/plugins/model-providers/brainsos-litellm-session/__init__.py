@@ -1,27 +1,25 @@
-"""brainsOS: Hermes -> LiteLLM request shaping for unified Langfuse tracing (Tickets #295, #299).
+"""brainsOS: Hermes -> LiteLLM request shaping for unified Langfuse & Lens tracing (#295, #299, #375).
 
-Hermes' ``observability/langfuse`` plugin already records every LLM call as a ``LLM call N``
-generation on the per-thread Hermes trace. If LiteLLM's Langfuse callback also logged those
-requests, every call would appear twice (once as a disconnected root trace). This user provider
-plugin re-registers Hermes' bundled ``custom`` provider (used to reach the LiteLLM gateway) with
-an identical wire policy plus:
+Hermes' ``observability/langfuse`` plugin records every LLM call and tool execution across both
+Langfuse and LiteLLM Lens. This provider plugin re-registers Hermes' bundled ``custom`` provider
+(used to reach the LiteLLM gateway) with an identical wire policy plus:
 
-* ``"no-log": true`` — LiteLLM skips non-proxy logging callbacks (``langfuse_otel``) for this
-  request while proxy cost/spend tracking callbacks still run. Callers that do not set it (IDE
-  clients, direct API users) remain fully traced by LiteLLM.
+* ``"no-log": true`` — LiteLLM skips duplicate ``langfuse_otel`` root traces while proxy spend
+  tracking (``_ProxyDBLogger``) and LiteLLM Lens spend shipping (``LensExporter``) still run.
 * ``metadata.tags`` — ``["hermes", "brainsos"]`` for LiteLLM spend-log attribution.
-
-``metadata.session_id`` is intentionally not forwarded. Hermes loads
-``$HERMES_HOME/plugins/model-providers/*`` after bundled providers, and ``register_provider`` is
-last-writer-wins.
+* ``extra_headers["traceparent"]`` — W3C Trace Context ``00-<trace_id>-<span_id>-01`` so LiteLLM's
+  ``spend_logs`` correlate 1:1 with the Hermes Lens OTLP ``gateway.request`` / ``chat`` spans even
+  on streaming completions where the hook payload omits ``response.id``.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import importlib.util
 import logging
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +49,12 @@ def _resolve_session_id(session_id: str | None) -> str:
         return str(ctx.get("session_id") or "").strip()
     except Exception:
         return ""
+
+
+def _deterministic_trace_id(session_id: str | None) -> str:
+    sid = _resolve_session_id(session_id) or "sessionless"
+    seed = f"{sid}::{sid}"
+    return hashlib.sha256(seed.encode("utf-8")).digest()[:16].hex()
 
 
 def _resolve_agent_virtual_key(session_id: str | None) -> str | None:
@@ -91,7 +95,7 @@ else:
     _BaseCls = type(_base)
 
     class BrainsOSLiteLLMSessionProfile(_BaseCls):  # type: ignore[misc, valid-type]
-        """``custom`` provider + LiteLLM tags + ``no-log`` + per-agent virtual key attribution."""
+        """``custom`` provider + LiteLLM tags + ``no-log`` + ``traceparent`` + per-agent virtual key."""
 
         def build_extra_body(self, *, session_id: str | None = None, **context: Any) -> dict[str, Any]:
             body = dict(super().build_extra_body(session_id=session_id, **context) or {})
@@ -115,11 +119,17 @@ else:
             else:
                 extra_body, top_level = {}, {}
 
-            vkey = _resolve_agent_virtual_key(context.get("session_id"))
+            headers = dict(top_level.get("extra_headers") or {})
+            sid = context.get("session_id")
+            vkey = _resolve_agent_virtual_key(sid)
             if vkey:
-                headers = dict(top_level.get("extra_headers") or {})
                 headers.setdefault("Authorization", f"Bearer {vkey}")
-                top_level["extra_headers"] = headers
+
+            # Propagate W3C traceparent so LiteLLM spend_logs link deterministically to Lens OTLP spans (#375).
+            trace_id = _deterministic_trace_id(sid)
+            transport_span_id = secrets.token_hex(8)
+            headers.setdefault("traceparent", f"00-{trace_id}-{transport_span_id}-01")
+            top_level["extra_headers"] = headers
             return extra_body, top_level
 
     def _wrap_custom_profile(profile_obj: Any) -> Any:
@@ -145,4 +155,4 @@ else:
         _guarded_register_provider._brainsos_wrapped = True  # type: ignore[attr-defined]
         providers.register_provider = _guarded_register_provider  # type: ignore[attr-defined]
 
-    logger.info("brainsOS litellm-session plugin: 'custom' provider configured (tags + no-log)")
+    logger.info("brainsOS litellm-session plugin: 'custom' provider configured (tags + no-log + traceparent)")

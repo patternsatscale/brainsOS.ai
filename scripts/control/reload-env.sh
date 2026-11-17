@@ -469,6 +469,14 @@ if [ -z "${BRAINSOS_UNIT_NAME:-}" ]; then
   export BRAINSOS_UNIT_NAME
 fi
 
+# Provision LiteLLM Lens secrets & shared ClickHouse KeeperMap / isolated `lens` DB before compose up (#375)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-lens.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-lens.sh" --pre-up || log_warn "Lens pre-up ClickHouse check encountered a warning."
+  set -a
+  . "${ENV_FILE}"
+  set +a
+fi
+
 # ------------------------------------------------------------------------------
 # 4. Recreate / Update Docker Compose Services
 # ------------------------------------------------------------------------------
@@ -757,6 +765,18 @@ log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue).
 
 if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" || true
+fi
+
+# Synchronize LiteLLM Lens tenant-matched tracing key after LiteLLM SSO owner resolution (#375)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-lens.sh" ]; then
+  _PREV_LENS_TRACE_KEY="${LITELLM_TRACING_KEY:-}"
+  "${REPO_ROOT}/scripts/setup/setup-lens.sh" sync || log_warn "LiteLLM Lens tracing key sync encountered a warning."
+  set -a
+  . "${ENV_FILE}"
+  set +a
+  if [ "${_PREV_LENS_TRACE_KEY}" != "${LITELLM_TRACING_KEY:-}" ]; then
+    "${SCRIPT_DIR}/start-control-plane.sh" restart >/dev/null 2>&1 || true
+  fi
 fi
 
 # Synchronize Operator IDE (code-server) with active LiteLLM virtual key

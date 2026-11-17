@@ -518,10 +518,17 @@ import tls_policy.caddy
 		}
 	}
 
+	# LiteLLM Lens OTLP/HTTP trace & log ingestion (Bearer LITELLM_TRACING_KEY; /internal/* never exposed)
+	@lens_ingest path /lens-ingest/v1/traces /lens-ingest/v1/logs
+	handle @lens_ingest {
+		uri strip_prefix /lens-ingest
+		reverse_proxy {$LENS_UPSTREAM:lens:4318}
+	}
+
 	# Future-proof catch-all for any new endpoint called by the LiteLLM Admin UI (/ui/*)
 	@litellm_ui_referer {
 		header_regexp Referer ^https?://[^/]+/(proxy/)?ui(/|$|\?)
-		not path /ui/* /proxy/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
+		not path /ui/* /proxy/* /lens-ingest/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
 	}
 	handle @litellm_ui_referer {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {

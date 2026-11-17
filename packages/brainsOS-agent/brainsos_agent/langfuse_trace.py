@@ -57,8 +57,15 @@ def _to_unix_nano(ts: float | None) -> str:
     return str(int(ts * 1_000_000_000))
 
 
+def is_langfuse_enabled() -> bool:
+    """Returns False when ``LANGFUSE_ENABLED`` is explicitly disabled (default True)."""
+    return os.getenv("LANGFUSE_ENABLED", "true").strip().lower() not in {"false", "0", "no", "off"}
+
+
 def langfuse_settings() -> tuple[str, str, str] | None:
-    """Returns (base_url, public_key, secret_key) or None when Langfuse is not configured."""
+    """Returns (base_url, public_key, secret_key) or None when Langfuse is disabled or not configured."""
+    if not is_langfuse_enabled():
+        return None
     public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
     secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
     if not public_key or not secret_key or os.getenv("BRAINSOS_MAIL_TRACE_ENABLED", "true").lower() == "false":
@@ -207,4 +214,10 @@ async def record_mail_run_trace(http_client: httpx.AsyncClient | None = None, **
     return False
 
 
-__all__ = ["build_email_run_otlp", "langfuse_settings", "record_mail_run_trace", "thread_trace_id"]
+__all__ = [
+    "build_email_run_otlp",
+    "is_langfuse_enabled",
+    "langfuse_settings",
+    "record_mail_run_trace",
+    "thread_trace_id",
+]

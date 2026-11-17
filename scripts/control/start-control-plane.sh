@@ -68,6 +68,7 @@ LOG_DIR="${PID_DIR}"
 mkdir -p "${PID_DIR}"
 
 OLLAMA_PID_FILE="${PID_DIR}/ollama.pid"
+OLLAMA_BRIDGE_PID_FILE="${PID_DIR}/ollama_bridge.pid"
 LITELLM_PID_FILE="${PID_DIR}/litellm.pid"
 DGX_BRIDGE_PID_FILE="${PID_DIR}/dgx_bridge.pid"
 QUEUE_WORKER_PID_FILE="${PID_DIR}/queue_worker.pid"
@@ -399,6 +400,18 @@ stop_services() {
     fi
   fi
 
+  # Stop Ollama control-net loopback bridge if running
+  if [ -f "${OLLAMA_BRIDGE_PID_FILE}" ]; then
+    PID=$(cat "${OLLAMA_BRIDGE_PID_FILE}" 2>/dev/null || true)
+    if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
+      kill "${PID}" 2>/dev/null || true
+    fi
+    rm -f "${OLLAMA_BRIDGE_PID_FILE}"
+  fi
+  for p in $(pgrep -f "socat TCP4*-LISTEN:11434," 2>/dev/null || true); do
+    kill "${p}" 2>/dev/null || true
+  done
+
   if [ -f "${OLLAMA_PID_FILE}" ]; then
     PID=$(cat "${OLLAMA_PID_FILE}")
     if kill -0 "${PID}" 2>/dev/null; then
@@ -611,6 +624,23 @@ start_services() {
       exit 1
     fi
     log_success "LiteLLM gateway started."
+  fi
+
+  # 3.5. On Linux, bridge LiteLLM's isolated control-net host.docker.internal:11434 -> 127.0.0.1:11434 (Rule 2)
+  if [[ "$(uname -s)" == "Linux" ]] && ollama_enabled && curl -s "http://127.0.0.1:11434/api/tags" >/dev/null 2>&1 && command -v socat >/dev/null 2>&1; then
+    OLLAMA_GW_IP="$(docker exec brainsos-control-litellm awk '$2 == "host.docker.internal" {print $1; exit}' /etc/hosts 2>/dev/null || true)"
+    if [ -n "${OLLAMA_GW_IP}" ] && [ "${OLLAMA_GW_IP}" != "127.0.0.1" ]; then
+      if ! curl -s --connect-timeout 1 "http://${OLLAMA_GW_IP}:11434/api/tags" >/dev/null 2>&1; then
+        for p in $(pgrep -f "socat TCP4*-LISTEN:11434," 2>/dev/null || true); do kill "${p}" 2>/dev/null || true; done
+        RANGE_OPT=",range=${OLLAMA_GW_IP%.*}.0/24"
+        nohup ${SETSID_CMD} socat "TCP4-LISTEN:11434,fork,reuseaddr,bind=${OLLAMA_GW_IP}${RANGE_OPT}" "TCP4:127.0.0.1:11434" \
+          </dev/null >"${PID_DIR}/ollama_bridge.log" 2>&1 &
+        OLLAMA_BRIDGE_PID=$!
+        disown "${OLLAMA_BRIDGE_PID}" 2>/dev/null || true
+        echo "${OLLAMA_BRIDGE_PID}" > "${OLLAMA_BRIDGE_PID_FILE}"
+        log_success "Control-plane Ollama loopback bridge started (PID: ${OLLAMA_BRIDGE_PID}, ${OLLAMA_GW_IP}:11434 -> 127.0.0.1:11434)."
+      fi
+    fi
   fi
 
   # 4. Provision fleet virtual keys in LiteLLM control plane database

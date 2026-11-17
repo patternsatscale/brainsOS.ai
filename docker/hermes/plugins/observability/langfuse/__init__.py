@@ -11,16 +11,37 @@ from __future__ import annotations
 import atexit
 import contextlib
 import functools
+import importlib.util
 import json
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _load_lens_otel_module() -> Any:
+    mod_name = "_brainsos_hermes_lens_otel"
+    existing = sys.modules.get(mod_name)
+    if existing is not None:
+        return existing
+    lens_path = Path(__file__).resolve().with_name("lens_otel.py")
+    spec = importlib.util.spec_from_file_location(mod_name, lens_path)
+    if spec is None or spec.loader is None:  # pragma: no cover
+        raise RuntimeError(f"Unable to load {lens_path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_lens_otel = _load_lens_otel_module()
 
 try:
     from langfuse import Langfuse, propagate_attributes
@@ -225,9 +246,11 @@ def _settle_client() -> Any:
 
 
 def _get_langfuse() -> Optional[Langfuse]:
-    """Cached Langfuse client, or ``None`` if the SDK/credentials are unavailable.
+    """Cached Langfuse client, or ``None`` if disabled or SDK/credentials are unavailable.
     The first build is serialized so racing callers can't each construct a client
     and leak the loser's HTTP connection + flush thread."""
+    if not _lens_otel.is_langfuse_enabled():
+        return None
     # Fast path — already settled (success or _INIT_FAILED) needs no lock;
     # re-check under it since a racing thread may have finished init.
     settled = _settled_client()
@@ -754,7 +777,16 @@ def on_pre_llm_call(*, task_id: str = "", session_id: str = "", platform: str = 
     # turn-scoped pre_llm_call would otherwise open an orphan root trace.
     if not isinstance(messages, list):
         return
-    client, task_key = _client_and_key(task_id, session_id, turn_id, api_request_id)
+    task_key = _trace_key(task_id, session_id, turn_id=turn_id, api_request_id=api_request_id)
+    if _lens_otel.is_lens_enabled():
+        with _failsafe("lens pre_llm_call"):
+            _lens_otel.lens_on_pre_llm_call(
+                task_key=task_key,
+                task_id=task_id,
+                session_id=session_id,
+                serialized_messages=_serialize_messages(messages),
+            )
+    client = _get_langfuse()
     if client is None:
         return
     with _STATE_LOCK:
@@ -801,10 +833,12 @@ def on_pre_llm_request(*, task_id: str = "", session_id: str = "", platform: str
                        request_messages: Any = None, messages: Any = None, message_count: int = 0,
                        approx_input_tokens: int = 0, conversation_history: Any = None,
                        user_message: Any = None, turn_id: str = "", api_request_id: str = "",
-                       request: Any = None, system_prompt: Any = None, **_: Any) -> None:
-    client, task_key = _client_and_key(task_id, session_id, turn_id, api_request_id)
-    if client is None:
+                       request: Any = None, system_prompt: Any = None, started_at: Any = None, **_: Any) -> None:
+    client = _get_langfuse()
+    lens_active = _lens_otel.is_lens_enabled()
+    if client is None and not lens_active:
         return
+    task_key = _trace_key(task_id, session_id, turn_id=turn_id, api_request_id=api_request_id)
 
     # The request body carries the model actually dispatched (mid-session
     # switch, fallback, middleware rewrite) — prefer it over the agent attribute.
@@ -818,6 +852,23 @@ def on_pre_llm_request(*, task_id: str = "", session_id: str = "", platform: str
     has_system = bool(langfuse_input) and langfuse_input[0].get("role") == "system"
     system_chars = len(str(langfuse_input[0].get("content") or "")) if has_system else 0
     req_key = _request_key(api_call_count)
+
+    if lens_active:
+        with _failsafe("lens pre_llm_request"):
+            _lens_otel.lens_on_pre_llm_request(
+                task_key=task_key,
+                task_id=task_id,
+                session_id=session_id,
+                req_key=req_key,
+                model=model,
+                base_url=base_url,
+                input_messages=langfuse_input,
+                request=request,
+                started_at=started_at if isinstance(started_at, (int, float)) else None,
+            )
+
+    if client is None:
+        return
 
     with _STATE_LOCK:
         state = _get_or_start_state_locked(
@@ -843,24 +894,19 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
                      response: Any = None, api_duration: float = 0.0, finish_reason: str = "", usage: Any = None,
                      assistant_content_chars: int = 0, assistant_tool_call_count: int = 0,
                      assistant_response: Any = None, turn_id: str = "", api_request_id: str = "",
-                     response_model: Any = None, moa_references: Any = None, **_: Any) -> None:
-    client, task_key = _client_and_key(task_id, session_id, turn_id, api_request_id)
-    if client is None:
+                     response_model: Any = None, moa_references: Any = None,
+                     started_at: Any = None, ended_at: Any = None, **_: Any) -> None:
+    client = _get_langfuse()
+    lens_active = _lens_otel.is_lens_enabled()
+    if client is None and not lens_active:
         return
+    task_key = _trace_key(task_id, session_id, turn_id=turn_id, api_request_id=api_request_id)
 
-    # The response echoes the model that actually served the request.
+    req_model = model
     if isinstance(response_model, str) and response_model:
         model = response_model
 
-    state, generation = _pop_generation(task_key, api_call_count)
-    if state is None or generation is None:
-        return
-
-    if moa_references:
-        _emit_moa_reference_generations(state, client=client, references=moa_references)
-
-    # Two call shapes: post_llm_call passes assistant_message / assistant_response
-    # objects; post_api_request passes summary counts + a usage dict.
+    # Extract serialized output & usage once for both backends.
     if assistant_message is not None:
         output = _serialize_assistant_message(assistant_message)
     elif assistant_response is not None:
@@ -869,11 +915,6 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
         output = {"content": f"[{assistant_content_chars} chars]" if assistant_content_chars else None, "reasoning": None,
                   "tool_calls": [{"id": f"tc_{i}"} for i in range(assistant_tool_call_count or 0)]}
 
-    if output.get("tool_calls"):
-        state.turn_tool_calls.extend(output["tool_calls"])
-
-    # post_api_request's ``response`` is a sanitized dict with no ``.usage``;
-    # gate on the attribute so the usage-dict fallback is actually reached.
     if getattr(response, "usage", None) is not None:
         usage_details, cost_details = _usage_and_cost(response, provider=provider, api_mode=api_mode, model=model, base_url=base_url)
     elif isinstance(usage, dict) and usage:
@@ -881,26 +922,76 @@ def on_post_llm_call(*, task_id: str = "", session_id: str = "", provider: str =
     else:
         usage_details, cost_details = {}, {}
 
+    has_tools = bool(getattr(assistant_message, "tool_calls", None)) if assistant_message else assistant_tool_call_count > 0
+    finish_turn = (not has_tools) and bool(output.get("content"))
+
+    if lens_active:
+        resp_id = getattr(response, "id", None)
+        if not resp_id and isinstance(response, dict):
+            resp_id = response.get("id")
+        in_tok = int(usage_details.get("input") or (usage.get("input_tokens") if isinstance(usage, dict) else 0) or 0)
+        out_tok = int(usage_details.get("output") or (usage.get("output_tokens") if isinstance(usage, dict) else 0) or 0)
+        with _failsafe("lens post_llm_call"):
+            _lens_otel.lens_on_post_llm_call(
+                task_key=task_key,
+                req_key=_request_key(api_call_count),
+                model=req_model,
+                response_model=str(response_model) if isinstance(response_model, str) and response_model else model,
+                response_id=str(resp_id) if isinstance(resp_id, str) and resp_id else None,
+                finish_reason=finish_reason,
+                output=output,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                started_at=started_at if isinstance(started_at, (int, float)) else None,
+                ended_at=ended_at if isinstance(ended_at, (int, float)) else None,
+                finish_turn=finish_turn,
+            )
+
+    if client is None:
+        return
+
+    state, generation = _pop_generation(task_key, api_call_count)
+    if state is None or generation is None:
+        return
+
+    if moa_references:
+        _emit_moa_reference_generations(state, client=client, references=moa_references)
+
+    if output.get("tool_calls"):
+        state.turn_tool_calls.extend(output["tool_calls"])
+
     gen_metadata = {"tool_call_count": len(output.get("tool_calls", [])) or assistant_tool_call_count,
                     **_duration_meta(api_duration), **({"finish_reason": finish_reason} if finish_reason else {})}
     _end_observation(generation, output=output, usage_details=usage_details, cost_details=cost_details, metadata=gen_metadata)
 
-    has_tools = bool(getattr(assistant_message, "tool_calls", None)) if assistant_message else assistant_tool_call_count > 0
-    if not has_tools and output.get("content"):
+    if finish_turn:
         _finish_trace(task_key, output=output)
 
 
 def on_pre_tool_call(*, tool_name: str = "", args: Any = None, task_id: str = "",
                      session_id: str = "", tool_call_id: str = "",
                      turn_id: str = "", api_request_id: str = "", **_: Any) -> None:
-    client, task_key = _client_and_key(task_id, session_id, turn_id, api_request_id)
+    client = _get_langfuse()
+    lens_active = _lens_otel.is_lens_enabled()
+    if client is None and not lens_active:
+        return
+    task_key = _trace_key(task_id, session_id, turn_id=turn_id, api_request_id=api_request_id)
+    safe_args = _capture_content(args)
+    if lens_active:
+        with _failsafe("lens pre_tool_call"):
+            _lens_otel.lens_on_pre_tool_call(
+                task_key=task_key,
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                safe_args=safe_args,
+            )
     if client is None:
         return
     with _STATE_LOCK:
         state = _TRACE_STATE.get(task_key)
         if state is None:
             return
-        observation = _start_child_observation(state, name=f"Tool: {tool_name}", as_type="tool", input_value=_capture_content(args),
+        observation = _start_child_observation(state, name=f"Tool: {tool_name}", as_type="tool", input_value=safe_args,
                                                metadata={"tool_name": tool_name, "tool_call_id": tool_call_id})
         if tool_call_id:
             state.tools[tool_call_id] = observation
@@ -912,6 +1003,19 @@ def on_post_tool_call(*, tool_name: str = "", args: Any = None, result: Any = No
                       task_id: str = "", session_id: str = "", tool_call_id: str = "",
                       turn_id: str = "", api_request_id: str = "", **_: Any) -> None:
     task_key = _trace_key(task_id, session_id, turn_id=turn_id, api_request_id=api_request_id)
+    safe_result_value: Any = None
+    safe_args_parsed: Any = None
+    if _lens_otel.is_lens_enabled():
+        with _failsafe("lens post_tool_call"):
+            safe_result_value = _capture_content(result, tool_result_of=(tool_name, args))
+            safe_args_parsed = _capture_content(args, parse_json_strings=True)
+            _lens_otel.lens_on_post_tool_call(
+                task_key=task_key,
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                safe_args=safe_args_parsed,
+                safe_result=safe_result_value,
+            )
     with _STATE_LOCK:
         state = _TRACE_STATE.get(task_key)
         if state is None:
@@ -925,7 +1029,10 @@ def on_post_tool_call(*, tool_name: str = "", args: Any = None, result: Any = No
     if observation is None:
         return
 
-    safe_result_value = _capture_content(result, tool_result_of=(tool_name, args))
+    if safe_result_value is None:
+        safe_result_value = _capture_content(result, tool_result_of=(tool_name, args))
+    if safe_args_parsed is None:
+        safe_args_parsed = _capture_content(args, parse_json_strings=True)
 
     # Backfill so the generation's tool_call record carries the result alongside arguments.
     if tool_call_id:
@@ -938,7 +1045,7 @@ def on_post_tool_call(*, tool_name: str = "", args: Any = None, result: Any = No
                     target["output"] = safe_result_value
 
     _end_observation(observation, output=safe_result_value,
-                     metadata={"tool_name": tool_name, "args": _capture_content(args, parse_json_strings=True)})
+                     metadata={"tool_name": tool_name, "args": safe_args_parsed})
 
 
 def on_api_request_error(*, task_id: str = "", session_id: str = "", api_call_count: int = 0,
@@ -948,15 +1055,24 @@ def on_api_request_error(*, task_id: str = "", session_id: str = "", api_call_co
     """Close (as ERROR) the open generation for a failed API request so the turn
     doesn't look hung until eviction; a non-retryable failure also finishes the
     turn, since the agent loop is about to unwind."""
-    client, task_key = _client_and_key(task_id, session_id, turn_id, api_request_id)
+    error_dict = error if isinstance(error, dict) else {}
+    error_type, error_message = str(error_dict.get("type") or ""), str(error_dict.get("message") or "")
+    task_key = _trace_key(task_id, session_id, turn_id=turn_id, api_request_id=api_request_id)
+    if _lens_otel.is_lens_enabled():
+        with _failsafe("lens api_request_error"):
+            _lens_otel.lens_on_api_request_error(
+                task_key=task_key,
+                req_key=_request_key(api_call_count),
+                error_type=error_type,
+                error_message=str(_capture_content(error_message)),
+                terminal=(retryable is False),
+            )
+    client = _get_langfuse()
     if client is None:
         return
     state, generation = _pop_generation(task_key, api_call_count)
     if state is None:
         return
-
-    error = error if isinstance(error, dict) else {}
-    error_type, error_message = str(error.get("type") or ""), str(error.get("message") or "")
 
     # Error messages can embed request fragments (URLs w/ keys, prompt echoes) — capture-pipeline them.
     error_metadata: Dict[str, Any] = {
@@ -983,6 +1099,8 @@ def on_session_finalize(*, session_id: str = "", reason: str = "", **_: Any) -> 
     """Session-end boundary: close still-open traces and flush. A turn ending on a
     tool-only or empty final response never reaches ``_finish_trace``; its root
     would dangle until eviction and queued events could be lost on exit."""
+    with _failsafe("lens session_finalize"):
+        _lens_otel.lens_on_session_finalize(session_id=session_id, reason=reason)
     # Never lazily initialize a client here — if init never happened there are no traces.
     client = _settled_client()
     if client is None or client is _INIT_FAILED or not hasattr(client, "flush"):
@@ -1009,6 +1127,14 @@ def on_session_finalize(*, session_id: str = "", reason: str = "", **_: Any) -> 
 def on_subagent_start(*, parent_turn_id: str = "", parent_subagent_id: Any = None,
                       child_session_id: Any = None, child_subagent_id: Any = None,
                       child_role: str = "", child_goal: Any = None, **_: Any) -> None:
+    if child_session_id and _lens_otel.is_lens_enabled():
+        with _failsafe("lens subagent_start"):
+            _lens_otel.lens_on_subagent_start(
+                parent_turn_id=parent_turn_id,
+                child_session_id=str(child_session_id),
+                child_role=child_role,
+                safe_goal=_capture_content(child_goal),
+            )
     client = _get_langfuse()
     if client is None or not child_session_id:
         return
@@ -1029,6 +1155,15 @@ def on_subagent_stop(*, parent_turn_id: str = "", child_session_id: Any = None, 
                      tool_call_history: Any = None, duration_ms: Any = None, **_: Any) -> None:
     if not child_session_id:
         return
+    if _lens_otel.is_lens_enabled():
+        with _failsafe("lens subagent_stop"):
+            _lens_otel.lens_on_subagent_stop(
+                parent_turn_id=parent_turn_id,
+                child_session_id=str(child_session_id),
+                child_role=child_role,
+                safe_summary=_capture_content(child_summary),
+                child_status=child_status,
+            )
 
     with _STATE_LOCK:
         state = _state_for_turn(parent_turn_id)

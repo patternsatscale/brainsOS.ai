@@ -39,7 +39,7 @@ fi
 
 cd "${REPO_ROOT}"
 
-ENV_FILE="${REPO_ROOT}/.env"
+ENV_FILE="${BRAINSOS_ENV_FILE:-${REPO_ROOT}/.env}"
 EXAMPLE_FILE="${REPO_ROOT}/.env.example"
 
 if [ ! -f "${EXAMPLE_FILE}" ]; then
@@ -268,7 +268,8 @@ def is_placeholder(val):
         "admin_pass", "litellm_password", "litellm_db_password",
         "sk-brainsos-mock-key", "sk-brainsos-master-key",
         "brainsos_langfuse_secret", "brainsos_langfuse_salt",
-        "brainsos_langfuse_nextauth", "miniosecret", "myredissecret"
+        "brainsos_langfuse_nextauth", "miniosecret", "myredissecret",
+        "brainsos_lens_", "lens_clickhouse_password"
     ]
     if any(p in val_lower for p in placeholder_fragments):
         return True
@@ -313,6 +314,10 @@ secret_generators = {
     "MINIO_ROOT_PASSWORD": lambda: gen_hex(16),
     "LANGFUSE_PUBLIC_KEY": lambda: f"pk-lf-{gen_hex(16)}",
     "LANGFUSE_SECRET_KEY": lambda: f"sk-lf-{gen_hex(16)}",
+    "LENS_CLICKHOUSE_PASSWORD": lambda: gen_hex(20),
+    "LENS_ADMIN_TOKEN": lambda: gen_hex(32),
+    "LENS_GATEWAY_SECRET": lambda: gen_hex(32),
+    "LITELLM_LENS_SERVICE_TOKEN": lambda: gen_hex(32),
     "SYSTEM_API_TOKEN": lambda: gen_hex(16),
 }
 
