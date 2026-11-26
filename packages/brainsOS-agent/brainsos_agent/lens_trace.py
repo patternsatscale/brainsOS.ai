@@ -16,8 +16,9 @@ import time
 from typing import Any
 
 import httpx
+from brainsos_telemetry.tracing import deterministic_trace_id, resolve_active_backends
 
-from brainsos_agent.langfuse_trace import thread_trace_id
+thread_trace_id = deterministic_trace_id
 
 logger = logging.getLogger("brainsos_agent.lens")
 
@@ -43,8 +44,9 @@ def _to_unix_nano(ts: float | None) -> str:
 
 
 def is_lens_enabled() -> bool:
-    """Returns False when ``LENS_ENABLED`` is explicitly disabled (default True)."""
-    return os.getenv("LENS_ENABLED", "true").strip().lower() not in {"false", "0", "no", "off"}
+    """Returns True when LiteLLM Lens is active via ``BRAINSOS_TELEMETRY_BACKEND`` and ``LENS_ENABLED``."""
+    lens_active, _ = resolve_active_backends()
+    return lens_active
 
 
 def lens_settings() -> tuple[str, str] | None:
@@ -197,9 +199,13 @@ async def record_lens_mail_run_trace(http_client: httpx.AsyncClient | None = Non
     return False
 
 
+build_lens_mail_run_otlp_payload = build_lens_email_run_otlp
+
 __all__ = [
     "build_lens_email_run_otlp",
+    "build_lens_mail_run_otlp_payload",
     "is_lens_enabled",
     "lens_settings",
     "record_lens_mail_run_trace",
+    "thread_trace_id",
 ]

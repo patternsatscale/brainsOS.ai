@@ -59,14 +59,40 @@ class _LensTurnState:
     subagents: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
+def _resolve_telemetry_backends() -> tuple[bool, bool]:
+    try:
+        from brainsos_telemetry.tracing import resolve_active_backends
+
+        return resolve_active_backends()
+    except Exception:
+        disabled = {"false", "0", "no", "off", "disabled"}
+        lens_flag = os.environ.get("LENS_ENABLED", "true").strip().lower() not in disabled
+        lf_flag = os.environ.get("LANGFUSE_ENABLED", "true").strip().lower() not in disabled
+        backend = os.environ.get("BRAINSOS_TELEMETRY_BACKEND", "").strip().lower()
+        if backend in {"none", "off", "disabled", "false", "0"}:
+            return False, False
+        if backend == "lens":
+            return lens_flag, False
+        if backend == "langfuse":
+            return False, lf_flag
+        if "," in backend:
+            toks = {t.strip() for t in backend.split(",") if t.strip()}
+            if toks <= {"none", "off", "disabled"}:
+                return False, False
+            return (("lens" in toks or "dual" in toks) and lens_flag), (
+                ("langfuse" in toks or "dual" in toks) and lf_flag
+            )
+        return lens_flag, lf_flag
+
+
 def is_langfuse_enabled() -> bool:
-    raw = os.environ.get("LANGFUSE_ENABLED", "true").strip().lower()
-    return raw not in {"false", "0", "no", "off"}
+    _, langfuse_active = _resolve_telemetry_backends()
+    return langfuse_active
 
 
 def is_lens_enabled() -> bool:
-    raw = os.environ.get("LENS_ENABLED", "true").strip().lower()
-    if raw in {"false", "0", "no", "off"}:
+    lens_active, _ = _resolve_telemetry_backends()
+    if not lens_active:
         return False
     return bool(_lens_tracing_key())
 

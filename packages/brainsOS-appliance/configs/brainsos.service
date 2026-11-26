@@ -1,9 +1,10 @@
 [Unit]
 Description=brainsOS Appliance Container Topology
 Documentation=https://brainsos.ai
-# First boot must have generated a unique .env before the topology starts.
+# First boot must have generated a unique .env (or claim-user-volume.sh linked
+# /opt/brainsos/.env -> /mnt/brainsos-data/.env) before the topology starts.
 After=docker.service network-online.target brainsos-firstboot.service
-Wants=network-online.target
+Wants=network-online.target brainsos-system-api.service
 Requires=docker.service brainsos-firstboot.service
 ConditionPathExists=/opt/brainsos/.env
 

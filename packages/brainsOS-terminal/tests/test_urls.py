@@ -14,13 +14,20 @@ def test_get_service_directory_defaults():
         "OPENAI_API_KEY": "sk-test-key",
     }
     services = get_service_directory(env)
-    assert len(services) == 10
+    assert len(services) == 11
 
     names = [s["name"] for s in services]
     assert "Landing Page Portal" in names
     assert "Operator IDE (VS Code)" in names
     assert "LiteLLM Proxy Admin UI" in names
     assert "LiteLLM OpenAI Gateway" in names
+    assert "LiteLLM Lens (Telemetry)" in names
+    assert "Langfuse Observability" in names
+
+    lens_only_services = get_service_directory({**env, "BRAINSOS_TELEMETRY_BACKEND": "lens"})
+    lens_only_names = [s["name"] for s in lens_only_services]
+    assert "LiteLLM Lens (Telemetry)" in lens_only_names
+    assert "Langfuse Observability" not in lens_only_names
 
     ide_entry = next(s for s in services if s["name"] == "Operator IDE (VS Code)")
     assert ide_entry["public_url"] == "https://editor.test.local"

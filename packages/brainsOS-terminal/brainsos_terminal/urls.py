@@ -1,7 +1,32 @@
 """Service URL and Credential Directory."""
 
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
+
+
+def _resolve_telemetry_backends(env: Mapping[str, str]) -> tuple[bool, bool]:
+    """Resolve ``(lens_active, langfuse_active)`` from ``env`` without extra runtime dependencies."""
+    disabled = {"false", "0", "no", "off", "disabled"}
+    lens_flag = (env.get("LENS_ENABLED") or "true").strip().lower() not in disabled
+    langfuse_flag = (env.get("LANGFUSE_ENABLED") or "true").strip().lower() not in disabled
+    backend = (env.get("BRAINSOS_TELEMETRY_BACKEND") or "").strip().lower()
+    if backend in {"none", "off", "disabled", "false", "0"}:
+        return False, False
+    if backend == "lens":
+        return lens_flag, False
+    if backend == "langfuse":
+        return False, langfuse_flag
+    if "," in backend:
+        tokens = {tok.strip() for tok in backend.split(",") if tok.strip()}
+        if not tokens:
+            return lens_flag, langfuse_flag
+        if tokens <= {"none", "off", "disabled"}:
+            return False, False
+        return (
+            bool(tokens & {"lens", "dual", "both", "all"}) and lens_flag,
+            bool(tokens & {"langfuse", "dual", "both", "all"}) and langfuse_flag,
+        )
+    return lens_flag, langfuse_flag
 
 
 def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str, str]]:
@@ -37,7 +62,9 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
     egress_port = env.get("TOOL_EGRESS_WEB_PORT", "8081")
     egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "brainsos_tool_egress_secret"
 
-    return [
+    lens_active, langfuse_active = _resolve_telemetry_backends(env)
+
+    services: List[Dict[str, str]] = [
         {
             "name": "Landing Page Portal",
             "public_url": f"https://{domain}",
@@ -62,43 +89,63 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
             "local_url": f"http://localhost:{litellm_port}/ui",
             "auth": f"key: {litellm_key}",
         },
-        {
-            "name": "Langfuse Observability",
-            "public_url": f"https://langfuse.{domain}",
-            "local_url": f"http://localhost:{langfuse_port}",
-            "auth": f"user: {langfuse_user} | pass: {langfuse_pass}",
-        },
-        {
-            "name": "Tool Egress Firewall UI",
-            "public_url": f"https://efw.{domain}",
-            "local_url": f"http://localhost:{egress_port}",
-            "auth": f"user: admin | pass: {egress_pass}",
-        },
-        {
-            "name": "LiteLLM OpenAI Gateway",
-            "public_url": "http://litellm:4000/v1",
-            "local_url": f"http://localhost:{litellm_port}/v1",
-            "auth": f"Bearer {litellm_key}",
-        },
-        {
-            "name": "Hermes Dynamic Runner",
-            "public_url": "http://runner-hermes:8642",
-            "local_url": f"http://localhost:{hermes_runner_port}",
-            "auth": "(internal network)",
-        },
-        {
-            "name": "OpenAI Stateless Runner",
-            "public_url": "http://runner-openai:8002",
-            "local_url": f"http://localhost:{openai_runner_port}",
-            "auth": "(internal network)",
-        },
-        {
-            "name": "Agent Turn Queue IPC",
-            "public_url": "http://agent-queue:8000",
-            "local_url": f"http://localhost:{agent_queue_port}",
-            "auth": "(internal network)",
-        },
     ]
+
+    if lens_active:
+        services.append(
+            {
+                "name": "LiteLLM Lens (Telemetry)",
+                "public_url": f"https://{domain}/proxy/ui/?page=lens",
+                "local_url": f"http://localhost:{litellm_port}/ui/?page=lens",
+                "auth": f"key: {litellm_key}",
+            }
+        )
+
+    if langfuse_active:
+        services.append(
+            {
+                "name": "Langfuse Observability",
+                "public_url": f"https://langfuse.{domain}",
+                "local_url": f"http://localhost:{langfuse_port}",
+                "auth": f"user: {langfuse_user} | pass: {langfuse_pass}",
+            }
+        )
+
+    services.extend(
+        [
+            {
+                "name": "Tool Egress Firewall UI",
+                "public_url": f"https://efw.{domain}",
+                "local_url": f"http://localhost:{egress_port}",
+                "auth": f"user: admin | pass: {egress_pass}",
+            },
+            {
+                "name": "LiteLLM OpenAI Gateway",
+                "public_url": "http://litellm:4000/v1",
+                "local_url": f"http://localhost:{litellm_port}/v1",
+                "auth": f"Bearer {litellm_key}",
+            },
+            {
+                "name": "Hermes Dynamic Runner",
+                "public_url": "http://runner-hermes:8642",
+                "local_url": f"http://localhost:{hermes_runner_port}",
+                "auth": "(internal network)",
+            },
+            {
+                "name": "OpenAI Stateless Runner",
+                "public_url": "http://runner-openai:8002",
+                "local_url": f"http://localhost:{openai_runner_port}",
+                "auth": "(internal network)",
+            },
+            {
+                "name": "Agent Turn Queue IPC",
+                "public_url": "http://agent-queue:8000",
+                "local_url": f"http://localhost:{agent_queue_port}",
+                "auth": "(internal network)",
+            },
+        ]
+    )
+    return services
 
 
 def format_urls_directory(env: Optional[Dict[str, str]] = None) -> str:
@@ -127,8 +174,8 @@ def format_urls_directory(env: Optional[Dict[str, str]] = None) -> str:
     ]
 
     services = get_service_directory(env)
-    for i, s in enumerate(services):
-        if i == 6:
+    for s in services:
+        if s["name"] == "LiteLLM OpenAI Gateway":
             lines.append(f"{DIM}── Internal Microservices & Agent IPC {'─' * (width - 40)}{NC}")
             lines.append("")
         lines.append(f"  {BOLD}● {s['name']}{NC}")
@@ -151,4 +198,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

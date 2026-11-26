@@ -8,6 +8,15 @@ set -e
 # outbound HTTPS traffic without disabling TLS verification.
 # ==============================================================================
 
+# Ensure bind-mounted /opt/data state directory is writable by rootless hermes (1000:1000) (#382)
+if [ -d /opt/data ]; then
+    chown 1000:1000 /opt/data 2>/dev/null || true
+    for sub in sessions cron skills logs state plans pairing memories cache; do
+        mkdir -p "/opt/data/${sub}" 2>/dev/null || true
+        chown 1000:1000 "/opt/data/${sub}" 2>/dev/null || true
+    done
+fi
+
 MITMPROXY_CA_CERT="/etc/ssl/mitmproxy/mitmproxy-ca-cert.pem"
 TARGET_CERT="/usr/local/share/ca-certificates/mitmproxy-ca.crt"
 

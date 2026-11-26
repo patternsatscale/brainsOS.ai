@@ -4,8 +4,8 @@ import importlib.util
 import inspect
 import logging
 import os
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from brainsos_runner import (
@@ -15,6 +15,22 @@ from brainsos_runner import (
     ToolCallRecord,
     create_runner_app,
 )
+
+try:
+    from brainsos_telemetry.tracing import OTelTraceDispatcher, mint_traceparent
+except ImportError:  # pragma: no cover - defensive fallback if base image lacks brainsOS-telemetry
+    OTelTraceDispatcher = None  # type: ignore[assignment,misc]
+
+    def mint_traceparent(session_id: str, task_id: str = "", span_id: str | None = None) -> tuple[str, str, str]:
+        import hashlib
+        import secrets
+
+        sid = (session_id or "").strip() or "sessionless"
+        tid = (task_id or session_id or "").strip() or "sessionless"
+        tid_hex = hashlib.sha256(f"{sid}::{tid}".encode("utf-8")).digest()[:16].hex()
+        sp_hex = span_id or secrets.token_hex(8)
+        return f"00-{tid_hex}-{sp_hex}-01", tid_hex, sp_hex
+
 
 logger = logging.getLogger("brainsos.runners.claude")
 logging.basicConfig(level=logging.INFO)
@@ -41,9 +57,13 @@ def _load_dynamic_script(script_path_str: str) -> Any:
     return module
 
 
-def _get_anthropic_client(timeout_sec: float) -> Any:
+def _get_anthropic_client(
+    timeout_sec: float,
+    default_headers: Optional[Dict[str, str]] = None,
+) -> Any:
     """Instantiate AsyncAnthropic client for Direct API, Amazon Bedrock, or LiteLLM gateway."""
     use_bedrock = os.getenv("CLAUDE_USE_BEDROCK", "false").lower() in ("true", "1")
+    extra_kwargs: Dict[str, Any] = {"default_headers": default_headers} if default_headers else {}
 
     if use_bedrock:
         try:
@@ -53,6 +73,7 @@ def _get_anthropic_client(timeout_sec: float) -> Any:
             return AsyncAnthropicBedrock(
                 aws_region=os.getenv("AWS_REGION", "us-east-1"),
                 timeout=timeout_sec,
+                **extra_kwargs,
             )
         except Exception as exc:
             logger.warning("Could not initialize Bedrock client, falling back to standard API: %s", exc)
@@ -61,16 +82,65 @@ def _get_anthropic_client(timeout_sec: float) -> Any:
 
     base_url = os.getenv("ANTHROPIC_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000")).rstrip("/")
     api_key = os.getenv("ANTHROPIC_API_KEY", os.getenv("LITELLM_MASTER_KEY", "sk-brainsos-master-key"))
-    return AsyncAnthropic(base_url=base_url, api_key=api_key, timeout=timeout_sec)
+    return AsyncAnthropic(base_url=base_url, api_key=api_key, timeout=timeout_sec, **extra_kwargs)
+
+
+def _extract_input_text(request: AgentTurnRequest) -> str:
+    for msg in reversed(request.conversation):
+        if msg.role == "user" and msg.content:
+            return msg.content
+    if request.conversation:
+        return request.conversation[-1].content or ""
+    return ""
 
 
 async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
     """Execute a cognitive turn using the Anthropic Claude SDK or custom dynamic script."""
     start_time = time.perf_counter()
+    started_wall = time.time()
     timeout_sec = float(request.timeout_sec)
+    session_id = str(request.extra_params.get("session_id") or request.run_id)
+    traceparent, trace_id, transport_span_id = mint_traceparent(session_id, request.run_id)
+    input_text = _extract_input_text(request)
+    effective_model = request.model or os.getenv("CLAUDE_DEFAULT_MODEL", "claude-3-7-sonnet-20250219")
 
+    async def _emit_trace(
+        output_txt: str,
+        *,
+        p_tokens: int = 0,
+        c_tokens: int = 0,
+        tools: Optional[List[ToolCallRecord]] = None,
+        err: Optional[str] = None,
+    ) -> None:
+        if OTelTraceDispatcher is None:
+            return
+        try:
+            await OTelTraceDispatcher.from_env().record_runner_turn(
+                agent_id=request.agent_id,
+                session_id=session_id,
+                run_id=request.run_id,
+                model=effective_model,
+                input_text=input_text,
+                output_text=output_txt,
+                started_at=started_wall,
+                ended_at=time.time(),
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                trace_id=trace_id,
+                transport_span_id=transport_span_id,
+                tool_calls=[tc.model_dump() for tc in (tools or [])],
+                error=err,
+            )
+        except Exception:
+            pass
+
+    client_headers = {
+        "X-BrainsOS-Agent": request.agent_id,
+        "X-BrainsOS-Run-ID": request.run_id,
+        "traceparent": traceparent,
+    }
     try:
-        client = _get_anthropic_client(timeout_sec)
+        client = _get_anthropic_client(timeout_sec, default_headers=client_headers)
     except Exception as exc:
         client = None
         logger.warning("Could not instantiate Anthropic client: %s", exc)
@@ -95,9 +165,17 @@ async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
                 result = handler_func(request=request, client=client)
 
             if isinstance(result, AgentTurnResponse):
+                await _emit_trace(
+                    result.output_text,
+                    p_tokens=result.metrics.prompt_tokens if result.metrics else 0,
+                    c_tokens=result.metrics.completion_tokens if result.metrics else 0,
+                    tools=list(result.tool_calls or []),
+                    err=result.error_message,
+                )
                 return result
             elif isinstance(result, str):
                 duration_ms = int((time.perf_counter() - start_time) * 1000)
+                await _emit_trace(result)
                 return AgentTurnResponse(
                     run_id=request.run_id,
                     status="completed",
@@ -108,11 +186,13 @@ async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
                 raise TypeError(f"Custom script returned unexpected type: {type(result)}")
         except Exception as exc:
             logger.exception("Error executing dynamic script %s: %s", script_path, exc)
+            err_msg = f"Dynamic script execution error: {exc}"
+            await _emit_trace("", err=err_msg)
             return AgentTurnResponse(
                 run_id=request.run_id,
                 status="failed",
                 output_text="",
-                error_message=f"Dynamic script execution error: {exc}",
+                error_message=err_msg,
             )
 
     # Convert conversation turns to Anthropic schema (system prompt is separate)
@@ -131,11 +211,8 @@ async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
     completion_tokens = 0
 
     try:
-        # Determine model identifier
-        model = request.model or os.getenv("CLAUDE_DEFAULT_MODEL", "claude-3-7-sonnet-20250219")
-
         response = await client.messages.create(
-            model=model,
+            model=effective_model,
             max_tokens=request.extra_params.get("max_tokens", 4096),
             system=request.system_prompt,
             messages=messages,
@@ -164,14 +241,22 @@ async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
         if os.getenv("RUNNER_MOCK_FALLBACK", "false").lower() == "true":
             output_text = f"Mock Claude reply for {request.model}"
         else:
+            err_msg = f"Anthropic SDK execution failed: {exc}"
+            await _emit_trace("", err=err_msg)
             return AgentTurnResponse(
                 run_id=request.run_id,
                 status="failed",
                 output_text="",
-                error_message=f"Anthropic SDK execution failed: {exc}",
+                error_message=err_msg,
             )
 
     duration_ms = int((time.perf_counter() - start_time) * 1000)
+    await _emit_trace(
+        output_text,
+        p_tokens=prompt_tokens,
+        c_tokens=completion_tokens,
+        tools=tool_records,
+    )
 
     return AgentTurnResponse(
         run_id=request.run_id,

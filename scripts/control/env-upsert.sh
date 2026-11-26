@@ -94,8 +94,9 @@ with open(pairs_path, encoding="utf-8") as fh:
             sys.exit(f"[ERROR] Newline in value for {key}")
         overrides[key] = value
 
+real_env_path = os.path.realpath(env_path)
 lines, seen = [], set()
-with open(env_path, encoding="utf-8") as fh:
+with open(real_env_path, encoding="utf-8") as fh:
     for raw in fh:
         line = raw.rstrip("\n")
         is_comment = line.startswith("#")
@@ -118,10 +119,11 @@ if missing:
     lines += ["", "# " + "=" * 78, f"# {section}", "# " + "=" * 78]
     lines += [render(k, overrides[k]) for k in missing]
 
-directory = os.path.dirname(os.path.abspath(env_path))
+directory = os.path.dirname(real_env_path)
+os.makedirs(directory, exist_ok=True)
 fd, tmp_path = tempfile.mkstemp(prefix=".env.upsert.", dir=directory)
 with os.fdopen(fd, "w", encoding="utf-8") as fh:
     fh.write("\n".join(lines) + "\n")
 os.chmod(tmp_path, 0o600)
-os.replace(tmp_path, env_path)
+os.replace(tmp_path, real_env_path)
 PYEOF

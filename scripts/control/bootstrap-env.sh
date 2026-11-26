@@ -19,7 +19,10 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+REPO_ROOT="${BRAINSOS_REPO_ROOT:-}"
+if [ -z "${REPO_ROOT}" ]; then
+  REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+fi
 if [ -z "${REPO_ROOT}" ]; then
   _check_dir="${SCRIPT_DIR}"
   while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
@@ -33,6 +36,11 @@ if [ -z "${REPO_ROOT}" ]; then
 fi
 
 cd "${REPO_ROOT}"
+
+GENERATE_ENV_SH="${REPO_ROOT}/scripts/control/generate-env.sh"
+[ ! -f "${GENERATE_ENV_SH}" ] && GENERATE_ENV_SH="${SCRIPT_DIR}/generate-env.sh"
+ENV_UPSERT_SH="${REPO_ROOT}/scripts/control/env-upsert.sh"
+[ ! -f "${ENV_UPSERT_SH}" ] && ENV_UPSERT_SH="${SCRIPT_DIR}/env-upsert.sh"
 
 # Ensure standard local binary directories are in PATH across macOS and Linux
 for p in "${HOME}/.local/bin" "/opt/homebrew/bin" "/usr/local/bin"; do
@@ -48,7 +56,9 @@ echo -e "Target Root: ${REPO_ROOT}"
 BUILD_IMAGES=true
 BUILD_PORTAL=true
 PULL_MODELS=true
+SKIP_VENV="${BRAINSOS_BOOTSTRAP_SKIP_VENV:-false}"
 CUSTOM_DATA_DIR=""
+MOUNT_ROOT="${BRAINSOS_MOUNT_ROOT:-}"
 
 show_help() {
   echo -e "${BOLD}brainsOS Turnkey Environment Bootstrap${NC}"
@@ -57,11 +67,13 @@ show_help() {
   echo "  $0 [options]"
   echo ""
   echo "Options:"
+  echo "  --mount-root <path>   Mount root for persistent EBS volume (.env + data)"
   echo "  --data-dir <path>     Specify custom runtime data directory"
   echo "  --no-build            Skip building Docker images"
   echo "  --skip-images         Skip building Docker images"
   echo "  --skip-portal         Skip building portal React SPA"
   echo "  --skip-models         Skip pulling LLM weights in host Ollama"
+  echo "  --skip-venv           Skip Python virtual environment installation"
   echo "  -h, --help            Show this help documentation"
   echo ""
 }
@@ -80,6 +92,14 @@ while [[ $# -gt 0 ]]; do
       PULL_MODELS=false
       shift
       ;;
+    --skip-venv)
+      SKIP_VENV=true
+      shift
+      ;;
+    --mount-root)
+      MOUNT_ROOT="$2"
+      shift 2
+      ;;
     --data-dir)
       CUSTOM_DATA_DIR="$2"
       shift 2
@@ -95,22 +115,55 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Expand tilde in CUSTOM_DATA_DIR if present
+# Expand tilde in MOUNT_ROOT and CUSTOM_DATA_DIR if present
+if [[ "${MOUNT_ROOT}" == ~* ]]; then
+  MOUNT_ROOT="${MOUNT_ROOT/#\~/$HOME}"
+fi
+MOUNT_ROOT="${MOUNT_ROOT%/}"
+
 if [[ "${CUSTOM_DATA_DIR}" == ~* ]]; then
   CUSTOM_DATA_DIR="${CUSTOM_DATA_DIR/#\~/$HOME}"
 fi
 
+if [ -n "${MOUNT_ROOT}" ] && [ -z "${CUSTOM_DATA_DIR}" ] && [ -z "${BRAINSOS_DATA_DIR:-}" ]; then
+  CUSTOM_DATA_DIR="${MOUNT_ROOT}/data"
+fi
+
 # 1. Environment Configuration (.env)
+if [ -n "${MOUNT_ROOT}" ]; then
+  mkdir -p "${MOUNT_ROOT}"
+  if [ ! -f "${MOUNT_ROOT}/.env" ]; then
+    if [ -f "${GENERATE_ENV_SH}" ] && command -v python3 >/dev/null 2>&1; then
+      log_info "No .env found on mounted volume (${MOUNT_ROOT}). Generating secure credentials..."
+      BRAINSOS_ENV_FILE="${MOUNT_ROOT}/.env" "${GENERATE_ENV_SH}" --defaults --no-rebuild ${CUSTOM_DATA_DIR:+--data-dir "${CUSTOM_DATA_DIR}"}
+      log_success "Generated secure ${MOUNT_ROOT}/.env"
+    elif [ -f "${REPO_ROOT}/.env.example" ]; then
+      log_info "Creating ${MOUNT_ROOT}/.env from .env.example..."
+      cp "${REPO_ROOT}/.env.example" "${MOUNT_ROOT}/.env"
+      chmod 600 "${MOUNT_ROOT}/.env"
+      if [ -n "${CUSTOM_DATA_DIR}" ]; then
+        "${ENV_UPSERT_SH}" --file "${MOUNT_ROOT}/.env" "BRAINSOS_DATA_DIR=${CUSTOM_DATA_DIR}"
+      fi
+      log_success "Created ${MOUNT_ROOT}/.env"
+    else
+      log_error "No .env.example found! Cannot generate ${MOUNT_ROOT}/.env."
+      exit 1
+    fi
+  fi
+  ln -sfn "${MOUNT_ROOT}/.env" "${REPO_ROOT}/.env"
+fi
+
 if [ ! -f "${REPO_ROOT}/.env" ]; then
-  if [ -f "${SCRIPT_DIR}/generate-env.sh" ] && command -v python3 >/dev/null 2>&1; then
+  if [ -f "${GENERATE_ENV_SH}" ] && command -v python3 >/dev/null 2>&1; then
     log_info "No .env found. Generating secure credentials and configuration..."
-    "${SCRIPT_DIR}/generate-env.sh" --defaults --no-rebuild ${CUSTOM_DATA_DIR:+--data-dir "${CUSTOM_DATA_DIR}"}
+    "${GENERATE_ENV_SH}" --defaults --no-rebuild ${CUSTOM_DATA_DIR:+--data-dir "${CUSTOM_DATA_DIR}"}
     log_success "Generated secure ${REPO_ROOT}/.env"
   elif [ -f "${REPO_ROOT}/.env.example" ]; then
     log_info "Creating .env from .env.example..."
     cp "${REPO_ROOT}/.env.example" "${REPO_ROOT}/.env"
+    chmod 600 "${REPO_ROOT}/.env"
     if [ -n "${CUSTOM_DATA_DIR}" ]; then
-      echo "BRAINSOS_DATA_DIR=\"${CUSTOM_DATA_DIR}\"" >> "${REPO_ROOT}/.env"
+      "${ENV_UPSERT_SH}" --file "${REPO_ROOT}/.env" "BRAINSOS_DATA_DIR=${CUSTOM_DATA_DIR}"
     fi
     log_success "Created ${REPO_ROOT}/.env"
   else
@@ -120,11 +173,7 @@ if [ ! -f "${REPO_ROOT}/.env" ]; then
 else
   log_info ".env already exists. Preserving existing configuration."
   if [ -n "${CUSTOM_DATA_DIR}" ]; then
-    if grep -q "^BRAINSOS_DATA_DIR=" "${REPO_ROOT}/.env"; then
-      sed -i.bak "s|^BRAINSOS_DATA_DIR=.*|BRAINSOS_DATA_DIR=\"${CUSTOM_DATA_DIR}\"|" "${REPO_ROOT}/.env" && rm -f "${REPO_ROOT}/.env.bak"
-    else
-      echo "BRAINSOS_DATA_DIR=\"${CUSTOM_DATA_DIR}\"" >> "${REPO_ROOT}/.env"
-    fi
+    "${ENV_UPSERT_SH}" --file "${REPO_ROOT}/.env" "BRAINSOS_DATA_DIR=${CUSTOM_DATA_DIR}"
     log_info "Updated BRAINSOS_DATA_DIR in .env to ${CUSTOM_DATA_DIR}"
   fi
 fi
@@ -180,8 +229,10 @@ DATA_DIRS=(
   "${DATA_ROOT}/comms/signal"
   "${DATA_ROOT}/queue"
   "${DATA_ROOT}/runners"
+  "${DATA_ROOT}/runners/hermes/state"
   "${DATA_ROOT}/settings"
   "${DATA_ROOT}/control_plane"
+  "${DATA_ROOT}/control_plane/caddy_data"
   "${DATA_ROOT}/control_plane/litellm_db"
   "${DATA_ROOT}/control_plane/authentik_db"
   "${DATA_ROOT}/control_plane/authentik_media"
@@ -344,7 +395,7 @@ if [ "$(id -u)" -eq 0 ]; then
   for rel_dir in \
     agents agent_memories agent_workspaces agent_apps souls \
     comms/spool comms/maildir comms/sogo/spool comms/email comms/signal \
-    queue runners settings \
+    queue runners runners/hermes/state settings \
     control_plane/authentik_media control_plane/vscode_config control_plane/vscode_data \
     skills backups .vscode; do
     if [ -e "${DATA_ROOT}/${rel_dir}" ]; then
@@ -361,7 +412,11 @@ if [ -f "${REPO_ROOT}/scripts/setup/setup-langfuse.sh" ]; then
 fi
 
 # 3. Python Virtual Environment & Packages
-if [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] && [ -x "${REPO_ROOT}/.venv/bin/python" ] && ! command -v uv >/dev/null 2>&1; then
+if [ "${SKIP_VENV}" = "true" ]; then
+  log_info "Skipping Python virtual environment bootstrap (--skip-venv)."
+elif [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] && [ -x "${REPO_ROOT}/.venv/bin/python" ] && ! command -v uv >/dev/null 2>&1; then
+  log_info "Pre-built appliance Python virtual environment detected at ${REPO_ROOT}/.venv; skipping package re-installation."
+elif [ "${BRAINSOS_APPLIANCE:-false}" = "true" ] && [ -x "${REPO_ROOT}/.venv/bin/python" ]; then
   log_info "Pre-built appliance Python virtual environment detected at ${REPO_ROOT}/.venv; skipping package re-installation."
 elif command -v uv >/dev/null 2>&1; then
   log_info "Found 'uv' package manager."

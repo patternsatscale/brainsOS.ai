@@ -86,14 +86,14 @@ snapshot_scan() {
   local home_root="${2:-}"
   local findings=0
 
-  # 1. No environment files other than the committed template
+  # 1. No environment files or symlinks other than the committed template
   while IFS= read -r f; do
     log_error "SCAN: environment file present: ${f}"
     findings=$((findings + 1))
-  done < <(find "${root}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" -type f -print 2>/dev/null)
+  done < <(find "${root}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" \( -type f -o -type l \) -print 2>/dev/null)
 
-  # 2. No first-boot marker
-  if [ -e "${root}/.brainsos-initialized" ]; then
+  # 2. No first-boot marker (file or symlink)
+  if [ -e "${root}/.brainsos-initialized" ] || [ -L "${root}/.brainsos-initialized" ]; then
     log_error "SCAN: first-boot marker present: ${root}/.brainsos-initialized"
     findings=$((findings + 1))
   fi
@@ -159,7 +159,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-if [ -f "${APP_DIR}/.env" ]; then
+if [ -f "${APP_DIR}/.env" ] || [ -L "${APP_DIR}/.env" ]; then
   log_error "${APP_DIR}/.env exists in the staged artifact. The artifact must be produced by build-ami.sh from a git ref."
   exit 1
 fi
@@ -323,6 +323,13 @@ for unit in brainsos.service brainsos-firstboot.service brainsos-system-api.serv
 done
 
 chmod +x "${SCRIPTS_DIR}/firstboot.sh" "${SCRIPTS_DIR}/harden-host.sh"
+for extra_script in \
+  "${SCRIPTS_DIR}/claim-user-volume.sh" \
+  "${SCRIPTS_DIR}/release-user-volume.sh" \
+  "${APP_DIR}/scripts/control/claim-user-volume.sh" \
+  "${APP_DIR}/scripts/control/release-user-volume.sh"; do
+  [ -f "${extra_script}" ] && chmod +x "${extra_script}"
+done
 
 systemctl daemon-reload
 systemctl enable brainsos-firstboot.service
@@ -413,7 +420,7 @@ fi
 
 # Repository runtime state that provisioning may have produced
 rm -f "${APP_DIR}/.env" "${APP_DIR}/.env.bak" "${APP_DIR}/.brainsos-initialized" "${APP_DIR}/.brainsos-wizard-completed"
-find "${APP_DIR}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" -type f -exec rm -f {} + 2>/dev/null || true
+find "${APP_DIR}" -path "*/node_modules" -prune -o \( -name ".env" -o -name ".env.*" \) ! -name ".env.example" \( -type f -o -type l \) -exec rm -f {} + 2>/dev/null || true
 find "${APP_DIR}/data" -type f ! -name ".gitkeep" -delete 2>/dev/null || true
 find "${APP_DIR}/data" -depth -mindepth 1 -type d -empty -delete 2>/dev/null || true
 git -C "${APP_DIR}" checkout -- data/ 2>/dev/null || true

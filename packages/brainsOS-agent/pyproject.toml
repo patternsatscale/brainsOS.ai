@@ -18,6 +18,7 @@ dependencies = [
     "aiohttp>=3.8.0",
     "brainsOS-mail>=0.1.0",
     "brainsOS-runner>=0.1.0",
+    "brainsOS-telemetry>=0.1.0",
 ]
 
 [project.optional-dependencies]

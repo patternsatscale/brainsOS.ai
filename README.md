@@ -487,7 +487,7 @@ make lint
 ## 8. Appliance Service Directory & Deployment Targets
 
 ### Supported Sovereign Hardware & Cloud Appliance Profiles
-* **Turnkey AWS ARM64 Cloud Appliance (`packages/brainsOS-appliance`)**: **Ubuntu 24.04 LTS on AWS Graviton** (`t4g` / `m7g` / `c7g`), pre-baked via HashiCorp Packer over SSM (`make build-ami`), with **Ambient Amazon Bedrock** via IMDSv2, `BRAINSOS-IMDS` kernel container isolation, single-origin TLS port `443` lockdown, First-Boot Superuser Wizard, and OS Control Center.
+* **Turnkey AWS ARM64 Cloud Appliance (`packages/brainsOS-appliance`)**: **Ubuntu 24.04 LTS on AWS Graviton** (`t4g` / `m7g` / `c7g`), pre-baked via HashiCorp Packer over SSM (`make build-ami`), with **Ambient Amazon Bedrock** via IMDSv2, `BRAINSOS-IMDS` kernel container isolation, single-origin TLS port `443` lockdown, First-Boot Superuser Wizard, OS Control Center, and optional **Warm-Pool Standby + Per-User Persistent EBS Volume** lifecycle (`BRAINSOS_WARM_STANDBY=true`, `claim-user-volume.sh`, `release-user-volume.sh` mounting `/mnt/brainsos-data`).
 * **Bare-Metal Edge Appliance (Production Reference)**: **ASUS Ascent GX10** powered by the **NVIDIA GB10 Grace Blackwell Superchip** (ARM64, 128 GB coherent unified LPDDR5x memory @ ~273 GB/s, DGX OS / Ubuntu 24.04) running local loopback Ollama / vLLM.
 * **Local Developer Workstation**: **Apple Silicon macOS** (M1–M4 Max/Ultra) or **Linux ARM64/x86_64**, providing 100% native container parity.
 

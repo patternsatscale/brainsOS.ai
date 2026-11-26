@@ -24,7 +24,10 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+REPO_ROOT="${BRAINSOS_REPO_ROOT:-}"
+if [ -z "${REPO_ROOT}" ]; then
+  REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+fi
 if [ -z "${REPO_ROOT}" ]; then
   _check_dir="${SCRIPT_DIR}"
   while [ "${_check_dir}" != "/" ] && [ -n "${_check_dir}" ]; do
@@ -40,6 +43,11 @@ fi
 cd "${REPO_ROOT}"
 
 ENV_FILE="${BRAINSOS_ENV_FILE:-${REPO_ROOT}/.env}"
+if [ -L "${ENV_FILE}" ]; then
+  REAL_ENV_FILE="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${ENV_FILE}")"
+else
+  REAL_ENV_FILE="${ENV_FILE}"
+fi
 EXAMPLE_FILE="${REPO_ROOT}/.env.example"
 
 if [ ! -f "${EXAMPLE_FILE}" ]; then
@@ -137,9 +145,9 @@ if [ -d "${REPO_ROOT}/../data" ]; then
   EXISTING_DATA_DIR="../data"
 fi
 
-LOOKUP_ENV="${ENV_FILE}"
-if [ ! -f "${LOOKUP_ENV}" ] && [ -f "${ENV_FILE}.bak" ]; then
-  LOOKUP_ENV="${ENV_FILE}.bak"
+LOOKUP_ENV="${REAL_ENV_FILE}"
+if [ ! -f "${LOOKUP_ENV}" ] && [ -f "${REAL_ENV_FILE}.bak" ]; then
+  LOOKUP_ENV="${REAL_ENV_FILE}.bak"
 fi
 
 if [ -f "${LOOKUP_ENV}" ]; then
@@ -230,8 +238,10 @@ import secrets
 import sys
 
 env_file = "${ENV_FILE}"
+target_path = os.path.realpath(env_file) if os.path.islink(env_file) else os.path.abspath(env_file)
+os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
 example_file = "${EXAMPLE_FILE}"
-temp_file = "${ENV_FILE}.tmp"
+temp_file = f"{target_path}.tmp"
 
 target_domain = "${TARGET_DOMAIN}"
 target_mail_domain = "${TARGET_MAIL_DOMAIN}"
@@ -242,7 +252,7 @@ force_passwords = ("${FORCE_PASSWORDS}".lower() == "true")
 
 # Parse existing .env or .env.bak if present
 current_vars = {}
-lookup_file = env_file if os.path.exists(env_file) else (f"{env_file}.bak" if os.path.exists(f"{env_file}.bak") else None)
+lookup_file = target_path if os.path.exists(target_path) else (f"{target_path}.bak" if os.path.exists(f"{target_path}.bak") else None)
 if lookup_file and os.path.exists(lookup_file):
     with open(lookup_file, "r", encoding="utf-8") as f:
         for line in f:
@@ -440,15 +450,15 @@ with open(temp_file, "w", encoding="utf-8") as f:
 EOF
 
 # Create safety backup of existing .env
-if [ -f "${ENV_FILE}" ]; then
-  BACKUP_FILE="${ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
-  cp -p "${ENV_FILE}" "${BACKUP_FILE}"
-  cp -p "${ENV_FILE}" "${ENV_FILE}.bak"
+if [ -f "${REAL_ENV_FILE}" ]; then
+  BACKUP_FILE="${REAL_ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
+  cp -p "${REAL_ENV_FILE}" "${BACKUP_FILE}"
+  cp -p "${REAL_ENV_FILE}" "${REAL_ENV_FILE}.bak"
   log_info "Safety backup created at ${BACKUP_FILE}"
 fi
 
-mv "${ENV_FILE}.tmp" "${ENV_FILE}"
-chmod 600 "${ENV_FILE}"
+mv "${REAL_ENV_FILE}.tmp" "${REAL_ENV_FILE}"
+chmod 600 "${REAL_ENV_FILE}"
 log_success "Generated secure .env file with permissions 600."
 
 # Synchronize Langfuse distributed stack environment

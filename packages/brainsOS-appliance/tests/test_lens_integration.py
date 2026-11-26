@@ -133,3 +133,31 @@ def test_generate_env_populates_lens_secrets_and_litellm_1_109_1(tmp_path: Path)
     assert len({kv["LENS_ADMIN_TOKEN"], kv["LENS_GATEWAY_SECRET"], kv["LITELLM_LENS_SERVICE_TOKEN"]}) == 3
     assert len(kv.get("LENS_CLICKHOUSE_PASSWORD", "")) >= 32
     assert SETUP_LENS.is_file() and os.access(SETUP_LENS, os.X_OK)
+
+
+def test_stateful_named_volumes_migrated_to_data_dir_bind_mounts() -> None:
+    """Verify hermes_runner_data and caddy_data are bind-mounted under BRAINSOS_DATA_DIR for warm-pool EBS persistence (#382)."""
+    root_compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    root_vols = set((root_compose.get("volumes") or {}).keys())
+    assert "hermes_runner_data" not in root_vols
+    assert "caddy_data" not in root_vols
+    assert root_vols == {"caddy_config", "tool_egress_proxy_data"}
+
+    agents = yaml.safe_load(COMPOSE_AGENTS.read_text(encoding="utf-8"))
+    hermes_vols = "\n".join(agents["services"]["runner-hermes"]["volumes"])
+    assert "/hermes/state}:/opt/data" in hermes_vols
+    assert "hermes_runner_data" not in (agents.get("volumes") or {})
+
+    ingress = yaml.safe_load((REPO_ROOT / "docker" / "compose" / "compose.ingress.yml").read_text(encoding="utf-8"))
+    caddy_vols = "\n".join(ingress["services"]["caddy"]["volumes"])
+    assert "control_plane/caddy_data}:/data" in caddy_vols
+    assert "caddy_data" not in (ingress.get("volumes") or {})
+
+    vite_cfg = (REPO_ROOT / "packages" / "brainsOS-portal" / "vite.config.ts").read_text(encoding="utf-8")
+    assert "base: './'" in vite_cfg
+    help_view = (REPO_ROOT / "packages" / "brainsOS-portal" / "src" / "components" / "HelpView.tsx").read_text(encoding="utf-8")
+    assert "langfuse.${host}" not in help_view
+
+    dist_index = REPO_ROOT / "packages" / "brainsOS-portal" / "dist" / "index.html"
+    if dist_index.is_file():
+        assert "./assets/" in dist_index.read_text(encoding="utf-8")

@@ -141,13 +141,15 @@ export const SubsystemsDrawer: React.FC<SubsystemsDrawerProps> = ({
               <span className="text-[#00f2fe] font-medium truncate max-w-[165px]" title={typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai'}>
                 {(typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
                   ? window.location.hostname
-                  : (import.meta.env.VITE_APPLIANCE_HOST || (typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai'))}
+                  : ((import.meta.env.VITE_APPLIANCE_HOST && import.meta.env.VITE_APPLIANCE_HOST !== 'localhost' && import.meta.env.VITE_APPLIANCE_HOST !== '127.0.0.1')
+                      ? import.meta.env.VITE_APPLIANCE_HOST
+                      : (typeof window !== 'undefined' ? window.location.hostname : 'local.brainsos.ai'))}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">BrainsOS Version:</span>
               <span className="text-white/90">
-                {import.meta.env.VITE_BRAINSOS_VERSION || 'v0.1.0-arm64'}
+                {import.meta.env.VITE_BRAINSOS_VERSION || 'v0.5.2-arm64'}
               </span>
             </div>
           </div>

@@ -43,6 +43,16 @@ def _load_lens_otel_module() -> Any:
 
 _lens_otel = _load_lens_otel_module()
 
+
+def is_langfuse_enabled() -> bool:
+    """Return True when Langfuse tracing is active via BRAINSOS_TELEMETRY_BACKEND and LANGFUSE_ENABLED."""
+    return bool(_lens_otel.is_langfuse_enabled())
+
+
+def is_lens_enabled() -> bool:
+    """Return True when LiteLLM Lens OTLP tracing is active via BRAINSOS_TELEMETRY_BACKEND and LENS_ENABLED."""
+    return bool(_lens_otel.is_lens_enabled())
+
 try:
     from langfuse import Langfuse, propagate_attributes
 except Exception:  # pragma: no cover - fail-open when optional dep is missing
@@ -249,7 +259,7 @@ def _get_langfuse() -> Optional[Langfuse]:
     """Cached Langfuse client, or ``None`` if disabled or SDK/credentials are unavailable.
     The first build is serialized so racing callers can't each construct a client
     and leak the loser's HTTP connection + flush thread."""
-    if not _lens_otel.is_langfuse_enabled():
+    if not is_langfuse_enabled():
         return None
     # Fast path — already settled (success or _INIT_FAILED) needs no lock;
     # re-check under it since a racing thread may have finished init.
@@ -1101,6 +1111,8 @@ def on_session_finalize(*, session_id: str = "", reason: str = "", **_: Any) -> 
     would dangle until eviction and queued events could be lost on exit."""
     with _failsafe("lens session_finalize"):
         _lens_otel.lens_on_session_finalize(session_id=session_id, reason=reason)
+    if not is_langfuse_enabled():
+        return
     # Never lazily initialize a client here — if init never happened there are no traces.
     client = _settled_client()
     if client is None or client is _INIT_FAILED or not hasattr(client, "flush"):

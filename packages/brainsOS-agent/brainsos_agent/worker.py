@@ -36,11 +36,11 @@ try:
 except ImportError:
     pass
 
+from brainsos_telemetry.tracing import OTelTraceDispatcher
+
 from brainsos_agent.adapters import get_runtime_adapter
 from brainsos_agent.adapters.hermes import HermesMailAdapter, RunContext
 from brainsos_agent.config import get_comms_dir, get_control_plane_dir, get_data_dir
-from brainsos_agent.langfuse_trace import record_mail_run_trace
-from brainsos_agent.lens_trace import record_lens_mail_run_trace
 from brainsos_agent.mail_runs import (
     RUN_UNREACHABLE,
     canonical_session_id,
@@ -525,10 +525,7 @@ class AgentQueueWorkerDaemon:
             "started_at": meta.get("started_at"),
             "ended_at": meta.get("ended_at"),
         }
-        await asyncio.gather(
-            record_mail_run_trace(**trace_kwargs),
-            record_lens_mail_run_trace(**trace_kwargs),
-        )
+        await OTelTraceDispatcher.from_env().record_workflow_run(**trace_kwargs)
 
     def _send_reply(self, profile: AgentProfile, inbound_email: ParsedInboundEmail, outbound: OutboundEmail) -> None:
         """Dual-dispatches a reply via SMTP & IMAP Sent folder from the agent's identity."""

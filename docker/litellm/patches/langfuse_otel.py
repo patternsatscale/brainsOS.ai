@@ -57,6 +57,9 @@ _ERROR_ATTRIBUTES: Final = frozenset(
 
 
 def _is_langfuse_enabled() -> bool:
+    backend = os.environ.get("BRAINSOS_TELEMETRY_BACKEND", "dual").strip().lower()
+    if backend in {"lens", "none", "off", "disabled"}:
+        return False
     raw = os.environ.get("LANGFUSE_ENABLED", "true").strip().lower()
     return raw not in {"false", "0", "no", "off"}
 

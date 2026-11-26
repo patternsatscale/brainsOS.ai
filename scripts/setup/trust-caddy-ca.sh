@@ -73,8 +73,13 @@ for attempt in 1 2 3 4 5; do
   fi
 
   if [ ! -s "${TARGET_CERT_FILE}" ]; then
-    # Fallback: run temporary lightweight container mounting brainsos_caddy_data volume
-    docker run --rm -v brainsos_caddy_data:/data alpine cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
+    CADDY_DATA_HOST_DIR="${BRAINSOS_CADDY_DATA_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane/caddy_data}"
+    if [ -f "${CADDY_DATA_HOST_DIR}/caddy/pki/authorities/local/root.crt" ]; then
+      cat "${CADDY_DATA_HOST_DIR}/caddy/pki/authorities/local/root.crt" > "${TARGET_CERT_FILE}" 2>/dev/null || true
+    else
+      # Legacy fallback for named volume upgrades
+      docker run --rm -v brainsos_caddy_data:/data alpine cat /data/caddy/pki/authorities/local/root.crt > "${TARGET_CERT_FILE}" 2>/dev/null || true
+    fi
   fi
 
   if [ -s "${TARGET_CERT_FILE}" ]; then
