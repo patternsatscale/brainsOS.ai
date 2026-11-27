@@ -39,10 +39,14 @@ def create_runner_app(
         x_runner_token: Optional[str] = Header(default=None, alias="X-Runner-Token"),
     ) -> AgentTurnResponse:
         expected_token = (auth_token if auth_token is not None else os.getenv("RUNNER_AUTH_TOKEN", "")).strip()
-        if expected_token:
-            provided = (x_runner_token or "").strip()
-            if not provided or not secrets.compare_digest(provided, expected_token):
-                raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing X-Runner-Token")
+        if not expected_token:
+            raise HTTPException(
+                status_code=503,
+                detail="Service Unavailable: RUNNER_AUTH_TOKEN is not configured",
+            )
+        provided = (x_runner_token or "").strip()
+        if not provided or not secrets.compare_digest(provided, expected_token):
+            raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing X-Runner-Token")
 
         try:
             response = await handler(request)

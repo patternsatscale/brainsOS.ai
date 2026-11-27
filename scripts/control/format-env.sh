@@ -56,13 +56,13 @@ cp -p "${ENV_FILE}" "${ENV_FILE}.bak"
 log_info "Created backup of current .env at ${BACKUP_FILE}"
 
 # Format .env using python3
-python3 - << EOF
+python3 - "${ENV_FILE}" "${EXAMPLE_FILE}" << 'EOF'
 import os
 import sys
+import tempfile
 
-env_file = "${ENV_FILE}"
-example_file = "${EXAMPLE_FILE}"
-temp_file = "${ENV_FILE}.tmp"
+env_file = sys.argv[1]
+example_file = sys.argv[2]
 
 current_vars = {}
 with open(env_file, "r", encoding="utf-8") as f:
@@ -106,9 +106,11 @@ if unmapped_keys:
 
 formatted_content = "\n".join(formatted_lines) + "\n"
 
-with open(temp_file, "w", encoding="utf-8") as f:
+env_dir = os.path.dirname(os.path.abspath(env_file))
+fd, temp_file = tempfile.mkstemp(prefix=".env.fmt.", dir=env_dir)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
     f.write(formatted_content)
-
+os.chmod(temp_file, 0o600)
 os.replace(temp_file, env_file)
 EOF
 

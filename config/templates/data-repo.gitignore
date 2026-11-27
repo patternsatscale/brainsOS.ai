@@ -9,15 +9,15 @@
 **/*.sqlite
 **/*.sqlite3
 
-# --- Control Plane & IPC ---
-control_plane/*.pid
-control_plane/*.sock
-control_plane/*.lock
-control_plane/caddy_root.crt
-control_plane/litellm_db/**
-control_plane/vscode_config/**
-control_plane/vscode_data/**
+# --- Control Plane, Secrets & IPC ---
+control_plane/**
 litellm_db/**
+.env*
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
 
 # --- Agent Centric Workspaces & Ephemeral State ---
 agents/*/workspace/**
@@ -45,12 +45,7 @@ telemetry/minio/**
 telemetry/postgres/**
 
 # --- Backups ---
-backups/*.tar.gz
-backups/*.tgz
-backups/*.zip
-!backups/.gitkeep
-!backups/*.sh
-!backups/README.md
+backups/**
 
 # --- Hermes Runner Ephemeral Runtime & Caches ---
 runners/hermes/lazy-packages/

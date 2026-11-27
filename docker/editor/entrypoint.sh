@@ -131,7 +131,6 @@ password: ${PASSWORD:-brainsos_operator_secret}
 cert: false
 disable-telemetry: true
 disable-update-check: true
-disable-workspace-trust: true
 EOF
 
 # 3. Dynamic Configuration of VS Code User settings.json and chatLanguageModels.json
@@ -305,9 +304,8 @@ def write_configs(active_key):
     }
 
     # Security & telemetry
-    d["security.workspace.trust.enabled"] = False
-    d["security.workspace.trust.startupPrompt"] = "never"
-    d["security.workspace.trust.emptyWindow"] = True
+    d["security.workspace.trust.enabled"] = True
+    d.pop("security.workspace.trust.startupPrompt", None)
     d["extensions.autoUpdate"] = False
     d["extensions.autoCheckUpdates"] = False
     d["http.proxyStrictSSL"] = False
@@ -627,4 +625,4 @@ if [ $# -gt 0 ] && [ -n "${1:-}" ] && [[ "${1}" != -* ]]; then
   shift
 fi
 
-exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry --disable-workspace-trust "${TARGET_DIR}" "$@"
+exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8443 --auth "${CODE_SERVER_AUTH}" --disable-telemetry "${TARGET_DIR}" "$@"

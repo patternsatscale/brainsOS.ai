@@ -57,7 +57,7 @@ def test_load_authoritative_runners_yaml():
 
     registry = RunnerRegistry.load_from_yaml(runners_yaml_path)
     runners = registry.list_runners()
-    assert len(runners) == 4
+    assert len(runners) == 7
 
     # hermes-warm
     hermes = registry.get_runner_config("hermes-warm")
@@ -73,6 +73,17 @@ def test_load_authoritative_runners_yaml():
     claude_cfg = registry.get_runner_config("claude-warm")
     assert claude_cfg.type == "warm_http"
     assert "8001" in (claude_cfg.endpoint or "")
+
+    # ephemeral per-tenant runners
+    for eph_id, expected_img in (
+        ("hermes-ephemeral", "brainsos-runner-hermes:latest"),
+        ("openai-ephemeral", "brainsos-runner-openai:latest"),
+        ("claude-ephemeral", "brainsos-runner-claude:latest"),
+    ):
+        eph_cfg = registry.get_runner_config(eph_id)
+        assert eph_cfg.type == "ephemeral_docker"
+        assert eph_cfg.image == expected_img
+        assert eph_cfg.command == ["python3", "/app/server.py"]
 
     # openhands-sandbox
     sandbox = registry.get_runner_config("openhands-sandbox")

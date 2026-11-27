@@ -227,6 +227,28 @@ ZONE_NAME="${ZONE_NAME%.}"
 TARGET_DOMAIN="${APPLIANCE_PREFIX}.local.${ZONE_NAME}"
 WILDCARD_DOMAIN="*.local.${ZONE_NAME}"
 
+python3 - "${ZONE_NAME}" "${APPLIANCE_PREFIX}" "${TARGET_DOMAIN}" << 'EOF'
+import re
+import sys
+
+zone_name, prefix, target_domain = sys.argv[1], sys.argv[2], sys.argv[3]
+label_re = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+fqdn_re = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}")
+
+for name, val in (("ZONE_NAME", zone_name), ("APPLIANCE_PREFIX", prefix), ("TARGET_DOMAIN", target_domain)):
+    if not val or any(ch in val for ch in ("\n", "\r", "\x00")) or any(ch.isspace() for ch in val):
+        sys.exit(f"[ERROR] {name} contains empty value, whitespace, or control characters: {val!r}")
+
+if not fqdn_re.fullmatch(zone_name) or len(zone_name) > 253:
+    sys.exit(f"[ERROR] Invalid Route 53 hosted zone domain: {zone_name!r}")
+
+if not all(label_re.fullmatch(part) for part in prefix.split(".")) or len(prefix) > 127:
+    sys.exit(f"[ERROR] Invalid appliance prefix: {prefix!r}")
+
+if not fqdn_re.fullmatch(target_domain) or len(target_domain) > 253:
+    sys.exit(f"[ERROR] Invalid target appliance domain: {target_domain!r}")
+EOF
+
 log_success "Target Hosted Zone: '${ZONE_NAME}'"
 log_success "Appliance Hostname: '${TARGET_DOMAIN}'"
 log_success "Public Wildcard Certificate: '${WILDCARD_DOMAIN}'"
@@ -303,48 +325,26 @@ if [ "${HAS_AWS_CLI}" = true ]; then
   RESOLVED_REGION="$(aws configure get region --profile "${AWS_PROFILE}" 2>/dev/null || echo 'us-east-1')"
 fi
 
-# Update .env parameters safely
-python3 - << PYEOF
-import os
-
-env_path = os.path.join("${REPO_ROOT}", ".env")
-with open(env_path, "r", encoding="utf-8") as f:
-    lines = f.readlines()
-
-new_keys = {
-    "ACME_DNS_PROVIDER": "route53",
-    "BRAINSOS_ZONE_NAME": "${ZONE_NAME}",
-    "BRAINSOS_DOMAIN": "${TARGET_DOMAIN}",
-    "ACME_EMAIL": "${BRAINSOS_ADMIN_EMAIL:-system@dgx.public.${ZONE_NAME}}",
-}
-
-if "${RESOLVED_KEY}":
-    new_keys["BRAINSOS_INFRA_AWS_ACCESS_KEY_ID"] = "${RESOLVED_KEY}"
-if "${RESOLVED_SECRET}":
-    new_keys["BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY"] = "${RESOLVED_SECRET}"
-if "${RESOLVED_REGION}":
-    new_keys["BRAINSOS_INFRA_AWS_REGION"] = "${RESOLVED_REGION}"
-
-updated = set()
-out_lines = []
-for line in lines:
-    matched = False
-    for k, v in new_keys.items():
-        if line.startswith(f"{k}=") or line.startswith(f"#{k}="):
-            out_lines.append(f"{k}={v}\n")
-            updated.add(k)
-            matched = True
-            break
-    if not matched:
-        out_lines.append(line)
-
-for k, v in new_keys.items():
-    if k not in updated:
-        out_lines.append(f"{k}={v}\n")
-
-with open(env_path, "w", encoding="utf-8") as f:
-    f.writelines(out_lines)
-PYEOF
+# Update .env parameters safely via atomic 0600 env-upsert helper
+UPSERT_ARGS=(
+  "ACME_DNS_PROVIDER=route53"
+  "BRAINSOS_ZONE_NAME=${ZONE_NAME}"
+  "BRAINSOS_DOMAIN=${TARGET_DOMAIN}"
+  "ACME_EMAIL=${BRAINSOS_ADMIN_EMAIL:-system@dgx.public.${ZONE_NAME}}"
+)
+if [ -n "${RESOLVED_KEY}" ]; then
+  UPSERT_ARGS+=("BRAINSOS_INFRA_AWS_ACCESS_KEY_ID=${RESOLVED_KEY}")
+fi
+if [ -n "${RESOLVED_SECRET}" ]; then
+  UPSERT_ARGS+=("BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY=${RESOLVED_SECRET}")
+fi
+if [ -n "${RESOLVED_REGION}" ]; then
+  UPSERT_ARGS+=("BRAINSOS_INFRA_AWS_REGION=${RESOLVED_REGION}")
+fi
+"${REPO_ROOT}/scripts/control/env-upsert.sh" \
+  --file "${REPO_ROOT}/.env" \
+  --section "Route 53 Wildcard SSL (setup-wildcard-ssl.sh)" \
+  "${UPSERT_ARGS[@]}"
 
 log_success "Updated .env configuration with Route 53 parameters for '${ZONE_NAME}'."
 

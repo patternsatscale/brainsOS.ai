@@ -48,11 +48,12 @@ async def test_successful_turn(sample_request: AgentTurnRequest):
             metrics=ExecutionMetrics(prompt_tokens=15, completion_tokens=8, duration_ms=120),
         )
 
-    app = create_runner_app(sample_handler, title="Test Runner")
+    app = create_runner_app(sample_handler, title="Test Runner", auth_token="test-runner-token")
     transport = httpx.ASGITransport(app=app)
 
     async with WarmHttpRunnerClient(
         endpoint="http://runner-test",
+        auth_token="test-runner-token",
         transport=transport,
     ) as client:
         # Check healthz
@@ -73,11 +74,12 @@ async def test_server_unhandled_exception(sample_request: AgentTurnRequest):
     async def failing_handler(req: AgentTurnRequest) -> AgentTurnResponse:
         raise RuntimeError("Unexpected engine crash")
 
-    app = create_runner_app(failing_handler)
+    app = create_runner_app(failing_handler, auth_token="test-runner-token")
     transport = httpx.ASGITransport(app=app)
 
     async with WarmHttpRunnerClient(
         endpoint="http://runner-test",
+        auth_token="test-runner-token",
         transport=transport,
     ) as client:
         response = await client.execute_turn(sample_request)
@@ -202,3 +204,57 @@ async def test_x_runner_token_enforced(sample_request: AgentTurnRequest):
     assert resp.status == "completed"
     assert resp.output_text == "ok"
     await client.aclose()
+
+
+def test_fail_closed_503_when_runner_auth_token_unset_or_whitespace(
+    sample_request: AgentTurnRequest,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from fastapi.testclient import TestClient
+
+    async def handler(req: AgentTurnRequest) -> AgentTurnResponse:
+        return AgentTurnResponse(run_id=req.run_id, status="completed", output_text="ok")
+
+    monkeypatch.delenv("RUNNER_AUTH_TOKEN", raising=False)
+    tc_unset = TestClient(create_runner_app(handler))
+    assert tc_unset.post("/v1/agent/run", json=sample_request.model_dump()).status_code == 503
+
+    monkeypatch.setenv("RUNNER_AUTH_TOKEN", "   \t  ")
+    tc_ws = TestClient(create_runner_app(handler))
+    assert tc_ws.post("/v1/agent/run", json=sample_request.model_dump()).status_code == 503
+
+    monkeypatch.setenv("RUNNER_AUTH_TOKEN", "env-token")
+    tc_empty_override = TestClient(create_runner_app(handler, auth_token=""))
+    assert tc_empty_override.post("/v1/agent/run", json=sample_request.model_dump()).status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_warm_http_client_omits_none_fields_on_wire(sample_request: AgentTurnRequest) -> None:
+    import json
+
+    seen_bodies: list[dict] = []
+
+    class CaptureTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            seen_bodies.append(json.loads(request.content.decode("utf-8")))
+            return httpx.Response(
+                status_code=200,
+                json=AgentTurnResponse(
+                    run_id=sample_request.run_id,
+                    status="completed",
+                    output_text="ok",
+                ).model_dump(mode="json"),
+                request=request,
+            )
+
+    client = WarmHttpRunnerClient(endpoint="http://runner-test", transport=CaptureTransport())
+    resp = await client.execute_turn(sample_request)
+    assert resp.status == "completed"
+    assert "memory_dir" not in seen_bodies[0]
+
+    req_with_mem = sample_request.model_copy(update={"memory_dir": "/tmp/mem"})
+    await client.execute_turn(req_with_mem)
+    assert seen_bodies[1]["memory_dir"] == "/tmp/mem"
+    await client.aclose()
+
+

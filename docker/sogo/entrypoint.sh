@@ -6,6 +6,60 @@
 # ==============================================================================
 set -euo pipefail
 
+render_sogo_nginx_conf() {
+    local template_arg="${1:-}"
+    local output_path="${2:-${SOGO_NGINX_OUTPUT_PATH:-/etc/nginx/sites-enabled/default}}"
+    local template_path="${template_arg:-${SOGO_NGINX_TEMPLATE_PATH:-/etc/nginx/sites-available/default.template}}"
+    local tmp_path="${output_path}.tmp"
+
+    if [ -z "${template_arg}" ] && [ -z "${SOGO_NGINX_TEMPLATE_PATH:-}" ] && [ ! -f "${template_path}" ]; then
+        template_path="/etc/nginx/sites-available/default"
+    fi
+    if [ ! -f "${template_path}" ]; then
+        echo "[BRAINSOS-SOGO] ERROR: nginx template not found: ${template_path}" >&2
+        return 1
+    fi
+
+    local effective_caddy_token="${CADDY_INGRESS_TOKEN:-}"
+    if [ -z "${effective_caddy_token}" ] \
+       || [[ ! "${effective_caddy_token}" =~ ^[A-Za-z0-9._-]{16,256}$ ]] \
+       || [[ "${effective_caddy_token}" == *__CADDY_INGRESS_TOKEN__* ]]; then
+        echo "[BRAINSOS-SOGO] WARNING: CADDY_INGRESS_TOKEN unset or invalid; failing closed (403)." >&2
+        effective_caddy_token="failclosed-$(openssl rand -hex 32)"
+    fi
+
+    mkdir -p "$(dirname "${output_path}")"
+    CADDY_INGRESS_TOKEN_RENDER="${effective_caddy_token}" awk '
+      BEGIN {
+        tok = ENVIRON["CADDY_INGRESS_TOKEN_RENDER"]
+        ph = "__CADDY_INGRESS_TOKEN__"
+        ph_len = length(ph)
+      }
+      {
+        out = ""
+        rest = $0
+        idx = index(rest, ph)
+        while (idx > 0) {
+          out = out substr(rest, 1, idx - 1) tok
+          rest = substr(rest, idx + ph_len)
+          idx = index(rest, ph)
+        }
+        print out rest
+      }
+    ' "${template_path}" > "${tmp_path}"
+
+    if [ "$(id -u)" -eq 0 ]; then
+        chown root:root "${tmp_path}"
+    fi
+    chmod 600 "${tmp_path}"
+    mv -f "${tmp_path}" "${output_path}"
+}
+
+if [ "${1:-}" = "--render-nginx-only" ]; then
+    render_sogo_nginx_conf "${2:-}" "${3:-}"
+    exit 0
+fi
+
 echo "[BRAINSOS-SOGO] Initializing SOGo Groupware Stack..."
 
 # Ensure spool, log, and run directories exist and are owned by sogo user
@@ -35,8 +89,13 @@ sogo_hash_pw() {
     local raw_pw="$1"
     local hashed=""
     if command -v openssl >/dev/null 2>&1; then
-        hashed="{SHA512-CRYPT}$(printf '%s' "${raw_pw}" | openssl passwd -6 -stdin 2>/dev/null || true)"
-    elif command -v python3 >/dev/null 2>&1; then
+        local digest
+        digest="$(printf '%s' "${raw_pw}" | openssl passwd -6 -stdin 2>/dev/null || true)"
+        if [[ "${digest}" == \$6\$* ]]; then
+            hashed="{SHA512-CRYPT}${digest}"
+        fi
+    fi
+    if { [ -z "${hashed}" ] || [ "${hashed}" = "{SHA512-CRYPT}" ]; } && command -v python3 >/dev/null 2>&1; then
         hashed="$(RAW_PW="${raw_pw}" python3 -c "import os, crypt; print('{SHA512-CRYPT}' + crypt.crypt(os.environ['RAW_PW'], crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null || true)"
     fi
     if [ -z "${hashed}" ] || [ "${hashed}" = "{SHA512-CRYPT}" ]; then
@@ -150,7 +209,7 @@ fi
 
 psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
     CREATE OR REPLACE VIEW sogo_addressbook AS
-    SELECT c_uid, c_name, c_password, c_cn, mail
+    SELECT c_uid, c_name, c_cn, mail
     FROM sogo_users
     WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
 EOSQL
@@ -170,10 +229,13 @@ echo "[BRAINSOS-SOGO] Spawning background sogo-ealarms-notify daemon (60s cycle)
     done
 ) &
 
-# 5. Start nginx web server for WebServerResources static assets & reverse proxy
+# 5. Render nginx config with X-Caddy-Ingress-Token and start nginx dispatcher on port 20000
 echo "[BRAINSOS-SOGO] Patching SOGo strict-mode mailto handler and starting nginx dispatcher on port 20000..."
 sed -i 's/delete e\.target\.attributes\.target/e.target.removeAttribute("target")/g' /usr/lib/GNUstep/SOGo/WebServerResources/js/Mailer.services.js 2>/dev/null || true
 sed -i 's/delete \$event\.target\.attributes\.target/$event.target.removeAttribute("target")/g' /usr/lib/GNUstep/SOGo/WebServerResources/js/Mailer/MessageController.js 2>/dev/null || true
+
+render_sogo_nginx_conf
+nginx -t
 service nginx start
 
 # 5b. Render dynamic sogo.conf with live credentials if template exists

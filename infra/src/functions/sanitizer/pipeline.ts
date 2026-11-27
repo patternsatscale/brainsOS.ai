@@ -60,11 +60,11 @@ function extractDomain(addrOrDomain: string): string {
   return cleaned.replace(/\.+$/, "");
 }
 
-function domainsAligned(a: string, b: string): boolean {
-  const da = extractDomain(a);
-  const db = extractDomain(b);
-  if (!da || !db) return false;
-  return da === db || da.endsWith(`.${db}`) || db.endsWith(`.${da}`);
+function domainsAligned(candidate: string, fromDomain: string): boolean {
+  const cand = extractDomain(candidate);
+  const from = extractDomain(fromDomain);
+  if (!cand || !from) return false;
+  return from === cand || from.endsWith(`.${cand}`);
 }
 
 function collectAuthResultsHeaders(headers: Map<string, any> | Record<string, any>): string[] {
@@ -82,6 +82,150 @@ function collectAuthResultsHeaders(headers: Map<string, any> | Record<string, an
       return String(item || "");
     })
     .filter(Boolean);
+}
+
+function stripRfc5322Comments(input: string): string {
+  let out = "";
+  let parenDepth = 0;
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (parenDepth > 0) {
+      if (ch === "\\") {
+        i++;
+      } else if (ch === "(") {
+        parenDepth++;
+      } else if (ch === ")") {
+        parenDepth--;
+        if (parenDepth === 0) {
+          out += " ";
+        }
+      }
+      continue;
+    }
+
+    if (inQuotes) {
+      out += ch;
+      if (ch === "\\") {
+        if (i + 1 < input.length) {
+          out += input[i + 1]!;
+          i++;
+        }
+      } else if (ch === '"') {
+        inQuotes = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      out += ch;
+    } else if (ch === "(") {
+      parenDepth = 1;
+    } else {
+      out += ch;
+    }
+  }
+
+  return out;
+}
+
+function stripQuotedStrings(input: string): string {
+  let out = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (inQuotes) {
+      if (ch === "\\") {
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+    } else {
+      out += ch;
+    }
+  }
+
+  return out;
+}
+
+function splitAuthClauses(cleaned: string): string[] {
+  const clauses: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (inQuotes) {
+      current += ch;
+      if (ch === "\\") {
+        if (i + 1 < cleaned.length) {
+          current += cleaned[i + 1]!;
+          i++;
+        }
+      } else if (ch === '"') {
+        inQuotes = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      current += ch;
+    } else if (ch === ";") {
+      clauses.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+
+  if (current.trim() || clauses.length > 0) {
+    clauses.push(current.trim());
+  }
+
+  return clauses.filter(Boolean);
+}
+
+function evaluateMechanismVerdict(
+  resultClauses: string[],
+  mechanism: "dkim" | "spf" | "dmarc"
+): boolean {
+  const headRe = new RegExp(
+    `^${mechanism}(?:/[a-z0-9_-]+)?=([a-z0-9_-]+)(?=\\s|$)`,
+    "i"
+  );
+  const nonPassRe = new RegExp(
+    `\\b${mechanism}=(?:fail|softfail|permerror|temperror|none|neutral|policy)\\b`,
+    "i"
+  );
+
+  let hasPass = false;
+  let hasNonPass = false;
+
+  for (const clause of resultClauses) {
+    const unquoted = stripQuotedStrings(clause);
+    if (nonPassRe.test(unquoted)) {
+      hasNonPass = true;
+    }
+    const match = clause.trim().match(headRe);
+    if (match) {
+      if (match[1]!.toLowerCase() === "pass") {
+        hasPass = true;
+      } else {
+        hasNonPass = true;
+      }
+    }
+  }
+
+  return hasPass && !hasNonPass;
 }
 
 /**
@@ -119,11 +263,14 @@ export function verifyCryptographicOrigin(
     };
   }
 
-  // Filter for trusted SES authserv-id headers and evaluate the latest SES entry first.
-  const trustedEntries = headerEntries.filter((entry) => {
-    const authServ = entry.split(";")[0]?.trim().split(/\s+/)[0] || "";
-    return trustedAuthServPattern.test(authServ);
-  });
+  // Strip RFC 5322 comments before checking trusted authserv-id and evaluating the topmost entry.
+  const trustedEntries = headerEntries
+    .map((entry) => stripRfc5322Comments(entry))
+    .filter((cleaned) => {
+      const firstClause = splitAuthClauses(cleaned)[0] || "";
+      const authServ = firstClause.trim().split(/\s+/)[0] || "";
+      return trustedAuthServPattern.test(authServ);
+    });
 
   if (trustedEntries.length === 0) {
     return {
@@ -132,10 +279,11 @@ export function verifyCryptographicOrigin(
     };
   }
 
-  const authResults = trustedEntries[trustedEntries.length - 1]!;
-  const hasDkimPass = /\bdkim=pass\b/i.test(authResults);
-  const hasSpfPass = /\bspf=pass\b/i.test(authResults);
-  const hasDmarcPass = /\bdmarc=pass\b/i.test(authResults);
+  const authResults = trustedEntries[0]!;
+  const resultClauses = splitAuthClauses(authResults).slice(1);
+  const hasDkimPass = evaluateMechanismVerdict(resultClauses, "dkim");
+  const hasSpfPass = evaluateMechanismVerdict(resultClauses, "spf");
+  const hasDmarcPass = evaluateMechanismVerdict(resultClauses, "dmarc");
 
   if (!hasDkimPass || !hasSpfPass || !hasDmarcPass) {
     return {
@@ -144,15 +292,16 @@ export function verifyCryptographicOrigin(
     };
   }
 
-  // Enforce strict From: domain alignment against header.from / header.d / header.i claims.
+  // Enforce strict From: domain alignment against unquoted, comment-stripped header.from / header.d / header.i claims.
   if (fromAddress) {
     const fromDomain = extractDomain(fromAddress);
     if (!fromDomain) {
       return { valid: false, details: "Unable to extract From domain for alignment verification" };
     }
-    const headerFromMatch = authResults.match(/\bheader\.from=([^\s;]+)/i);
-    const headerDMatch = authResults.match(/\bheader\.d=([^\s;]+)/i);
-    const headerIMatch = authResults.match(/\bheader\.i=([^\s;]+)/i);
+    const unquotedAuthResults = stripQuotedStrings(authResults);
+    const headerFromMatch = unquotedAuthResults.match(/\bheader\.from=([^\s;]+)/i);
+    const headerDMatch = unquotedAuthResults.match(/\bheader\.d=([^\s;]+)/i);
+    const headerIMatch = unquotedAuthResults.match(/\bheader\.i=([^\s;]+)/i);
 
     const alignmentCandidates = [
       headerFromMatch?.[1],
@@ -160,7 +309,14 @@ export function verifyCryptographicOrigin(
       headerIMatch?.[1],
     ].filter((v): v is string => Boolean(v));
 
-    if (alignmentCandidates.length > 0 && alignmentCandidates.some((c) => !domainsAligned(c, fromDomain))) {
+    if (alignmentCandidates.length === 0) {
+      return {
+        valid: false,
+        details: `Cryptographic From: alignment claims missing (header.from/header.d/header.i) for '${fromDomain}'`,
+      };
+    }
+
+    if (alignmentCandidates.some((c) => !domainsAligned(c, fromDomain))) {
       return {
         valid: false,
         details: `Cryptographic From: domain alignment failed for '${fromDomain}' (${alignmentCandidates.join(", ")})`,
@@ -289,6 +445,77 @@ export function envelopeContent(sanitizedBody: string): string {
   return `<<<EXTERNAL_UNTRUSTED_CONTENT>>>\n${safeBody}\n<<</EXTERNAL_UNTRUSTED_CONTENT>>>`;
 }
 
+function extractSingleFromAddress(parsedMail: ParsedMail): {
+  valid: boolean;
+  address: string;
+  isMultiOrGroup?: boolean;
+  rawFrom?: string;
+  details?: string;
+} {
+  const fromHeaderLines = Array.isArray(parsedMail.headerLines)
+    ? parsedMail.headerLines.filter((h) => h.key?.toLowerCase() === "from")
+    : [];
+  if (fromHeaderLines.length > 1) {
+    return {
+      valid: false,
+      address: "",
+      isMultiOrGroup: true,
+      rawFrom: parsedMail.from?.text || "",
+      details: `Multiple From headers are not allowed (found ${fromHeaderLines.length})`,
+    };
+  }
+
+  const rawHeaderFrom =
+    parsedMail.headers instanceof Map ? parsedMail.headers.get("from") : undefined;
+  if (Array.isArray(rawHeaderFrom) && rawHeaderFrom.length > 1) {
+    return {
+      valid: false,
+      address: "",
+      isMultiOrGroup: true,
+      rawFrom: parsedMail.from?.text || "",
+      details: `Multiple From headers are not allowed (found ${rawHeaderFrom.length})`,
+    };
+  }
+
+  const fromEntries = parsedMail.from?.value ?? [];
+  if (fromEntries.length > 1) {
+    return {
+      valid: false,
+      address: "",
+      isMultiOrGroup: true,
+      rawFrom:
+        parsedMail.from?.text ||
+        fromEntries
+          .map((e) => e.address)
+          .filter(Boolean)
+          .join(", "),
+      details: `Multiple From addresses are not allowed (found ${fromEntries.length})`,
+    };
+  }
+
+  if (fromEntries.some((entry) => Boolean((entry as { group?: unknown[] })?.group?.length))) {
+    return {
+      valid: false,
+      address: "",
+      isMultiOrGroup: true,
+      rawFrom: parsedMail.from?.text || "",
+      details: "Group syntax in From header is not allowed",
+    };
+  }
+
+  const address = (fromEntries[0]?.address || "").trim();
+  if (!address) {
+    return {
+      valid: false,
+      address: "",
+      isMultiOrGroup: false,
+      details: "Missing From address in email",
+    };
+  }
+
+  return { valid: true, address };
+}
+
 /**
  * Executes the full 5-stage defensive pipeline against parsed email
  */
@@ -298,12 +525,29 @@ export function processEmailThroughPipeline(
   options: PipelineOptions
 ): PipelineVerdict {
   const timestamp = new Date().toISOString();
-  const fromAddress = parsedMail.from?.value?.[0]?.address || "";
+  const fromCheck = extractSingleFromAddress(parsedMail);
+  const fromAddress = fromCheck.address;
   const toAddress =
     Array.isArray(parsedMail.to) && parsedMail.to.length > 0
       ? parsedMail.to[0]?.value?.[0]?.address || ""
       : (parsedMail.to as any)?.value?.[0]?.address || "";
   const subject = parsedMail.subject || "(No Subject)";
+
+  if (!fromCheck.valid && fromCheck.isMultiOrGroup) {
+    return {
+      status: "QUARANTINED",
+      payload: {
+        version: "1.0",
+        messageId,
+        timestamp,
+        from: fromCheck.rawFrom || "",
+        to: toAddress,
+        subject,
+        rejectionReason: "REJECTED_UNAUTHORIZED_SENDER",
+        details: fromCheck.details || "Multiple or invalid From addresses are not permitted",
+      },
+    };
+  }
 
   // Stage 1: Cryptographic Origin Verification
   const cryptoResult = verifyCryptographicOrigin(

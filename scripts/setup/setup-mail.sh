@@ -35,13 +35,9 @@ CONFIG_DIR="$MAIL_DIR/config"
 SNAPPY_DIR="$MAIL_DIR/snappymail"
 
 echo "[INFO] Target mail storage root: $MAIL_DIR"
-if [ -d "$MAIL_DIR" ]; then
-    chmod -R 777 "$MAIL_DIR" 2>/dev/null || true
-    if docker image inspect alpine:latest >/dev/null 2>&1; then
-        docker run --rm -v "$MAIL_DIR:/mail" alpine chmod -R 777 /mail 2>/dev/null || true
-    fi
-fi
 mkdir -p "$VMAIL_DIR" "$CONFIG_DIR" "$SNAPPY_DIR"
+chown 5000:5000 "$MAIL_DIR" 2>/dev/null || true
+chmod 0750 "$MAIL_DIR" 2>/dev/null || true
 
 # 1. Seed Accounts and Credentials
 ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
@@ -53,7 +49,43 @@ PING_PASS="${PING_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_ping_mail_s
 CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_claude_mail_secret_change_me}}"
 GPT_PASS="${GPT_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_gpt_mail_secret_change_me}}"
 
-echo "[INFO] Generating account directory in $CONFIG_DIR/users..."
+hash_mail_password() {
+    local raw_pw="$1"
+    local hashed=""
+    if command -v openssl >/dev/null 2>&1; then
+        local digest
+        digest="$(printf '%s' "${raw_pw}" | openssl passwd -6 -stdin 2>/dev/null || true)"
+        if [[ "${digest}" == \$6\$* ]]; then
+            hashed="{SHA512-CRYPT}${digest}"
+        fi
+    fi
+    if [ -z "${hashed}" ] && command -v python3 >/dev/null 2>&1; then
+        hashed="$(RAW_PW="${raw_pw}" python3 -c "import os, crypt; print('{SHA512-CRYPT}' + crypt.crypt(os.environ['RAW_PW'], crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null || true)"
+    fi
+    if [ -z "${hashed}" ]; then
+        local mail_c
+        mail_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-|net-)?mail-server$' | head -n 1 || true)"
+        if [ -n "${mail_c}" ]; then
+            hashed="$(printf '%s\n%s\n' "${raw_pw}" "${raw_pw}" | docker exec -i "${mail_c}" doveadm pw -s SHA512-CRYPT 2>/dev/null || true)"
+        fi
+    fi
+    if [ -z "${hashed}" ] || [ "${hashed}" = "{SHA512-CRYPT}" ]; then
+        echo "[ERROR] Unable to generate {SHA512-CRYPT} password hash" >&2
+        exit 1
+    fi
+    printf '%s' "${hashed}"
+}
+
+ADMIN_HASH="$(hash_mail_password "${ADMIN_PASS}")"
+OPERATOR_HASH="$(hash_mail_password "${OPERATOR_PASS}")"
+TERRASTELLA_HASH="$(hash_mail_password "${TERRASTELLA_PASS}")"
+BAWTFORD_HASH="$(hash_mail_password "${BAWTFORD_PASS}")"
+MARVIN_HASH="$(hash_mail_password "${MARVIN_PASS}")"
+PING_HASH="$(hash_mail_password "${PING_PASS}")"
+CLAUDE_HASH="$(hash_mail_password "${CLAUDE_PASS}")"
+GPT_HASH="$(hash_mail_password "${GPT_PASS}")"
+
+echo "[INFO] Generating hashed account directory in $CONFIG_DIR/users..."
 ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
 SETUP_DOMAINS=("brainsos.local" "local.brainsos.ai")
 if [[ -n "${BRAINSOS_LOCAL_DOMAIN:-}" ]]; then SETUP_DOMAINS+=("${BRAINSOS_LOCAL_DOMAIN}"); fi
@@ -83,15 +115,15 @@ done
 
 for d in "${UNIQUE_SETUP_DOMAINS[@]}"; do
 cat << EOF >> "$CONFIG_DIR/users"
-admin@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
-operator@${d}:{PLAIN}$OPERATOR_PASS:5000:5000::/var/mail/vmail/operator::
-akadmin@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::
-terrastella@${d}:{PLAIN}$TERRASTELLA_PASS:5000:5000::/var/mail/vmail/terrastella::
-bawtford@${d}:{PLAIN}$BAWTFORD_PASS:5000:5000::/var/mail/vmail/bawtford::
-marvin@${d}:{PLAIN}$MARVIN_PASS:5000:5000::/var/mail/vmail/marvin::
-ping@${d}:{PLAIN}$PING_PASS:5000:5000::/var/mail/vmail/ping::
-claude@${d}:{PLAIN}$CLAUDE_PASS:5000:5000::/var/mail/vmail/claude::
-gpt@${d}:{PLAIN}$GPT_PASS:5000:5000::/var/mail/vmail/gpt::
+admin@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::
+operator@${d}:${OPERATOR_HASH}:5000:5000::/var/mail/vmail/operator::
+akadmin@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::
+terrastella@${d}:${TERRASTELLA_HASH}:5000:5000::/var/mail/vmail/terrastella::
+bawtford@${d}:${BAWTFORD_HASH}:5000:5000::/var/mail/vmail/bawtford::
+marvin@${d}:${MARVIN_HASH}:5000:5000::/var/mail/vmail/marvin::
+ping@${d}:${PING_HASH}:5000:5000::/var/mail/vmail/ping::
+claude@${d}:${CLAUDE_HASH}:5000:5000::/var/mail/vmail/claude::
+gpt@${d}:${GPT_HASH}:5000:5000::/var/mail/vmail/gpt::
 EOF
 
 cat << EOF >> "$CONFIG_DIR/vmailbox"
@@ -117,7 +149,7 @@ librarian@${d} bawtford@${d}
 system@${d} bawtford@${d}
 EOF
 if [[ -n "${ADMIN_USER}" && "${ADMIN_USER}" != "admin" ]]; then
-    echo "${ADMIN_USER}@${d}:{PLAIN}$ADMIN_PASS:5000:5000::/var/mail/vmail/admin::" >> "$CONFIG_DIR/users"
+    echo "${ADMIN_USER}@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::" >> "$CONFIG_DIR/users"
     echo "${ADMIN_USER}@${d} admin" >> "$CONFIG_DIR/vmailbox"
 fi
 done
@@ -202,10 +234,17 @@ echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/brainsos.local.json"
 echo "$DOMAIN_JSON_CONTENT" > "$DOMAINS_DIR/default.json"
 
 # 3. Ensure Container Permissions
-# Postfix/Dovecot container runs as UID 5000; SnappyMail runs as www-data (UID 82 on Alpine)
-chmod -R 777 "$MAIL_DIR" 2>/dev/null || true
+# Postfix/Dovecot container runs as UID/GID 5000:5000; SnappyMail runs as www-data (UID 82 on Alpine)
+chown 5000:5000 "$MAIL_DIR" 2>/dev/null || true
+chmod 0750 "$MAIL_DIR" 2>/dev/null || true
+chown -R 5000:5000 "$VMAIL_DIR" "$CONFIG_DIR" 2>/dev/null || true
+find "$VMAIL_DIR" "$CONFIG_DIR" -type d -exec chmod 0750 {} + 2>/dev/null || true
+find "$VMAIL_DIR" "$CONFIG_DIR" -type f -exec chmod 0640 {} + 2>/dev/null || true
+chown -R 82:82 "$SNAPPY_DIR" 2>/dev/null || true
+find "$SNAPPY_DIR" -type d -exec chmod 0750 {} + 2>/dev/null || true
+find "$SNAPPY_DIR" -type f -exec chmod 0640 {} + 2>/dev/null || true
 if docker image inspect alpine:latest >/dev/null 2>&1; then
-    docker run --rm -v "$MAIL_DIR:/mail" alpine sh -c "chmod -R 777 /mail && chown -R 82:82 /mail/snappymail" 2>/dev/null || true
+    docker run --rm -v "$MAIL_DIR:/mail" alpine sh -c "chown 5000:5000 /mail && chmod 0750 /mail && chown -R 5000:5000 /mail/vmail /mail/config && find /mail/vmail /mail/config -type d -exec chmod 0750 {} + && find /mail/vmail /mail/config -type f -exec chmod 0640 {} + && chown -R 82:82 /mail/snappymail && find /mail/snappymail -type d -exec chmod 0750 {} + && find /mail/snappymail -type f -exec chmod 0640 {} +" 2>/dev/null || true
 fi
 
 # 4. Build Mail Server Image (skipped during fast --accounts-only credential sync if image exists)

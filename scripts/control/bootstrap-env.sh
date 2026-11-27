@@ -372,6 +372,11 @@ if [ ! -f "${DATA_ROOT}/control_plane/caddy_root.crt" ]; then
   log_info "Initialized ${DATA_ROOT}/control_plane/caddy_root.crt placeholder"
 fi
 
+# Pre-seed OpenBao internal TLS certs so Caddy, OpenBao, and tool-egress-proxy bind-mounts exist as files
+if [ -x "${REPO_ROOT}/scripts/setup/setup-secrets.sh" ]; then
+  BRAINSOS_DATA_DIR="${DATA_ROOT}" "${REPO_ROOT}/scripts/setup/setup-secrets.sh" --init-tls >/dev/null 2>&1 || true
+fi
+
 # Seed .vscode workspace settings if not already present
 mkdir -p "${DATA_ROOT}/.vscode"
 if [ ! -f "${DATA_ROOT}/.vscode/settings.json" ] && [ -f "${REPO_ROOT}/config/editor/settings.json" ]; then

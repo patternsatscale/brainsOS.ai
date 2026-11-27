@@ -38,12 +38,18 @@ def firstboot_tree(tmp_path: Path) -> Path:
 
 def _run_firstboot(root: Path) -> subprocess.CompletedProcess:
     env = {
-        **os.environ,
-        "BRAINSOS_REPO_ROOT": str(root),
-        "BRAINSOS_FIRSTBOOT_SKIP_IMDS": "true",
-        "BRAINSOS_FIRSTBOOT_SKIP_PORTAL": "true",
-        "BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP": "true",
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("BRAINSOS_")
     }
+    env.update(
+        {
+            "BRAINSOS_REPO_ROOT": str(root),
+            "BRAINSOS_FIRSTBOOT_SKIP_IMDS": "true",
+            "BRAINSOS_FIRSTBOOT_SKIP_PORTAL": "true",
+            "BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP": "true",
+        }
+    )
     return subprocess.run(
         ["bash", str(root / "packages" / "brainsOS-appliance" / "scripts" / "firstboot.sh")],
         env=env,
@@ -207,4 +213,64 @@ def test_firstboot_env_is_bash_sourceable(firstboot_tree: Path):
         check=False,
     )
     assert source_proc.returncode == 0, source_proc.stderr
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "BRAINSOS_ZONE_NAME=ok\nINJECT=1",
+        "BRAINSOS_ZONE_NAME=ok\rINJECT_CR=1",
+        "BRAINSOS_ZONE_NAME=ok\r\nINJECT_CRLF=1",
+        "BAD\nKEY=val",
+        "BAD\rKEY=val",
+        "# COMMENT=1\nINJECT=1",
+    ],
+)
+def test_upsert_rejects_newline_and_cr_injection(tmp_path: Path, payload: str):
+    """CLI KEY=VALUE pairs containing LF/CR in key or value are rejected atomically without splitting."""
+    env_file = tmp_path / ".env"
+    original = b"A=1\n"
+    env_file.write_bytes(original)
+    env_file.chmod(0o600)
+
+    proc = subprocess.run(
+        [str(ENV_UPSERT), "--file", str(env_file), payload],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "INJECT" not in env_file.read_text(encoding="utf-8")
+    assert env_file.read_bytes() == original
+
+
+def test_upsert_from_file_rejects_cr_and_preserves_multiline_valid_entries(tmp_path: Path):
+    """--from-file accepts normal multi-line files and rejects CR injection within a line."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("A=1\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
+    good_overrides = tmp_path / "good.env"
+    good_overrides.write_text("# comment\nA=2\nB=hello world\n", encoding="utf-8")
+    proc_ok = subprocess.run(
+        [str(ENV_UPSERT), "--file", str(env_file), "--from-file", str(good_overrides)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc_ok.returncode == 0, proc_ok.stderr
+    assert "A=2" in env_file.read_text(encoding="utf-8")
+    assert "B='hello world'" in env_file.read_text(encoding="utf-8")
+
+    bad_overrides = tmp_path / "bad.env"
+    bad_overrides.write_bytes(b"BRAINSOS_ZONE_NAME=ok\rINJECT_FILE=1\n")
+    before_bad = env_file.read_bytes()
+    proc_bad = subprocess.run(
+        [str(ENV_UPSERT), "--file", str(env_file), "--from-file", str(bad_overrides)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc_bad.returncode != 0
+    assert env_file.read_bytes() == before_bad
 

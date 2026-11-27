@@ -31,7 +31,7 @@ data directory (/data) as a Git repository wired to Gitea and VS Code SCM.
 
 Options:
   --dry-run      Print planned configuration and actions without modifying state
-  --seed-only    Initialize local /data Git repository and seed Gitea only if running
+  --seed-only    Initialize local /data Git repository only without provisioning or pushing to Gitea
   -h, --help     Show this help message
 EOF
 }
@@ -157,7 +157,8 @@ cat << 'EOF' > "${GITIGNORE_PATH}"
 # ==============================================================================
 
 # Platform databases, caches & container volumes
-control_plane/
+control_plane/**
+backups/**
 comms/
 litellm_db/
 postgres/
@@ -186,8 +187,7 @@ runners/
 *.zip
 
 # Secrets & TLS private keys (Rule 5)
-.env
-.env.*
+.env*
 *.key
 *.pem
 *.crt
@@ -281,12 +281,17 @@ git -C "${DATA_ROOT}" config branch.initial-setup.remote origin
 git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
 git -C "${DATA_ROOT}" config push.default simple
 git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
-chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || chmod -R a+rwX "${DATA_ROOT}/.git" 2>/dev/null || true
+chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || true
 chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
-# 3. Start Gitea Container (unless --seed-only and container is not running)
+# 3. Start Gitea Container (unless --seed-only)
 # ------------------------------------------------------------------------------
+if [ "${SEED_ONLY}" = "true" ]; then
+  log_success "Local Git repository seeded at ${DATA_ROOT} (--seed-only); skipping live Gitea container provisioning."
+  exit 0
+fi
+
 GITEA_CONTAINER="brainsos-app-git"
 gitea_running() {
   docker inspect -f '{{.State.Running}}' "${GITEA_CONTAINER}" 2>/dev/null | grep -q "true"
@@ -298,10 +303,6 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 if ! gitea_running; then
-  if [ "${SEED_ONLY}" = "true" ]; then
-    log_info "Gitea container (${GITEA_CONTAINER}) is not running and --seed-only is set; local Git repo initialized."
-    exit 0
-  fi
   log_info "Starting Gitea service (${GITEA_CONTAINER})..."
   docker compose up -d gitea
 fi
@@ -417,7 +418,7 @@ git -C "${DATA_ROOT}" config branch.initial-setup.remote origin
 git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
 git -C "${DATA_ROOT}" config push.default simple
 git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
-chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || chmod -R a+rwX "${DATA_ROOT}/.git" 2>/dev/null || true
+chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || true
 chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 if docker inspect -f '{{.State.Running}}' brainsos-app-code-server 2>/dev/null | grep -q "true"; then

@@ -64,12 +64,18 @@ def firstboot_tree(tmp_path: Path) -> Path:
 
 def _run_firstboot(root: Path) -> subprocess.CompletedProcess:
     env = {
-        **os.environ,
-        "BRAINSOS_REPO_ROOT": str(root),
-        "BRAINSOS_FIRSTBOOT_SKIP_IMDS": "true",
-        "BRAINSOS_FIRSTBOOT_SKIP_PORTAL": "true",
-        "BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP": "true",
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("BRAINSOS_")
     }
+    env.update(
+        {
+            "BRAINSOS_REPO_ROOT": str(root),
+            "BRAINSOS_FIRSTBOOT_SKIP_IMDS": "true",
+            "BRAINSOS_FIRSTBOOT_SKIP_PORTAL": "true",
+            "BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP": "true",
+        }
+    )
     return subprocess.run(
         ["bash", str(root / "packages" / "brainsOS-appliance" / "scripts" / "firstboot.sh")],
         env=env,
@@ -225,3 +231,34 @@ def test_build_ami_promote_dry_run_validates_ami_id(staged_repo: Path):
     proc = _run_build(staged_repo, "--promote", "ami-0123456789abcdef0", "--dry-run")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "Block Public Access" in proc.stdout
+
+
+@pytest.mark.parametrize("hist_rel", ["home/admin/.bash_history", "home/admin/.zsh_history", "home/admin/.python_history"])
+def test_snapshot_scan_rejects_admin_and_python_histories(tmp_path: Path, hist_rel: str):
+    """F24: snapshot_scan fails closed when shell or Python history files exist under home_root."""
+    app_dir = tmp_path / "app"
+    (app_dir / "data" / "settings").mkdir(parents=True)
+    (app_dir / ".env.example").write_text("FOO=\n", encoding="utf-8")
+
+    home_root = tmp_path / "host_root"
+    (home_root / "root").mkdir(parents=True)
+    (home_root / "etc" / "ssh").mkdir(parents=True)
+    hist_file = home_root / hist_rel
+    hist_file.parent.mkdir(parents=True, exist_ok=True)
+    hist_file.write_text("secret_cmd\n", encoding="utf-8")
+
+    prov_txt = PROVISION.read_text(encoding="utf-8")
+    fn_block = prov_txt[prov_txt.index("snapshot_scan()"):prov_txt.index('if [ "${SCAN_ONLY}" = true ]; then')]
+    helper_sh = tmp_path / "run_scan.sh"
+    helper_sh.write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\n'
+        'log_info() { echo "$*"; }\nlog_success() { echo "$*"; }\n'
+        'log_warn() { echo "$*"; }\nlog_error() { echo "$*" >&2; }\n'
+        f"{fn_block}\n"
+        f'snapshot_scan "{app_dir}" "{home_root}"\n',
+        encoding="utf-8",
+    )
+    proc = subprocess.run(["bash", str(helper_sh)], capture_output=True, text=True, check=False)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert str(hist_file) in (proc.stdout + proc.stderr)
+

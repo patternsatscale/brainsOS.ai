@@ -1,19 +1,34 @@
 """Hermes Runner Interactive WebUI and Configuration Server (Port 8787)."""
 
-import os
+import html as html_lib
 import json
-import yaml
+import os
+import secrets
 from pathlib import Path
 from typing import Any, Dict
+
+import yaml
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="brainsOS Hermes Runner WebUI", version="1.0.0")
 
-CONFIG_DIR = Path(os.getenv("HERMES_HOME", "/root/.hermes"))
+CONFIG_DIR = Path((os.getenv("HERMES_HOME") or "").strip() or "/tmp/.hermes")
 CONFIG_YAML_PATH = CONFIG_DIR / "config.yaml"
 CONFIG_JSON_PATH = CONFIG_DIR / "config.json"
+
+
+def _require_runner_auth(request: Request) -> None:
+    expected = (os.getenv("RUNNER_AUTH_TOKEN") or "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Service Unavailable: RUNNER_AUTH_TOKEN is not configured")
+    x_token = (request.headers.get("X-Runner-Token") or "").strip()
+    auth_hdr = (request.headers.get("Authorization") or "").strip()
+    bearer_tok = auth_hdr[7:].strip() if auth_hdr.lower().startswith("bearer ") else ""
+    provided = x_token or bearer_tok
+    if not provided or not secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized: invalid or missing X-Runner-Token / Authorization")
 
 
 def load_yaml_config() -> Dict[str, Any]:
@@ -51,7 +66,8 @@ async def health():
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(request: Request):
+    _require_runner_auth(request)
     yaml_cfg = load_yaml_config()
     json_cfg = load_json_config()
     return {
@@ -62,7 +78,8 @@ async def get_config():
 
 
 @app.post("/api/config")
-async def update_config(req: ConfigUpdateRequest):
+async def update_config(req: ConfigUpdateRequest, request: Request):
+    _require_runner_auth(request)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     # 1. Update config.yaml
@@ -105,117 +122,77 @@ async def update_config(req: ConfigUpdateRequest):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def serve_ui():
+async def serve_ui(request: Request):
+    _require_runner_auth(request)
     yaml_cfg = load_yaml_config()
     json_cfg = load_json_config()
 
-    default_model = yaml_cfg.get("model", {}).get("default", "brainsos-core")
-    base_url = yaml_cfg.get("model", {}).get("base_url", "http://litellm:4000/v1")
-    terminal_on = json_cfg.get("capabilities", {}).get("shell_enabled", True)
-    browser_on = json_cfg.get("capabilities", {}).get("browser_enabled", True)
-    web_search_on = yaml_cfg.get("tools", {}).get("web_search", {}).get("enabled", False)
+    default_model = html_lib.escape(str(yaml_cfg.get("model", {}).get("default", "brainsos-core")), quote=True)
+    base_url = html_lib.escape(str(yaml_cfg.get("model", {}).get("base_url", "http://litellm:4000/v1")), quote=True)
+    terminal_on = bool(json_cfg.get("capabilities", {}).get("shell_enabled", True))
+    browser_on = bool(json_cfg.get("capabilities", {}).get("browser_enabled", True))
+    web_search_on = bool(yaml_cfg.get("tools", {}).get("web_search", {}).get("enabled", False))
 
-    html = f"""<!DOCTYPE html>
-<html lang="en" class="dark">
+    html_doc = f"""<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>brainsOS • Hermes Runner WebUI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {{ background: #07090E; color: #e1e2eb; font-family: 'Geist', sans-serif; }}
-    .card {{ background: rgba(17, 22, 34, 0.85); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.08); }}
+    :root {{ color-scheme: dark; }}
+    body {{ margin: 0; padding: 2rem; background: #07090E; color: #e1e2eb; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }}
+    .wrap {{ max-width: 768px; margin: 0 auto; }}
+    .card {{ background: rgba(17, 22, 34, 0.92); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.25rem; }}
+    .hdr {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1rem; margin-bottom: 1.5rem; }}
+    .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }}
+    label.field {{ display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.35rem; }}
+    input[type="text"] {{ width: 100%; box-sizing: border-box; background: #0B0E14; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 0.5rem 0.75rem; color: #fff; font-size: 0.8rem; }}
+    label.toggle {{ display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 0.6rem; }}
+    button {{ padding: 0.65rem 1.4rem; border: 0; border-radius: 10px; background: #00f2fe; color: #000; font-weight: 700; cursor: pointer; }}
   </style>
 </head>
-<body class="p-6 sm:p-10 min-h-screen flex flex-col justify-between">
-  <div class="max-w-3xl mx-auto w-full">
-    <!-- Header -->
-    <header class="flex items-center justify-between border-b border-white/10 pb-5 mb-8">
+<body>
+  <div class="wrap">
+    <header class="hdr">
       <div>
-        <div class="flex items-center gap-3">
-          <span class="font-mono text-2xl font-bold tracking-wider text-white">HERMES<span class="text-[#00f2fe]">.RUNNER</span></span>
-          <span class="text-[10px] font-mono bg-[#00f2fe]/10 text-[#00f2fe] px-2 py-0.5 rounded border border-[#00f2fe]/20">WEBUI :8787</span>
-        </div>
-        <p class="font-mono text-xs text-slate-400 mt-1">Runtime Configuration &amp; Tool Governance Dashboard</p>
+        <div class="mono" style="font-size:1.35rem;font-weight:700;">HERMES<span style="color:#00f2fe;">.RUNNER</span></div>
+        <div class="mono" style="font-size:0.75rem;color:#94a3b8;">Runtime Configuration &amp; Tool Governance Dashboard</div>
       </div>
-      <div class="flex items-center gap-2 font-mono text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>GATEWAY ONLINE</span>
-      </div>
+      <div class="mono" style="font-size:0.75rem;color:#34d399;">GATEWAY ONLINE</div>
     </header>
-
-    <!-- Configuration Form -->
-    <form id="cfg-form" onsubmit="saveConfig(event)" class="space-y-6">
-      
-      <!-- Section 1: Provider & LiteLLM Gateway -->
-      <div class="card rounded-2xl p-6 shadow-xl">
-        <h2 class="font-mono text-xs uppercase tracking-widest text-[#00f2fe] font-semibold mb-4">Inference Gateway (Rule 2)</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <form id="cfg-form" onsubmit="saveConfig(event)">
+      <div class="card">
+        <h2 class="mono" style="font-size:0.75rem;text-transform:uppercase;color:#00f2fe;margin-top:0;">Inference Gateway (Rule 2)</h2>
+        <div class="grid">
           <div>
-            <label class="block font-mono text-xs text-slate-400 mb-1">LiteLLM Base URL</label>
-            <input id="base_url" type="text" value="{base_url}" class="w-full bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-[#00f2fe] outline-none">
+            <label class="field mono" for="base_url">LiteLLM Base URL</label>
+            <input id="base_url" type="text" value="{base_url}">
           </div>
           <div>
-            <label class="block font-mono text-xs text-slate-400 mb-1">Default Model Endpoint</label>
-            <input id="default_model" type="text" value="{default_model}" class="w-full bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white focus:border-[#00f2fe] outline-none">
+            <label class="field mono" for="default_model">Default Model Endpoint</label>
+            <input id="default_model" type="text" value="{default_model}">
           </div>
         </div>
       </div>
-
-      <!-- Section 2: Capability & Tool Governance -->
-      <div class="card rounded-2xl p-6 shadow-xl">
-        <h2 class="font-mono text-xs uppercase tracking-widest text-[#ec4899] font-semibold mb-4">Toolsets &amp; Sandboxed Capabilities</h2>
-        <div class="space-y-3">
-          <label class="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-all">
-            <div>
-              <div class="text-xs font-semibold text-white">Interactive Terminal Execution</div>
-              <div class="text-[11px] text-slate-400">Allows sandboxed bash commands in /workspace</div>
-            </div>
-            <input id="tool_terminal" type="checkbox" {'checked' if terminal_on else ''} class="w-4 h-4 accent-[#00f2fe]">
-          </label>
-
-          <label class="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-all">
-            <div>
-              <div class="text-xs font-semibold text-white">Automated Browser &amp; Scraping</div>
-              <div class="text-[11px] text-slate-400">Headless browser actions routed via egress proxy</div>
-            </div>
-            <input id="tool_browser" type="checkbox" {'checked' if browser_on else ''} class="w-4 h-4 accent-[#00f2fe]">
-          </label>
-
-          <label class="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 cursor-pointer hover:bg-white/[0.04] transition-all">
-            <div>
-              <div class="text-xs font-semibold text-white">External Web Search</div>
-              <div class="text-[11px] text-slate-400">Toggles live DuckDuckGo/Brave web search tool</div>
-            </div>
-            <input id="tool_search" type="checkbox" {'checked' if web_search_on else ''} class="w-4 h-4 accent-[#00f2fe]">
-          </label>
-        </div>
+      <div class="card">
+        <h2 class="mono" style="font-size:0.75rem;text-transform:uppercase;color:#ec4899;margin-top:0;">Toolsets &amp; Sandboxed Capabilities</h2>
+        <label class="toggle"><span>Interactive Terminal Execution</span><input id="tool_terminal" type="checkbox" {'checked' if terminal_on else ''}></label>
+        <label class="toggle"><span>Automated Browser &amp; Scraping</span><input id="tool_browser" type="checkbox" {'checked' if browser_on else ''}></label>
+        <label class="toggle"><span>External Web Search</span><input id="tool_search" type="checkbox" {'checked' if web_search_on else ''}></label>
       </div>
-
-      <!-- Action Button -->
-      <div class="flex items-center justify-between pt-2">
-        <span id="save-status" class="font-mono text-xs text-slate-400"></span>
-        <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#00f2fe] hover:bg-[#38f8ff] text-black font-mono font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(0,242,254,0.3)]">
-          Save Configuration
-        </button>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span id="save-status" class="mono" style="font-size:0.75rem;color:#94a3b8;"></span>
+        <button type="submit" class="mono">Save Configuration</button>
       </div>
-
     </form>
   </div>
-
-  <footer class="text-center font-mono text-[11px] text-slate-600 mt-10">
-    brainsOS • ASUS Ascent GX10 (ARM64) • Rule 4 Sandboxed
-  </footer>
-
   <script>
     async function saveConfig(e) {{
       e.preventDefault();
       const status = document.getElementById('save-status');
       status.innerText = "Saving...";
-      status.className = "font-mono text-xs text-[#00f2fe]";
-
       const payload = {{
         provider_base_url: document.getElementById('base_url').value,
         model_default: document.getElementById('default_model').value,
@@ -224,31 +201,24 @@ async def serve_ui():
         web_search_enabled: document.getElementById('tool_search').checked,
         tool_search_enabled: false
       }};
-
       try {{
         const resp = await fetch('/api/config', {{
           method: 'POST',
           headers: {{ 'Content-Type': 'application/json' }},
           body: JSON.stringify(payload)
         }});
-        if (resp.ok) {{
-          status.innerText = "✓ Settings saved to /root/.hermes. Run 'make runner-hermes' to burn.";
-          status.className = "font-mono text-xs text-emerald-400";
-        }} else {{
-          status.innerText = "Error saving settings.";
-          status.className = "font-mono text-xs text-rose-400";
-        }}
+        status.innerText = resp.ok ? "Settings saved." : ("Error: HTTP " + resp.status);
       }} catch (err) {{
         status.innerText = "Network failure: " + err;
-        status.className = "font-mono text-xs text-rose-400";
       }}
     }}
   </script>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html_doc)
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8787)
+
+    uvicorn.run(app, host="127.0.0.1", port=8787)

@@ -111,7 +111,7 @@ log_info "Disk Status: Total: ${DISK_TOTAL_GB} GB | Used: ${DISK_USED_GB} GB (${
 
 # Disk capacity threshold check (15% threshold)
 LOW_DISK=false
-python3 -c "import sys; sys.exit(0 if float('${DISK_PCT_FREE}') < 15.0 else 1)" && LOW_DISK=true || LOW_DISK=false
+python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 15.0 else 1)' "${DISK_PCT_FREE}" && LOW_DISK=true || LOW_DISK=false
 
 if [ "${LOW_DISK}" = true ]; then
   log_warn "WARNING: Available disk space is below 15% threshold (${DISK_PCT_FREE}% free)! Executing aggressive pruning."

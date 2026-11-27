@@ -219,11 +219,12 @@ def call_developer_llm(
     Invoke the software engineering sub-agent via LiteLLM gateway.
     Returns a dictionary mapping file_name -> updated_file_content.
     """
+    openai_cls: Any
     try:
-        from openai import OpenAI
+        from openai import OpenAI as openai_cls
     except ImportError:
         logger.warning("openai package not found, attempting urllib fallback")
-        OpenAI = None
+        openai_cls = None
 
     base_url = api_base or os.getenv("OPENAI_BASE_URL") or os.getenv("LITELLM_URL") or "http://127.0.0.1:4000/v1"
     key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("BAWTFORD_LITELLM_KEY") or "sk-brainsos-bawtford-key"
@@ -261,15 +262,15 @@ CRITICAL EXECUTION RULES:
 5. Ensure JavaScript is robust, error-safe, and syntactically valid.
 """
 
-    messages = [
+    messages: List[Any] = [
         {"role": "system", "content": persona_prompt},
         {"role": "user", "content": user_instructions},
     ]
 
     raw_response = ""
     # Try calling via OpenAI client
-    if OpenAI:
-        client = OpenAI(base_url=base_url, api_key=key)
+    if openai_cls is not None:
+        client = openai_cls(base_url=base_url, api_key=key)
         # Attempt completion with primary model, fallback to brainsos-core if needed
         models_to_try = [model]
         if model != "brainsos-core":
@@ -315,12 +316,39 @@ CRITICAL EXECUTION RULES:
     extracted: Dict[str, str] = {}
     for fn in target_files_content.keys():
         pat = rf"(?:###\s*FILE:\s*{re.escape(fn)}|```{re.escape(fn.split('.')[-1])}\s*#\s*{re.escape(fn)})(.*?)(?:###\s*FILE:|```$|\Z)"
-        m = re.search(pat, raw_response, re.DOTALL)
-        if m:
-            extracted[fn] = m.group(1).strip()
+        m_match = re.search(pat, raw_response, re.DOTALL)
+        if m_match:
+            extracted[fn] = m_match.group(1).strip()
         else:
             extracted[fn] = target_files_content[fn]
     return extracted
+
+
+def resolve_safe_canvas_target(canvas_root: Path, rel_target: str) -> Path:
+    """Resolve a target file inside canvas_root, rejecting escapes, symlinks, and .git/.github."""
+    if not rel_target or not isinstance(rel_target, str) or "\x00" in rel_target:
+        raise ValueError(f"Invalid empty or null target path: {rel_target!r}")
+    normalized = rel_target.replace("\\", "/")
+    rel_path = Path(normalized)
+    if rel_path.is_absolute() or normalized.startswith("/"):
+        raise ValueError(f"Absolute target path forbidden: {rel_target!r}")
+    if any(part.lower() in {".git", ".github"} or part == ".." for part in rel_path.parts):
+        raise ValueError(f"Forbidden path segment in target: {rel_target!r}")
+
+    real_root = Path(os.path.realpath(canvas_root))
+    curr = canvas_root
+    for part in rel_path.parts:
+        curr = curr / part
+        if curr.is_symlink():
+            raise ValueError(f"Symlink target forbidden: {rel_target!r}")
+
+    real_target = Path(os.path.realpath(canvas_root / rel_path))
+    if real_target == real_root or os.path.commonpath([str(real_root), str(real_target)]) != str(real_root):
+        raise ValueError(f"Target path escapes canvas root: {rel_target!r}")
+    rel_resolved = Path(os.path.relpath(str(real_target), str(real_root)))
+    if any(part.lower() in {".git", ".github"} for part in rel_resolved.parts):
+        raise ValueError(f"Resolved path enters forbidden metadata directory: {rel_target!r}")
+    return real_target
 
 
 def execute_build(
@@ -348,10 +376,24 @@ def execute_build(
     logger.info(f"Memory directory: {m_dir}")
     logger.info(f"Developer persona: {p_path}")
 
+    # 0. Validate all target file paths before reading, invoking LLM, or writing
+    resolved_targets: Dict[str, Path] = {}
+    for fn in t_files:
+        try:
+            resolved_targets[fn] = resolve_safe_canvas_target(c_dir, fn)
+        except ValueError as exc:
+            logger.error(f"Rejected unsafe target file '{fn}': {exc}")
+            return {
+                "status": "error",
+                "error": str(exc),
+                "file": fn,
+                "feature_name": feature_name,
+            }
+
     # 1. Read existing target files
     original_contents: Dict[str, str] = {}
     for fn in t_files:
-        fp = c_dir / fn
+        fp = resolved_targets[fn]
         if fp.exists():
             with open(fp, "r", encoding="utf-8") as f:
                 original_contents[fn] = f.read()
@@ -397,7 +439,7 @@ def execute_build(
         quality_warnings.extend(warns)
 
         # Syntax check
-        target_path = c_dir / fn
+        target_path = resolved_targets[fn]
         is_valid, err_msg = validate_syntax(target_path, clean_code)
         if not is_valid:
             logger.error(f"Syntax validation failed for {fn}: {err_msg}")
@@ -422,7 +464,8 @@ def execute_build(
     if not dry_run:
         for fn, content in sanitized_contents.items():
             if content != original_contents.get(fn, ""):
-                target_path = c_dir / fn
+                target_path = resolved_targets[fn]
+                target_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(target_path, "w", encoding="utf-8") as f:
                     f.write(content)
                 modified_files.append(fn)
@@ -430,7 +473,7 @@ def execute_build(
 
     # 6. Write human-auditable OKF record to /memories/logs/ (Rule 1)
     date_str = datetime.date.today().isoformat()
-    slug = re.sub(r"[^a-z0-9]+", "-", feature_name.lower()).strip("-")
+    slug = re.sub(r"[^a-z0-9]+", "-", feature_name.lower()).strip("-") or "feature"
     log_file = m_dir / "logs" / f"{date_str}-{slug}.md"
     log_file.parent.mkdir(parents=True, exist_ok=True)
 

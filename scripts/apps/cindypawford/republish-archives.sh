@@ -135,14 +135,65 @@ if [ -d "${SITE_DIR}/.git" ]; then
   TAGS=$(git -C "${SITE_DIR}" tag -l "archive/cindy-*" 2>/dev/null || true)
   if [ -n "${TAGS}" ]; then
     for tag in ${TAGS}; do
-      SLUG=$(echo "${tag}" | sed 's|archive/cindy-||')
+      SLUG=$(echo "${tag}" | sed 's|^archive/cindy-||')
+      if [[ ! "${SLUG}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ "${SLUG}" == *".."* ]] || [ "${SLUG}" = ".git" ] || [ "${SLUG}" = ".github" ]; then
+        log_error "Refused unsafe archive slug '${SLUG}' from tag '${tag}'."
+        exit 1
+      fi
       TARGET_DIR="${ARCHIVE_DIR}/${SLUG}"
       log_info "Processing Git archive tag: '${tag}' -> '${SLUG}'"
       if [ ! -d "${TARGET_DIR}" ] || [ "${FORCE}" -eq 1 ]; then
         log_info "Extracting tag '${tag}' tree into '${TARGET_DIR}'..."
         if [ "${DRY_RUN}" -eq 0 ]; then
-          mkdir -p "${TARGET_DIR}"
-          git -C "${SITE_DIR}" archive --format=tar "${tag}" | tar -x -C "${TARGET_DIR}"
+          if ! git -C "${SITE_DIR}" archive --format=tar "${tag}" | \
+            ARCHIVE_DIR="${ARCHIVE_DIR}" SLUG="${SLUG}" python3 -c '
+import os
+import posixpath
+import re
+import sys
+import tarfile
+
+archive_dir = os.environ["ARCHIVE_DIR"]
+slug = os.environ["SLUG"]
+if not re.match(r"^[A-Za-z0-9._-]+$", slug) or ".." in slug or slug.lower() in {".git", ".github"}:
+    raise SystemExit(f"Unsafe archive slug: {slug!r}")
+
+real_archive = os.path.realpath(archive_dir)
+target_dir = os.path.realpath(os.path.join(real_archive, slug))
+if target_dir == real_archive or os.path.commonpath([real_archive, target_dir]) != real_archive:
+    raise SystemExit(f"Archive target escapes ARCHIVE_DIR: {target_dir}")
+os.makedirs(target_dir, exist_ok=True)
+
+with tarfile.open(fileobj=sys.stdin.buffer, mode="r|*") as tf:
+    for member in tf:
+        raw_name = member.name[2:] if member.name.startswith("./") else member.name
+        if not raw_name or raw_name == ".":
+            continue
+        if member.name.startswith("/") or ".." in raw_name.split("/"):
+            raise SystemExit(f"Blocked traversal member in git archive: {member.name!r}")
+        norm = posixpath.normpath(raw_name)
+        parts = [p for p in norm.split("/") if p and p != "."]
+        if any(p.lower() in {".git", ".github"} or p == ".." for p in parts):
+            raise SystemExit(f"Blocked forbidden path segment in git archive: {member.name!r}")
+        if member.issym() or member.islnk():
+            raise SystemExit(f"Blocked symlink/hardlink in git archive: {member.name!r}")
+        if not (member.isdir() or member.isreg()):
+            continue
+        dest = os.path.realpath(os.path.join(target_dir, *parts))
+        if os.path.commonpath([target_dir, dest]) != target_dir:
+            raise SystemExit(f"Resolved member escapes target directory: {member.name!r}")
+        if member.isdir():
+            os.makedirs(dest, exist_ok=True)
+        else:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            src_f = tf.extractfile(member)
+            if src_f is not None:
+                with src_f, open(dest, "wb") as out_f:
+                    out_f.write(src_f.read())
+'; then
+            log_error "Refused unsafe archive tag '${tag}'."
+            exit 1
+          fi
           log_success "Restored snapshot for '${SLUG}' from Git tag."
         fi
       else
@@ -160,14 +211,19 @@ fi
 log_info "Reconciling historical ledger (eras.json)..."
 
 if [ "${DRY_RUN}" -eq 0 ]; then
-  python3 - << EOF
-import os, json, datetime
+  ARCHIVE_DIR="${ARCHIVE_DIR}" ERAS_FILE="${ERAS_FILE}" python3 - << 'EOF'
+import datetime
+import json
+import os
+import re
 
-archive_dir = "${ARCHIVE_DIR}"
-eras_file = "${ERAS_FILE}"
+archive_dir = os.path.realpath(os.environ["ARCHIVE_DIR"])
+eras_file = os.path.realpath(os.environ["ERAS_FILE"])
+if os.path.commonpath([archive_dir, eras_file]) != archive_dir:
+    raise SystemExit(f"Unsafe ERAS_FILE path outside ARCHIVE_DIR: {eras_file}")
 
 existing_eras = []
-if os.path.exists(eras_file):
+if os.path.exists(eras_file) and not os.path.islink(eras_file):
     try:
         with open(eras_file, "r", encoding="utf-8") as f:
             existing_eras = json.load(f).get("eras", [])
@@ -176,8 +232,21 @@ if os.path.exists(eras_file):
 
 existing_map = {e.get("slug"): e for e in existing_eras}
 
-# Discover all era directories
-subdirs = [d for d in os.listdir(archive_dir) if os.path.isdir(os.path.join(archive_dir, d)) and not d.startswith(".")]
+# Discover all safe era directories inside archive_dir
+subdirs = []
+for d in os.listdir(archive_dir):
+    if d.startswith(".") or d.lower() in {".git", ".github"}:
+        continue
+    if not re.match(r"^[A-Za-z0-9._-]+$", d) or ".." in d:
+        continue
+    cand = os.path.join(archive_dir, d)
+    if os.path.islink(cand):
+        continue
+    real_cand = os.path.realpath(cand)
+    if os.path.commonpath([archive_dir, real_cand]) != archive_dir or real_cand == archive_dir:
+        continue
+    if os.path.isdir(real_cand):
+        subdirs.append(d)
 
 # Sort with 2024-genesis always first, then chronologically
 def sort_key(item):
@@ -189,15 +258,21 @@ subdirs.sort(key=sort_key)
 
 reconciled = []
 for idx, slug in enumerate(subdirs, start=1):
-    rec_path = os.path.join(archive_dir, slug, "recap.json")
+    era_root = os.path.realpath(os.path.join(archive_dir, slug))
+    rec_candidate = os.path.join(era_root, "recap.json")
+    rec_path = os.path.realpath(rec_candidate)
     recap = {}
-    if os.path.exists(rec_path):
+    if (
+        not os.path.islink(rec_candidate)
+        and os.path.commonpath([era_root, rec_path]) == era_root
+        and os.path.exists(rec_path)
+    ):
         try:
             with open(rec_path, "r", encoding="utf-8") as rf:
                 recap = json.load(rf)
         except Exception:
             pass
-    
+
     prev = existing_map.get(slug, {})
     entry = {
         "era": idx,

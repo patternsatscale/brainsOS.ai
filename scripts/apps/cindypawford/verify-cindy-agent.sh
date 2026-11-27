@@ -373,45 +373,48 @@ else
 fi
 
 # 8d. Test Quality Gate & Sanitization functions (Markdown fences & conversational strip)
-python3 -c "
-import sys
-sys.path.insert(0, '${REPO_ROOT}/scripts/apps/cindypawford')
+python3 - "${REPO_ROOT}" "${BUILDER_SCRIPT}" << 'EOF'
 import importlib.util
-spec = importlib.util.spec_from_file_location('cindy_web_builder', '${BUILDER_SCRIPT}')
+from pathlib import Path
+import sys
+
+repo_root = sys.argv[1]
+builder_script = sys.argv[2]
+sys.path.insert(0, f"{repo_root}/scripts/apps/cindypawford")
+spec = importlib.util.spec_from_file_location("cindy_web_builder", builder_script)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-from pathlib import Path
 
 # Test fence stripping
-dirty_js = '''\`\`\`javascript
+dirty_js = """```javascript
 (function() {
   console.log('Clean execution');
 })();
-\`\`\`'''
-clean_js, warns = mod.sanitize_code_content(dirty_js, 'app.js')
-assert '\`\`\`' not in clean_js, 'Markdown fences were not stripped!'
-assert '(function()' in clean_js, 'Valid JS missing!'
+```"""
+clean_js, warns = mod.sanitize_code_content(dirty_js, "app.js")
+assert "```" not in clean_js, "Markdown fences were not stripped!"
+assert "(function()" in clean_js, "Valid JS missing!"
 
 # Test conversational header stripping
-dirty_html = '''Here is the updated HTML with the new VIP banner:
-\`\`\`html
-<section id=\"vip-lounge\"><h2>VIP Lounge</h2></section>
-\`\`\`
-Hope this looks fabulous!'''
-clean_html, warns = mod.sanitize_code_content(dirty_html, 'index.html')
-assert '\`\`\`' not in clean_html, 'Fences remained in HTML!'
-assert '<section' in clean_html, 'HTML content missing!'
-assert 'Here is the' not in clean_html, 'Conversational header was not stripped!'
+dirty_html = """Here is the updated HTML with the new VIP banner:
+```html
+<section id="vip-lounge"><h2>VIP Lounge</h2></section>
+```
+Hope this looks fabulous!"""
+clean_html, warns = mod.sanitize_code_content(dirty_html, "index.html")
+assert "```" not in clean_html, "Fences remained in HTML!"
+assert "<section" in clean_html, "HTML content missing!"
+assert "Here is the" not in clean_html, "Conversational header was not stripped!"
 
 # Test syntax validation
-valid, err = mod.validate_syntax(Path('app.js'), clean_js)
-assert valid, f'Syntax check failed on clean JS: {err}'
+valid, err = mod.validate_syntax(Path("app.js"), clean_js)
+assert valid, f"Syntax check failed on clean JS: {err}"
 
 # Test invalid syntax rejection
-invalid_js = 'function broken( {'
-valid_bad, err_bad = mod.validate_syntax(Path('app.js'), invalid_js)
-assert not valid_bad, 'Syntax check failed to reject invalid JavaScript!'
-"
+invalid_js = "function broken( {"
+valid_bad, err_bad = mod.validate_syntax(Path("app.js"), invalid_js)
+assert not valid_bad, "Syntax check failed to reject invalid JavaScript!"
+EOF
 log_success "Quality Gate passed: Markdown fences and conversational chatter stripped, JS syntax validated."
 
 # 8e. Verify zero legacy plugins in workspace and brainsOS MCP server configuration

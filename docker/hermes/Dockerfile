@@ -57,7 +57,7 @@ RUN apt-get update -qq && \
 
 # Install Tool Egress Proxy CA trust & Dashboard reverse-proxy boot hook
 COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca
-RUN chmod +x /etc/cont-init.d/01-tool-egress-ca && /etc/cont-init.d/01-tool-egress-ca || true
+RUN chmod +x /etc/cont-init.d/01-tool-egress-ca && /etc/cont-init.d/01-tool-egress-ca
 
 
 # Switch to /opt/data

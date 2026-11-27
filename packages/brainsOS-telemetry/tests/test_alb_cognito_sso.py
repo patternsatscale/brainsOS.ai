@@ -14,7 +14,9 @@ from brainsos_telemetry.alb_auth import (
     AlbAuthError,
     authenticate_alb_headers,
     clear_key_cache,
+    is_valid_https_issuer,
     validate_breakglass_toggle,
+    verify_alb_oidc_jwt,
 )
 from brainsos_telemetry.system import create_system_api_app, issue_csrf_token
 from cryptography.hazmat.primitives import serialization
@@ -25,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_SIGNER_ARN = (
     "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/brainsos-alb/0123456789abcdef"
 )
+SAMPLE_ALB_ISSUER = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_AbCdEf123"
 SAMPLE_KID = "9c7b2a10-1234-4abc-9def-0123456789ab"
 
 
@@ -71,6 +74,7 @@ def test_alb_jwt_owner_elevation_without_cognito_admin_group():
         priv,
         {
             "sub": "c0gni70-user-sub-owner",
+            "iss": SAMPLE_ALB_ISSUER,
             "preferred_username": "alice",
             "email": "alice@example.com",
             "name": "Alice Owner",
@@ -81,6 +85,7 @@ def test_alb_jwt_owner_elevation_without_cognito_admin_group():
     env = {
         "AUTH_ALB_OIDC_ENABLED": "true",
         "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+        "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
         "BRAINSOS_USER_SUB": "c0gni70-user-sub-owner",
         "BRAINSOS_OWNER_ONLY": "true",
         "AUTH_COGNITO_ADMIN_GROUP": "brainsos-admins",
@@ -106,6 +111,7 @@ def test_alb_jwt_non_owner_rejected_when_owner_only_or_viewer_when_disabled():
         priv,
         {
             "sub": "other-user-sub-999",
+            "iss": SAMPLE_ALB_ISSUER,
             "preferred_username": "bob",
             "email": "bob@example.com",
             "exp": int(time.time()) + 300,
@@ -114,6 +120,7 @@ def test_alb_jwt_non_owner_rejected_when_owner_only_or_viewer_when_disabled():
     base_env = {
         "AUTH_ALB_OIDC_ENABLED": "true",
         "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+        "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
         "BRAINSOS_USER_SUB": "c0gni70-user-sub-owner",
         "BRAINSOS_OWNER_ONLY": "true",
     }
@@ -144,6 +151,7 @@ def test_alb_jwt_cognito_admin_group_grants_admin():
         priv,
         {
             "sub": "pool-admin-sub",
+            "iss": SAMPLE_ALB_ISSUER,
             "email": "ops@example.com",
             "cognito:groups": ["brainsos-admins"],
             "exp": int(time.time()) + 300,
@@ -152,6 +160,7 @@ def test_alb_jwt_cognito_admin_group_grants_admin():
     env = {
         "AUTH_ALB_OIDC_ENABLED": "true",
         "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+        "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
         "BRAINSOS_USER_SUB": "different-owner-sub",
         "BRAINSOS_OWNER_ONLY": "true",
         "AUTH_COGNITO_ADMIN_GROUP": "brainsos-admins",
@@ -174,17 +183,18 @@ def test_alb_jwt_rejects_expired_bad_sig_wrong_signer_and_ssrf_kid():
     env = {
         "AUTH_ALB_OIDC_ENABLED": "true",
         "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+        "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
         "BRAINSOS_USER_SUB": "owner-sub",
     }
 
     # 1. Expired JWT
-    expired = _sign_alb_jwt(priv, {"sub": "owner-sub", "exp": int(time.time()) - 120})
+    expired = _sign_alb_jwt(priv, {"sub": "owner-sub", "iss": SAMPLE_ALB_ISSUER, "exp": int(time.time()) - 120})
     with pytest.raises(AlbAuthError) as e1:
         authenticate_alb_headers({"X-Amzn-Oidc-Data": expired}, env, key_fetcher=lambda _r, _k: pub_pem)
     assert e1.value.status_code == 401
 
     # 2. Invalid signature (signed with wrong private key)
-    bad_sig = _sign_alb_jwt(other_priv, {"sub": "owner-sub", "exp": int(time.time()) + 300})
+    bad_sig = _sign_alb_jwt(other_priv, {"sub": "owner-sub", "iss": SAMPLE_ALB_ISSUER, "exp": int(time.time()) + 300})
     with pytest.raises(AlbAuthError) as e2:
         authenticate_alb_headers({"X-Amzn-Oidc-Data": bad_sig}, env, key_fetcher=lambda _r, _k: pub_pem)
     assert e2.value.status_code == 401
@@ -192,7 +202,7 @@ def test_alb_jwt_rejects_expired_bad_sig_wrong_signer_and_ssrf_kid():
     # 3. Wrong signer ARN
     wrong_signer = _sign_alb_jwt(
         other_priv,
-        {"sub": "owner-sub", "exp": int(time.time()) + 300},
+        {"sub": "owner-sub", "iss": SAMPLE_ALB_ISSUER, "exp": int(time.time()) + 300},
         signer="arn:aws:elasticloadbalancing:us-east-1:999999999999:loadbalancer/app/evil/deadbeef",
     )
     with pytest.raises(AlbAuthError) as e3:
@@ -207,7 +217,7 @@ def test_alb_jwt_rejects_expired_bad_sig_wrong_signer_and_ssrf_kid():
     called = []
     ssrf_tok = _sign_alb_jwt(
         priv,
-        {"sub": "owner-sub", "exp": int(time.time()) + 300},
+        {"sub": "owner-sub", "iss": SAMPLE_ALB_ISSUER, "exp": int(time.time()) + 300},
         kid="../../169.254.169.254/latest",
     )
     with pytest.raises(AlbAuthError) as e4:
@@ -220,7 +230,7 @@ def test_alb_jwt_rejects_expired_bad_sig_wrong_signer_and_ssrf_kid():
     assert called == []
 
     # 5. Disabled ALB mode fails closed
-    disabled_tok = _sign_alb_jwt(priv, {"sub": "owner-sub", "exp": int(time.time()) + 300})
+    disabled_tok = _sign_alb_jwt(priv, {"sub": "owner-sub", "iss": SAMPLE_ALB_ISSUER, "exp": int(time.time()) + 300})
     with pytest.raises(AlbAuthError) as e5:
         authenticate_alb_headers(
             {"X-Amzn-Oidc-Data": disabled_tok},
@@ -237,6 +247,7 @@ def test_alb_verify_endpoint_roundtrip(tmp_path):
         f"BRAINSOS_DOMAIN=box.brainsos.ai\n"
         f"AUTH_ALB_OIDC_ENABLED=true\n"
         f"AUTH_ALB_SIGNER_ARN={SAMPLE_SIGNER_ARN}\n"
+        f"AUTH_ALB_ISSUER={SAMPLE_ALB_ISSUER}\n"
         f"BRAINSOS_USER_SUB=ebs-owner-uuid\n"
         f"BRAINSOS_OWNER_ONLY=true\n",
         encoding="utf-8",
@@ -245,6 +256,7 @@ def test_alb_verify_endpoint_roundtrip(tmp_path):
         priv,
         {
             "sub": "ebs-owner-uuid",
+            "iss": SAMPLE_ALB_ISSUER,
             "preferred_username": "owner_u",
             "email": "owner@example.com",
             "exp": int(time.time()) + 300,
@@ -369,6 +381,7 @@ def test_cognito_sso_config_api_masks_secret_and_derives_callback(tmp_path):
                 "client_secret": "super-secret-cognito-val",
                 "alb_oidc_enabled": True,
                 "alb_signer_arn": SAMPLE_SIGNER_ARN,
+                "alb_issuer": SAMPLE_ALB_ISSUER,
                 "user_sub": "user-sub-777",
                 "owner_only": True,
                 "reload_sso": False,
@@ -384,6 +397,7 @@ def test_cognito_sso_config_api_masks_secret_and_derives_callback(tmp_path):
         assert data["cognito_enabled"] is True
         assert data["client_secret_configured"] is True
         assert data["user_sub"] == "user-sub-777"
+        assert data["alb_issuer"] == SAMPLE_ALB_ISSUER
         assert "super-secret-cognito-val" not in get_res.text
 
         # Invalid ARN must be rejected cleanly
@@ -470,6 +484,7 @@ def test_setup_endpoint_passes_breakglass_and_cognito_flags(tmp_path, monkeypatc
                 "cognito_client_secret": "SecretFromWizard123!",
                 "alb_oidc_enabled": True,
                 "alb_signer_arn": SAMPLE_SIGNER_ARN,
+                "alb_issuer": SAMPLE_ALB_ISSUER,
                 "user_sub": "owner-sub-xyz",
                 "owner_only": True,
             },
@@ -481,5 +496,405 @@ def test_setup_endpoint_passes_breakglass_and_cognito_flags(tmp_path, monkeypatc
         assert "--cognito-region us-east-1" in res.text
         assert "--cognito-pool-id us-east-1_TestPool1" in res.text
         assert "--alb-oidc" in res.text
+        assert f"--alb-issuer {SAMPLE_ALB_ISSUER}" in res.text
         assert "--user-sub owner-sub-xyz" in res.text
         assert "SecretFromWizard123!" not in res.text
+
+
+def test_alb_jwt_fails_closed_when_signer_or_issuer_empty_or_account_mismatch():
+    """verify_alb_oidc_jwt must fail closed (403) when signer/issuer allowlists are empty or account mismatches."""
+    priv, pub_pem = _make_ec_keypair()
+    token = _sign_alb_jwt(
+        priv,
+        {
+            "sub": "owner-sub",
+            "iss": SAMPLE_ALB_ISSUER,
+            "exp": int(time.time()) + 300,
+        },
+    )
+
+    fetched = []
+
+    def tracking_fetcher(region: str, kid: str) -> str:
+        fetched.append((region, kid))
+        return pub_pem
+
+    # 1. Empty / missing / comma-only AUTH_ALB_SIGNER_ARN
+    for bad_signer in ("", "   ", " , "):
+        with pytest.raises(AlbAuthError) as exc:
+            authenticate_alb_headers(
+                {"X-Amzn-Oidc-Data": token},
+                {
+                    "AUTH_ALB_OIDC_ENABLED": "true",
+                    "AUTH_ALB_SIGNER_ARN": bad_signer,
+                    "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
+                    "BRAINSOS_USER_SUB": "owner-sub",
+                },
+                key_fetcher=tracking_fetcher,
+            )
+        assert exc.value.status_code == 403
+        assert fetched == []
+
+    # 2. Empty / missing / non-https AUTH_ALB_ISSUER
+    for bad_issuer in ("", "   ", "http://cognito-idp.us-east-1.amazonaws.com/pool"):
+        with pytest.raises(AlbAuthError) as exc:
+            authenticate_alb_headers(
+                {"X-Amzn-Oidc-Data": token},
+                {
+                    "AUTH_ALB_OIDC_ENABLED": "true",
+                    "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+                    "AUTH_ALB_ISSUER": bad_issuer,
+                    "BRAINSOS_USER_SUB": "owner-sub",
+                },
+                key_fetcher=tracking_fetcher,
+            )
+        assert exc.value.status_code == 403
+        assert fetched == []
+
+    # 3. Mismatched AUTH_ALB_AWS_ACCOUNT
+    with pytest.raises(AlbAuthError) as exc_acc:
+        authenticate_alb_headers(
+            {"X-Amzn-Oidc-Data": token},
+            {
+                "AUTH_ALB_OIDC_ENABLED": "true",
+                "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+                "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
+                "AUTH_ALB_AWS_ACCOUNT": "999999999999",
+                "BRAINSOS_USER_SUB": "owner-sub",
+            },
+            key_fetcher=tracking_fetcher,
+        )
+    assert exc_acc.value.status_code == 403
+    assert fetched == []
+
+    # 4. Matching AUTH_ALB_AWS_ACCOUNT succeeds
+    ok = authenticate_alb_headers(
+        {"X-Amzn-Oidc-Data": token},
+        {
+            "AUTH_ALB_OIDC_ENABLED": "true",
+            "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+            "AUTH_ALB_ISSUER": SAMPLE_ALB_ISSUER,
+            "AUTH_ALB_AWS_ACCOUNT": "123456789012",
+            "BRAINSOS_USER_SUB": "owner-sub",
+        },
+        key_fetcher=tracking_fetcher,
+    )
+    assert ok["is_owner"] is True
+    assert len(fetched) == 1
+
+
+def test_alb_oidc_config_and_forward_auth_reject_missing_signer_or_issuer_400(tmp_path, monkeypatch):
+    """update_cognito_sso_config, verify_alb_forward_auth, and trigger_setup return 400 without valid signer & https issuer."""
+    mock_iid = "i-0" + ("d" * 16)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
+    (tmp_path / ".env").write_text(
+        f"BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_INSTANCE_ID={mock_iid}\nBRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text('#!/usr/bin/env bash\necho "SETUP_ARGS: $*"\n', encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        admin_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "su",
+            "X-Authentik-Groups": "authentik Admins",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "https://box.brainsos.ai",
+        }
+
+        # 1. update_cognito_sso_config rejects alb_oidc_enabled=True without signer or https issuer
+        r1 = client.post(
+            "/api/v1/system/sso/cognito",
+            json={"alb_oidc_enabled": True, "alb_signer_arn": SAMPLE_SIGNER_ARN, "reload_sso": False},
+            headers=admin_headers,
+        )
+        assert r1.status_code == 400
+
+        r2 = client.post(
+            "/api/v1/system/sso/cognito",
+            json={
+                "alb_oidc_enabled": True,
+                "alb_signer_arn": SAMPLE_SIGNER_ARN,
+                "alb_issuer": "http://insecure.example.com",
+                "reload_sso": False,
+            },
+            headers=admin_headers,
+        )
+        assert r2.status_code == 400
+
+        r3 = client.post(
+            "/api/v1/system/sso/cognito",
+            json={"alb_oidc_enabled": True, "alb_issuer": SAMPLE_ALB_ISSUER, "reload_sso": False},
+            headers=admin_headers,
+        )
+        assert r3.status_code == 400
+
+        # 2. trigger_setup rejects alb_oidc_enabled=True without signer or https issuer
+        r4 = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": mock_iid,
+                "alb_oidc_enabled": True,
+                "alb_signer_arn": SAMPLE_SIGNER_ARN,
+            },
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "https://box.brainsos.ai",
+            },
+        )
+        assert r4.status_code == 400
+
+        # 3. verify_alb_forward_auth returns 400 when AUTH_ALB_OIDC_ENABLED=true without valid signer/issuer
+        (tmp_path / ".env").write_text(
+            "BRAINSOS_DOMAIN=box.brainsos.ai\nAUTH_ALB_OIDC_ENABLED=true\n",
+            encoding="utf-8",
+        )
+        r5 = client.get(
+            "/api/v1/system/auth/alb-verify",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert r5.status_code == 400
+
+
+def test_breakglass_auto_disabled_on_wizard_and_cognito_unless_explicitly_reenabled(tmp_path, monkeypatch):
+    """Break-glass auto-disables on wizard credential setup or Cognito SSO unless admin explicitly re-enables."""
+    mock_iid = "i-0" + ("e" * 16)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
+    (tmp_path / ".env").write_text(
+        f"BRAINSOS_DOMAIN=box.brainsos.ai\n"
+        f"BRAINSOS_INSTANCE_ID={mock_iid}\n"
+        f"BRAINSOS_WIZARD_COMPLETED=false\n"
+        f"BRAINSOS_BREAKGLASS_ENABLED=true\n",
+        encoding="utf-8",
+    )
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text('#!/usr/bin/env bash\necho "SETUP_ARGS: $*"\n', encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+
+        # 1. Wizard setup without breakglass_enabled auto-passes --no-breakglass & persists false
+        wiz_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": mock_iid,
+                "unit_name": "Alice Agent Box",
+                "superuser_name": "Alice Operator",
+                "superuser_username": "alice",
+                "superuser_password": "StrongUserPass99!",
+                "local_domain": "alice.aws.cloud.brainsos.ai",
+                "url": "box.brainsos.ai",
+                "tls_mode": "internal",
+            },
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "https://box.brainsos.ai",
+            },
+        )
+        assert wiz_res.status_code == 200
+        assert "--no-breakglass" in wiz_res.text
+        assert "BRAINSOS_BREAKGLASS_ENABLED=false" in (tmp_path / ".env").read_text(encoding="utf-8")
+
+        # 2. Reset breakglass to default true (non-explicit) and enable Cognito SSO -> auto-disables breakglass
+        (tmp_path / ".env").write_text(
+            f"BRAINSOS_DOMAIN=box.brainsos.ai\n"
+            f"BRAINSOS_INSTANCE_ID={mock_iid}\n"
+            f"BRAINSOS_WIZARD_COMPLETED=true\n"
+            f"BRAINSOS_BREAKGLASS_ENABLED=true\n",
+            encoding="utf-8",
+        )
+        admin_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "su",
+            "X-Authentik-Groups": "authentik Admins",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "https://box.brainsos.ai",
+        }
+        cog_res = client.post(
+            "/api/v1/system/sso/cognito",
+            json={
+                "enabled": True,
+                "region": "us-east-1",
+                "user_pool_id": "us-east-1_AbCdEf123",
+                "client_id": "app-client-123",
+                "user_sub": "owner-sub-1",
+                "reload_sso": False,
+            },
+            headers=admin_headers,
+        )
+        assert cog_res.status_code == 200
+        assert "BRAINSOS_BREAKGLASS_ENABLED=false" in (tmp_path / ".env").read_text(encoding="utf-8")
+
+        # 3. Admin explicitly re-enables breakglass -> subsequent Cognito update preserves breakglass=true
+        bg_on = client.post(
+            "/api/v1/system/security/breakglass",
+            json={"enabled": True, "apply_now": False},
+            headers=admin_headers,
+        )
+        assert bg_on.status_code == 200
+        cog_res2 = client.post(
+            "/api/v1/system/sso/cognito",
+            json={"owner_only": False, "reload_sso": False},
+            headers=admin_headers,
+        )
+        assert cog_res2.status_code == 200
+        assert "BRAINSOS_BREAKGLASS_ENABLED=true" in (tmp_path / ".env").read_text(encoding="utf-8")
+
+
+def test_is_valid_https_issuer_and_endpoints_reject_malformed_urls_without_500(tmp_path, monkeypatch):
+    """Malformed URLs must return False / AlbAuthError(403) / HTTP 400 and never raise ValueError / HTTP 500."""
+    bad_issuers = (
+        "https://[",
+        "https://]",
+        "https://[::1",
+        "https://[invalid]",
+        "https://host:99999",
+        "https://host:abc",
+        "https://:443/path",
+        "https://host with space.com",
+        "https://",
+        "https:///path",
+        "http://example.com",
+    )
+    for val in bad_issuers:
+        assert is_valid_https_issuer(val) is False, f"Expected False for {val!r}"
+
+    for valid_val in ("https://[::1]", "https://example.com:8443/issuer", SAMPLE_ALB_ISSUER):
+        assert is_valid_https_issuer(valid_val) is True, f"Expected True for {valid_val!r}"
+
+    priv, pub_pem = _make_ec_keypair()
+    token = _sign_alb_jwt(
+        priv,
+        {
+            "sub": "owner-sub",
+            "iss": SAMPLE_ALB_ISSUER,
+            "exp": int(time.time()) + 300,
+        },
+    )
+    fetched = []
+
+    def tracking_fetcher(region: str, kid: str) -> str:
+        fetched.append((region, kid))
+        return pub_pem
+
+    for bad_issuer in (
+        "https://[",
+        "https://]",
+        "https://[::1",
+        "https://[invalid]",
+        "https://host:99999",
+        "https://host:abc",
+        "https://:443/path",
+        "https://host with space.com",
+    ):
+        with pytest.raises(AlbAuthError) as exc_info:
+            verify_alb_oidc_jwt(
+                token,
+                {
+                    "AUTH_ALB_OIDC_ENABLED": "true",
+                    "AUTH_ALB_SIGNER_ARN": SAMPLE_SIGNER_ARN,
+                    "AUTH_ALB_ISSUER": bad_issuer,
+                    "BRAINSOS_USER_SUB": "owner-sub",
+                },
+                key_fetcher=tracking_fetcher,
+            )
+        assert exc_info.value.status_code == 403
+        assert fetched == []
+
+    mock_iid = "i-0" + ("f" * 16)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
+    (tmp_path / ".env").write_text(
+        f"BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_INSTANCE_ID={mock_iid}\nBRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text('#!/usr/bin/env bash\necho "SETUP_ARGS: $*"\n', encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app, raise_server_exceptions=False)
+        csrf_tok = issue_csrf_token()
+        admin_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "su",
+            "X-Authentik-Groups": "authentik Admins",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "https://box.brainsos.ai",
+        }
+        setup_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "https://box.brainsos.ai",
+        }
+
+        for bad_issuer in ("https://[", "https://]", "https://host:99999", "https://:443/path"):
+            (tmp_path / ".env").write_text(
+                f"BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_INSTANCE_ID={mock_iid}\nBRAINSOS_WIZARD_COMPLETED=false\n",
+                encoding="utf-8",
+            )
+            r_cog = client.post(
+                "/api/v1/system/sso/cognito",
+                json={
+                    "alb_oidc_enabled": True,
+                    "alb_signer_arn": SAMPLE_SIGNER_ARN,
+                    "alb_issuer": bad_issuer,
+                    "reload_sso": False,
+                },
+                headers=admin_headers,
+            )
+            assert r_cog.status_code == 400
+
+            r_setup = client.post(
+                "/api/v1/system/setup",
+                json={
+                    "bootstrap_token": mock_iid,
+                    "alb_oidc_enabled": True,
+                    "alb_signer_arn": SAMPLE_SIGNER_ARN,
+                    "alb_issuer": bad_issuer,
+                },
+                headers=setup_headers,
+            )
+            assert r_setup.status_code == 400
+
+            (tmp_path / ".env").write_text(
+                f"BRAINSOS_DOMAIN=box.brainsos.ai\n"
+                f"AUTH_ALB_OIDC_ENABLED=true\n"
+                f"AUTH_ALB_SIGNER_ARN={SAMPLE_SIGNER_ARN}\n"
+                f"AUTH_ALB_ISSUER={bad_issuer}\n",
+                encoding="utf-8",
+            )
+            r_verify = client.get(
+                "/api/v1/system/auth/alb-verify",
+                headers={
+                    "X-BrainsOS-Internal": "test-secret-token-12345",
+                    "X-Amzn-Oidc-Data": token,
+                },
+            )
+            assert r_verify.status_code == 400
+
+
+def test_compose_ingress_forwards_auth_alb_trusted_cidrs():
+    """Verify docker/compose/compose.ingress.yml forwards AUTH_ALB_TRUSTED_CIDRS with RFC1918 defaults."""
+    compose_ingress = (REPO_ROOT / "docker/compose/compose.ingress.yml").read_text(encoding="utf-8")
+    assert "AUTH_ALB_TRUSTED_CIDRS=${AUTH_ALB_TRUSTED_CIDRS:-10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}" in (
+        compose_ingress
+    )
+
+

@@ -478,13 +478,26 @@ sync_llm_connection() {
     fi
 
     local agents_json
-    agents_json=$("${python_bin}" -c "
-import yaml, json
-with open('${manifest}') as f:
-    d = yaml.safe_load(f)
-res = [{'id': a['id'], 'name': a.get('name', a['id']), 'subdomain': a.get('comms', {}).get('subdomain', f\"{a['id']}.brainsos.local\")} for a in d.get('agents', []) if a.get('enabled', True)]
+    agents_json="$("${python_bin}" - "${manifest}" << 'EOF' 2>/dev/null || true
+import json
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    d = yaml.safe_load(f) or {}
+res = [
+    {
+        "id": a["id"],
+        "name": a.get("name", a["id"]),
+        "subdomain": a.get("comms", {}).get("subdomain", f"{a['id']}.brainsos.local"),
+    }
+    for a in d.get("agents", [])
+    if a.get("enabled", True)
+]
 print(json.dumps(res))
-" 2>/dev/null || echo "[]")
+EOF
+    )"
+    [ -n "${agents_json}" ] || agents_json="[]"
 
     docker exec -i "${lf_web_c}" node -e "
       const crypto = require('crypto');
@@ -624,81 +637,94 @@ seed_initial_session() {
 
   log_info "Synchronizing Langfuse baseline session initialization..."
   local seed_status
-  seed_status=$("${python_bin}" -c "
-import os, sys, requests, json, time, uuid
+  seed_status=$(
+    LANGFUSE_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY}" \
+    LANGFUSE_SECRET_KEY="${LANGFUSE_SECRET_KEY}" \
+    LANGFUSE_PORT="${LANGFUSE_PORT:-3001}" \
+    LF_IP="${lf_ip}" \
+    LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}" \
+    "${python_bin}" - << 'EOF' 2>/dev/null || echo "SKIPPED"
+import base64
+import json
+import os
+import requests
+import secrets
+import sys
+import time
 
-pub = '${LANGFUSE_PUBLIC_KEY}'
-sec = '${LANGFUSE_SECRET_KEY}'
-port = '${LANGFUSE_PORT:-3001}'
-lf_ip = '${lf_ip}'
-host = f'http://127.0.0.1:{port}'
+pub = os.environ["LANGFUSE_PUBLIC_KEY"]
+sec = os.environ["LANGFUSE_SECRET_KEY"]
+port = os.environ.get("LANGFUSE_PORT", "3001")
+lf_ip = os.environ.get("LF_IP", "")
+init_user_email = os.environ.get("LANGFUSE_INIT_USER_EMAIL", "admin@brainsos.local")
+host = f"http://127.0.0.1:{port}"
 try:
-    requests.get(f'{host}/api/public/health', timeout=2)
+    requests.get(f"{host}/api/public/health", timeout=2)
 except Exception:
     if lf_ip:
-        host = f'http://{lf_ip}:3000'
+        host = f"http://{lf_ip}:3000"
 
 try:
-    r = requests.get(f'{host}/api/public/sessions?limit=5', auth=(pub, sec), timeout=5)
+    r = requests.get(f"{host}/api/public/sessions?limit=5", auth=(pub, sec), timeout=5)
     if r.status_code == 200:
         data = r.json()
-        if data.get('meta', {}).get('totalItems', 0) > 0:
-            print('EXISTS')
+        if data.get("meta", {}).get("totalItems", 0) > 0:
+            print("EXISTS")
             sys.exit(0)
 except Exception:
     pass
 
 try:
-    import base64, secrets
     trace_id = secrets.token_hex(16)
     now_ns = time.time_ns()
 
     def kv(k, v):
         if isinstance(v, list):
-            return {'key': k, 'value': {'arrayValue': {'values': [{'stringValue': s} for s in v]}}}
-        return {'key': k, 'value': {'stringValue': v if isinstance(v, str) else json.dumps(v)}}
+            return {"key": k, "value": {"arrayValue": {"values": [{"stringValue": s} for s in v]}}}
+        return {"key": k, "value": {"stringValue": v if isinstance(v, str) else json.dumps(v)}}
 
     def span(span_id, name, obs_type, extra, start_ns, end_ns):
         return {
-            'traceId': trace_id, 'spanId': span_id, 'name': name, 'kind': 1,
-            'startTimeUnixNano': str(start_ns), 'endTimeUnixNano': str(end_ns),
-            'attributes': [kv('langfuse.observation.type', obs_type)] + extra,
+            "traceId": trace_id, "spanId": span_id, "name": name, "kind": 1,
+            "startTimeUnixNano": str(start_ns), "endTimeUnixNano": str(end_ns),
+            "attributes": [kv("langfuse.observation.type", obs_type)] + extra,
         }
 
     root_id = secrets.token_hex(8)
-    root = span(root_id, 'brainsOS System Bootstrap & Fleet Telemetry Initialization', 'span', [
-        kv('session.id', 'brainsos-system-bootstrap'),
-        kv('user.id', '${LANGFUSE_INIT_USER_EMAIL:-admin@brainsos.local}'),
-        kv('langfuse.trace.tags', ['bootstrap', 'system', 'fleet']),
-        kv('langfuse.trace.metadata.plane', 'observability'),
-        kv('langfuse.trace.metadata.platform', 'brainsOS'),
+    root = span(root_id, "brainsOS System Bootstrap & Fleet Telemetry Initialization", "span", [
+        kv("session.id", "brainsos-system-bootstrap"),
+        kv("user.id", init_user_email),
+        kv("langfuse.trace.tags", ["bootstrap", "system", "fleet"]),
+        kv("langfuse.trace.metadata.plane", "observability"),
+        kv("langfuse.trace.metadata.platform", "brainsOS"),
     ], now_ns - 2_000_000, now_ns)
-    child = span(secrets.token_hex(8), 'telemetry-handshake', 'generation', [
-        kv('langfuse.observation.model.name', 'brainsos-core'),
-        kv('langfuse.observation.input', {'event': 'system_startup', 'status': 'initialized'}),
-        kv('langfuse.observation.output', {'status': 'ready', 'message': 'Langfuse v4 observability plane online and healthy.'}),
-        kv('langfuse.observation.usage_details', {'input': 12, 'output': 18}),
+    child = span(secrets.token_hex(8), "telemetry-handshake", "generation", [
+        kv("langfuse.observation.model.name", "brainsos-core"),
+        kv("langfuse.observation.input", {"event": "system_startup", "status": "initialized"}),
+        kv("langfuse.observation.output", {"status": "ready", "message": "Langfuse v4 observability plane online and healthy."}),
+        kv("langfuse.observation.usage_details", {"input": 12, "output": 18}),
     ], now_ns - 1_000_000, now_ns - 500_000)
-    child['parentSpanId'] = root_id
+    child["parentSpanId"] = root_id
 
-    payload = {'resourceSpans': [{
-        'resource': {'attributes': [kv('service.name', 'brainsos-bootstrap')]},
-        'scopeSpans': [{'scope': {'name': 'brainsos-setup'}, 'spans': [root, child]}],
+    payload = {"resourceSpans": [{
+        "resource": {"attributes": [kv("service.name", "brainsos-bootstrap")]},
+        "scopeSpans": [{"scope": {"name": "brainsos-setup"}, "spans": [root, child]}],
     }]}
-    token = base64.b64encode(f'{pub}:{sec}'.encode()).decode()
+    token = base64.b64encode(f"{pub}:{sec}".encode()).decode()
     headers = {
-        'Authorization': f'Basic {token}',
-        'Content-Type': 'application/json',
-        'x-langfuse-ingestion-version': '4',
+        "Authorization": f"Basic {token}",
+        "Content-Type": "application/json",
+        "x-langfuse-ingestion-version": "4",
     }
-    r = requests.post(f'{host}/api/public/otel/v1/traces', json=payload, headers=headers, timeout=5)
+    r = requests.post(f"{host}/api/public/otel/v1/traces", json=payload, headers=headers, timeout=5)
     if 200 <= r.status_code < 300:
-        print('SEEDED')
+        print("SEEDED")
     else:
-        print('FAILED')
-except Exception as e:
-    print('ERROR')
-" 2>/dev/null || echo "SKIPPED")
+        print("FAILED")
+except Exception:
+    print("ERROR")
+EOF
+  )
 
   if [ "${seed_status}" = "SEEDED" ]; then
     log_success "Langfuse baseline session initialized ('brainsos-system-bootstrap')."

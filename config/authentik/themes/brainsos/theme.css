@@ -4,8 +4,6 @@
    Matches approved visual mockup (stitch/login.html)
    ============================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
-
 html {
   font-size: 13px !important; /* Scale entire PatternFly rem system down from 16px to 13px */
   -webkit-font-smoothing: antialiased !important;
@@ -85,7 +83,7 @@ html, body, ak-flow-executor {
     linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px) !important;
   background-size: 100% 100%, 40px 40px, 40px 40px !important;
   color: #e1e2eb !important;
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   min-height: 100vh !important;
 }
 
@@ -158,7 +156,7 @@ ak-flow-executor {
 .ak-flow-executor .pf-c-title,
 .pf-c-login .pf-c-title,
 .pf-c-title {
-  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   font-size: 1.45rem !important;
   font-weight: 700 !important;
   letter-spacing: 0.03em !important;
@@ -347,7 +345,7 @@ ak-page-header h1,
 .pf-c-content h1,
 h1.pf-c-title,
 h2.pf-c-title {
-  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   font-size: 1.35rem !important;
   font-weight: 700 !important;
   letter-spacing: -0.01em !important;
@@ -461,7 +459,7 @@ a.pf-c-button.pf-m-primary {
 }
 
 .pf-c-card__title {
-  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   font-size: 0.95rem !important;
   font-weight: 600 !important;
   color: #ffffff !important;

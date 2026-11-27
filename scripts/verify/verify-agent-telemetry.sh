@@ -194,18 +194,22 @@ for i in {1..25}; do
     CH_COUNT=$(docker exec "${CH_CONTAINER}" clickhouse-client -q "SELECT count() FROM default.traces WHERE (user_id='${TEST_AGENT}' OR session_id='${TEST_SESSION_ID}') AND timestamp >= now() - INTERVAL 120 SECOND;" 2>/dev/null || echo "0")
   fi
 
-  MATCH_COUNT=$(python3 -c "
+  MATCH_COUNT=$(python3 - "${TMP_OBS}" "${TEST_AGENT}" "${TEST_SESSION_ID}" "${CH_COUNT:-0}" << 'EOF' 2>/dev/null || echo "0"
 import json
+import sys
+
+tmp_obs, test_agent, test_session_id, ch_count = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 try:
-    with open('${TMP_OBS}', 'r') as f:
+    with open(tmp_obs, "r") as f:
         data_o = json.load(f)
-    obs = data_o.get('data', [])
-    o_matches = [o for o in obs if o.get('userId') == '${TEST_AGENT}' or o.get('sessionId') == '${TEST_SESSION_ID}']
+    obs = data_o.get("data", [])
+    o_matches = [o for o in obs if o.get("userId") == test_agent or o.get("sessionId") == test_session_id]
 except Exception:
     o_matches = []
 
-print(len(o_matches) + int(${CH_COUNT:-0}))
-" 2>/dev/null || echo "0")
+print(len(o_matches) + int(ch_count))
+EOF
+  )
 
   if [ "${MATCH_COUNT}" -gt 0 ]; then
     OBS_FOUND=true
@@ -222,17 +226,21 @@ else
 fi
 
 # Verify session breakout in Langfuse Sessions API
-SESSION_CHECK=$(python3 -c "
+SESSION_CHECK=$(python3 - "${TMP_SESSIONS}" "${TEST_SESSION_ID}" << 'EOF' 2>/dev/null || echo "ERROR"
 import json
+import sys
+
+tmp_sessions, test_session_id = sys.argv[1], sys.argv[2]
 try:
-    with open('${TMP_SESSIONS}', 'r') as f:
+    with open(tmp_sessions, "r") as f:
         data_s = json.load(f)
-    sessions = data_s.get('data', [])
-    found = any(s.get('id') == '${TEST_SESSION_ID}' for s in sessions)
-    print('FOUND' if found else len(sessions))
-except Exception as e:
-    print('ERROR')
-" 2>/dev/null || echo "ERROR")
+    sessions = data_s.get("data", [])
+    found = any(s.get("id") == test_session_id for s in sessions)
+    print("FOUND" if found else len(sessions))
+except Exception:
+    print("ERROR")
+EOF
+)
 
 if [ "${SESSION_CHECK}" = "FOUND" ]; then
   pass_check "Session '${TEST_SESSION_ID}' verified in Langfuse Sessions API (HTTP 200)."
@@ -251,15 +259,18 @@ else
 fi
 
 # Verify observations stream
-OBS_COUNT=$(python3 -c "
+OBS_COUNT=$(python3 - "${TMP_OBS}" << 'EOF' 2>/dev/null || echo "0"
 import json
+import sys
+
 try:
-    with open('${TMP_OBS}', 'r') as f:
+    with open(sys.argv[1], "r") as f:
         data = json.load(f)
-    print(len(data.get('data', [])))
+    print(len(data.get("data", [])))
 except Exception:
     print(0)
-" 2>/dev/null || echo "0")
+EOF
+)
 
 if [ "${OBS_COUNT}" -gt 0 ]; then
   pass_check "Live observations stream verified in Langfuse v4 (${OBS_COUNT} records captured)."

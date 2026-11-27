@@ -24,6 +24,7 @@ services:
       - ${LITELLM_DB_DATA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/litellm_db}:/var/lib/postgresql/data
     networks:
       brainsos-control-net:
+        ipv4_address: ${LITELLM_DB_CONTROL_IP:-172.28.2.20}
         aliases:
           - litellm-db
           - brainsos-infra-litellm-db
@@ -93,13 +94,17 @@ services:
       - LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:-brainsos_lens_gateway_secret_must_be_32_chars_min}
     networks:
       brainsos-control-net:
+        ipv4_address: ${LITELLM_CONTROL_IP:-172.28.2.10}
+        gw_priority: 100
       brainsos-internal-net:
+        ipv4_address: ${LITELLM_INTERNAL_IP:-172.28.1.11}
         aliases:
           - litellm
           - brainsos-litellm
           - brainsos-infra-litellm
           - brainsos-control-litellm
       brainsos-ingress-net:
+        ipv4_address: ${LITELLM_INGRESS_IP:-172.28.0.11}
     logging: *default-logging
     depends_on:
       litellm-db:
@@ -123,31 +128,36 @@ services:
       - "no-new-privileges:true"
     command: ["server", "-config=/openbao/config/openbao.hcl"]
     environment:
-      - BAO_ADDR=http://127.0.0.1:8200
+      - BAO_ADDR=https://127.0.0.1:8200
+      - BAO_CACERT=/openbao/tls/ca.crt
       - HOME=/openbao/data
     volumes:
       - ../../config/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
       - ${BRAINSOS_OPENBAO_DATA_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/openbao}:/openbao/data
+      - ${BRAINSOS_OPENBAO_TLS_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/openbao_tls}:/openbao/tls:ro
       - ${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
     networks:
       brainsos-control-net:
+        ipv4_address: ${OPENBAO_CONTROL_IP:-172.28.2.11}
         aliases:
           - openbao
           - secrets
           - brainsos-control-secrets
       brainsos-secrets-net:
+        ipv4_address: ${OPENBAO_SECRETS_IP:-172.28.4.11}
         aliases:
           - openbao
           - secrets
           - brainsos-control-secrets
       brainsos-ingress-net:
+        ipv4_address: ${OPENBAO_INGRESS_IP:-172.28.0.13}
         aliases:
           - openbao
           - brainsos-openbao
           - brainsos-control-secrets
     logging: *default-logging
     healthcheck:
-      test: [ "CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:8200/v1/sys/health 2>&1 | awk '/^  HTTP\\// {print $2}' | grep -Eq '^(200|429|472|473|501|503)$'" ]
+      test: [ "CMD-SHELL", "SSL_CERT_FILE=/openbao/tls/ca.crt wget -q -S -O /dev/null https://127.0.0.1:8200/v1/sys/health 2>&1 | awk '/^  HTTP\\// {print $2}' | grep -Eq '^(200|429|472|473|501|503)$'" ]
       interval: 10s
       timeout: 5s
       retries: 5

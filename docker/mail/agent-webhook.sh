@@ -6,11 +6,14 @@
 # ==============================================================================
 set -e
 
-# Source environment variables if available
-if [ -f /etc/environment ]; then
+# Source non-secret webhook config and 0600 vmail-owned MAIL_WEBHOOK_SECRET if present
+if [ -r /etc/dovecot/webhook.env ]; then
     set -a
-    . /etc/environment
+    . /etc/dovecot/webhook.env
     set +a
+fi
+if [ -z "${MAIL_WEBHOOK_SECRET:-}" ] && [ -r /etc/dovecot/mail-webhook-secret ]; then
+    IFS= read -r MAIL_WEBHOOK_SECRET < /etc/dovecot/mail-webhook-secret || true
 fi
 
 SPOOL_DIR="${BRAINSOS_SPOOL_DIR:-/var/spool/brainsos/inbound}"

@@ -94,6 +94,32 @@ echo "[BRAINSOS-MAIL] Provisioning hashed accounts in /etc/mail-brainsos/users..
 > /etc/mail-brainsos/users
 > /etc/mail-brainsos/vmailbox
 > /etc/mail-brainsos/virtual
+> /etc/mail-brainsos/sender_login
+
+ADMIN_SASL_LOGINS=""
+for dom in "${UNIQUE_DOMAINS[@]}"; do
+    ADMIN_SASL_LOGINS="${ADMIN_SASL_LOGINS:+${ADMIN_SASL_LOGINS},}admin@${dom},akadmin@${dom}"
+    if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
+        ADMIN_SASL_LOGINS="${ADMIN_SASL_LOGINS},${ADMIN_USER}@${dom}"
+    fi
+done
+
+_build_user_logins() {
+    local uname="$1"
+    local logins=""
+    for dom in "${UNIQUE_DOMAINS[@]}"; do
+        logins="${logins:+${logins},}${uname}@${dom}"
+    done
+    printf '%s' "${logins}"
+}
+
+OPERATOR_LOGINS="$(_build_user_logins operator)"
+TERRASTELLA_LOGINS="$(_build_user_logins terrastella)"
+BAWTFORD_LOGINS="$(_build_user_logins bawtford)"
+MARVIN_LOGINS="$(_build_user_logins marvin)"
+PING_LOGINS="$(_build_user_logins ping)"
+CLAUDE_LOGINS="$(_build_user_logins claude)"
+GPT_LOGINS="$(_build_user_logins gpt)"
 
 for d in "${UNIQUE_DOMAINS[@]}"; do
 cat << EOF >> /etc/mail-brainsos/users
@@ -126,25 +152,46 @@ root@${d} admin@${d}
 akadmin@${d} admin@${d}
 cindy@${d} bawtford@${d}
 EOF
+
+cat << EOF >> /etc/mail-brainsos/sender_login
+admin@${d} ${ADMIN_SASL_LOGINS}
+akadmin@${d} ${ADMIN_SASL_LOGINS}
+postmaster@${d} ${ADMIN_SASL_LOGINS}
+root@${d} ${ADMIN_SASL_LOGINS}
+operator@${d} ${OPERATOR_LOGINS}
+terrastella@${d} ${TERRASTELLA_LOGINS}
+bawtford@${d} ${BAWTFORD_LOGINS}
+cindy@${d} ${BAWTFORD_LOGINS}
+marvin@${d} ${MARVIN_LOGINS}
+ping@${d} ${PING_LOGINS}
+claude@${d} ${CLAUDE_LOGINS}
+gpt@${d} ${GPT_LOGINS}
+EOF
+
 if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
     echo "${ADMIN_USER}@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::" >> /etc/mail-brainsos/users
     echo "${ADMIN_USER}@${d} admin" >> /etc/mail-brainsos/vmailbox
+    echo "${ADMIN_USER}@${d} ${ADMIN_SASL_LOGINS}" >> /etc/mail-brainsos/sender_login
 fi
 done
 
-chmod 0640 /etc/mail-brainsos/users
+chmod 0640 /etc/mail-brainsos/users /etc/mail-brainsos/sender_login
 
-# Configure Postfix hostname, domain, loopback mynetworks & SASL recipient restrictions (#388)
+# Configure Postfix hostname, domain, loopback mynetworks & SASL sender/recipient restrictions (#388 / #401)
 DOMAINS_STR=$(IFS=', '; echo "${UNIQUE_DOMAINS[*]}")
 postconf -e "myhostname = ${PRIMARY_LOCAL_DOMAIN}"
 postconf -e "mydomain = ${PRIMARY_LOCAL_DOMAIN}"
 postconf -e "virtual_mailbox_domains = ${DOMAINS_STR}"
 postconf -e "mynetworks = 127.0.0.0/8 [::1]/128"
-postconf -e "smtpd_recipient_restrictions = reject_non_fqdn_recipient, permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination, reject"
+postconf -e "smtpd_sender_login_maps = lmdb:/etc/mail-brainsos/sender_login"
+postconf -e "smtpd_sender_restrictions = permit_mynetworks, reject_sender_login_mismatch"
+postconf -e "smtpd_recipient_restrictions = reject_non_fqdn_recipient, permit_mynetworks, reject_sender_login_mismatch, permit_sasl_authenticated, reject_unauth_destination, reject"
 
 # Compile Postfix lookup databases
 postmap lmdb:/etc/mail-brainsos/vmailbox
 postmap lmdb:/etc/mail-brainsos/virtual
+postmap lmdb:/etc/mail-brainsos/sender_login
+chmod 0640 /etc/mail-brainsos/sender_login* 2>/dev/null || true
 newaliases
 
 # Clean up any stale lock files from previous unclean shutdowns
@@ -268,9 +315,20 @@ touch /var/log/dovecot.log
 chown dovecot:dovecot /var/log/dovecot.log 2>/dev/null || true
 tail -n 0 -F /var/log/dovecot.log &
 
-# Export environment variables for Dovecot Sieve child scripts
-env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_|BRAINSOS_INGRESS_URL|BRAINSOS_SPOOL_DIR)' > /etc/environment || true
-chmod 644 /etc/environment
+# Store MAIL_WEBHOOK_SECRET and webhook configuration strictly in 0600 vmail:vmail files
+(
+    umask 077
+    if [ -n "${MAIL_WEBHOOK_SECRET:-}" ]; then
+        printf '%s\n' "${MAIL_WEBHOOK_SECRET}" > /etc/dovecot/mail-webhook-secret
+        chown vmail:vmail /etc/dovecot/mail-webhook-secret
+        chmod 0600 /etc/dovecot/mail-webhook-secret
+    else
+        rm -f /etc/dovecot/mail-webhook-secret
+    fi
+    env | grep -E '^(HERMES_API_|BRAINSOS_AGENT_|BRAINSOS_INGRESS_URL|BRAINSOS_SPOOL_DIR)=' > /etc/dovecot/webhook.env || true
+    chown vmail:vmail /etc/dovecot/webhook.env
+    chmod 0600 /etc/dovecot/webhook.env
+)
 
 # Start Dovecot
 echo "[BRAINSOS-MAIL] Starting Dovecot daemon..."

@@ -25,6 +25,16 @@ services:
       - ${BRAINSOS_CODE_SERVER_CONFIG:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/vscode_config}:/home/coder/.config
       - ${BRAINSOS_CODE_SERVER_DATA:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/vscode_data}:/home/coder/.local/share/code-server
       - ${BRAINSOS_DATA_DIR:-../../data}:/data
+      - type: tmpfs
+        target: /data/control_plane
+        read_only: true
+        tmpfs:
+          size: 1048576
+      - type: tmpfs
+        target: /data/backups
+        read_only: true
+        tmpfs:
+          size: 1048576
       - ${BRAINSOS_MEMORIES_DIR:-${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}}:/memories
       - ../../config/editor:/etc/brainsos/editor:ro
       - ../../docker/editor/entrypoint.sh:/usr/local/bin/brainsos-editor-entrypoint.sh:ro
@@ -62,7 +72,8 @@ services:
       - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
       - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
     networks:
-      - brainsos-ide-net
+      brainsos-ide-net:
+        ipv4_address: ${CODE_SERVER_IDE_IP:-172.28.6.12}
 
   # Communications & Mail Plane: SOGo Database (PostgreSQL 16)
   sogo-db:
@@ -79,6 +90,7 @@ services:
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/sogo/db:/var/lib/postgresql/data
     networks:
       brainsos-mail-net:
+        ipv4_address: ${SOGO_DB_MAIL_IP:-172.28.5.20}
         aliases:
           - sogo-db
           - brainsos-sogo-db
@@ -114,10 +126,13 @@ services:
       - ../../docker/sogo/sogo.conf:/etc/sogo/sogo.conf.template:ro
       - ../../docker/sogo/theme-brainsos.css:/usr/lib/GNUstep/SOGo/WebServerResources/css/theme-brainsos.css:ro
       - ../../docker/sogo/theme-brainsos.js:/usr/lib/GNUstep/SOGo/WebServerResources/js/theme-brainsos.js:ro
-      - ../../docker/sogo/nginx.conf:/etc/nginx/sites-enabled/default:ro
+      - ../../docker/sogo/nginx.conf:/etc/nginx/sites-available/default.template:ro
     networks:
       brainsos-ingress-net:
+        ipv4_address: ${SOGO_INGRESS_IP:-172.28.0.12}
       brainsos-mail-net:
+        ipv4_address: ${SOGO_MAIL_IP:-172.28.5.10}
+        gw_priority: 100
         aliases:
           - sogo
           - brainsos-net-sogo
@@ -133,6 +148,7 @@ services:
       - SOGO_DB_USER=${SOGO_DB_USER:-sogo}
       - SOGO_DB_PASSWORD=${SOGO_DB_PASSWORD:-sogo_secret_pass}
       - SOGO_DB_NAME=${SOGO_DB_NAME:-sogo}
+      - CADDY_INGRESS_TOKEN=${CADDY_INGRESS_TOKEN:-}
       - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
       - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
       - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
@@ -168,7 +184,7 @@ services:
       - ../../docker/mail/agent-webhook.sh:/usr/lib/dovecot/sieve-pipe/agent-webhook.sh:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      - "control-plane:host-gateway"
+      - "control-plane:${BRAINSOS_MAIL_CONTROL_PLANE_HOST:-${BRAINSOS_MAIL_GATEWAY:-172.28.5.1}}"
     environment:
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
       - BRAINSOS_LOCAL_DOMAIN=${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
@@ -195,7 +211,10 @@ services:
       start_period: 10s
     networks:
       brainsos-mail-net:
+        ipv4_address: ${MAIL_SERVER_MAIL_IP:-172.28.5.11}
+        gw_priority: 100
       brainsos-internal-net:
+        ipv4_address: ${MAIL_SERVER_INTERNAL_IP:-172.28.1.12}
         aliases:
           - mail-server
           - brainsos-net-mail-server
@@ -217,6 +236,7 @@ services:
       - ${BRAINSOS_AUTHENTIK_DB_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_db}:/var/lib/postgresql/data
     networks:
       brainsos-auth-net:
+        ipv4_address: ${AUTHENTIK_DB_AUTH_IP:-172.28.3.20}
         aliases:
           - authentik-db
           - brainsos-auth-db
@@ -242,6 +262,7 @@ services:
     command: ["redis-server", "--requirepass", "${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}"]
     networks:
       brainsos-auth-net:
+        ipv4_address: ${AUTHENTIK_REDIS_AUTH_IP:-172.28.3.21}
         aliases:
           - authentik-redis
           - brainsos-auth-redis
@@ -282,6 +303,7 @@ services:
       AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
     volumes:
       - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
+      - ../../config/authentik/themes/brainsos/login.css:/web/dist/login.css:ro
       - ../../config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
       - ../../config/authentik/themes/brainsos:/templates/custom-themes/brainsos:ro
       - ../../config/authentik/blueprints:/blueprints/zzz-brainsos:ro
@@ -291,7 +313,9 @@ services:
       - "127.0.0.1:${AUTHENTIK_PORT:-9002}:9000"
     networks:
       brainsos-ingress-net:
+        ipv4_address: ${AUTHENTIK_INGRESS_IP:-172.28.0.14}
       brainsos-auth-net:
+        ipv4_address: ${AUTHENTIK_SERVER_AUTH_IP:-172.28.3.10}
         aliases:
           - authentik-server
           - brainsos-auth-server
@@ -332,6 +356,7 @@ services:
       AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
     volumes:
       - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
+      - ../../config/authentik/themes/brainsos/login.css:/web/dist/login.css:ro
       - ../../config/authentik/themes/brainsos/brainsos_logo.svg:/web/dist/assets/icons/brainsos_logo.svg:ro
       - ../../config/authentik/themes/brainsos:/templates/custom-themes/brainsos:ro
       - ../../config/authentik/blueprints:/blueprints/zzz-brainsos:ro
@@ -339,6 +364,7 @@ services:
       - ${BRAINSOS_AUTHENTIK_MEDIA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_media}:/media
     networks:
       brainsos-auth-net:
+        ipv4_address: ${AUTHENTIK_WORKER_AUTH_IP:-172.28.3.11}
         aliases:
           - authentik-worker
           - brainsos-auth-worker
@@ -370,10 +396,10 @@ services:
       - GITEA__server__DISABLE_SSH=true
       - GITEA__server__OFFLINE_MODE=true
       - GITEA__security__INSTALL_LOCK=true
-      - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY:-brainsos_gitea_secret_key}
-      - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN:-brainsos_gitea_internal_token}
+      - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY:-}
+      - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN:-}
       - GITEA__security__REVERSE_PROXY_LIMIT=1
-      - GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES=${CADDY_TRUSTED_PROXIES:-172.16.0.0/12,10.0.0.0/8,127.0.0.0/8}
+      - GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES=${CADDY_TRUSTED_PROXIES:-172.28.0.10/32,172.28.6.10/32}
       - GITEA__security__REVERSE_PROXY_AUTHENTICATION_USER=X-Authentik-Username
       - GITEA__security__REVERSE_PROXY_AUTHENTICATION_EMAIL=X-Authentik-Email
       - GITEA__security__REVERSE_PROXY_AUTHENTICATION_FULL_NAME=X-Authentik-Name
@@ -393,7 +419,9 @@ services:
       start_period: 10s
     networks:
       brainsos-ingress-net:
+        ipv4_address: ${GITEA_INGRESS_IP:-172.28.0.15}
       brainsos-ide-net:
+        ipv4_address: ${GITEA_IDE_IP:-172.28.6.11}
         aliases:
           - gitea
           - git

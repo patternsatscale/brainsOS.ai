@@ -47,14 +47,17 @@ done
 log_info "1. Validating configuration templates in ${APPLIANCE_CONFIGS}/..."
 
 # 1A. docker-daemon.json
-python3 -c "
+python3 - "${APPLIANCE_CONFIGS}" << 'EOF'
 import json
-with open('${APPLIANCE_CONFIGS}/docker-daemon.json') as f:
+import os
+import sys
+
+with open(os.path.join(sys.argv[1], "docker-daemon.json")) as f:
     d = json.load(f)
-assert d.get('log-driver') == 'json-file'
-assert d.get('log-opts', {}).get('max-size') == '50m'
-assert d.get('log-opts', {}).get('max-file') == '3'
-"
+assert d.get("log-driver") == "json-file"
+assert d.get("log-opts", {}).get("max-size") == "50m"
+assert d.get("log-opts", {}).get("max-file") == "3"
+EOF
 log_success "docker-daemon.json template is valid JSON with max-size: 50m and max-file: 3."
 
 # 1B. journald-brainsos.conf
@@ -129,17 +132,19 @@ fi
 # ------------------------------------------------------------------------------
 log_info "5. Validating disk capacity reporting in ./scripts/control/update.sh..."
 UPDATE_JSON="$(./scripts/control/update.sh --check --json)"
-python3 -c "
-import json, sys
-data = json.loads('''${UPDATE_JSON}''')
-assert 'disk' in data, 'Missing disk field in update.sh JSON'
-disk = data['disk']
-assert 'total_gb' in disk
-assert 'free_gb' in disk
-assert 'free_pct' in disk
-assert 'warning' in disk
-print(f'Verified update.sh disk reporting: {disk[\"free_gb\"]} GB free ({disk[\"free_pct\"]}%)')
-"
+UPDATE_JSON="${UPDATE_JSON}" python3 - << 'EOF'
+import json
+import os
+
+data = json.loads(os.environ["UPDATE_JSON"])
+assert "disk" in data, "Missing disk field in update.sh JSON"
+disk = data["disk"]
+assert "total_gb" in disk
+assert "free_gb" in disk
+assert "free_pct" in disk
+assert "warning" in disk
+print(f"Verified update.sh disk reporting: {disk['free_gb']} GB free ({disk['free_pct']}%)")
+EOF
 log_success "Pre-flight disk metrics verified in update.sh."
 
 # ------------------------------------------------------------------------------

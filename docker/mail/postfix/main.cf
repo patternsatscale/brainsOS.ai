@@ -14,11 +14,17 @@ inet_protocols = ipv4
 # Trust strictly loopback; container & remote SMTP must authenticate via SASL (#388)
 mynetworks = 127.0.0.0/8 [::1]/128
 
-# Recipient restrictions (#388):
-# Require loopback (mynetworks) or SASL authentication for all mail submissions.
+# Recipient & Sender Restrictions (#388 / #401):
+# Require loopback (mynetworks) or SASL authentication and bind authenticated senders to owned addresses.
+smtpd_sender_login_maps = lmdb:/etc/mail-brainsos/sender_login
+smtpd_sender_restrictions =
+    permit_mynetworks,
+    reject_sender_login_mismatch
+
 smtpd_recipient_restrictions =
     reject_non_fqdn_recipient,
     permit_mynetworks,
+    reject_sender_login_mismatch,
     permit_sasl_authenticated,
     reject_unauth_destination,
     reject

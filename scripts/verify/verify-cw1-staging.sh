@@ -97,17 +97,17 @@ echo "--- 1. Agent Boundary & Compartmentalization (Rules 4 & 7) ---"
 assert_output_not_contains \
   "Agent container compose has NO pipeline mount" \
   "./data/agent_apps/cindypawford/pipeline" \
-  cat "${ROOT_DIR}/docker-compose.agents.yml"
+  cat "${ROOT_DIR}/docker/compose/compose.agents.yml"
 
 assert_output_not_contains \
   "Agent container compose has NO AWS credentials" \
   "AWS_ACCESS_KEY_ID" \
-  cat "${ROOT_DIR}/docker-compose.agents.yml"
+  cat "${ROOT_DIR}/docker/compose/compose.agents.yml"
 
 assert_output_contains \
   "Agent container mounts ONLY site to /app/html" \
   "./data/agent_apps/cindypawford/site:/app/html" \
-  cat "${ROOT_DIR}/docker-compose.agents.yml"
+  cat "${ROOT_DIR}/docker/compose/compose.agents.yml"
 
 # ------------------------------------------------------------------------------
 # 2. SST Ion Infrastructure Scaffold (CW1-2 & CW1-4)

@@ -17,12 +17,12 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Secret Scanning (Gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,7 +50,7 @@ jobs:
       - name: Verify Agent Workspace & Platform Hygiene
         run: |
           echo "Ensuring no live agent workspace state, comms data, or platform databases are committed..."
-          LIVE_WORKSPACE=$(git ls-files data/agent_workspaces/ data/workspace/ data/comms/ data/telemetry/ data/control_plane/ | grep -vE 'data/(agent_workspaces|workspace|comms|telemetry|control_plane)/\.gitkeep$' || true)
+          LIVE_WORKSPACE=$(git ls-files data/agents/ data/agent_workspaces/ data/workspace/ data/comms/ data/telemetry/ data/control_plane/ | grep -vE 'data/(agents|agent_workspaces|workspace|comms|telemetry|control_plane)/\.gitkeep$' || true)
           if [ -n "${LIVE_WORKSPACE}" ]; then
             echo "::error::Live platform state or database files found in repository tracking: ${LIVE_WORKSPACE}"
             echo "The agent workspace, comms, telemetry, and control planes are reserved for runtime packages, tools, and databases and must be git-ignored."
@@ -61,8 +61,48 @@ jobs:
       - name: Shell Script Syntax Validation
         run: |
           echo "Validating bash syntax on all scripts..."
-          find scripts -type f -name "*.sh" -exec bash -n {} +
+          find scripts packages/brainsOS-appliance -type f -name "*.sh" -exec bash -n {} +
           echo "✓ All script files passed syntax check"
+
+      - name: Reject Unquoted Python Heredocs with Shell Expansion
+        run: |
+          echo "Checking scripts for unquoted python3 heredocs with shell expansion..."
+          python3 - << 'PYEOF'
+          import pathlib
+          import re
+          import sys
+
+          header_re = re.compile(
+              r"""(?:"?\$\{?PYTHON_BIN\}?"?|python3)\s+(?:-\s*)?<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1"""
+          )
+          violations = []
+          for root_dir in ("scripts", "packages/brainsOS-appliance"):
+              root = pathlib.Path(root_dir)
+              if not root.exists():
+                  continue
+              for sh in sorted(root.rglob("*.sh")):
+                  lines = sh.read_text(encoding="utf-8", errors="ignore").splitlines()
+                  i = 0
+                  while i < len(lines):
+                      m = header_re.search(lines[i])
+                      if m:
+                          quote, tag = m.group(1), m.group(2)
+                          start = i + 1
+                          body = []
+                          i += 1
+                          while i < len(lines) and lines[i].strip() != tag:
+                              body.append(lines[i])
+                              i += 1
+                          if not quote and "$" in "\n".join(body):
+                              violations.append(f"{sh}:{start} (<< {tag})")
+                      i += 1
+          if violations:
+              print("::error::Unquoted python3 heredoc(s) with shell expansion detected:")
+              for v in violations:
+                  print(f"  - {v}")
+              sys.exit(1)
+          print("✓ Zero unquoted python3 heredocs with shell expansion found.")
+          PYEOF
 
       - name: Verify Zero Private Fleet Leakage (Rule 11 & Rule 14)
         run: |
@@ -95,29 +135,73 @@ jobs:
       - name: Verify Control Plane Database Isolation & Guardrails
         run: |
           echo "Validating strict database isolation guardrails..."
-          
-          # 1. Hermes container must have zero database environment variables
-          HERMES_DB_ENV=$(docker compose config | awk '/container_name: brainsos-agent/,/container_name:/' | grep -iE 'POSTGRES|DATABASE_URL' || true)
-          if [ -n "${HERMES_DB_ENV}" ]; then
-            echo "::error::Hermes container is exposed to database environment variables: ${HERMES_DB_ENV}"
-            exit 1
-          fi
+          COMPOSE_JSON="$(docker compose config --format json)"
+          COMPOSE_JSON="${COMPOSE_JSON}" python3 - << 'PYEOF'
+          import json
+          import os
+          import re
+          import sys
 
-          # 2. Database container must NOT share networks with Hermes (brainsos-ingress or brainsos-internal)
-          DB_NETWORKS=$(docker compose config | awk '/container_name: brainsos-(infra-)?litellm-db/,/container_name:/' | grep -E 'brainsos-ingress|brainsos-internal' || true)
-          if [ -n "${DB_NETWORKS}" ]; then
-            echo "::error::Database container is attached to Hermes-accessible networks: ${DB_NETWORKS}"
-            exit 1
-          fi
+          raw_json = os.environ.get("COMPOSE_JSON")
+          cfg = json.loads(raw_json) if raw_json is not None else json.load(sys.stdin)
+          services = cfg.get("services") or {}
+          if not services:
+              print("::error::docker compose config returned no services.")
+              sys.exit(1)
 
-          # 3. Database port must be bound strictly to 127.0.0.1
-          DB_PORTS=$(docker compose config | awk '/container_name: brainsos-(infra-)?litellm-db/,/container_name:/' | grep -E '0\.0\.0\.0.*5432|:[0-9]+:5432' || true)
-          if [ -n "${DB_PORTS}" ]; then
-            echo "::error::Database port is not strictly bound to loopback 127.0.0.1: ${DB_PORTS}"
-            exit 1
-          fi
+          # 1. Agent / runner containers must have zero database environment variables
+          agent_services = {
+              name: svc
+              for name, svc in services.items()
+              if str(svc.get("container_name", "")).startswith("brainsos-agent")
+              or name.startswith("runner-")
+          }
+          if not agent_services:
+              print("::error::Rule-6 gate matched zero agent/runner services; failing closed.")
+              sys.exit(1)
+          for name, svc in sorted(agent_services.items()):
+              env = svc.get("environment") or {}
+              env_keys = list(env.keys()) if isinstance(env, dict) else [str(e).split("=", 1)[0] for e in env]
+              bad_env = [k for k in env_keys if re.search(r"(POSTGRES|DATABASE_URL)", k, re.IGNORECASE)]
+              if bad_env:
+                  print(f"::error::Agent service {name} exposed to DB env vars: {bad_env}")
+                  sys.exit(1)
 
-          # 4. No database files in git tracking
+          # 2. Control Plane DB container must match Rule-6 regex, be expected service 'litellm-db',
+          #    stay isolated from ingress/internal networks, and expose zero host ports.
+          db_re = re.compile(r"^brainsos-(control-|infra-)?litellm-db$")
+          db_services = {
+              name: svc
+              for name, svc in services.items()
+              if db_re.match(str(svc.get("container_name", "")))
+          }
+          if not db_services:
+              print("::error::No service container matched Rule-6 regex brainsos-(control-|infra-)?litellm-db; failing closed.")
+              sys.exit(1)
+
+          unexpected = [name for name in db_services if name != "litellm-db"]
+          if unexpected:
+              print(f"::error::Unexpected service name(s) matched Rule-6 DB regex: {unexpected}")
+              sys.exit(1)
+
+          for name, svc in db_services.items():
+              nets = list((svc.get("networks") or {}).keys())
+              if not nets:
+                  print(f"::error::Database service {name} has no networks configured.")
+                  sys.exit(1)
+              forbidden_nets = [n for n in nets if re.search(r"(brainsos-ingress|brainsos-internal)", n) or n != "brainsos-control-net"]
+              if forbidden_nets:
+                  print(f"::error::Database service {name} attached to forbidden network(s): {forbidden_nets}")
+                  sys.exit(1)
+              ports = svc.get("ports") or []
+              if ports:
+                  print(f"::error::Database service {name} exposes host port binding(s): {ports}")
+                  sys.exit(1)
+
+          print(f"✓ Verified Rule-6 DB isolation for {list(db_services.keys())} and {len(agent_services)} agent service(s).")
+          PYEOF
+
+          # 3. No database files in git tracking
           DB_FILES=$(git ls-files | grep -E '(\.db$|\.sqlite|\.sql$|data/litellm_db/|data/postgres/)' || true)
           if [ -n "${DB_FILES}" ]; then
             echo "::error::Forbidden database files found in git tree: ${DB_FILES}"

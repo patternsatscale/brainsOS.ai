@@ -31,15 +31,7 @@ export function setupEmailIngressFlow(input: EmailIngressFlowInput) {
   // 3. Multi-Stage Ingress SQS Queue & Dead Letter Queue (DLQ)
   const ingressQueues = createMailIngressQueues(stage);
 
-  // 4. SES Inbound Receipt Rule Set & Receipt Rules
-  const mailReceipt = createMailReceiptRule(
-    stage,
-    ingressDomains,
-    ingressBucket.bucketId,
-    [ingressBucket.bucketPolicy]
-  );
-
-  // 5. Ingress Sanitizer Lambda (Ticket #210)
+  // 4. Ingress Sanitizer Lambda (Ticket #210, #401)
   const sanitizerLambda = new sst.aws.Function(`BrainsOSMailSanitizer-${cleanStage}`, {
     handler: "src/functions/sanitizer/handler.handler",
     environment: {
@@ -47,6 +39,7 @@ export function setupEmailIngressFlow(input: EmailIngressFlowInput) {
         process.env.ALLOWED_EXTERNAL_SENDERS || "patternsatscale@gmail.com",
       ALLOWED_RECIPIENT_DOMAINS: ingressDomains.join(","),
       INGRESS_QUEUE_URL: ingressQueues.queueUrl,
+      MAIL_INGRESS_BUCKET: ingressBucket.bucketId,
     },
     permissions: [
       {
@@ -67,24 +60,25 @@ export function setupEmailIngressFlow(input: EmailIngressFlowInput) {
     ],
   });
 
-  // 6. S3 Trigger to Lambda on raw/ ObjectCreated
-  new aws.lambda.Permission(`BrainsOSMailSanitizerPerm-${cleanStage}`, {
-    action: "lambda:InvokeFunction",
-    function: sanitizerLambda.arn,
-    principal: "s3.amazonaws.com",
-    sourceArn: ingressBucket.bucketArn,
-  });
+  // 5. SES Trigger Permission & Receipt Rule Set with Authoritative Verdicts
+  const caller = aws.getCallerIdentityOutput({});
+  const sesPermission = new aws.lambda.Permission(
+    `BrainsOSMailSanitizerSesPerm-${cleanStage}`,
+    {
+      action: "lambda:InvokeFunction",
+      function: sanitizerLambda.arn,
+      principal: "ses.amazonaws.com",
+      sourceAccount: caller.accountId,
+    }
+  );
 
-  new aws.s3.BucketNotification(`BrainsOSMailIngressNotification-${cleanStage}`, {
-    bucket: ingressBucket.bucketId,
-    lambdaFunctions: [
-      {
-        lambdaFunctionArn: sanitizerLambda.arn,
-        events: ["s3:ObjectCreated:*"],
-        filterPrefix: "raw/",
-      },
-    ],
-  });
+  const mailReceipt = createMailReceiptRule(
+    stage,
+    ingressDomains,
+    ingressBucket.bucketId,
+    sanitizerLambda.arn,
+    [ingressBucket.bucketPolicy, sesPermission]
+  );
 
   // 7. Local Workstation Worker IAM Policy & Credentials (Least Privilege)
   const workerCreds = createMailWorkerCredentials(

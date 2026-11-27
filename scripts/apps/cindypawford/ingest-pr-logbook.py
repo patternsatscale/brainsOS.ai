@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 
+
 def find_repo_root():
     d = os.path.abspath(os.path.dirname(__file__))
     while d != os.path.dirname(d):

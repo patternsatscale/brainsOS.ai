@@ -115,8 +115,11 @@ cd "${REPO_ROOT}"
 if [[ "${BRAINSOS_AUTO_PULL_ON_BOOT:-false}" =~ ^(true|1|yes)$ ]] && [ "${RELOAD_ENV_SKIP_PULL:-false}" != "true" ]; then
   if [ -d "${REPO_ROOT}/.git" ] && command -v git >/dev/null 2>&1; then
     git config --system --add safe.directory "${REPO_ROOT}" 2>/dev/null || true
-    ACTIVE_GIT_BRANCH="${BRAINSOS_GIT_BRANCH:-$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")}"
-    [ "${ACTIVE_GIT_BRANCH}" = "HEAD" ] && ACTIVE_GIT_BRANCH="main"
+    if [ -n "${BRAINSOS_GIT_BRANCH:-}" ]; then
+      ACTIVE_GIT_BRANCH="${BRAINSOS_GIT_BRANCH}"
+    elif ! ACTIVE_GIT_BRANCH="$(git -C "${REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null)" || [ -z "${ACTIVE_GIT_BRANCH}" ] || [ "${ACTIVE_GIT_BRANCH}" = "HEAD" ]; then
+      ACTIVE_GIT_BRANCH="main"
+    fi
     BEFORE_SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || true)"
     log_info "Checking origin/${ACTIVE_GIT_BRANCH} for latest source updates..."
     if timeout 20 git -C "${REPO_ROOT}" fetch --quiet origin "${ACTIVE_GIT_BRANCH}" 2>/dev/null; then
@@ -213,6 +216,25 @@ if command -v curl >/dev/null 2>&1 && [ -f "${REPO_ROOT}/scripts/control/env-ups
       && [ -f "${REPO_ROOT}/scripts/control/sync-route53-ddns.py" ]; then
       _DDNS_PY="${REPO_ROOT}/.venv/bin/python"
       [ ! -x "${_DDNS_PY}" ] && _DDNS_PY="python3"
+      if ! [[ "${BRAINSOS_DDNS_OWNER_SECRET:-}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        _DDNS_DATA_DIR="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+        [[ "${_DDNS_DATA_DIR}" != /* ]] && _DDNS_DATA_DIR="${REPO_ROOT}/${_DDNS_DATA_DIR#./}"
+        _DDNS_SECRET_FILE="${_DDNS_DATA_DIR}/control_plane/ddns-owner-secret"
+        if [ -f "${_DDNS_SECRET_FILE}" ]; then
+          _DDNS_CANDIDATE="$(tr -d '[:space:]' < "${_DDNS_SECRET_FILE}" 2>/dev/null || true)"
+          if [[ "${_DDNS_CANDIDATE}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            BRAINSOS_DDNS_OWNER_SECRET="${_DDNS_CANDIDATE}"
+          fi
+        fi
+        if ! [[ "${BRAINSOS_DDNS_OWNER_SECRET:-}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+          BRAINSOS_DDNS_OWNER_SECRET="$("${_DDNS_PY}" -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null || openssl rand -hex 32)"
+          mkdir -p "${_DDNS_DATA_DIR}/control_plane"
+          printf '%s\n' "${BRAINSOS_DDNS_OWNER_SECRET}" > "${_DDNS_SECRET_FILE}"
+          chmod 600 "${_DDNS_SECRET_FILE}"
+        fi
+        export BRAINSOS_DDNS_OWNER_SECRET
+        _ENV_UPDATES+=("BRAINSOS_DDNS_OWNER_SECRET=${BRAINSOS_DDNS_OWNER_SECRET}")
+      fi
       _DDNS_ARGS=(
         --domain "${_NEW_DOMAIN}"
         --ip "${_PUB_IP}"
@@ -276,6 +298,26 @@ sync_sogo_users() {
   local container="$1"
   local sogo_user="$2"
   local sogo_db="$3"
+  local _hash_sogo_pw
+  _hash_sogo_pw() {
+    local raw_pw="$1"
+    local hashed=""
+    if command -v openssl >/dev/null 2>&1; then
+      local digest
+      digest="$(printf '%s' "${raw_pw}" | openssl passwd -6 -stdin 2>/dev/null || true)"
+      if [[ "${digest}" == \$6\$* ]]; then
+        hashed="{SHA512-CRYPT}${digest}"
+      fi
+    fi
+    if [ -z "${hashed}" ] && command -v python3 >/dev/null 2>&1; then
+      hashed="$(RAW_PW="${raw_pw}" python3 -c "import os, crypt; print('{SHA512-CRYPT}' + crypt.crypt(os.environ['RAW_PW'], crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null || true)"
+    fi
+    if [ -z "${hashed}" ] || [ "${hashed}" = "{SHA512-CRYPT}" ]; then
+      return 1
+    fi
+    printf '%s' "${hashed}"
+  }
+
   local admin_mail_pass="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
   local operator_mail_pass="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
   local terrastella_pass="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
@@ -284,6 +326,17 @@ sync_sogo_users() {
   local ping_pass="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
   local claude_pass="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
   local gpt_pass="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+
+  local admin_mail_hash operator_mail_hash terrastella_hash bawtford_hash marvin_hash ping_hash claude_hash gpt_hash
+  admin_mail_hash="$(_hash_sogo_pw "${admin_mail_pass}")"
+  operator_mail_hash="$(_hash_sogo_pw "${operator_mail_pass}")"
+  terrastella_hash="$(_hash_sogo_pw "${terrastella_pass}")"
+  bawtford_hash="$(_hash_sogo_pw "${bawtford_pass}")"
+  marvin_hash="$(_hash_sogo_pw "${marvin_pass}")"
+  ping_hash="$(_hash_sogo_pw "${ping_pass}")"
+  claude_hash="$(_hash_sogo_pw "${claude_pass}")"
+  gpt_hash="$(_hash_sogo_pw "${gpt_pass}")"
+
   local mail_dom="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
   local admin_user="${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}"
   local superuser_cn="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
@@ -293,14 +346,14 @@ sync_sogo_users() {
   local su_dom_uid="${admin_user}@${mail_dom}"
 
   docker exec -i "${container}" psql -U "${sogo_user}" -d "${sogo_db}" \
-    -v admin_mail_pass="${admin_mail_pass}" \
-    -v operator_mail_pass="${operator_mail_pass}" \
-    -v terrastella_pass="${terrastella_pass}" \
-    -v bawtford_pass="${bawtford_pass}" \
-    -v marvin_pass="${marvin_pass}" \
-    -v ping_pass="${ping_pass}" \
-    -v claude_pass="${claude_pass}" \
-    -v gpt_pass="${gpt_pass}" \
+    -v admin_mail_pass="${admin_mail_hash}" \
+    -v operator_mail_pass="${operator_mail_hash}" \
+    -v terrastella_pass="${terrastella_hash}" \
+    -v bawtford_pass="${bawtford_hash}" \
+    -v marvin_pass="${marvin_hash}" \
+    -v ping_pass="${ping_hash}" \
+    -v claude_pass="${claude_hash}" \
+    -v gpt_pass="${gpt_hash}" \
     -v mail_dom="${mail_dom}" \
     -v admin_user="${admin_user}" \
     -v superuser_cn="${superuser_cn}" \
@@ -345,7 +398,7 @@ sync_sogo_users() {
       WHERE :'admin_user' <> '' AND :'admin_user' NOT IN ('admin', 'akadmin')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
     CREATE OR REPLACE VIEW sogo_addressbook AS
-    SELECT c_uid, c_name, c_password, c_cn, mail
+    SELECT c_uid, c_name, c_cn, mail
     FROM sogo_users
     WHERE c_uid IN (:'admin_user', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
 EOSQL
@@ -497,12 +550,20 @@ if [ -n "${EFFECTIVE_CODE_PASS}" ]; then
   fi
 fi
 
-# Ensure SYSTEM_API_TOKEN and BRAINSOS_UNIT_NAME exist in .env before docker compose up -d
+# Ensure SYSTEM_API_TOKEN, CADDY_INGRESS_TOKEN, GITEA_*, and BRAINSOS_UNIT_NAME exist in .env before docker compose up -d
 if [ -z "${SYSTEM_API_TOKEN:-}" ]; then
   SYSTEM_API_TOKEN="$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')"
   "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN}" >/dev/null 2>&1 || true
   export SYSTEM_API_TOKEN
 fi
+for _sec_key in CADDY_INGRESS_TOKEN GITEA_SECRET_KEY GITEA_INTERNAL_TOKEN; do
+  eval "_cur_sec_val=\"\${${_sec_key}:-}\""
+  if [ -z "${_cur_sec_val}" ] || [[ "${_cur_sec_val}" == brainsos_gitea_* ]]; then
+    _gen_sec_val="$(openssl rand -hex 32 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "${_sec_key}=${_gen_sec_val}" >/dev/null 2>&1 || true
+    eval "export ${_sec_key}=\"\${_gen_sec_val}\""
+  fi
+done
 if [ -z "${BRAINSOS_UNIT_NAME:-}" ]; then
   BRAINSOS_UNIT_NAME="Enterprise Agent Box"
   "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "BRAINSOS_UNIT_NAME=${BRAINSOS_UNIT_NAME}" >/dev/null 2>&1 || true
@@ -538,6 +599,11 @@ mkdir -p \
   "${EFFECTIVE_DATA_DIR}/runners/hermes/state" \
   "${EFFECTIVE_DATA_DIR}/settings"
 
+# Pre-seed OpenBao internal TLS CA/cert/key before docker compose up -d so file mounts never become directories (#399)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-secrets.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-secrets.sh" --init-tls >/dev/null 2>&1 || true
+fi
+
 # One-time seamless migration of legacy Docker named volumes into ${EFFECTIVE_DATA_DIR} bind mounts (#382)
 if [ -z "$(ls -A "${EFFECTIVE_DATA_DIR}/runners/hermes/state" 2>/dev/null)" ] && docker volume inspect brainsos_hermes_runner_data >/dev/null 2>&1; then
   log_info "Migrating legacy brainsos_hermes_runner_data volume into ${EFFECTIVE_DATA_DIR}/runners/hermes/state..."
@@ -572,6 +638,15 @@ for sfile in agents.yaml runners.yaml; do
   fi
 done
 
+# One-time migration of legacy Docker networks lacking deterministic IPAM/bridge names (#399)
+if docker network inspect brainsos-ingress-net >/dev/null 2>&1; then
+  _ingress_br="$(docker network inspect brainsos-ingress-net --format '{{index .Options "com.docker.network.bridge.name"}}' 2>/dev/null || true)"
+  if [ "${_ingress_br}" != "${BRAINSOS_INGRESS_BRIDGE:-br-ingress}" ]; then
+    log_info "Migrating legacy Docker bridge networks to deterministic IPAM subnets..."
+    docker compose down >/dev/null 2>&1 || true
+  fi
+fi
+
 docker compose up -d
 log_success "Docker services updated with current .env configurations."
 if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
@@ -596,6 +671,7 @@ if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
   if [ -n "${MAIL_CONTAINER}" ]; then
     docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/vmailbox 2>/dev/null || true
     docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/virtual 2>/dev/null || true
+    docker exec "${MAIL_CONTAINER}" postmap lmdb:/etc/mail-brainsos/sender_login 2>/dev/null || true
     docker exec "${MAIL_CONTAINER}" doveadm reload 2>/dev/null || true
     docker exec "${MAIL_CONTAINER}" postfix reload 2>/dev/null || true
   fi
@@ -912,24 +988,27 @@ if cognito_enabled and cog_region and cog_pool and cog_client_id:
         f"admin_group = {json.dumps(cog_admin_group)}",
         f"owner_only = {bool(owner_only)!r}",
         "sub = str(info.get(\"sub\") or \"\").strip()",
-        "raw_groups = info.get(\"cognito:groups\") or info.get(\"groups\") or []",
+        "email_verified = info.get(\"email_verified\") is True",
+        "if isinstance(properties, dict):",
+        "    properties[\"groups\"] = []",
+        "    if not email_verified:",
+        "        properties[\"email\"] = None",
+        "raw_groups = info.get(\"cognito:groups\") or []",
         "if isinstance(raw_groups, str):",
         "    raw_groups = [g.strip() for g in raw_groups.split(\",\") if g.strip()]",
-        "groups = [str(g).strip() for g in raw_groups if str(g).strip()]",
-        "is_owner = bool(owner_sub and sub == owner_sub)",
-        "is_group_admin = bool(admin_group and any(g.lower() == admin_group.lower() for g in groups))",
+        "cognito_groups = [str(g).strip() for g in raw_groups if str(g).strip()]",
+        "is_owner = bool(email_verified and owner_sub and sub == owner_sub)",
+        "is_group_admin = bool(email_verified and admin_group and any(g.lower() == admin_group.lower() for g in cognito_groups))",
         "is_admin = is_owner or is_group_admin",
-        "if is_admin and \"authentik Admins\" not in groups:",
-        "    groups.append(\"authentik Admins\")",
-        "elif not is_admin and \"brainsos-viewers\" not in groups:",
-        "    groups.append(\"brainsos-viewers\")",
-        "username = info.get(\"preferred_username\") or info.get(\"cognito:username\") or info.get(\"username\") or info.get(\"email\") or sub",
+        "groups = [\"authentik Admins\"] if is_admin else [\"brainsos-viewers\"]",
+        "username = info.get(\"preferred_username\") or info.get(\"cognito:username\") or info.get(\"username\") or (info.get(\"email\") if email_verified else \"\") or sub",
+        "verified_email = info.get(\"email\") if (email_verified and info.get(\"email\")) else f\"{sub or username}@cognito.unverified.local\"",
         "return {",
         "    \"username\": username,",
-        "    \"email\": info.get(\"email\") or f\"{username}@cognito.local\",",
+        "    \"email\": verified_email,",
         "    \"name\": info.get(\"name\") or username,",
         "    \"groups\": groups,",
-        "    \"is_active\": False if (owner_only and not is_admin) else True,",
+        "    \"is_active\": bool(email_verified and (is_admin or not owner_only)),",
         "}",
     ])
     pm, _ = OAuthSourcePropertyMapping.objects.get_or_create(
@@ -948,7 +1027,7 @@ if cognito_enabled and cog_region and cog_pool and cog_client_id:
             "consumer_secret": cog_client_secret,
             "oidc_well_known_url": well_known,
             "additional_scopes": "openid email profile",
-            "user_matching_mode": "email_link",
+            "user_matching_mode": "identifier",
             "group_matching_mode": "name_link",
             "enabled": True,
         },
@@ -969,7 +1048,7 @@ if cognito_enabled and cog_region and cog_pool and cog_client_id:
         src.profile_url = f"https://{cog_host}/oauth2/userInfo"
     src.oidc_jwks_url = f"https://cognito-idp.{cog_region}.amazonaws.com/{cog_pool}/.well-known/jwks.json"
     src.additional_scopes = "openid email profile"
-    src.user_matching_mode = "email_link"
+    src.user_matching_mode = "identifier"
     src.group_matching_mode = "name_link"
     if auth_flow:
         src.authentication_flow = auth_flow
@@ -1121,6 +1200,11 @@ fi
 if [ -x "${SCRIPT_DIR}/../setup/trust-caddy-ca.sh" ]; then
   log_info "Synchronizing Caddy root CA certificate into active control plane..."
   "${SCRIPT_DIR}/../setup/trust-caddy-ca.sh" --export-only || log_warn "Could not refresh Caddy root CA certificate."
+fi
+
+# Reconcile IMDS & WAN egress firewall rules after Caddy/control-plane reloads (#399)
+if [ -x "${REPO_ROOT}/scripts/setup/imds-guard.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/imds-guard.sh" --apply || log_warn "IMDS guard reconciliation encountered a warning."
 fi
 
 # ------------------------------------------------------------------------------

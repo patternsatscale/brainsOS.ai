@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # Base configuration from environment
-    config = IngressConfig()
+    config = IngressConfig.from_env()
 
     # Apply CLI overrides if provided
     if args.poll_wait is not None:

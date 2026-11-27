@@ -24,7 +24,6 @@ for arg in "$@"; do
   case "$arg" in
     --pull-model)
       PULL_MODEL=true
-      shift
       ;;
   esac
 done
@@ -61,7 +60,16 @@ if command -v docker >/dev/null 2>&1; then
       if [ -z "${BRAINSOS_DOCKER_REEXEC:-}" ] && command -v sg >/dev/null 2>&1; then
         export BRAINSOS_DOCKER_REEXEC=1
         log_info "Refreshing active group permissions for 'docker' via sg..."
-        exec sg docker -c "$0 $*"
+        if [ "${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 4 ]; }; then
+          _reexec_cmd="${0@Q}"
+          for _arg in "$@"; do
+            _reexec_cmd+=" ${_arg@Q}"
+          done
+        else
+          _reexec_cmd="$(printf '%q ' "$0" ${1+"$@"})"
+          _reexec_cmd="${_reexec_cmd% }"
+        fi
+        exec sg docker -c "${_reexec_cmd}"
       fi
     else
       log_warn "Current user '${CURRENT_USER}' cannot communicate with Docker daemon."

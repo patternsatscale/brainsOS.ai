@@ -1,12 +1,14 @@
 """Warm Hermes Runner Service implementing universal IPC /v1/agent/run."""
 
+import asyncio
 import logging
 import os
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List
 
 import httpx
-
 from brainsos_runner import (
     AgentTurnRequest,
     AgentTurnResponse,
@@ -19,16 +21,17 @@ logger = logging.getLogger("brainsos.runners.hermes")
 logging.basicConfig(level=logging.INFO)
 
 LITELLM_BASE_URL = os.getenv("OPENAI_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000/v1")).rstrip("/")
-LITELLM_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("HERMES_LITELLM_KEY", ""))
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("HERMES_LITELLM_KEY", "")
 
 
 async def handle_hermes_turn(request: AgentTurnRequest) -> AgentTurnResponse:
     """Execute a cognitive turn against LiteLLM via OpenAI-compatible Hermes format."""
     start_time = time.perf_counter()
+    active_key = os.getenv("LITELLM_API_KEY") or LITELLM_API_KEY
 
     # Rule 2: All completions route strictly through LiteLLM
     headers = {
-        "Authorization": f"Bearer {LITELLM_API_KEY}",
+        "Authorization": f"Bearer {active_key}",
         "Content-Type": "application/json",
         "X-BrainsOS-Agent": request.agent_id,
         "X-BrainsOS-Run-ID": request.run_id,
@@ -122,3 +125,16 @@ async def handle_hermes_turn(request: AgentTurnRequest) -> AgentTurnResponse:
 
 
 app = create_runner_app(handle_hermes_turn, title="brainsOS Hermes Runner")
+
+
+def _run_ephemeral_cli() -> int:
+    req_file = os.getenv("BRAINSOS_REQUEST_FILE", "").strip()
+    raw_json = Path(req_file).read_text(encoding="utf-8") if (req_file and Path(req_file).is_file()) else sys.stdin.read()
+    turn_req = AgentTurnRequest.model_validate_json(raw_json)
+    resp = asyncio.run(handle_hermes_turn(turn_req))
+    print(resp.model_dump_json())
+    return 0 if resp.status == "completed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_ephemeral_cli())

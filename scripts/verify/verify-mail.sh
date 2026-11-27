@@ -147,12 +147,17 @@ log_success "Webmail (${WEBMAIL_SVC}) direct port ${WEBMAIL_PORT} verified healt
 # 5. SMTP Delivery & IMAP Verification via Python Standard Library
 # ------------------------------------------------------------------------------
 log_info "Step 5: Testing end-to-end SMTP dispatch and IMAP retrieval..."
-python3 - << EOF
-import smtplib
-from email.message import EmailMessage
+SMTP_PORT="${SMTP_PORT}" IMAP_PORT="${IMAP_PORT}" ADMIN_PASS="${ADMIN_PASS}" python3 - << 'EOF'
 import imaplib
-import time
+import os
+import smtplib
 import sys
+import time
+from email.message import EmailMessage
+
+smtp_port = int(os.environ["SMTP_PORT"])
+imap_port = int(os.environ["IMAP_PORT"])
+admin_pass = os.environ["ADMIN_PASS"]
 
 # 1. Send test email from terrastella to admin
 msg = EmailMessage()
@@ -162,7 +167,7 @@ msg["From"] = "terrastella@brainsos.local"
 msg["To"] = "admin@brainsos.local"
 msg.set_content("Automated verification run: all core models and agents reporting green.")
 
-with smtplib.SMTP("127.0.0.1", ${SMTP_PORT}) as s:
+with smtplib.SMTP("127.0.0.1", smtp_port) as s:
     s.send_message(msg)
 print("   [INFO] Dispatched message from terrastella@brainsos.local to admin@brainsos.local via SMTP")
 
@@ -170,8 +175,8 @@ print("   [INFO] Dispatched message from terrastella@brainsos.local to admin@bra
 time.sleep(1.5)
 
 # 2. Check Admin INBOX via IMAP
-M = imaplib.IMAP4("127.0.0.1", ${IMAP_PORT})
-M.login("admin@brainsos.local", "${ADMIN_PASS}")
+M = imaplib.IMAP4("127.0.0.1", imap_port)
+M.login("admin@brainsos.local", admin_pass)
 status, count = M.select("INBOX")
 if status != "OK":
     print("   [ERROR] Failed to select admin INBOX")
@@ -200,12 +205,16 @@ log_success "SMTP delivery to IMAP inbox roundtrip verified."
 # 6. Shared Mailbox Hierarchy & Admin ACL Verification
 # ------------------------------------------------------------------------------
 log_info "Step 6: Verifying Dovecot Shared Mailbox Architecture & Admin ACLs..."
-python3 - << EOF
+IMAP_PORT="${IMAP_PORT}" ADMIN_PASS="${ADMIN_PASS}" python3 - << 'EOF'
 import imaplib
+import os
 import sys
 
-M = imaplib.IMAP4("127.0.0.1", ${IMAP_PORT})
-M.login("admin@brainsos.local", "${ADMIN_PASS}")
+imap_port = int(os.environ["IMAP_PORT"])
+admin_pass = os.environ["ADMIN_PASS"]
+
+M = imaplib.IMAP4("127.0.0.1", imap_port)
+M.login("admin@brainsos.local", admin_pass)
 status, folders = M.list()
 if status != "OK" or not folders:
     print("   [ERROR] Failed to list folders for admin")
@@ -240,12 +249,16 @@ log_success "Shared Mailbox architecture and IMAP ACL visibility verified."
 # 7. Multi-Tenant Partitioning Verification (Rule 9)
 # ------------------------------------------------------------------------------
 log_info "Step 7: Verifying Multi-Tenant Agent Isolation (Rule 9)..."
-python3 - << EOF
+IMAP_PORT="${IMAP_PORT}" AGENT_PASS="${AGENT_PASS}" python3 - << 'EOF'
 import imaplib
+import os
 import sys
 
-M = imaplib.IMAP4("127.0.0.1", ${IMAP_PORT})
-M.login("terrastella@brainsos.local", "${AGENT_PASS}")
+imap_port = int(os.environ["IMAP_PORT"])
+agent_pass = os.environ["AGENT_PASS"]
+
+M = imaplib.IMAP4("127.0.0.1", imap_port)
+M.login("terrastella@brainsos.local", agent_pass)
 status, folders = M.list()
 folder_names = [f.decode("utf-8", errors="replace") for f in folders]
 

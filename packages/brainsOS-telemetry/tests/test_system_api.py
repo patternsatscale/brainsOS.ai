@@ -293,15 +293,50 @@ def test_instance_id_redacted_in_public_status_and_revealed_only_to_admin(tmp_pa
         app = create_system_api_app()
         client = TestClient(app)
 
-        # Public /identity and /status mask EC2 instance ID
+        # Unauthenticated /identity post-wizard returns strictly minimal bootstrap metadata
         id_res = client.get(
             "/api/v1/system/identity",
             headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
         )
         assert id_res.status_code == 200
-        assert id_res.json()["instance_id"] == "i-••••••••••••32d4"
-        assert id_res.json()["instance_id_masked"] is True
+        assert set(id_res.json().keys()) == {
+            "firstboot_wizard_completed",
+            "unit_name",
+            "auth_cognito_enabled",
+        }
+        assert id_res.json()["firstboot_wizard_completed"] is True
+        assert "instance_id" not in id_res.json()
         assert raw_iid not in id_res.text
+
+        # Non-admin viewer also receives strictly the 3-key minimal payload
+        viewer_id_res = client.get(
+            "/api/v1/system/identity",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "viewer",
+                "X-Authentik-Groups": "brainsos-viewers",
+            },
+        )
+        assert viewer_id_res.status_code == 200
+        assert set(viewer_id_res.json().keys()) == {
+            "firstboot_wizard_completed",
+            "unit_name",
+            "auth_cognito_enabled",
+        }
+
+        # Authenticated admin /identity returns full payload with masked instance_id
+        admin_id_res = client.get(
+            "/api/v1/system/identity",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "su",
+                "X-Authentik-Groups": "authentik Admins",
+            },
+        )
+        assert admin_id_res.status_code == 200
+        assert admin_id_res.json()["instance_id"] == "i-••••••••••••32d4"
+        assert admin_id_res.json()["instance_id_masked"] is True
+        assert raw_iid not in admin_id_res.text
 
         st_res = client.get(
             "/api/v1/system/status",
@@ -331,11 +366,15 @@ def test_instance_id_redacted_in_public_status_and_revealed_only_to_admin(tmp_pa
         assert rev_ok.json()["instance_id"] == raw_iid
         assert rev_ok.json()["masked_instance_id"] == "i-••••••••••••32d4"
 
-        # Non-EC2 local labels (local-gx10) are preserved unmasked
+        # Non-EC2 local labels (local-gx10) are preserved unmasked for authenticated admin
         monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "local-gx10")
         local_res = client.get(
             "/api/v1/system/identity",
-            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "su",
+                "X-Authentik-Groups": "authentik Admins",
+            },
         )
         assert local_res.json()["instance_id"] == "local-gx10"
         assert local_res.json()["instance_id_masked"] is False

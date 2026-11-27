@@ -12,7 +12,12 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SYNC_SCRIPT = REPO_ROOT / "scripts" / "control" / "sync-route53-ddns.py"
+GENERATE_ENV = REPO_ROOT / "scripts" / "control" / "generate-env.sh"
+ENV_EXAMPLE = REPO_ROOT / ".env.example"
 FIRSTBOOT = REPO_ROOT / "packages" / "brainsOS-appliance" / "scripts" / "firstboot.sh"
+
+TEST_SECRET_A = "a" * 64
+TEST_SECRET_B = "b" * 64
 
 
 def _load_sync_module():
@@ -88,7 +93,8 @@ class FakeRoute53Client:
         return {"ChangeInfo": {"Id": "/change/C1234567890", "Status": "PENDING"}}
 
 
-def test_sync_route53_upsert_redacts_instance_id_and_idempotency():
+def test_sync_route53_upsert_redacts_instance_id_and_idempotency(monkeypatch):
+    monkeypatch.setenv("BRAINSOS_DDNS_OWNER_SECRET", TEST_SECRET_A)
     mod = _load_sync_module()
     client = FakeRoute53Client()
     raw_iid = "i-0123456789abcdef0"
@@ -119,7 +125,7 @@ def test_sync_route53_upsert_redacts_instance_id_and_idempotency():
     # Raw EC2 Instance ID must never appear anywhere in the public Route 53 ChangeBatch (#384)
     assert raw_iid not in str(client.changes[0])
 
-    # Unchanged when IP and hashed owner claim already match
+    # Unchanged when IP and keyed owner claim already match
     unchanged_client = FakeRoute53Client(
         existing_ip="54.210.11.22",
         existing_owner_claim=expected_claim,
@@ -135,28 +141,35 @@ def test_sync_route53_upsert_redacts_instance_id_and_idempotency():
     assert res2["changed"] is False
     assert len(unchanged_client.changes) == 0
 
-    # Legacy plaintext instance-id= TXT record owned by same instance is automatically upgraded to owner-sha256=
-    legacy_same_client = FakeRoute53Client(
+    # Any pre-existing legacy instance-id= TXT record (even from another ID) is overwritten directly with no legacy fallback
+    legacy_client = FakeRoute53Client(
         existing_ip="54.210.11.22",
-        legacy_owner=raw_iid,
+        legacy_owner="i-0legacyother12345",
     )
     res_mig = mod.sync_route53_record(
-        route53_client=legacy_same_client,
+        route53_client=legacy_client,
         domain="alice.demo.infotechlabs.io",
         ip="54.210.11.22",
         zone_id="Z0987654321DEMO",
         instance_id=raw_iid,
     )
     assert res_mig["status"] == "updated"
-    assert len(legacy_same_client.changes) == 1
-    assert raw_iid not in str(legacy_same_client.changes[0])
+    assert len(legacy_client.changes) == 1
+    assert raw_iid not in str(legacy_client.changes[0])
+    assert legacy_client.changes[0]["ChangeBatch"]["Changes"][1]["ResourceRecordSet"]["ResourceRecords"] == [
+        {"Value": f'"owner-sha256={expected_claim}"'}
+    ]
 
 
-def test_sync_route53_ownership_collision_and_force():
+def test_sync_route53_ownership_collision_and_force(monkeypatch):
     mod = _load_sync_module()
     other_claim = mod.compute_owner_claim(
-        "alice.demo.infotechlabs.io", "Z0987654321DEMO", "i-0aaaaaaaaaaaaaaa1"
+        "alice.demo.infotechlabs.io",
+        "Z0987654321DEMO",
+        "i-0aaaaaaaaaaaaaaa1",
+        owner_secret=TEST_SECRET_B,
     )
+    monkeypatch.setenv("BRAINSOS_DDNS_OWNER_SECRET", TEST_SECRET_A)
     other_owner_client = FakeRoute53Client(
         existing_ip="3.91.10.20",
         existing_owner_claim=other_claim,
@@ -186,7 +199,8 @@ def test_sync_route53_ownership_collision_and_force():
     assert len(other_owner_client.changes) == 1
 
 
-def test_sync_route53_minimal_iam_fallback_and_zone_discovery():
+def test_sync_route53_minimal_iam_fallback_and_zone_discovery(monkeypatch):
+    monkeypatch.setenv("BRAINSOS_DDNS_OWNER_SECRET", TEST_SECRET_A)
     mod = _load_sync_module()
     minimal_iam_client = FakeRoute53Client(
         deny_list=True,
@@ -211,7 +225,8 @@ def test_sync_route53_minimal_iam_fallback_and_zone_discovery():
     assert len(minimal_iam_client.changes) == 1
 
 
-def test_sync_route53_invalid_inputs_rejected():
+def test_sync_route53_invalid_inputs_rejected(monkeypatch):
+    monkeypatch.setenv("BRAINSOS_DDNS_OWNER_SECRET", TEST_SECRET_A)
     mod = _load_sync_module()
     client = FakeRoute53Client()
 
@@ -222,6 +237,120 @@ def test_sync_route53_invalid_inputs_rejected():
         mod.sync_route53_record(
             client, domain="alice.demo.infotechlabs.io", ip="999.999.1.1", zone_id="Z123456"
         )
+
+
+def test_compute_owner_claim_fails_closed_without_256bit_secret(monkeypatch):
+    mod = _load_sync_module()
+    for bad in ("", "   ", "not-hex", "a" * 63, "a" * 65):
+        monkeypatch.setenv("BRAINSOS_DDNS_OWNER_SECRET", bad)
+        with pytest.raises(ValueError, match="BRAINSOS_DDNS_OWNER_SECRET"):
+            mod.compute_owner_claim("alice.demo.infotechlabs.io", "Z0987654321DEMO", "i-0123456789abcdef0")
+    monkeypatch.delenv("BRAINSOS_DDNS_OWNER_SECRET", raising=False)
+    with pytest.raises(ValueError, match="BRAINSOS_DDNS_OWNER_SECRET"):
+        mod.compute_owner_claim("alice.demo.infotechlabs.io", "Z0987654321DEMO", "i-0123456789abcdef0")
+
+
+def test_sync_route53_fails_closed_without_owner_secret(monkeypatch):
+    monkeypatch.delenv("BRAINSOS_DDNS_OWNER_SECRET", raising=False)
+    mod = _load_sync_module()
+    client = FakeRoute53Client()
+    with pytest.raises(ValueError, match="BRAINSOS_DDNS_OWNER_SECRET"):
+        mod.sync_route53_record(
+            route53_client=client,
+            domain="alice.demo.infotechlabs.io",
+            ip="54.210.11.22",
+            zone_id="Z0987654321DEMO",
+            instance_id="i-0123456789abcdef0",
+        )
+    assert client.changes == []
+
+    # CLI exits 1 when secret is missing
+    proc = subprocess.run(
+        [
+            "python3",
+            str(SYNC_SCRIPT),
+            "--domain",
+            "alice.demo.infotechlabs.io",
+            "--ip",
+            "54.210.11.22",
+            "--zone-id",
+            "Z0987654321DEMO",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={k: v for k, v in os.environ.items() if k != "BRAINSOS_DDNS_OWNER_SECRET"},
+    )
+    assert proc.returncode == 1
+    assert "BRAINSOS_DDNS_OWNER_SECRET" in proc.stderr
+
+
+def test_sync_route53_ebs_resume_same_secret_new_instance_id(monkeypatch):
+    """Host B resuming a volume with persisted TEST_SECRET_A updates IP seamlessly even with new instance_id."""
+    monkeypatch.setenv("BRAINSOS_DDNS_OWNER_SECRET", TEST_SECRET_A)
+    mod = _load_sync_module()
+    claim_host_a = mod.compute_owner_claim(
+        "alice.demo.infotechlabs.io", "Z0987654321DEMO", "i-0hostaaaaaaaaaa1"
+    )
+    client = FakeRoute53Client(
+        existing_ip="1.2.3.4",
+        existing_owner_claim=claim_host_a,
+    )
+    res = mod.sync_route53_record(
+        route53_client=client,
+        domain="alice.demo.infotechlabs.io",
+        ip="5.6.7.8",
+        zone_id="Z0987654321DEMO",
+        instance_id="i-0hostbbbbbbbbbb2",
+    )
+    assert res["status"] == "updated"
+    assert res["owner_claim"] == claim_host_a
+    assert len(client.changes) == 1
+
+
+def test_generate_env_persists_and_preserves_256bit_ddns_owner_secret(tmp_path: Path):
+    """generate-env.sh creates 64-hex BRAINSOS_DDNS_OWNER_SECRET (0600) and preserves it across re-runs."""
+    import re
+    import shutil
+    import stat
+
+    ctrl_dir = tmp_path / "scripts" / "control"
+    ctrl_dir.mkdir(parents=True)
+    shutil.copy2(GENERATE_ENV, ctrl_dir / "generate-env.sh")
+    (ctrl_dir / "generate-env.sh").chmod(0o755)
+    shutil.copy2(ENV_EXAMPLE, tmp_path / ".env.example")
+
+    env_file = tmp_path / ".env"
+    env = {
+        **os.environ,
+        "BRAINSOS_REPO_ROOT": str(tmp_path),
+        "BRAINSOS_ENV_FILE": str(env_file),
+    }
+
+    p1 = subprocess.run(
+        [str(ctrl_dir / "generate-env.sh"), "--non-interactive", "--no-rebuild"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert p1.returncode == 0, p1.stdout + p1.stderr
+    assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+    m1 = re.search(r"^BRAINSOS_DDNS_OWNER_SECRET=([0-9a-fA-F]{64})$", env_file.read_text(encoding="utf-8"), re.M)
+    assert m1 is not None
+    secret_1 = m1.group(1)
+
+    p2 = subprocess.run(
+        [str(ctrl_dir / "generate-env.sh"), "--non-interactive", "--no-rebuild"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert p2.returncode == 0, p2.stdout + p2.stderr
+    m2 = re.search(r"^BRAINSOS_DDNS_OWNER_SECRET=([0-9a-fA-F]{64})$", env_file.read_text(encoding="utf-8"), re.M)
+    assert m2 is not None
+    assert m2.group(1) == secret_1
 
 
 def test_firstboot_userdata_route53_domain_and_acme_defaults(tmp_path: Path):
@@ -252,6 +381,7 @@ HOSTED_ZONE_ID="arn:aws:route53:::hostedzone/Z0987654321DEMO"
     assert "ACME_EMAIL=ops@infotechlabs.io" in proc.stdout
     assert "BRAINSOS_USERDATA_ROUTING=true" in proc.stdout
     assert "BRAINSOS_ROUTE53_ZONE_ID=Z0987654321DEMO" in proc.stdout
+    assert "BRAINSOS_DDNS_OWNER_SECRET=<auto-generated-256bit>" in proc.stdout
     assert "Would sync Route 53 A record: alice.demo.infotechlabs.io" in proc.stdout
 
 

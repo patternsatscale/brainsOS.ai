@@ -16,9 +16,13 @@ try:
 except ImportError:  # pragma: no cover
     fcntl = None  # type: ignore
 import hmac
+import ipaddress
 import logging
 import os
+import platform
 import signal
+import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -29,14 +33,6 @@ from brainsos_mail.client import BrainsOSMailClient
 from brainsos_mail.models import ParsedInboundEmail
 from brainsos_mail.parser import parse_inbound_mime
 from brainsos_queue import FIFOQueueWorker, Task, WorkQueue
-
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except ImportError:
-    pass
-
 from brainsos_telemetry.tracing import OTelTraceDispatcher
 
 from brainsos_agent.adapters import get_runtime_adapter
@@ -51,6 +47,133 @@ from brainsos_agent.mail_runs import (
 from brainsos_agent.models import AgentProfile, OutboundEmail
 
 logger = logging.getLogger("brainsos_agent.worker")
+
+
+def _load_runtime_dotenv() -> None:
+    """Load .env when running the worker daemon entrypoint (never at import time)."""
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
+
+
+def _iface_ipv4(iface: str) -> str:
+    try:
+        res = subprocess.run(["ip", "-4", "addr", "show", iface], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("inet "):
+                    ip = line.split()[1].split("/")[0]
+                    if ip:
+                        return ip
+    except Exception:
+        pass
+    return ""
+
+
+def _normalize_host_candidate(host: str) -> str | None:
+    """Strip whitespace and surrounding brackets; return None on empty, NUL, or wildcard."""
+    candidate = host.strip()
+    if not candidate or "\x00" in candidate or candidate in ("*", "0"):
+        return None
+    if candidate.startswith("[") and candidate.endswith("]"):
+        candidate = candidate[1:-1].strip()
+        if not candidate or candidate in ("*", "0"):
+            return None
+    return candidate
+
+
+def _is_unspecified_host(host: str) -> bool:
+    """Return True if *host* is empty or an unspecified/wildcard bind address."""
+    candidate = _normalize_host_candidate(host)
+    if candidate is None:
+        return True
+    if not candidate.isascii():
+        try:
+            candidate = candidate.encode("idna").decode("ascii")
+        except UnicodeError:
+            return True
+        candidate = _normalize_host_candidate(candidate)
+        if candidate is None:
+            return True
+    try:
+        ip = ipaddress.ip_address(candidate)
+    except ValueError:
+        try:
+            packed = socket.inet_aton(candidate)
+        except (OSError, ValueError):
+            return False
+        return ipaddress.IPv4Address(packed).is_unspecified
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return ip.is_unspecified or (mapped is not None and mapped.is_unspecified)
+
+
+def _normalize_bind_host(host: str) -> str:
+    """Return a socket-bindable host string, stripping brackets from IPv6 literals."""
+    candidate = host.strip()
+    if candidate.startswith("[") and candidate.endswith("]"):
+        inner = candidate[1:-1].strip()
+        try:
+            ipaddress.IPv6Address(inner)
+            return inner
+        except ValueError:
+            pass
+    return candidate
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return True if *host* canonically refers to a loopback address."""
+    candidate = _normalize_bind_host(host)
+    if not candidate:
+        return False
+    if not candidate.isascii():
+        try:
+            candidate = candidate.encode("idna").decode("ascii")
+        except UnicodeError:
+            return False
+        candidate = _normalize_bind_host(candidate)
+    if candidate.rstrip(".").lower() == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(candidate)
+    except ValueError:
+        try:
+            packed = socket.inet_aton(candidate)
+        except (OSError, ValueError):
+            return False
+        return ipaddress.IPv4Address(packed).is_loopback
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return ip.is_loopback or (mapped is not None and mapped.is_loopback)
+
+
+def get_default_ingress_host() -> str:
+    """Resolve the host IP address for the Mail Ingress HTTP receiver (port 8000).
+
+    Binds strictly to the brainsos-mail-net bridge gateway (`br-mail`) or loopback, never 0.0.0.0.
+    """
+    env_host = (os.getenv("BRAINSOS_INGRESS_HOST") or "").strip()
+    if env_host:
+        if _is_unspecified_host(env_host):
+            logger.error("Refusing wildcard BRAINSOS_INGRESS_HOST=%r; falling back to mail bridge gateway.", env_host)
+        else:
+            return env_host
+
+    if platform.system() != "Linux":
+        return "127.0.0.1"
+
+    mail_bridge = (os.getenv("BRAINSOS_MAIL_BRIDGE") or "br-mail").strip() or "br-mail"
+    ip = _iface_ipv4(mail_bridge)
+    if ip:
+        return ip
+
+    docker0_ip = _iface_ipv4("docker0")
+    if docker0_ip:
+        return docker0_ip
+
+    return "127.0.0.1"
 
 
 class SingleInstanceLock:
@@ -135,7 +258,7 @@ class AgentQueueWorkerDaemon:
         manifest_path: str | Path | None = None,
         queue_db_path: str | Path | None = None,
         concurrency: int = 1,
-        ingress_host: str = "0.0.0.0",
+        ingress_host: str | None = None,
         ingress_port: int = 8000,
         spool_dir: str | Path | None = None,
         mail_webhook_secret: str | None = None,
@@ -146,7 +269,12 @@ class AgentQueueWorkerDaemon:
         self.mail_webhook_secret = mail_webhook_secret
         self.queue_db_path = Path(queue_db_path) if queue_db_path else (get_data_dir() / "queue" / "tasks.db")
         self.concurrency = concurrency
-        self.ingress_host = ingress_host
+        if ingress_host is None or _is_unspecified_host(ingress_host):
+            if ingress_host and ingress_host.strip():
+                logger.error("Refusing wildcard ingress_host=%r; binding to mail bridge gateway.", ingress_host)
+            self.ingress_host = get_default_ingress_host()
+        else:
+            self.ingress_host = ingress_host.strip()
         self.ingress_port = ingress_port
         self.spool_dir = Path(spool_dir) if spool_dir else (get_comms_dir() / "spool")
         self.spool_dir.mkdir(parents=True, exist_ok=True)
@@ -643,8 +771,12 @@ class AgentQueueWorkerDaemon:
         app.router.add_get("/health/liveness", self.handle_health)
         self._http_runner = web.AppRunner(app)
         await self._http_runner.setup()
-        site = web.TCPSite(self._http_runner, host=self.ingress_host, port=self.ingress_port)
+        bind_host = _normalize_bind_host(self.ingress_host)
+        site = web.TCPSite(self._http_runner, host=bind_host, port=self.ingress_port)
         await site.start()
+        if not _is_loopback_host(bind_host):
+            loopback_site = web.TCPSite(self._http_runner, host="127.0.0.1", port=self.ingress_port)
+            await loopback_site.start()
         logger.info(
             "Mail Ingress HTTP endpoint listening on http://%s:%d/api/v1/mail/inbound",
             self.ingress_host,
@@ -674,6 +806,7 @@ class AgentQueueWorkerDaemon:
 
 
 async def main() -> None:
+    _load_runtime_dotenv()
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO"),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -681,7 +814,7 @@ async def main() -> None:
     manifest = os.getenv("BRAINSOS_AGENTS_MANIFEST")
     db_path = os.getenv("BRAINSOS_QUEUE_DB", str(get_data_dir() / "queue" / "tasks.db"))
     concurrency = int(os.getenv("BRAINSOS_QUEUE_CONCURRENCY", "1"))
-    ingress_host = os.getenv("BRAINSOS_INGRESS_HOST", "0.0.0.0")
+    ingress_host = get_default_ingress_host()
     ingress_port = int(os.getenv("BRAINSOS_INGRESS_PORT", "8000"))
     spool_dir = os.getenv("BRAINSOS_SPOOL_DIR", str(get_comms_dir() / "spool"))
     lock_path = os.getenv("BRAINSOS_QUEUE_LOCK_FILE", str(get_control_plane_dir() / "queue_worker.lock"))

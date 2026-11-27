@@ -8,7 +8,12 @@ import time
 from typing import Any
 
 from brainsos_mail.models import ParsedInboundEmail
-from brainsos_runner import AgentTurnRequest, ChatMessage, WarmHttpRunnerClient
+from brainsos_runner import (
+    AgentTurnRequest,
+    ChatMessage,
+    EphemeralDockerRunnerClient,
+    WarmHttpRunnerClient,
+)
 
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.models import AgentProfile, OutboundEmail
@@ -17,20 +22,49 @@ from brainsos_agent.souls import resolve_soul  # noqa: F401
 
 logger = logging.getLogger("brainsos_agent.adapters.runner")
 
+_DEFAULT_EPHEMERAL_IMAGES = {
+    "hermes-ephemeral": "brainsos-runner-hermes:latest",
+    "openai-ephemeral": "brainsos-runner-openai:latest",
+    "claude-ephemeral": "brainsos-runner-claude:latest",
+}
+
 
 class RunnerMailAdapter(AgentRuntime):
-    """Stateless HTTP adapter routing inbound email through brainsOS-runner microservices."""
+    """Adapter routing inbound email through ephemeral per-tenant Docker or warm HTTP runners."""
 
     def __init__(
         self,
         runner_id: str = "hermes-warm",
         endpoint: str | None = None,
         timeout: float = 60.0,
+        *,
+        ephemeral: bool | None = None,
+        image: str | None = None,
+        memory_limit: str | None = None,
+        cpu_limit: str | None = None,
+        command: list[str] | None = None,
     ) -> None:
         self.runner_id = runner_id
         raw_endpoint = endpoint or os.getenv("RUNNER_ENDPOINT") or "http://127.0.0.1:8642"
         self.endpoint = raw_endpoint.rstrip("/")
         self.timeout = timeout
+        if ephemeral is not None:
+            self.ephemeral = bool(ephemeral)
+        elif runner_id.endswith("-ephemeral"):
+            self.ephemeral = True
+        elif endpoint is not None:
+            self.ephemeral = False
+        else:
+            self.ephemeral = os.getenv("BRAINSOS_EPHEMERAL_RUNNERS", "").strip().lower() in ("1", "true", "yes")
+        self.image = image or _DEFAULT_EPHEMERAL_IMAGES.get(
+            runner_id,
+            "brainsos-runner-claude:latest"
+            if "claude" in runner_id
+            else ("brainsos-runner-openai:latest" if "openai" in runner_id else "brainsos-runner-hermes:latest"),
+        )
+        self.memory_limit = memory_limit or "2g"
+        self.cpu_limit = cpu_limit or "2.0"
+        self.command = list(command) if command is not None else ["python3", "/app/server.py"]
 
     def _assemble_system_prompt_with_working_memory(
         self, profile: AgentProfile, resolved_soul: str | None = None
@@ -72,6 +106,9 @@ class RunnerMailAdapter(AgentRuntime):
         extra_params: dict[str, Any] = dict(profile_extras) if profile_extras else {}
         extra_params["inbound_email_id"] = email.message_id
         extra_params["sender"] = email.sender
+        if profile.virtual_key_env:
+            extra_params.setdefault("virtual_key_env", profile.virtual_key_env)
+        extra_params.setdefault("github_allowed_repos", list(profile.github_allowed_repos))
 
         turn_request = AgentTurnRequest(
             run_id=run_id,
@@ -80,15 +117,30 @@ class RunnerMailAdapter(AgentRuntime):
             system_prompt=system_prompt,
             conversation=conversation,
             workspace_dir=str(profile.workspace_root),
+            memory_dir=str(profile.memory_root),
             timeout_sec=int(self.timeout),
             extra_params=extra_params,
         )
 
-        client = WarmHttpRunnerClient(endpoint=self.endpoint, default_timeout_sec=int(self.timeout))
-        try:
-            response = await client.execute_turn(turn_request)
-        finally:
-            await client.aclose()
+        if self.ephemeral:
+            docker_client = EphemeralDockerRunnerClient(
+                image=self.image,
+                default_timeout_sec=int(self.timeout),
+                memory_limit=self.memory_limit,
+                cpu_limit=self.cpu_limit,
+                command=self.command,
+            )
+            response = await docker_client.execute_turn(turn_request)
+        else:
+            client = WarmHttpRunnerClient(
+                endpoint=self.endpoint,
+                auth_token=os.getenv("RUNNER_AUTH_TOKEN"),
+                default_timeout_sec=int(self.timeout),
+            )
+            try:
+                response = await client.execute_turn(turn_request)
+            finally:
+                await client.aclose()
 
         assistant_reply = response.output_text.strip() if response.status == "completed" else ""
         if not assistant_reply and response.error_message:

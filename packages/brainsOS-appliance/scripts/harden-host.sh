@@ -101,6 +101,19 @@ if [ "${DRY_RUN}" = false ] && [ "${CHECK_MODE}" = false ]; then
   fi
 fi
 
+ENV_FILE="${BRAINSOS_ENV_FILE:-${REPO_ROOT}/.env}"
+if [ -f "${ENV_FILE}" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "${ENV_FILE}"
+  set +a
+fi
+
+INGRESS_BRIDGE="${BRAINSOS_INGRESS_BRIDGE:-br-ingress}"
+INGRESS_SUBNET="${BRAINSOS_INGRESS_SUBNET:-172.28.0.0/24}"
+MAIL_BRIDGE="${BRAINSOS_MAIL_BRIDGE:-br-mail}"
+MAIL_SUBNET="${BRAINSOS_MAIL_SUBNET:-172.28.5.0/24}"
+
 # ------------------------------------------------------------------------------
 # 1. Audit Mode (--check)
 # ------------------------------------------------------------------------------
@@ -110,19 +123,136 @@ if [ "${CHECK_MODE}" = true ]; then
 
   # Check 1: UFW Firewall
   if command -v ufw >/dev/null 2>&1; then
-    UFW_STATUS="$(ufw status 2>/dev/null || true)"
+    if ! UFW_STATUS="$(ufw status verbose 2>/dev/null)" || [ -z "${UFW_STATUS}" ]; then
+      UFW_STATUS="$(ufw status 2>/dev/null || true)"
+    fi
     if echo "${UFW_STATUS}" | grep -q "Status: active"; then
       log_success "UFW is active."
-      if echo "${UFW_STATUS}" | grep -E "80/tcp.*ALLOW" >/dev/null && echo "${UFW_STATUS}" | grep -E "443/tcp.*ALLOW" >/dev/null; then
+      UFW_CLEAN="$(printf '%s\n' "${UFW_STATUS}" | sed -E 's/[[:space:]]*#.*$//; s/[[:space:]]+$//')"
+      DEFAULT_POLICY_OK=true
+      if printf '%s\n' "${UFW_CLEAN}" | grep -qE "^Default:" \
+        && ! printf '%s\n' "${UFW_CLEAN}" | grep -qE "^Default:[[:space:]]*deny[[:space:]]+\(incoming\)(,|[[:space:]]|$)"; then
+        log_warn "UFW is active but default incoming policy is not deny (incoming)."
+        DEFAULT_POLICY_OK=false
+        AUDIT_FAILED=1
+      fi
+      if printf '%s\n' "${UFW_CLEAN}" | grep -qE "^80/tcp([[:space:]]+on[[:space:]]+[^[:space:]]+)?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+" \
+        && printf '%s\n' "${UFW_CLEAN}" | grep -qE "^443/tcp([[:space:]]+on[[:space:]]+[^[:space:]]+)?[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+"; then
         log_success "UFW ports 80/tcp and 443/tcp are allowed."
       else
         log_warn "UFW is active but ports 80 and/or 443 are not explicitly allowed."
         AUDIT_FAILED=1
       fi
-      if echo "${UFW_STATUS}" | grep -qE "(8000|8010)/tcp.*ALLOW.*172\." && echo "${UFW_STATUS}" | grep -qE "(8000|8010)/tcp.*(DENY IN|on docker0)"; then
-        log_success "UFW ports 8000/tcp and 8010/tcp are restricted to Docker bridge interfaces and denied on external NICs."
+      INGRESS_BRIDGE_RE="${INGRESS_BRIDGE//./\\.}"
+      INGRESS_SUBNET_RE="${INGRESS_SUBNET//./\\.}"
+      MAIL_BRIDGE_RE="${MAIL_BRIDGE//./\\.}"
+      MAIL_SUBNET_RE="${MAIL_SUBNET//./\\.}"
+      NON_BRIDGE_UFW_LINES="$(printf '%s\n' "${UFW_CLEAN}" | grep -vE "^[^#]*[[:space:]]on[[:space:]]+(${MAIL_BRIDGE_RE}|${INGRESS_BRIDGE_RE}|br-[^[:space:]]+|docker0|veth[^[:space:]]+)[[:space:]]" || true)"
+      DISALLOWED_PORT_ALLOWS="$(printf '%s\n' "${UFW_CLEAN}" \
+        | awk '
+          function port_hits_target(spec,    n, i, parts, k, bounds, lo, hi, p) {
+            n = split(spec, parts, ",")
+            for (i = 1; i <= n; i++) {
+              p = parts[i]
+              if (p ~ /^[0-9]+$/) {
+                p = p + 0
+                if (p == 8000 || p == 8010) return 1
+              } else if (p ~ /^[0-9]+:[0-9]+$/) {
+                k = split(p, bounds, ":")
+                if (k == 2) {
+                  lo = bounds[1] + 0
+                  hi = bounds[2] + 0
+                  if ((lo <= 8000 && 8000 <= hi) || (lo <= 8010 && 8010 <= hi)) return 1
+                }
+              }
+            }
+            return 0
+          }
+          {
+            if (NF == 0 || $1 == "Status:" || $1 == "Logging:" || $1 == "Default:" || $1 == "New" || $1 == "To" || $1 == "--") {
+              next
+            }
+            act_idx = 0
+            for (i = 2; i <= NF; i++) {
+              if ($i == "ALLOW" || $i == "LIMIT") {
+                act_idx = i
+                break
+              }
+              if ($i == "DENY" || $i == "REJECT") {
+                next
+              }
+            }
+            if (act_idx == 0) {
+              next
+            }
+            tok_count = 0
+            for (i = 1; i < act_idx; i++) {
+              t = $i
+              if (t == "on") {
+                i++
+                continue
+              }
+              if (t == "(v6)") {
+                continue
+              }
+              if (t ~ /^\(/) {
+                while (i < act_idx && $i !~ /\)$/) {
+                  i++
+                }
+                continue
+              }
+              tok_count++
+              toks[tok_count] = t
+            }
+            if (tok_count == 0) {
+              next
+            }
+            flagged = 0
+            for (i = 1; i <= tok_count; i++) {
+              t = toks[i]
+              if (t ~ /^Anywhere(\/(tcp|udp))?$/) {
+                flagged = 1
+                break
+              }
+              base = t
+              if (base ~ /\/tcp$/) {
+                sub(/\/tcp$/, "", base)
+              } else if (base ~ /\//) {
+                base = ""
+              }
+              if (base != "" && base ~ /^[0-9,:]+$/) {
+                if (port_hits_target(base)) {
+                  flagged = 1
+                  break
+                }
+              }
+            }
+            if (!flagged && tok_count == 1) {
+              t = toks[1]
+              sub(/\/(tcp|udp)$/, "", t)
+              if (t ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?$/ || t ~ /::/ || t ~ /^[0-9a-fA-F:]+:[0-9a-fA-F:]+(\/[0-9]+)?$/) {
+                if (t !~ /^[0-9]+:[0-9]+$/) {
+                  flagged = 1
+                }
+              }
+            }
+            if (flagged) {
+              print $0
+            }
+          }
+        ' \
+        | grep -vE "^8000/tcp[[:space:]]+on[[:space:]]+${MAIL_BRIDGE_RE}[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+${MAIL_SUBNET_RE}([[:space:]]+\(log(-all)?\))?$" \
+        | grep -vE "^8010/tcp[[:space:]]+on[[:space:]]+${INGRESS_BRIDGE_RE}[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+${INGRESS_SUBNET_RE}([[:space:]]+\(log(-all)?\))?$" \
+        || true)"
+      if [ "${DEFAULT_POLICY_OK}" = true ] \
+        && printf '%s\n' "${UFW_CLEAN}" | grep -qE "^8010/tcp[[:space:]]+on[[:space:]]+${INGRESS_BRIDGE_RE}[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+${INGRESS_SUBNET_RE}([[:space:]]+\(log(-all)?\))?$" \
+        && printf '%s\n' "${UFW_CLEAN}" | grep -qE "^8000/tcp[[:space:]]+on[[:space:]]+${MAIL_BRIDGE_RE}[[:space:]]+ALLOW([[:space:]]+IN)?[[:space:]]+${MAIL_SUBNET_RE}([[:space:]]+\(log(-all)?\))?$" \
+        && [ -z "${DISALLOWED_PORT_ALLOWS}" ] \
+        && printf '%s\n' "${NON_BRIDGE_UFW_LINES}" | grep -qE "^8000/tcp[[:space:]]+on[[:space:]]+[^[:space:]]+[[:space:]]+DENY([[:space:]]+IN)?[[:space:]]+Anywhere([[:space:]]+\(log(-all)?\))?$" \
+        && printf '%s\n' "${NON_BRIDGE_UFW_LINES}" | grep -qE "^8010/tcp[[:space:]]+on[[:space:]]+[^[:space:]]+[[:space:]]+DENY([[:space:]]+IN)?[[:space:]]+Anywhere([[:space:]]+\(log(-all)?\))?$"; then
+        log_success "UFW ports 8010/tcp (${INGRESS_BRIDGE}) and 8000/tcp (${MAIL_BRIDGE}) are strictly bridge-scoped and denied on external NICs."
       else
-        log_warn "UFW is active but ports 8000/8010/tcp lack external NIC deny / Docker interface scoping."
+        log_warn "UFW is active but ports 8000/8010/tcp lack strict bridge scoping (${MAIL_BRIDGE}/${INGRESS_BRIDGE}) or external NIC deny."
         AUDIT_FAILED=1
       fi
     else
@@ -216,7 +346,7 @@ if ! command -v ufw >/dev/null 2>&1; then
 fi
 
 # Discover external/physical network interfaces so AWS Default VPC traffic (172.31.0.0/16 ⊂ 172.16.0.0/12)
-# can never reach Docker-bridge-only ports 8000/8010 (#384).
+# can never reach Docker-bridge-only ports 8000/8010 (#384 / #399).
 WAN_IFACES=()
 if command -v ip >/dev/null 2>&1; then
   while IFS= read -r ifname; do
@@ -232,13 +362,6 @@ if [ "${#WAN_IFACES[@]}" -eq 0 ]; then
   WAN_IFACES=("ens5")
 fi
 
-DOCKER_BRIDGE_IFACES=("docker0")
-if command -v ip >/dev/null 2>&1; then
-  while IFS= read -r brname; do
-    [ -n "${brname}" ] && DOCKER_BRIDGE_IFACES+=("${brname}")
-  done < <(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1 | grep -E '^br-[a-zA-Z0-9]+$' || true)
-fi
-
 if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Would execute: ufw default deny incoming"
   log_info "[DRY-RUN] Would execute: ufw default allow outgoing"
@@ -248,10 +371,8 @@ if [ "${DRY_RUN}" = true ]; then
     log_info "[DRY-RUN] Would execute: ufw deny in on ${wan_if} to any port 8000 proto tcp comment 'Block external VPC access to Mail Ingress'"
     log_info "[DRY-RUN] Would execute: ufw deny in on ${wan_if} to any port 8010 proto tcp comment 'Block external VPC access to System API'"
   done
-  for br_if in "${DOCKER_BRIDGE_IFACES[@]}"; do
-    log_info "[DRY-RUN] Would execute: ufw allow in on ${br_if} from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress on ${br_if}'"
-    log_info "[DRY-RUN] Would execute: ufw allow in on ${br_if} from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API on ${br_if}'"
-  done
+  log_info "[DRY-RUN] Would execute: ufw allow in on ${MAIL_BRIDGE} from ${MAIL_SUBNET} to any port 8000 proto tcp comment 'brainsOS Mail Ingress (brainsos-mail-net)'"
+  log_info "[DRY-RUN] Would execute: ufw allow in on ${INGRESS_BRIDGE} from ${INGRESS_SUBNET} to any port 8010 proto tcp comment 'brainsOS System API (brainsos-ingress-net)'"
   if [ "${ALLOW_SSH}" = true ]; then
     log_info "[DRY-RUN] Would execute: ufw allow ${SSH_PORT}/tcp comment 'brainsOS SSH Operator Ingress'"
   else
@@ -259,19 +380,17 @@ if [ "${DRY_RUN}" = true ]; then
   fi
   log_info "[DRY-RUN] Would execute: ufw --force enable"
 else
+  # Purge legacy broad 172.16.0.0/12 allow rules for 8000/8010 on upgrade (#399)
+  while IFS= read -r rule_num; do
+    [ -n "${rule_num}" ] && ufw --force delete "${rule_num}" >/dev/null 2>&1 || true
+  done < <(ufw status numbered 2>/dev/null | grep -E '(8000|8010)/tcp.*ALLOW.*172\.16\.0\.0/12' | sed -E 's/^\[ *([0-9]+)\].*/\1/' | sort -rn || true)
+
   ufw default deny incoming
   ufw default allow outgoing
   ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'
   ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'
-  for br_if in "${DOCKER_BRIDGE_IFACES[@]}"; do
-    if ip link show "${br_if}" >/dev/null 2>&1; then
-      ufw allow in on "${br_if}" from 172.16.0.0/12 to any port 8000 proto tcp comment "brainsOS Mail Ingress on ${br_if}"
-      ufw allow in on "${br_if}" from 172.16.0.0/12 to any port 8010 proto tcp comment "brainsOS System API on ${br_if}"
-    fi
-  done
-  # Fallback rule for dynamically created br-* compose bridges, protected by priority-1 WAN DENY rules below:
-  ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress from Docker bridge subnet'
-  ufw allow from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API from Docker bridge subnet'
+  ufw allow in on "${MAIL_BRIDGE}" from "${MAIL_SUBNET}" to any port 8000 proto tcp comment "brainsOS Mail Ingress (brainsos-mail-net)"
+  ufw allow in on "${INGRESS_BRIDGE}" from "${INGRESS_SUBNET}" to any port 8010 proto tcp comment "brainsOS System API (brainsos-ingress-net)"
   for wan_if in "${WAN_IFACES[@]}"; do
     if ip link show "${wan_if}" >/dev/null 2>&1; then
       ufw insert 1 deny in on "${wan_if}" to any port 8010 proto tcp comment "Block external VPC access to System API (${wan_if})" || \
@@ -289,7 +408,7 @@ else
   fi
 
   ufw --force enable
-  log_success "UFW host firewall enabled with strict single-origin perimeter."
+  log_success "UFW host firewall enabled with strict bridge-scoped perimeter."
 fi
 
 # ------------------------------------------------------------------------------
@@ -350,41 +469,42 @@ DOCKER_DIR="/etc/docker"
 DOCKER_CONF="${DOCKER_DIR}/daemon.json"
 
 # Python script to safely merge log-driver and log-opts into daemon.json
-python3 -c "
+python3 - "${DOCKER_CONF}" "${DOCKER_DIR}" "${DRY_RUN}" << 'EOF'
 import json
 import os
 import sys
 
-conf_path = '${DOCKER_CONF}'
-dry_run = ('${DRY_RUN}' == 'true')
+conf_path = sys.argv[1]
+docker_dir = sys.argv[2]
+dry_run = (sys.argv[3] == "true")
 
 data = {}
 if os.path.exists(conf_path):
     try:
-        with open(conf_path, 'r') as f:
+        with open(conf_path, "r") as f:
             data = json.load(f)
     except Exception as e:
-        print(f'Warning: existing {conf_path} could not be parsed as JSON: {e}', file=sys.stderr)
+        print(f"Warning: existing {conf_path} could not be parsed as JSON: {e}", file=sys.stderr)
         data = {}
 
-data['log-driver'] = 'json-file'
-log_opts = data.get('log-opts', {})
-log_opts['max-size'] = '50m'
-log_opts['max-file'] = '3'
-data['log-opts'] = log_opts
+data["log-driver"] = "json-file"
+log_opts = data.get("log-opts", {})
+log_opts["max-size"] = "50m"
+log_opts["max-file"] = "3"
+data["log-opts"] = log_opts
 
 merged_json = json.dumps(data, indent=2)
 
 if dry_run:
-    print(f'[DRY-RUN] Would update {conf_path} to:')
+    print(f"[DRY-RUN] Would update {conf_path} to:")
     print(merged_json)
 else:
-    os.makedirs('${DOCKER_DIR}', exist_ok=True)
-    with open(conf_path, 'w') as f:
-        f.write(merged_json + '\n')
+    os.makedirs(docker_dir, exist_ok=True)
+    with open(conf_path, "w") as f:
+        f.write(merged_json + "\n")
     os.chmod(conf_path, 0o644)
-    print(f'Successfully updated {conf_path}')
-"
+    print(f"Successfully updated {conf_path}")
+EOF
 
 if [ "${DRY_RUN}" = false ]; then
   if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet docker 2>/dev/null; then

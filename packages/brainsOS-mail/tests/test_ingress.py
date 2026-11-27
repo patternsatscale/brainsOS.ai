@@ -2,6 +2,7 @@
 
 import email
 import json
+import os
 import smtplib
 from unittest.mock import MagicMock, patch
 
@@ -204,7 +205,10 @@ def test_sqs_consumer_process_message_delivery_failure(sample_claim_check_dict, 
 
 
 def test_sqs_consumer_poll_once(sample_claim_check_dict, sample_approved_payload):
-    config = IngressConfig(sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue")
+    config = IngressConfig(
+        sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue",
+        s3_bucket="brainsos-mail-ingress-test",
+    )
 
     mock_s3 = MagicMock()
     mock_s3.get_object.return_value = {
@@ -240,14 +244,45 @@ def test_sqs_consumer_poll_once(sample_claim_check_dict, sample_approved_payload
 
 
 def test_cli_once():
-    with patch("brainsos_mail.ingress.cli.SqsIngressConsumer") as mock_consumer_cls:
-        mock_instance = MagicMock()
-        mock_instance.poll_once.return_value = 2
-        mock_consumer_cls.return_value = mock_instance
+    with patch.dict(os.environ, {}, clear=False):
+        before_env = dict(os.environ)
+        with (
+            patch("brainsos_mail.ingress.config.load_runtime_dotenv") as mock_load_dotenv,
+            patch("brainsos_mail.ingress.cli.SqsIngressConsumer") as mock_consumer_cls,
+        ):
+            mock_instance = MagicMock()
+            mock_instance.poll_once.return_value = 2
+            mock_consumer_cls.return_value = mock_instance
 
-        exit_code = cli_main(["--once", "--queue-url", "https://sqs.mock/queue", "--smtp-port", "10025"])
-        assert exit_code == 0
-        mock_instance.poll_once.assert_called_once()
+            exit_code = cli_main(["--once", "--queue-url", "https://sqs.mock/queue", "--smtp-port", "10025"])
+            assert exit_code == 0
+            mock_load_dotenv.assert_called_once_with()
+            mock_instance.poll_once.assert_called_once()
+            added_keys = set(os.environ.keys()) - set(before_env.keys())
+            assert added_keys == set(), f"cli_main leaked env keys into os.environ: {sorted(added_keys)}"
+            assert dict(os.environ) == before_env
+
+
+def test_ingress_config_from_env_loads_temp_dotenv_hermetically(tmp_path):
+    from dotenv import load_dotenv
+
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text(
+        "INGRESS_QUEUE_URL=https://sqs.us-west-2.amazonaws.com/999/hermetic\n"
+        "INGRESS_BUCKET_NAME=hermetic-test-bucket\n",
+        encoding="utf-8",
+    )
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("INGRESS_QUEUE_URL", None)
+        os.environ.pop("INGRESS_BUCKET_NAME", None)
+        with patch(
+            "brainsos_mail.ingress.config.load_runtime_dotenv",
+            side_effect=lambda: load_dotenv(dotenv_path=dotenv_file),
+        ) as mock_load:
+            config = IngressConfig.from_env()
+        mock_load.assert_called_once_with()
+        assert config.sqs_queue_url == "https://sqs.us-west-2.amazonaws.com/999/hermetic"
+        assert config.s3_bucket == "hermetic-test-bucket"
 
 
 def test_sqs_consumer_unconfigured_queue_url():
@@ -262,3 +297,136 @@ def test_sqs_consumer_run_stops_cleanly_when_unconfigured():
     consumer.stop()
     consumer.run()
     assert consumer._running is False
+
+
+def test_sqs_consumer_rejects_empty_configured_bucket(sample_claim_check_dict):
+    config = IngressConfig(
+        sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue",
+        s3_bucket="",
+    )
+    mock_s3 = MagicMock()
+    mock_sqs = MagicMock()
+    mock_injector = MagicMock()
+    consumer = SqsIngressConsumer(
+        config=config,
+        s3_client=mock_s3,
+        sqs_client=mock_sqs,
+        injector=mock_injector,
+    )
+
+    result = consumer.process_message(
+        {"ReceiptHandle": "h1", "Body": json.dumps(sample_claim_check_dict)}
+    )
+    assert result is False
+    mock_s3.get_object.assert_not_called()
+    mock_s3.delete_object.assert_not_called()
+    mock_sqs.delete_message.assert_not_called()
+    mock_injector.inject.assert_not_called()
+
+
+def test_sqs_consumer_rejects_mismatched_s3_bucket(sample_claim_check_dict):
+    config = IngressConfig(
+        sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue",
+        s3_bucket="brainsos-mail-ingress-test",
+    )
+    bad_claim = dict(sample_claim_check_dict, s3Bucket="attacker-bucket")
+    mock_s3 = MagicMock()
+    mock_sqs = MagicMock()
+    mock_injector = MagicMock()
+    consumer = SqsIngressConsumer(
+        config=config,
+        s3_client=mock_s3,
+        sqs_client=mock_sqs,
+        injector=mock_injector,
+    )
+
+    assert consumer.process_message({"ReceiptHandle": "h1", "Body": json.dumps(bad_claim)}) is False
+    mock_s3.get_object.assert_not_called()
+    mock_sqs.delete_message.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "bad_key",
+    [
+        "raw/msg-1.json",
+        "quarantine/msg-1.json",
+        "approved-fake/msg-1.json",
+        "approved/",
+        "approved/../secrets/key.json",
+        "approved/%2e%2e/secrets/key.json",
+        "approved/%252e%252e/secrets/key.json",
+        "approved/./msg-1.json",
+        "approved//msg-1.json",
+        "/approved/msg-1.json",
+        "approved/sub\\msg-1.json",
+        "approved/msg\x00.json",
+        "approved/%25252e%25252e/secret.json",
+        "approved/%2525252e%2525252e/secret.json",
+        "approved/" + ("%25" * 18) + "2e%2e/secret.json",
+        "approved/%25%32%65%25%32%65/secret.json",
+        "approved/msg%0d%0a.json",
+        "approved/msg\r\n.json",
+        "approved/msg%201.json",
+    ],
+)
+def test_sqs_consumer_rejects_unsafe_s3_keys(sample_claim_check_dict, bad_key):
+    from brainsos_mail.ingress.claim_check import fetch_approved_payload
+
+    config = IngressConfig(
+        sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue",
+        s3_bucket="brainsos-mail-ingress-test",
+    )
+    bad_claim = dict(sample_claim_check_dict, s3Key=bad_key)
+    mock_s3 = MagicMock()
+    mock_sqs = MagicMock()
+    mock_injector = MagicMock()
+    consumer = SqsIngressConsumer(
+        config=config,
+        s3_client=mock_s3,
+        sqs_client=mock_sqs,
+        injector=mock_injector,
+    )
+
+    assert consumer.process_message({"ReceiptHandle": "h1", "Body": json.dumps(bad_claim)}) is False
+    mock_s3.get_object.assert_not_called()
+    mock_sqs.delete_message.assert_not_called()
+
+    with pytest.raises(ValueError):
+        fetch_approved_payload(mock_s3, "brainsos-mail-ingress-test", bad_key)
+
+
+def test_fetch_approved_payload_and_consumer_reject_whitespace_buckets(sample_claim_check_dict):
+    from brainsos_mail.ingress.claim_check import fetch_approved_payload
+
+    mock_s3 = MagicMock()
+    for bad_bucket in ("", "   ", " brainsos-mail-ingress-test ", "bkt\r\n"):
+        with pytest.raises(ValueError):
+            fetch_approved_payload(mock_s3, bad_bucket, "approved/msg.json")
+        with pytest.raises(ValueError):
+            fetch_approved_payload(
+                mock_s3,
+                bad_bucket,
+                "approved/msg.json",
+                expected_bucket="brainsos-mail-ingress-test",
+            )
+    with pytest.raises(ValueError):
+        fetch_approved_payload(
+            mock_s3,
+            "brainsos-mail-ingress-test",
+            "approved/msg.json",
+            expected_bucket=" brainsos-mail-ingress-test ",
+        )
+
+    config = IngressConfig(
+        sqs_queue_url="https://sqs.us-east-1.amazonaws.com/123/queue",
+        s3_bucket="brainsos-mail-ingress-test",
+    )
+    padded_claim = dict(sample_claim_check_dict, s3Bucket=" brainsos-mail-ingress-test ")
+    consumer = SqsIngressConsumer(
+        config=config,
+        s3_client=mock_s3,
+        sqs_client=MagicMock(),
+        injector=MagicMock(),
+    )
+    assert consumer.process_message({"ReceiptHandle": "h1", "Body": json.dumps(padded_claim)}) is False
+    mock_s3.get_object.assert_not_called()

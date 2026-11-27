@@ -199,11 +199,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [ -n "${TARGET_BRANCH}" ]; then
+  if [[ "${TARGET_BRANCH}" == -* ]] || [[ "${TARGET_BRANCH}" == /* ]] || [[ "${TARGET_BRANCH}" == */ ]] || [[ "${TARGET_BRANCH}" == *".."* ]] || [[ "${TARGET_BRANCH}" == *"//"* ]] || [[ "${TARGET_BRANCH}" == *.lock ]] || ! [[ "${TARGET_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    log_error "Invalid branch name: '${TARGET_BRANCH}'"
+    exit 1
+  fi
+fi
+
 # ------------------------------------------------------------------------------
 # 1. Version Detection & Status Query (C2)
 # ------------------------------------------------------------------------------
 query_status() {
-  python3 - << EOF
+  REPO_ROOT="${REPO_ROOT}" python3 - << 'EOF'
 import json
 import os
 import re
@@ -211,12 +218,25 @@ import subprocess
 import urllib.request
 import urllib.error
 
-repo_root = "${REPO_ROOT}"
+repo_root = os.environ["REPO_ROOT"]
+BRANCH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+def is_valid_branch(name):
+    return (
+        bool(name)
+        and not name.startswith("-")
+        and not name.startswith("/")
+        and not name.endswith("/")
+        and ".." not in name
+        and "//" not in name
+        and not name.endswith(".lock")
+        and bool(BRANCH_RE.match(name))
+    )
 
 def run_cmd(cmd, cwd=repo_root):
     try:
-        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd, timeout=10)
-        return res.stdout.strip()
+        res = subprocess.run(cmd, shell=False, capture_output=True, text=True, cwd=cwd, timeout=10)
+        return res.stdout.strip() if res.returncode == 0 else ""
     except Exception:
         return ""
 
@@ -264,13 +284,13 @@ def get_git_info():
     is_git = os.path.isdir(os.path.join(repo_root, ".git"))
     if not is_git:
         return {"is_git": False, "available_branches": ["main"]}
-    branch = run_cmd("git rev-parse --abbrev-ref HEAD")
-    current_commit = run_cmd("git rev-parse --short HEAD")
+    branch = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    current_commit = run_cmd(["git", "rev-parse", "--short", "HEAD"])
     remote_commit = ""
     commits_behind = 0
     available_branches = []
 
-    ls_heads = run_cmd("git ls-remote --heads origin")
+    ls_heads = run_cmd(["git", "ls-remote", "--heads", "origin"])
     if ls_heads:
         for line in ls_heads.splitlines():
             parts = line.split()
@@ -281,7 +301,7 @@ def get_git_info():
                     remote_commit = parts[0][:7]
 
     if not available_branches:
-        local_branches = run_cmd("git branch -a --format='%(refname:short)'")
+        local_branches = run_cmd(["git", "branch", "-a", "--format=%(refname:short)"])
         for line in local_branches.splitlines():
             b_name = line.strip().strip("'")
             if b_name.startswith("origin/"):
@@ -299,10 +319,25 @@ def get_git_info():
 
     if remote_commit and remote_commit != current_commit:
         if os.path.isfile(os.path.join(repo_root, ".git", "shallow")):
-            run_cmd("git fetch --unshallow origin --quiet || git fetch origin --quiet")
+            try:
+                res_unshallow = subprocess.run(
+                    ["git", "fetch", "--unshallow", "origin", "--quiet"],
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    cwd=repo_root,
+                    timeout=10,
+                )
+                if res_unshallow.returncode != 0:
+                    run_cmd(["git", "fetch", "origin", "--quiet"])
+            except Exception:
+                run_cmd(["git", "fetch", "origin", "--quiet"])
         else:
-            run_cmd("git fetch origin --quiet")
-        behind_out = run_cmd(f"git rev-list --count HEAD..origin/{branch}")
+            run_cmd(["git", "fetch", "origin", "--quiet"])
+        if is_valid_branch(branch):
+            behind_out = run_cmd(["git", "rev-list", "--count", f"HEAD..origin/{branch}"])
+        else:
+            behind_out = ""
         try:
             commits_behind = int(behind_out)
         except ValueError:
@@ -331,11 +366,11 @@ def get_latest_github_release(repo):
 
 # Resolve image definitions via docker inspect (running) or compose config (declared)
 def get_service_image(service_name, container_name):
-    img = run_cmd(f"docker inspect --format '{{{{.Config.Image}}}}' {container_name}")
+    img = run_cmd(["docker", "inspect", "--format", "{{.Config.Image}}", container_name])
     if img:
         return img
     try:
-        raw_cfg = run_cmd("docker compose config --format json")
+        raw_cfg = run_cmd(["docker", "compose", "config", "--format", "json"])
         if raw_cfg:
             cfg = json.loads(raw_cfg)
             svcs = cfg.get("services", {})
@@ -388,12 +423,12 @@ hermes_update = False
 
 # Operator Studio (VS Code IDE / code-server)
 def get_code_server_version():
-    out = run_cmd("docker exec brainsos-app-code-server code-server --version")
+    out = run_cmd(["docker", "exec", "brainsos-app-code-server", "code-server", "--version"])
     if out:
         first_tok = out.splitlines()[0].strip().split()[0].lstrip("v")
         if re.match(r"^[0-9]+(\.[0-9]+)+", first_tok):
             return first_tok
-    lbl = run_cmd("docker inspect --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}' brainsos-app-code-server")
+    lbl = run_cmd(["docker", "inspect", "--format", '{{index .Config.Labels "org.opencontainers.image.version"}}', "brainsos-app-code-server"])
     if lbl and lbl not in ("latest", "<no value>"):
         return lbl.lstrip("v")
     env_tag = os.environ.get("CODE_SERVER_IMAGE_TAG", "").strip().lstrip("v")
@@ -581,11 +616,12 @@ if [ "${CHECK_ONLY}" = true ]; then
   echo ""
 
   STATUS_JSON="$(query_status)"
-  
-  python3 - << EOF
-import json
 
-data = json.loads('''${STATUS_JSON}''')
+  STATUS_JSON="${STATUS_JSON}" python3 - << 'EOF'
+import json
+import os
+
+data = json.loads(os.environ["STATUS_JSON"])
 git = data.get("git", {})
 services = data.get("services", {})
 
@@ -745,7 +781,7 @@ print(f'{free_gb:.1f} {pct_free:.1f}')
 read -r PRE_FREE_GB PRE_PCT_FREE <<< "${DISK_PRECHECK}"
 log_info "Available root disk: ${PRE_FREE_GB} GB (${PRE_PCT_FREE}% free)"
 
-if python3 -c "import sys; sys.exit(0 if float('${PRE_PCT_FREE}') < 15.0 else 1)" 2>/dev/null; then
+if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 15.0 else 1)' "${PRE_PCT_FREE}" 2>/dev/null; then
   log_warn "WARNING: Available disk space is below 15% threshold (${PRE_PCT_FREE}% free)!"
   log_info "Running automated log pruning to reclaim disk capacity..."
   if [ -x "${REPO_ROOT}/scripts/control/prune-logs.sh" ]; then
@@ -757,7 +793,7 @@ import shutil
 total, used, free = shutil.disk_usage('/')
 print(f'{(free / total) * 100.0:.1f}')
 " 2>/dev/null || echo "50.0")"
-  if python3 -c "import sys; sys.exit(0 if float('${POST_CHECK}') < 10.0 else 1)" 2>/dev/null; then
+  if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 10.0 else 1)' "${POST_CHECK}" 2>/dev/null; then
     log_error "CRITICAL: Insufficient disk space for safe platform update (${POST_CHECK}% free). Minimum 10% required."
     exit 1
   else
@@ -965,16 +1001,23 @@ else
 
 resolve_latest_github_release() {
   local repo="$1"
-  python3 -c "
-import json, urllib.request
+  python3 - "${repo}" << 'EOF' 2>/dev/null || true
+import json
+import re
+import sys
+import urllib.request
+
+repo = sys.argv[1] if len(sys.argv) > 1 else ""
+if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo):
+    sys.exit(0)
 try:
-    req = urllib.request.Request('https://api.github.com/repos/${repo}/releases/latest', headers={'User-Agent': 'brainsOS-Updater'})
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/latest", headers={"User-Agent": "brainsOS-Updater"})
     with urllib.request.urlopen(req, timeout=5) as resp:
         data = json.loads(resp.read().decode())
-        print(data.get('tag_name', '').lstrip('v'))
+        print(data.get("tag_name", "").lstrip("v"))
 except Exception:
     pass
-" 2>/dev/null || true
+EOF
 }
 
 COMPOSE_TARGETS=()

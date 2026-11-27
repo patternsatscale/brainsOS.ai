@@ -270,24 +270,33 @@ if [ "${LIVE_MAIL_READY}" = true ]; then
         local reply_to="${5:-}"
         local refs="${6:-}"
 
-        ${PYTHON_BIN} -c "
-import smtplib
+        OPERATOR_USER="${OPERATOR_USER}" \
+        TO_ADDR="${to}" \
+        MSG_SUBJECT="${subject}" \
+        MSG_BODY="${body}" \
+        MSG_ID="${msg_id}" \
+        REPLY_TO="${reply_to}" \
+        REFS="${refs}" \
+        SMTP_PORT="${SMTP_PORT}" \
+        "${PYTHON_BIN}" - << 'EOF'
 from email.message import EmailMessage
+import os
+import smtplib
 
 msg = EmailMessage()
-msg['From'] = '${OPERATOR_USER}'
-msg['To'] = '${to}'
-msg['Subject'] = '''${subject}'''
-msg['Message-ID'] = '${msg_id}'
-if '${reply_to}':
-    msg['In-Reply-To'] = '${reply_to}'
-if '${refs}':
-    msg['References'] = '${refs}'
-msg.set_content('''${body}''')
+msg["From"] = os.environ["OPERATOR_USER"]
+msg["To"] = os.environ["TO_ADDR"]
+msg["Subject"] = os.environ["MSG_SUBJECT"]
+msg["Message-ID"] = os.environ["MSG_ID"]
+if os.environ.get("REPLY_TO"):
+    msg["In-Reply-To"] = os.environ["REPLY_TO"]
+if os.environ.get("REFS"):
+    msg["References"] = os.environ["REFS"]
+msg.set_content(os.environ["MSG_BODY"])
 
-with smtplib.SMTP('127.0.0.1', ${SMTP_PORT}) as s:
+with smtplib.SMTP("127.0.0.1", int(os.environ["SMTP_PORT"])) as s:
     s.send_message(msg)
-"
+EOF
     }
 
     # Dispatch Step 1

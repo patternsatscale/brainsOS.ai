@@ -8,12 +8,12 @@ set -e
 # outbound HTTPS traffic without disabling TLS verification.
 # ==============================================================================
 
-# Ensure bind-mounted /opt/data state directory is writable by rootless hermes (1000:1000) (#382)
+# Ensure bind-mounted /opt/data state directory is writable by rootless hermes (10001:10001) (#382, #400)
 if [ -d /opt/data ]; then
-    chown 1000:1000 /opt/data 2>/dev/null || true
+    chown 10001:10001 /opt/data 2>/dev/null || true
     for sub in sessions cron skills logs state plans pairing memories cache; do
         mkdir -p "/opt/data/${sub}" 2>/dev/null || true
-        chown 1000:1000 "/opt/data/${sub}" 2>/dev/null || true
+        chown 10001:10001 "/opt/data/${sub}" 2>/dev/null || true
     done
 fi
 
@@ -36,42 +36,74 @@ if [ -f "${MITMPROXY_CA_CERT}" ]; then
 fi
 
 # ==============================================================================
-# brainsOS: Hermes Dashboard Reverse-Proxy SSO Exemption (#334)
-# Caddy enforces Authentik forward_auth at the /runner/* ingress boundary and
-# host port 8787 is bound strictly to 127.0.0.1. Allow non-loopback container
-# binds (0.0.0.0:9119 on brainsos-ingress-net) when HERMES_TRUST_REVERSE_PROXY_AUTH=true.
+# brainsOS: Hermes Dashboard Verified Reverse-Proxy Token Gate (#334, #400)
+# Caddy enforces Authentik admin forward_auth at /runner* and injects a shared
+# X-Hermes-Proxy-Token / X-Runner-Token header. Reject any direct container access
+# that lacks a verified proxy token (fail closed).
 # ==============================================================================
 if [ -f /opt/hermes/hermes_cli/web_server.py ]; then
     PYTHON_BIN="/opt/hermes/.venv/bin/python"
     [ -x "${PYTHON_BIN}" ] || PYTHON_BIN="python3"
-    "${PYTHON_BIN}" - << 'PYEOF' 2>/dev/null || true
+    "${PYTHON_BIN}" - << 'PYEOF'
+import re
+import textwrap
 from pathlib import Path
 
 path = Path("/opt/hermes/hermes_cli/web_server.py")
 text = path.read_text(encoding="utf-8")
-marker = 'os.environ.get("HERMES_TRUST_REVERSE_PROXY_AUTH"'
+marker = "BRAINSOS_VERIFIED_PROXY_TOKEN_MIDDLEWARE"
 if marker not in text:
-    old_fn = "def should_require_auth(host: str, allow_public: bool = False) -> bool:\n"
-    new_fn = (
-        "def should_require_auth(host: str, allow_public: bool = False) -> bool:\n"
-        '    if os.environ.get("HERMES_TRUST_REVERSE_PROXY_AUTH", "").lower() in ("1", "true", "yes"):\n'
-        "        return False\n"
-    )
-    old_dash = (
-        "def should_require_dashboard_auth(\n"
-        "    host: str,\n"
-        "    trusted_public_hosts: Optional[frozenset[str]] = None,\n"
-        ") -> bool:\n"
-    )
-    new_dash = (
-        old_dash
-        + '    if os.environ.get("HERMES_TRUST_REVERSE_PROXY_AUTH", "").lower() in ("1", "true", "yes"):\n'
-        + "        return False\n"
-    )
-    if old_fn in text:
-        text = text.replace(old_fn, new_fn, 1)
-    if old_dash in text:
-        text = text.replace(old_dash, new_dash, 1)
+    middleware_snippet = textwrap.dedent("""
+        # BRAINSOS_VERIFIED_PROXY_TOKEN_MIDDLEWARE
+        def _brainsos_verify_proxy_token(headers) -> tuple[bool, int]:
+            import hmac as _hmac
+            import os as _os
+            proxy_secret = (_os.environ.get("HERMES_DASHBOARD_PROXY_TOKEN") or "").strip()
+            runner_secret = (_os.environ.get("RUNNER_AUTH_TOKEN") or "").strip()
+            if not proxy_secret and not runner_secret:
+                return False, 503
+            hdr_proxy = (headers.get("x-hermes-proxy-token") or "").strip()
+            hdr_runner = (headers.get("x-runner-token") or "").strip()
+            if proxy_secret and hdr_proxy and _hmac.compare_digest(hdr_proxy, proxy_secret):
+                return True, 200
+            if runner_secret and hdr_runner and _hmac.compare_digest(hdr_runner, runner_secret):
+                if not proxy_secret or _hmac.compare_digest(proxy_secret, runner_secret):
+                    return True, 200
+            if not proxy_secret and runner_secret and hdr_proxy and _hmac.compare_digest(hdr_proxy, runner_secret):
+                return True, 200
+            return False, 401
+
+        def _brainsos_attach_proxy_gate(app_obj):
+            from starlette.responses import JSONResponse as _JSONResponse
+
+            @app_obj.middleware("http")
+            async def _brainsos_proxy_token_middleware(request, call_next):
+                ok, code = _brainsos_verify_proxy_token(request.headers)
+                if not ok:
+                    return _JSONResponse({"detail": "Unauthorized proxy access"}, status_code=code)
+                return await call_next(request)
+
+            return app_obj
+    """).lstrip("\n")
+
+    if re.search(r"^\s*def\s+create_app\s*\(", text, re.MULTILINE) and re.search(r"\breturn\s+app\b", text):
+        text = re.sub(
+            r"(^\s*def\s+create_app\s*\()",
+            middleware_snippet + "\n\\1",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        text = re.sub(r"\breturn\s+app\b", "return _brainsos_attach_proxy_gate(app)", text)
+    elif re.search(r"^\s*app\s*=\s*FastAPI\s*\(", text, re.MULTILINE):
+        text = text.rstrip() + "\n\n" + middleware_snippet + "\n_brainsos_attach_proxy_gate(app)\n"
+    else:
+        raise RuntimeError(f"Unsupported web_server.py structure in {path}; refusing to leave dashboard unauthenticated")
+
     path.write_text(text, encoding="utf-8")
+
+written = path.read_text(encoding="utf-8")
+if marker not in written or "_brainsos_attach_proxy_gate(" not in written:
+    raise RuntimeError(f"Post-write verification failed for {path}")
 PYEOF
 fi

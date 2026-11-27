@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import argparse
 import email
-from email.header import decode_header
 import imaplib
 import sys
 import time
+from email.header import decode_header
 from typing import Any
 
 

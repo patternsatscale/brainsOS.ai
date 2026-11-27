@@ -20,10 +20,13 @@ services:
       - ../../config/caddy:/etc/caddy:ro
       - ../../packages/brainsOS-portal/dist:/srv/portal:ro
       - ${BRAINSOS_CADDY_DATA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/caddy_data}:/data
+      - ${BRAINSOS_OPENBAO_TLS_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/openbao_tls}/ca.crt:/etc/ssl/openbao/ca.crt:ro
       - caddy_config:/config
       - ${HOME}/.aws:/root/.aws:ro
     networks:
       brainsos-ingress-net:
+        ipv4_address: ${CADDY_INGRESS_IP:-172.28.0.10}
+        gw_priority: 100
         aliases:
           - caddy
           - brainsos-caddy
@@ -31,12 +34,14 @@ services:
           - brainsos-ingress-caddy
           - ${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}
       brainsos-internal-net:
+        ipv4_address: ${CADDY_INTERNAL_IP:-172.28.1.10}
         aliases:
           - caddy
           - brainsos-caddy
           - brainsos-net-caddy
           - brainsos-ingress-caddy
       brainsos-ide-net:
+        ipv4_address: ${CADDY_IDE_IP:-172.28.6.10}
         aliases:
           - caddy
     environment:
@@ -60,9 +65,13 @@ services:
       # Space-separated bare-IP site addresses served with the internal CA
       - BRAINSOS_IP_SITES=${BRAINSOS_IP_SITES:-127.0.0.1}
       - SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN:-}
+      - CADDY_INGRESS_TOKEN=${CADDY_INGRESS_TOKEN:-}
+      - RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}
+      - HERMES_DASHBOARD_PROXY_TOKEN=${HERMES_DASHBOARD_PROXY_TOKEN:-${RUNNER_AUTH_TOKEN:-}}
       - BRAINSOS_SYSTEM_API_PORT=${BRAINSOS_SYSTEM_API_PORT:-8010}
       - BRAINSOS_WIZARD_COMPLETED=${BRAINSOS_WIZARD_COMPLETED:-true}
       - AUTH_ALB_OIDC_ENABLED=${AUTH_ALB_OIDC_ENABLED:-false}
+      - AUTH_ALB_TRUSTED_CIDRS=${AUTH_ALB_TRUSTED_CIDRS:-10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
     command: >
       sh -c 'if [ -z "$${AWS_ACCESS_KEY_ID}" ]; then unset AWS_ACCESS_KEY_ID; unset AWS_SECRET_ACCESS_KEY; fi; if [ -z "$${OPERATOR_PASSWORD_HASH}" ] && [ -n "$${CODE_SERVER_PASSWORD}" ]; then
         export OPERATOR_PASSWORD_HASH="$$(caddy hash-password --plaintext "$${CODE_SERVER_PASSWORD}")";

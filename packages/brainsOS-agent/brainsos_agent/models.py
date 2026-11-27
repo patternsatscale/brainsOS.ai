@@ -41,10 +41,12 @@ class AgentProfile(BaseModel):
     soul: str | None = None
     runtime: str = "hermes"
     model: str = "brainsos-core"
-    soul_path: Path
+    soul_path: Path | None = None
     memory_root: Path
     workspace_root: Path
     mcp_modules: list[str] = Field(default_factory=list)
+    virtual_key_env: str | None = None
+    github_allowed_repos: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_agent_dict(cls, data: dict[str, Any], base_path: Path | str = ".") -> AgentProfile:
@@ -168,6 +170,31 @@ class AgentProfile(BaseModel):
         if not isinstance(mcp_modules, list):
             mcp_modules = []
 
+        routing = data.get("routing", {}) if isinstance(data.get("routing"), dict) else {}
+        virtual_key_env_raw = data.get("virtual_key_env") or routing.get("virtual_key")
+        virtual_key_env = str(virtual_key_env_raw).strip() if virtual_key_env_raw else None
+
+        egress = data.get("egress", {}) if isinstance(data.get("egress"), dict) else {}
+        ws_cfg = data.get("workspace", {}) if isinstance(data.get("workspace"), dict) else {}
+        allowed_repos: list[str] = []
+        raw_repos = (
+            data.get("github_allowed_repos")
+            or egress.get("github_allowed_repos")
+            or egress.get("allowed_repos")
+        )
+        if isinstance(raw_repos, str):
+            allowed_repos.extend(r.strip() for r in raw_repos.split(",") if r.strip())
+        elif isinstance(raw_repos, list):
+            allowed_repos.extend(str(r).strip() for r in raw_repos if str(r).strip())
+
+        repo_url = str(ws_cfg.get("repo_url") or data.get("repo_url") or "").strip()
+        if repo_url:
+            m_repo = re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?/?$", repo_url, re.IGNORECASE)
+            if m_repo:
+                slug = m_repo.group(1).strip()
+                if slug and slug not in allowed_repos:
+                    allowed_repos.append(slug)
+
         return cls(
             name=name,
             id=agent_id,
@@ -179,6 +206,8 @@ class AgentProfile(BaseModel):
             memory_root=memory_root,
             workspace_root=workspace_root,
             mcp_modules=mcp_modules,
+            virtual_key_env=virtual_key_env,
+            github_allowed_repos=allowed_repos,
         )
 
     @classmethod

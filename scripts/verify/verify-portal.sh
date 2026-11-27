@@ -215,7 +215,7 @@ fi
 log_info "Step 7: Validating Downstream Service Upstream Connectivity..."
 
 # Issue #258: SOGo Trusted Proxy Authentication
-SOGO_UPSTREAM=$(docker compose exec -T caddy curl -s -o /dev/null -w "%{http_code}" -H "x-webobjects-remote-user: operator" http://sogo:20000/SOGo/index/ 2>/dev/null || echo "000")
+SOGO_UPSTREAM=$(docker compose exec -T caddy sh -c 'curl -s -o /dev/null -w "%{http_code}" -H "X-Caddy-Ingress-Token: ${CADDY_INGRESS_TOKEN:-}" -H "x-webobjects-remote-user: operator" http://sogo:20000/SOGo/index/' 2>/dev/null || echo "000")
 if [ "${SOGO_UPSTREAM}" == "302" ] || [ "${SOGO_UPSTREAM}" == "200" ]; then
   log_success "SOGo Trusted Proxy Authentication verified (HTTP ${SOGO_UPSTREAM} authenticated response)."
 else

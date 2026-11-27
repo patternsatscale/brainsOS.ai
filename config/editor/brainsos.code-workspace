@@ -34,9 +34,7 @@
       "brainsos-core": "toolCalling",
       "qwen2.5:latest": "toolCalling"
     },
-    "security.workspace.trust.enabled": false,
-    "security.workspace.trust.startupPrompt": "never",
-    "security.workspace.trust.emptyWindow": true,
+    "security.workspace.trust.enabled": true,
     "http.proxyStrictSSL": false,
     "telemetry.telemetryLevel": "off",
     "workbench.startupEditor": "none",
