@@ -4,9 +4,9 @@
 # Pre-configured with Multi-Root Workspace, Aider, Goose, and PKM extensions
 # ==============================================================================
 
-ARG CODE_SERVER_IMAGE_TAG=latest
+ARG CODE_SERVER_IMAGE_TAG=4.145.2
 FROM codercom/code-server:${CODE_SERVER_IMAGE_TAG}
-ARG CODE_SERVER_IMAGE_TAG=latest
+ARG CODE_SERVER_IMAGE_TAG=4.145.2
 LABEL org.opencontainers.image.version="${CODE_SERVER_IMAGE_TAG}"
 
 USER root
@@ -26,12 +26,12 @@ RUN apt-get update -qq && \
       make && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Astral uv package manager and Aider CLI with Python 3.12 into /opt/uv-tools
+# Install pinned Astral uv package manager and Aider CLI with Python 3.12 into /opt/uv-tools
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /usr/local/bin/
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 ENV UV_TOOL_DIR=/opt/uv-tools
 ENV UV_TOOL_BIN_DIR=/usr/local/bin
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh && \
-    uv tool install --python 3.12 aider-chat && \
+RUN uv tool install --python 3.12 aider-chat && \
     chmod -R a+rx /opt/uv-python /opt/uv-tools
 
 # Install brainsOS Terminal CLI package and smart make interceptor

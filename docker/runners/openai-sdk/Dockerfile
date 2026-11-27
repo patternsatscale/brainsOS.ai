@@ -5,10 +5,13 @@
 
 FROM brainsos-runner-base:latest
 
+USER root
 RUN uv pip install --system "openai>=1.50.0" "mcp>=1.0.0" "httpx>=0.25.0"
 
-COPY docker/runners/openai-sdk/server.py /app/server.py
+COPY --chown=10001:10001 docker/runners/openai-sdk/server.py /app/server.py
+RUN chown -R 10001:10001 /app
 
+USER 10001:10001
 WORKDIR /workspace
 
 EXPOSE 8002

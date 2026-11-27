@@ -89,50 +89,72 @@ def _detect_active_hermes_agent(base_root: str, known_agents: list[str]) -> str:
 def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str, str]:
     """Resolve (effective_root_dir, effective_rel_path) for tenant-scoped memory operations.
 
-    Ensures writes/reads are strictly scoped within /data/agents/<agent_id>/memories/
-    and never pollute the multi-tenant base root.
+    When BRAINSOS_AGENT_ID (or AGENT_ID / HERMES_AGENT_ID / TENANT_ID) is pinned in
+    the environment, strictly rejects cross-tenant path prefixes or agent_id overrides.
     """
     base_root = get_memory_root()
     norm_path = rel_path.strip().lstrip("/").replace("\\", "/")
 
-    # Strip leading 'agents/' if present (e.g. agents/bawtford/research/note.md)
+    # Strip leading 'agents/' if present (e.g. agents/<agent>/research/note.md)
     if norm_path.startswith("agents/"):
         norm_path = norm_path[len("agents/") :].lstrip("/")
 
+    pinned_agent = (
+        os.environ.get("BRAINSOS_AGENT_ID")
+        or os.environ.get("AGENT_ID")
+        or os.environ.get("HERMES_AGENT_ID")
+        or os.environ.get("TENANT_ID")
+        or ""
+    ).strip()
+
     known_agents = _get_known_agents(base_root)
-    target_agent = (agent_id or "").strip()
+    explicit_agent = (agent_id or "").strip()
 
-    # 1. Path-based resolution if path starts with agent_id (e.g. bawtford/research/...)
-    if not target_agent and "/" in norm_path:
-        first_segment, rest = norm_path.split("/", 1)
-        if first_segment in known_agents:
-            target_agent = first_segment
-            norm_path = rest
-    elif not target_agent and norm_path in known_agents:
-        target_agent = norm_path
-        norm_path = ""
+    if pinned_agent:
+        if explicit_agent and explicit_agent != pinned_agent:
+            raise PermissionError(
+                f"Cross-tenant memory access denied: agent '{pinned_agent}' cannot access '{explicit_agent}'."
+            )
+        if "/" in norm_path:
+            first_seg, rest = norm_path.split("/", 1)
+            if first_seg == pinned_agent:
+                norm_path = rest
+            elif first_seg in known_agents or (
+                first_seg not in ("knowledge", "logs", "rules", "research", "notes", "people", "threads")
+                and os.path.isdir(os.path.join(base_root, first_seg))
+            ):
+                raise PermissionError(
+                    f"Cross-tenant memory access denied: path '{rel_path}' targets '{first_seg}' instead of '{pinned_agent}'."
+                )
+        elif norm_path in known_agents and norm_path != pinned_agent:
+            raise PermissionError(
+                f"Cross-tenant memory access denied: path '{rel_path}' targets '{norm_path}' instead of '{pinned_agent}'."
+            )
+        target_agent = pinned_agent
+    else:
+        target_agent = explicit_agent
 
-    # 2. Environment variable resolution
-    if not target_agent:
-        target_agent = (
-            os.environ.get("BRAINSOS_AGENT_ID")
-            or os.environ.get("AGENT_ID")
-            or os.environ.get("HERMES_AGENT_ID")
-            or os.environ.get("TENANT_ID")
-            or ""
-        ).strip()
+        # 1. Path-based resolution if path starts with known agent_id
+        if not target_agent and "/" in norm_path:
+            first_segment, rest = norm_path.split("/", 1)
+            if first_segment in known_agents:
+                target_agent = first_segment
+                norm_path = rest
+        elif not target_agent and norm_path in known_agents:
+            target_agent = norm_path
+            norm_path = ""
 
-    # 3. Active Hermes runner session detection
-    if not target_agent and known_agents:
-        target_agent = _detect_active_hermes_agent(base_root, known_agents)
+        # 2. Active Hermes runner session detection (when unpinned)
+        if not target_agent and known_agents:
+            target_agent = _detect_active_hermes_agent(base_root, known_agents)
 
-    # 4. Single-agent fallback if only one agent is configured in fleet
-    if not target_agent and len(known_agents) == 1:
-        target_agent = known_agents[0]
+        # 3. Single-agent fallback if only one agent is configured in fleet
+        if not target_agent and len(known_agents) == 1:
+            target_agent = known_agents[0]
 
-    # 5. Default agent fallback from environment if defined
-    if not target_agent:
-        target_agent = os.environ.get("DEFAULT_AGENT_ID", "").strip()
+        # 4. Default agent fallback from environment if defined
+        if not target_agent:
+            target_agent = os.environ.get("DEFAULT_AGENT_ID", "").strip()
 
     # If target_agent is resolved:
     if target_agent:
@@ -140,7 +162,10 @@ def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str
         if norm_path.startswith("memories/"):
             norm_path = norm_path[len("memories/") :]
 
-        agent_dir = os.path.join(base_root, target_agent)
+        agent_dir = os.path.realpath(os.path.join(base_root, target_agent))
+        real_base = os.path.realpath(base_root)
+        if os.path.commonpath([real_base, agent_dir]) != real_base:
+            raise PermissionError(f"Invalid tenant agent directory traversal: '{target_agent}'")
         target_dir = os.path.join(agent_dir, "memories")
         os.makedirs(target_dir, exist_ok=True)
         return target_dir, norm_path

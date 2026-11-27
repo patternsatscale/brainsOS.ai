@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Optional
+import os
+from typing import Dict, Optional
 
 import httpx
 
@@ -22,12 +23,14 @@ class WarmHttpRunnerClient(RunnerClient):
         max_retries: int = 3,
         backoff_factor: float = 0.1,
         transport: Optional[httpx.AsyncBaseTransport] = None,
+        auth_token: Optional[str] = None,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
         self.default_timeout_sec = default_timeout_sec
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
         self.transport = transport
+        self.auth_token = (auth_token if auth_token is not None else os.getenv("RUNNER_AUTH_TOKEN", "")).strip()
         self._client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -69,11 +72,16 @@ class WarmHttpRunnerClient(RunnerClient):
         client = await self._get_client()
         payload = request.model_dump(mode="json")
 
+        req_headers: Dict[str, str] = {}
+        if self.auth_token:
+            req_headers["X-Runner-Token"] = self.auth_token
+
         for attempt in range(self.max_retries + 1):
             try:
                 response = await client.post(
                     url,
                     json=payload,
+                    headers=req_headers,
                     timeout=httpx.Timeout(timeout_sec),
                 )
 

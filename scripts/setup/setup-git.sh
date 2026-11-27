@@ -372,7 +372,7 @@ docker exec \
       curl -sf -X POST "http://127.0.0.1:3000/api/v1/user/repos" \
         -u "${GITEA_USER}:${GITEA_PASS}" \
         -H "Content-Type: application/json" \
-        -d "{\"name\": \"${GITEA_REPO}\", \"description\": \"brainsOS Appliance Prompts, Souls, Skills & OKF Memories\", \"private\": false, \"auto_init\": false, \"default_branch\": \"main\"}" >/dev/null 2>&1 || true
+        -d "{\"name\": \"${GITEA_REPO}\", \"description\": \"brainsOS Appliance Prompts, Souls, Skills & OKF Memories\", \"private\": true, \"auto_init\": false, \"default_branch\": \"main\"}" >/dev/null 2>&1 || true
     fi
   ' || true
 

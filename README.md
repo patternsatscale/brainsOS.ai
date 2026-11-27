@@ -208,10 +208,13 @@ graph TD
         OLLAMA["Host Ollama / vLLM (127.0.0.1:11434)<br/>or Ambient AWS Bedrock (IMDSv2 + BRAINSOS-IMDS Guard)"]:::l3
     end
 
-    subgraph "L2: Virtualization & 5 Isolated Bridge Networks"
+    subgraph "L2: Virtualization & 8 Isolated Bridge Networks"
         NET_INGRESS["brainsos-ingress-net"]:::l2
         NET_INTERNAL["brainsos-internal-net"]:::l2
         NET_CONTROL["brainsos-control-net"]:::l2
+        NET_SECRETS["brainsos-secrets-net"]:::l2
+        NET_AUTH["brainsos-auth-net"]:::l2
+        NET_MAIL["brainsos-mail-net"]:::l2
         NET_IDE["brainsos-ide-net"]:::l2
         NET_TELEMETRY["brainsos-telemetry-net"]:::l2
     end
@@ -244,8 +247,8 @@ graph TD
 │     - Messaging Daemons: brainsos-app-signal-cli, Postfix SMTP, SOGo        │
 │     - Operator IDE & SCM: VS Code (/editor/ :8443) + Gitea (/git/ :3000)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L6: Agent Execution Plane (Warm Stateless Hermes Runner & Dynamic Profiles) │
-│     - Shared Hermes Runner (:8642 async API /v1/runs, max_concurrent_runs:1)│
+│ L6: Agent Execution Plane (Non-Root Stateless Runners & Dynamic Profiles)   │
+│     - Shared Runners (UID 10001, cap_drop: ALL, X-Runner-Token, :8642)      │
 │     - Dynamic Manifest Registry: config/agents.yaml (Zero Container Drift)  │
 │     - Asynchronous Agent Core SPI: packages/brainsOS-agent                  │
 │     - Agent-Centric Storage: data/agents/<tenant>/ (SOUL, memories, work)   │
@@ -256,21 +259,25 @@ graph TD
 │     - Agent-Centric Partitions: ./data/agents/<id>/ (SOUL, memories, ws)    │
 │     - Local Git Versioning: Gitea operator/agent-box tracks /data state     │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L4: Routing, Security & ACSG Control Plane                                  │
+│ L4: Routing, Secrets & ACSG Control Plane                                   │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
 │     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
-│     - Tool Egress Proxy: brainsos-agent-egress-proxy (:8081/8082, flows & auth)│
+│     - OpenBao Secret Manager: brainsos-control-secrets (Raft, zero host ports)│
+│     - Tool Egress Proxy: brainsos-agent-egress-proxy (AppRole in-transit)   │
 │     - Control Plane DB: brainsos-control-litellm-db (PostgreSQL, isolated)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane (Dual Sovereign Modes)                                  │
 │     - Bare-Metal Mode: Host Ollama / vLLM bound to loopback (127.0.0.1:11434)│
 │     - AWS Appliance Mode: Ambient Amazon Bedrock via EC2 IMDSv2 IAM Role    │
-│     - Kernel Guard: BRAINSOS-IMDS iptables blocks all non-LiteLLM containers│
+│     - Kernel Guard: BRAINSOS-IMDS / IMDS6 iptables drops all non-LiteLLM    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L2: Virtualization & 5 Isolated Bridge Networks                             │
+│ L2: Virtualization & 8 Isolated Bridge Networks                             │
 │     - brainsos-ingress-net (Caddy -> Service ports & Authentik SSO gates)   │
-│     - brainsos-internal-net (Agent execution, messaging & egress proxy)     │
-│     - brainsos-control-net (Strictly isolates control plane DB from agents) │
+│     - brainsos-internal-net (Agent runners & egress proxy only; no SSO/IDE) │
+│     - brainsos-control-net (Isolates LiteLLM DB & OpenBao Raft control bus) │
+│     - brainsos-secrets-net (Isolates OpenBao <-> tool-egress-proxy AppRole) │
+│     - brainsos-auth-net (Isolates Authentik server, worker, DB & Redis)     │
+│     - brainsos-mail-net (Isolates SOGo DB/webmail <-> mail-server backend)  │
 │     - brainsos-ide-net (Isolates Operator VS Code IDE & Gitea SCM)          │
 │     - brainsos-telemetry-net (Langfuse v4, ClickHouse, Redis, MinIO bus)    │
 ├─────────────────────────────────────────────────────────────────────────────┤

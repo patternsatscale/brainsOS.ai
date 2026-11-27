@@ -27,9 +27,24 @@ networks:
     name: brainsos-internal-net
     driver: bridge
 
-  # 3. Control plane database network: isolated from agent plane (Rule 6)
+  # 3. Control plane database & secrets network: isolated from agent plane (Rule 6)
   brainsos-control-net:
     name: brainsos-control-net
+    driver: bridge
+
+  # 3b. Dedicated Authentik identity plane network (DB, Redis, Server, Worker)
+  brainsos-auth-net:
+    name: brainsos-auth-net
+    driver: bridge
+
+  # 3c. Dedicated OpenBao <-> tool-egress-proxy AppRole secret network
+  brainsos-secrets-net:
+    name: brainsos-secrets-net
+    driver: bridge
+
+  # 3d. Isolated mail & groupware backend network (SOGo <-> sogo-db <-> mail-server)
+  brainsos-mail-net:
+    name: brainsos-mail-net
     driver: bridge
 
   # 4. Operator IDE network: isolated from agent plane; connects Caddy to code-server

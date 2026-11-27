@@ -156,7 +156,7 @@ class HermesMailAdapter(AgentRuntime):
             "/v1",
         )
         self.poll_interval = poll_interval if poll_interval is not None else _env_float("HERMES_RUN_POLL_SEC", 5.0)
-        self.max_run_sec = max_run_sec if max_run_sec is not None else _env_float("HERMES_RUN_MAX_SEC", 14400.0)
+        self.max_run_sec = max_run_sec if max_run_sec is not None else _env_float("HERMES_RUN_MAX_SEC", 3600.0)
         self.http_timeout = http_timeout if http_timeout is not None else _env_float("HERMES_HTTP_TIMEOUT_SEC", 30.0)
         self.submit_backoff = (
             submit_backoff if submit_backoff is not None else _env_float("HERMES_RUN_SUBMIT_BACKOFF_SEC", 15.0)

@@ -3,7 +3,7 @@
 # Pre-injects brainsOS Obsidian Cybernetic Theme into mitmweb static assets
 # ==============================================================================
 
-FROM mitmproxy/mitmproxy:latest
+FROM mitmproxy/mitmproxy:11.0.2
 
 # Copy theme file and inject into mitmweb static assets at build time
 COPY config/egress/theme/brainsos-mitmweb.css /tmp/brainsos-mitmweb.css

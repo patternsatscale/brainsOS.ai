@@ -111,3 +111,38 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  # Segregated OpenBao Secret Manager (Integrated Raft Storage, Zero Host Ports - #387)
+  openbao:
+    image: quay.io/openbao/openbao:${OPENBAO_IMAGE_TAG:-2.2.0}
+    container_name: brainsos-control-secrets
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    command: ["server", "-config=/openbao/config/openbao.hcl"]
+    environment:
+      - BAO_ADDR=http://127.0.0.1:8200
+      - HOME=/openbao/data
+    volumes:
+      - ../../config/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ${BRAINSOS_OPENBAO_DATA_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/openbao}:/openbao/data
+    networks:
+      brainsos-control-net:
+        aliases:
+          - openbao
+          - secrets
+          - brainsos-control-secrets
+      brainsos-secrets-net:
+        aliases:
+          - openbao
+          - secrets
+          - brainsos-control-secrets
+    logging: *default-logging
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:8200/v1/sys/health 2>&1 | awk '/^  HTTP\\// {print $2}' | grep -Eq '^(200|429|472|473|501|503)$'" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

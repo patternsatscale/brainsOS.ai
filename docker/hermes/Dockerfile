@@ -4,16 +4,11 @@
 # Pre-configured with brainsOS OKF Memory Plugin, multi-channel gateways & sandboxing
 # ==============================================================================
 
-FROM nousresearch/hermes-agent:latest
+FROM nousresearch/hermes-agent@sha256:6305b1b16f945aa7201610d9e3ba69b9e26d57ee00693215cc8ff36c0b4c3616
 
-# Ensure Astral uv is available in system PATH (/usr/local/bin and /bin)
-RUN if [ ! -x /usr/local/bin/uv ]; then \
-        find /opt/hermes/tools -type f -name uv -exec ln -sf {} /usr/local/bin/uv \; 2>/dev/null || true; \
-    fi && \
-    if [ ! -x /usr/local/bin/uv ]; then \
-        curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh; \
-    fi && \
-    ln -sf /usr/local/bin/uv /bin/uv
+# Ensure pinned Astral uv is available in system PATH (/usr/local/bin and /bin)
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /usr/local/bin/
+RUN ln -sf /usr/local/bin/uv /bin/uv && ln -sf /usr/local/bin/uvx /bin/uvx
 
 # Install standalone brainsOS-memory package (L5: Memory & Tools)
 COPY packages/brainsOS-memory /opt/hermes/packages/brainsOS-memory
@@ -51,15 +46,13 @@ COPY docker/hermes/plugins/model-providers /opt/data/plugins/model-providers
 COPY docker/hermes/plugins/model-providers /opt/hermes/plugins/model-providers
 COPY docker/hermes/plugins/observability/langfuse /opt/hermes/plugins/observability/langfuse
 
-# Install GitHub CLI (gh), Git tooling, and configure safe container defaults
+# Install GitHub CLI (gh), Git tooling, and configure clean unprivileged user defaults (#387)
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends gh git ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
     git config --system core.askPass "" && \
-    mkdir -p /etc/skel/.config/gh /root/.config/gh /home/hermes/.config/gh && \
-    printf 'github.com:\n    user: x-access-token\n    oauth_token: in-transit-placeholder\n    git_protocol: https\n' | tee /etc/skel/.config/gh/hosts.yml /root/.config/gh/hosts.yml /home/hermes/.config/gh/hosts.yml >/dev/null && \
-    usermod -u 1000 hermes && groupmod -g 1000 hermes && \
+    usermod -u 10001 hermes && groupmod -g 10001 hermes && \
     chown -R hermes:hermes /home/hermes
 
 # Install Tool Egress Proxy CA trust & Dashboard reverse-proxy boot hook
