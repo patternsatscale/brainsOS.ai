@@ -137,50 +137,82 @@ if [ -n "${AUTH_SERVER_C}" ]; then
   log_info "Step 4: Applying Authentik blueprint in running auth-server..."
   docker exec -i "${AUTH_SERVER_C}" ak apply_blueprint /blueprints/zzz-brainsos/brainsos-portal.yaml || \
   docker exec -i "${AUTH_SERVER_C}" ak apply_blueprint /blueprints/brainsos/brainsos-portal.yaml || log_warn "Blueprint apply will complete on container initialization."
-  docker exec -i "${AUTH_SERVER_C}" ak shell -c "from authentik.core.models import User; u = User.objects.filter(username='operator').first(); (u.set_password('${AUTHENTIK_OPERATOR_PASSWORD:-brainsos}'), u.save()) if u else None" 2>/dev/null || true
-
   EFFECTIVE_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}"
-  docker exec -i "${AUTH_SERVER_C}" ak shell -c "
+  docker exec -i \
+    -e AK_EFFECTIVE_DOMAIN="${EFFECTIVE_DOMAIN}" \
+    -e AK_OPERATOR_PASSWORD="${AUTHENTIK_OPERATOR_PASSWORD:-}" \
+    -e AK_LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-}" \
+    -e AK_LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-}" \
+    "${AUTH_SERVER_C}" ak shell -c '
+import os
 from authentik.outposts.models import Outpost
 from authentik.providers.proxy.models import ProxyProvider
-from authentik.core.models import Application
+from authentik.core.models import Application, User
 from authentik.providers.oauth2.models import OAuth2Provider
 
-domain = '${EFFECTIVE_DOMAIN}'
-cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else ''
+op_pass = os.environ.get("AK_OPERATOR_PASSWORD", "")
+if op_pass:
+    op = User.objects.filter(username="operator").first()
+    if op:
+        op.set_password(op_pass)
+        op.save()
+
+domain = os.environ.get("AK_EFFECTIVE_DOMAIN", "local.brainsos.ai").strip() or "local.brainsos.ai"
+cookie_dom = "local.brainsos.ai" if domain.endswith("local.brainsos.ai") else ""
+litellm_secret = os.environ.get("AK_LITELLM_CLIENT_SECRET", "")
+langfuse_secret = os.environ.get("AK_LANGFUSE_CLIENT_SECRET", "")
 
 for o in Outpost.objects.all():
-    o._config['authentik_host'] = f'https://{domain}'
-    o._config['authentik_host_browser'] = f'https://{domain}'
+    o._config["authentik_host"] = f"https://{domain}"
+    o._config["authentik_host_browser"] = f"https://{domain}"
     o.save()
 
 for p in ProxyProvider.objects.all():
-    p.external_host = f'https://{domain}'
+    p.external_host = f"https://{domain}"
     p.cookie_domain = cookie_dom
-    p.redirect_uris = f'https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://{domain}?X-authentik-auth-callback=true\nhttps://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://local.brainsos.ai?X-authentik-auth-callback=true\n.*'
+    p.redirect_uris = "\n".join([
+        f"https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true",
+        f"https://{domain}?X-authentik-auth-callback=true",
+        "https://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true",
+        "https://local.brainsos.ai?X-authentik-auth-callback=true",
+    ])
     p.save()
 
 for a in Application.objects.all():
-    if a.slug == 'brainsos-portal':
-        a.meta_launch_url = f'https://{domain}/'
+    if a.slug == "brainsos-portal":
+        a.meta_launch_url = f"https://{domain}/"
         a.save()
-    elif a.slug == 'litellm':
-        a.meta_launch_url = f'https://{domain}/proxy/ui/'
+    elif a.slug == "litellm":
+        a.meta_launch_url = f"https://{domain}/proxy/ui/"
         a.save()
-    elif a.slug == 'langfuse':
-        a.meta_launch_url = f'https://{domain}/project/brainsos/sessions'
+    elif a.slug == "langfuse":
+        a.meta_launch_url = f"https://{domain}/project/brainsos/sessions"
         a.save()
 
 for oa in OAuth2Provider.objects.all():
-    if oa.client_id == 'litellm-proxy':
-        oa.client_secret = '${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}'
-        oa.redirect_uris = f'https://{domain}/sso/callback\nhttps://{domain}/proxy/ui/sso/callback\nhttps://.*\\.brainsos\\.ai/sso/callback\nhttp://localhost:4000/sso/callback\n.*'
+    if oa.client_id == "litellm-proxy":
+        if litellm_secret:
+            oa.client_secret = litellm_secret
+        oa.redirect_uris = "\n".join([
+            f"https://{domain}/sso/callback",
+            f"https://{domain}/proxy/ui/sso/callback",
+            f"https://proxy.{domain}/sso/callback",
+            "https://local.brainsos.ai/sso/callback",
+            "https://local.brainsos.ai/proxy/ui/sso/callback",
+            "http://localhost:4000/sso/callback",
+        ])
         oa.save()
-    elif oa.client_id == 'langfuse-trace':
-        oa.client_secret = '${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}'
-        oa.redirect_uris = f'https://{domain}/api/auth/callback/custom\nhttps://langfuse.{domain}/api/auth/callback/custom\nhttps://langfuse.local.brainsos.ai/api/auth/callback/custom\nhttp://localhost:3001/api/auth/callback/custom\n.*'
+    elif oa.client_id == "langfuse-trace":
+        if langfuse_secret:
+            oa.client_secret = langfuse_secret
+        oa.redirect_uris = "\n".join([
+            f"https://{domain}/api/auth/callback/custom",
+            f"https://langfuse.{domain}/api/auth/callback/custom",
+            "https://local.brainsos.ai/api/auth/callback/custom",
+            "http://localhost:3001/api/auth/callback/custom",
+        ])
         oa.save()
-"
+'
   log_success "Authentik blueprint applied and domain synchronized with '${EFFECTIVE_DOMAIN}'."
 fi
 

@@ -52,6 +52,18 @@ SKIP_DNS_CHECK=false
 MARK_WIZARD_COMPLETED=false
 FORCE=false
 DRY_RUN=false
+BREAKGLASS_MODE=""
+USER_SUB=""
+OWNER_ONLY_MODE=""
+COGNITO_ENABLED_MODE=""
+COGNITO_REGION=""
+COGNITO_POOL_ID=""
+COGNITO_DOMAIN=""
+COGNITO_CLIENT_ID=""
+COGNITO_CLIENT_SECRET=""
+COGNITO_ADMIN_GROUP=""
+ALB_OIDC_MODE=""
+ALB_SIGNER_ARN=""
 
 normalize_url_host() {
   local raw="$1"
@@ -84,6 +96,22 @@ Options:
   --dns PROVIDER             DNS-01 ACME challenge provider (e.g. 'route53')
   --internal                 Use Caddy's internal private CA (self-signed)
   --mark-wizard-completed    Record completion of the First-Boot Setup Wizard (.brainsos-wizard-completed)
+  --breakglass               Enable EC2 Instance-ID Break-Glass admin login (BRAINSOS_BREAKGLASS_ENABLED=true)
+  --no-breakglass            Lock EC2 Instance-ID Break-Glass admin login (requires Superuser or BRAINSOS_USER_SUB SSO)
+  --user-sub SUB             Bind VM admin access to Cognito owner 'sub' UUID (BRAINSOS_USER_SUB)
+  --owner-only               Reject non-owner Cognito subjects (BRAINSOS_OWNER_ONLY=true, default)
+  --no-owner-only            Allow non-owner Cognito users as viewers (BRAINSOS_OWNER_ONLY=false)
+  --cognito-enabled          Enable Authentik AWS Cognito OIDC federation (AUTH_COGNITO_ENABLED=true)
+  --no-cognito               Disable Authentik AWS Cognito OIDC federation (AUTH_COGNITO_ENABLED=false)
+  --cognito-region REGION    AWS Cognito region (e.g. us-east-1)
+  --cognito-pool-id ID       AWS Cognito User Pool ID (e.g. us-east-1_AbCdEfG)
+  --cognito-domain FQDN      Optional Cognito Hosted UI domain
+  --cognito-client-id ID     Cognito OAuth2 App Client ID
+  --cognito-client-secret S  Cognito OAuth2 App Client Secret
+  --cognito-admin-group GRP  Cognito admin group name (default: brainsos-admins)
+  --alb-oidc                 Enable zero-double-login AWS ALB x-amzn-oidc-data ES256 verification
+  --no-alb-oidc              Disable AWS ALB OIDC pass-through
+  --alb-signer-arn ARN       Allowlisted AWS ALB signer ARN
   --skip-dns-check           Skip DNS resolution pre-flight check
   --force                    Proceed even if DNS does not resolve to this instance
   --dry-run                  Simulate configuration changes without writing .env
@@ -150,6 +178,70 @@ while [ $# -gt 0 ]; do
       MARK_WIZARD_COMPLETED=true
       shift
       ;;
+    --breakglass)
+      BREAKGLASS_MODE="true"
+      shift
+      ;;
+    --no-breakglass)
+      BREAKGLASS_MODE="false"
+      shift
+      ;;
+    --user-sub)
+      USER_SUB="${2:-}"
+      shift 2
+      ;;
+    --owner-only)
+      OWNER_ONLY_MODE="true"
+      shift
+      ;;
+    --no-owner-only)
+      OWNER_ONLY_MODE="false"
+      shift
+      ;;
+    --cognito-enabled)
+      COGNITO_ENABLED_MODE="true"
+      shift
+      ;;
+    --no-cognito)
+      COGNITO_ENABLED_MODE="false"
+      shift
+      ;;
+    --cognito-region)
+      COGNITO_REGION="${2:-}"
+      shift 2
+      ;;
+    --cognito-pool-id)
+      COGNITO_POOL_ID="${2:-}"
+      shift 2
+      ;;
+    --cognito-domain)
+      COGNITO_DOMAIN="${2:-}"
+      shift 2
+      ;;
+    --cognito-client-id)
+      COGNITO_CLIENT_ID="${2:-}"
+      shift 2
+      ;;
+    --cognito-client-secret)
+      COGNITO_CLIENT_SECRET="${2:-}"
+      shift 2
+      ;;
+    --cognito-admin-group)
+      COGNITO_ADMIN_GROUP="${2:-}"
+      shift 2
+      ;;
+    --alb-oidc)
+      ALB_OIDC_MODE="true"
+      shift
+      ;;
+    --no-alb-oidc)
+      ALB_OIDC_MODE="false"
+      shift
+      ;;
+    --alb-signer-arn)
+      ALB_SIGNER_ARN="${2:-}"
+      shift 2
+      ;;
     --skip-dns-check)
       SKIP_DNS_CHECK=true
       shift
@@ -192,7 +284,7 @@ if [ -n "${URL_INPUT}" ] && [ -z "${DOMAIN}" ]; then
 fi
 
 if [ -z "${DOMAIN}" ]; then
-  if [ "${INTERNAL_MODE}" = true ] || [ -n "${UNIT_NAME}" ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ]; then
+  if [ "${INTERNAL_MODE}" = true ] || [ -n "${UNIT_NAME}" ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ] || [ -n "${BREAKGLASS_MODE}" ] || [ -n "${USER_SUB}" ] || [ -n "${OWNER_ONLY_MODE}" ] || [ -n "${COGNITO_ENABLED_MODE}" ] || [ -n "${ALB_OIDC_MODE}" ]; then
     if [ -f "${ENV_FILE}" ]; then
       CURRENT_URL="$(grep -E '^BRAINSOS_URL=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
       CURRENT_DOMAIN="$(grep -E '^BRAINSOS_DOMAIN=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
@@ -435,6 +527,47 @@ if [ "${MARK_WIZARD_COMPLETED}" = true ]; then
   ENV_CHANGES+=("BRAINSOS_WIZARD_COMPLETED=true")
 fi
 
+read_env_key() {
+  local key="$1"
+  if [ -f "${ENV_FILE}" ]; then
+    grep -E "^${key}=" "${ENV_FILE}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true
+  fi
+}
+
+EFFECTIVE_USER_SUB="${USER_SUB:-$(read_env_key BRAINSOS_USER_SUB)}"
+EFFECTIVE_COGNITO_ENABLED="${COGNITO_ENABLED_MODE:-$(read_env_key AUTH_COGNITO_ENABLED)}"
+EFFECTIVE_ALB_OIDC="${ALB_OIDC_MODE:-$(read_env_key AUTH_ALB_OIDC_ENABLED)}"
+EFFECTIVE_BREAKGLASS="${BREAKGLASS_MODE:-$(read_env_key BRAINSOS_BREAKGLASS_ENABLED)}"
+[ -z "${EFFECTIVE_BREAKGLASS}" ] && EFFECTIVE_BREAKGLASS="true"
+
+if [ "${EFFECTIVE_BREAKGLASS}" = "false" ]; then
+  HAS_NAMED_SU=false
+  if [ -n "${EFFECTIVE_ADMIN_USER}" ] && [ "${EFFECTIVE_ADMIN_USER}" != "admin" ] && [ "${EFFECTIVE_ADMIN_USER}" != "akadmin" ]; then
+    HAS_NAMED_SU=true
+  fi
+  HAS_OWNER_SSO=false
+  if [ -n "${EFFECTIVE_USER_SUB}" ] && { [ "${EFFECTIVE_COGNITO_ENABLED}" = "true" ] || [ "${EFFECTIVE_ALB_OIDC}" = "true" ]; }; then
+    HAS_OWNER_SSO=true
+  fi
+  if [ "${HAS_NAMED_SU}" != true ] && [ "${HAS_OWNER_SSO}" != true ]; then
+    log_error "Refusing to set BRAINSOS_BREAKGLASS_ENABLED=false without a named Superuser (--superuser-username) or owner-bound Cognito/ALB SSO (--user-sub)."
+    exit 1
+  fi
+fi
+
+[ -n "${BREAKGLASS_MODE}" ] && ENV_CHANGES+=("BRAINSOS_BREAKGLASS_ENABLED=${BREAKGLASS_MODE}")
+[ -n "${USER_SUB}" ] && ENV_CHANGES+=("BRAINSOS_USER_SUB=${USER_SUB}")
+[ -n "${OWNER_ONLY_MODE}" ] && ENV_CHANGES+=("BRAINSOS_OWNER_ONLY=${OWNER_ONLY_MODE}")
+[ -n "${COGNITO_ENABLED_MODE}" ] && ENV_CHANGES+=("AUTH_COGNITO_ENABLED=${COGNITO_ENABLED_MODE}")
+[ -n "${COGNITO_REGION}" ] && ENV_CHANGES+=("AUTH_COGNITO_REGION=${COGNITO_REGION}")
+[ -n "${COGNITO_POOL_ID}" ] && ENV_CHANGES+=("AUTH_COGNITO_USER_POOL_ID=${COGNITO_POOL_ID}")
+[ -n "${COGNITO_DOMAIN}" ] && ENV_CHANGES+=("AUTH_COGNITO_DOMAIN=${COGNITO_DOMAIN}")
+[ -n "${COGNITO_CLIENT_ID}" ] && ENV_CHANGES+=("AUTH_COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}")
+[ -n "${COGNITO_CLIENT_SECRET}" ] && ENV_CHANGES+=("AUTH_COGNITO_CLIENT_SECRET=${COGNITO_CLIENT_SECRET}")
+[ -n "${COGNITO_ADMIN_GROUP}" ] && ENV_CHANGES+=("AUTH_COGNITO_ADMIN_GROUP=${COGNITO_ADMIN_GROUP}")
+[ -n "${ALB_OIDC_MODE}" ] && ENV_CHANGES+=("AUTH_ALB_OIDC_ENABLED=${ALB_OIDC_MODE}")
+[ -n "${ALB_SIGNER_ARN}" ] && ENV_CHANGES+=("AUTH_ALB_SIGNER_ARN=${ALB_SIGNER_ARN}")
+
 CLOUD_CFG_DIR="${BRAINSOS_CLOUD_CFG_DIR:-/etc/cloud/cloud.cfg.d}"
 HOSTS_FILE="${BRAINSOS_HOSTS_FILE:-/etc/hosts}"
 WIZARD_FLAG="${REPO_ROOT}/.brainsos-wizard-completed"
@@ -443,7 +576,7 @@ if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Would apply the following environment updates to ${ENV_FILE}:"
   for line in "${ENV_CHANGES[@]}"; do
     case "${line}" in
-      *PASSWORD=*)
+      *PASSWORD=*|*SECRET=*)
         echo -e "  ${YELLOW}${line%%=*}=[REDACTED]${NC}"
         ;;
       *)
@@ -499,8 +632,17 @@ sync_linux_admin_accounts() {
     ${sudo_prefix} useradd -m -s /bin/bash admin 2>/dev/null || true
   fi
   ${sudo_prefix} usermod -aG sudo,docker admin 2>/dev/null || ${sudo_prefix} usermod -aG sudo admin 2>/dev/null || true
-  if [ -n "${inst_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
-    printf 'admin:%s\n' "${inst_pass}" | ${sudo_prefix} chpasswd 2>/dev/null || true
+  if [ "${EFFECTIVE_BREAKGLASS:-true}" = "false" ]; then
+    if command -v passwd >/dev/null 2>&1; then
+      ${sudo_prefix} passwd -l admin 2>/dev/null || true
+    fi
+  else
+    if command -v passwd >/dev/null 2>&1; then
+      ${sudo_prefix} passwd -u admin 2>/dev/null || true
+    fi
+    if [ -n "${inst_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
+      printf 'admin:%s\n' "${inst_pass}" | ${sudo_prefix} chpasswd 2>/dev/null || true
+    fi
   fi
   if [ -d /home/admin ]; then
     grep -q "cd ${REPO_ROOT}" /home/admin/.bashrc 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" | ${sudo_prefix} tee -a /home/admin/.bashrc >/dev/null 2>&1 || true

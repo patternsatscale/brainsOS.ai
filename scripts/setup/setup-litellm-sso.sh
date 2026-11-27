@@ -60,7 +60,10 @@ if [ -z "${SUPERUSER_EMAIL}" ] && [ -n "${SUPERUSER_USERNAME}" ]; then
   SUPERUSER_EMAIL="${SUPERUSER_USERNAME}@${LOCAL_DOMAIN}"
 fi
 PRIMARY_ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-admin@${LOCAL_DOMAIN}}"
-ADMIN_RAW_PASS="${BRAINSOS_ADMIN_PASSWORD:-SwZjRtnmaNCxBrgkX2VX6X7M}"
+ADMIN_RAW_PASS="${BRAINSOS_ADMIN_PASSWORD:-${BRAINSOS_SUPERUSER_PASSWORD:-}}"
+if [ -z "${ADMIN_RAW_PASS}" ]; then
+  ADMIN_RAW_PASS="$(openssl rand -hex 16)A1!"
+fi
 
 # Ensure password satisfies LiteLLM policy (uppercase, lowercase, number, special char)
 if [[ "${ADMIN_RAW_PASS}" =~ [^a-zA-Z0-9] ]]; then
@@ -197,85 +200,78 @@ if [ -n "${DB_CONTAINER}" ]; then
   LITELLM_DB_USER="${LITELLM_DB_USER:-litellm}"
   LITELLM_DB_NAME="${LITELLM_DB_NAME:-litellm}"
 
-  KEEP_USERS="'admin', 'default_user_id'"
+  KEEP_USERS_CSV="admin,default_user_id"
   KEY_OWNER_USER="admin"
   if [ -n "${SUPERUSER_USERNAME}" ] && [ "${SUPERUSER_USERNAME}" != "admin" ]; then
-    KEEP_USERS="${KEEP_USERS}, '${SUPERUSER_USERNAME}'"
+    KEEP_USERS_CSV="${KEEP_USERS_CSV},${SUPERUSER_USERNAME}"
     KEY_OWNER_USER="${SUPERUSER_USERNAME}"
   fi
 
-  SQL_STMTS="
-    INSERT INTO \"LiteLLM_UserTable\" (user_id, user_email, user_role, models)
-    VALUES ('admin', 'admin@${EXTERNAL_HOST}', 'proxy_admin', ARRAY['all-proxy-models']::text[])
-    ON CONFLICT (user_id) DO UPDATE SET user_email = 'admin@${EXTERNAL_HOST}', user_role = 'proxy_admin', models = ARRAY['all-proxy-models']::text[];
-  "
-  if [ -n "${SUPERUSER_USERNAME}" ] && [ "${SUPERUSER_USERNAME}" != "admin" ]; then
-    SQL_STMTS="${SQL_STMTS}
-      INSERT INTO \"LiteLLM_UserTable\" (user_id, user_email, user_role, models)
-      VALUES ('${SUPERUSER_USERNAME}', '${SUPERUSER_EMAIL}', 'proxy_admin', ARRAY['all-proxy-models']::text[])
-      ON CONFLICT (user_id) DO UPDATE SET user_role = 'proxy_admin', user_email = '${SUPERUSER_EMAIL}', models = ARRAY['all-proxy-models']::text[];
-    "
-  fi
-  SQL_STMTS="${SQL_STMTS}
-    UPDATE \"LiteLLM_VerificationToken\"
-    SET user_id = '${KEY_OWNER_USER}'
+  docker exec -i "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
+    -v admin_email="admin@${EXTERNAL_HOST}" \
+    -v su_user="${SUPERUSER_USERNAME}" \
+    -v su_email="${SUPERUSER_EMAIL}" \
+    -v key_owner="${KEY_OWNER_USER}" \
+    -v keep_users_csv="${KEEP_USERS_CSV}" <<'EOSQL' >/dev/null 2>&1 || true
+    INSERT INTO "LiteLLM_UserTable" (user_id, user_email, user_role, models)
+    VALUES ('admin', :'admin_email', 'proxy_admin', ARRAY['all-proxy-models']::text[])
+    ON CONFLICT (user_id) DO UPDATE SET user_email = :'admin_email', user_role = 'proxy_admin', models = ARRAY['all-proxy-models']::text[];
+
+    INSERT INTO "LiteLLM_UserTable" (user_id, user_email, user_role, models)
+      SELECT :'su_user', :'su_email', 'proxy_admin', ARRAY['all-proxy-models']::text[]
+      WHERE :'su_user' <> '' AND :'su_user' <> 'admin'
+    ON CONFLICT (user_id) DO UPDATE SET user_role = 'proxy_admin', user_email = :'su_email', models = ARRAY['all-proxy-models']::text[];
+
+    UPDATE "LiteLLM_VerificationToken"
+    SET user_id = :'key_owner'
     WHERE user_id IS NULL
        OR user_id = 'default_user_id'
-       OR user_id NOT IN (${KEEP_USERS});
+       OR NOT (user_id = ANY(string_to_array(:'keep_users_csv', ',')));
 
-    DELETE FROM \"LiteLLM_UserTable\"
-    WHERE user_id NOT IN (${KEEP_USERS});
+    DELETE FROM "LiteLLM_UserTable"
+    WHERE NOT (user_id = ANY(string_to_array(:'keep_users_csv', ',')));
 
-    UPDATE \"LiteLLM_UserTable\"
+    UPDATE "LiteLLM_UserTable"
     SET user_role = 'proxy_admin',
         models = ARRAY['all-proxy-models']::text[]
-    WHERE user_id IN (${KEEP_USERS});
+    WHERE user_id = ANY(string_to_array(:'keep_users_csv', ','));
 
-    UPDATE \"LiteLLM_VerificationToken\"
+    UPDATE "LiteLLM_VerificationToken"
     SET team_id = 'litellm-dashboard',
         models = ARRAY['all-proxy-models']::text[]
-    WHERE user_id IN (${KEEP_USERS})
+    WHERE user_id = ANY(string_to_array(:'keep_users_csv', ','))
       AND (team_id = 'litellm-dashboard' OR key_alias IS NULL OR key_alias = 'admin-ui-session');
 
-    INSERT INTO \"LiteLLM_VerificationToken\" (
-      token, key_name, key_alias, user_id, team_id, models, aliases, config, spend, permissions, metadata
-    ) VALUES (
-      'a6cfd544eb4907689db9d97002fc4f7beaa1edcd7b2f9abad21ea1008b6933f5',
-      'sk-...admin-ui',
-      'admin-ui-session',
-      '${KEY_OWNER_USER}',
-      'litellm-dashboard',
-      ARRAY['all-proxy-models']::text[],
-      '{}'::jsonb,
-      '{}'::jsonb,
-      0.0,
-      '{}'::jsonb,
-      '{}'::jsonb
-    )
-    ON CONFLICT (token) DO UPDATE
-      SET user_id = '${KEY_OWNER_USER}',
-          team_id = 'litellm-dashboard',
-          models = ARRAY['all-proxy-models']::text[];
-  "
+    UPDATE "LiteLLM_SpendLogs"
+    SET "user" = :'key_owner'
+    WHERE "user" IS NULL OR "user" = '' OR "user" = 'default_user_id';
+EOSQL
 
   upsert_vkey_sql() {
     local raw_key="$1"
     local alias_name="$2"
-    local legacy_aliases="${3:-'${alias_name}'}"
+    local legacy_aliases_csv="${3:-${alias_name}}"
     [ -z "${raw_key}" ] && return 0
     local key_hash
     key_hash="$(python3 -c "import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" "${raw_key}")"
     local key_mask="sk-...${raw_key: -4}"
-    SQL_STMTS="${SQL_STMTS}
-      DELETE FROM \"LiteLLM_DeletedVerificationToken\" WHERE token = '${key_hash}' OR key_alias IN (${legacy_aliases});
-      DELETE FROM \"LiteLLM_VerificationToken\" WHERE key_alias IN (${legacy_aliases}) AND token <> '${key_hash}';
-      INSERT INTO \"LiteLLM_VerificationToken\" (
+    docker exec -i "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
+      -v key_hash="${key_hash}" \
+      -v key_mask="${key_mask}" \
+      -v alias_name="${alias_name}" \
+      -v key_owner="${KEY_OWNER_USER}" \
+      -v legacy_csv="${legacy_aliases_csv}" <<'EOSQL' >/dev/null 2>&1 || true
+      DELETE FROM "LiteLLM_DeletedVerificationToken"
+        WHERE token = :'key_hash' OR key_alias = ANY(string_to_array(:'legacy_csv', ','));
+      DELETE FROM "LiteLLM_VerificationToken"
+        WHERE key_alias = ANY(string_to_array(:'legacy_csv', ',')) AND token <> :'key_hash';
+      INSERT INTO "LiteLLM_VerificationToken" (
         token, key_name, key_alias, user_id, models, aliases, config, spend, permissions, metadata
       ) VALUES (
-        '${key_hash}',
-        '${key_mask}',
-        '${alias_name}',
-        '${KEY_OWNER_USER}',
+        :'key_hash',
+        :'key_mask',
+        :'alias_name',
+        :'key_owner',
         ARRAY[]::text[],
         '{}'::jsonb,
         '{}'::jsonb,
@@ -284,33 +280,30 @@ if [ -n "${DB_CONTAINER}" ]; then
         '{}'::jsonb
       )
       ON CONFLICT (token) DO UPDATE
-        SET key_alias = '${alias_name}',
-            user_id = '${KEY_OWNER_USER}',
+        SET key_alias = :'alias_name',
+            user_id = :'key_owner',
             models = ARRAY[]::text[];
-    "
+EOSQL
   }
 
-  upsert_vkey_sql "${OPERATOR_LITELLM_KEY:-}" "brainsOs.console" "'brainsOs.console', 'brainsOS.console', 'brainsos-operator'"
-  upsert_vkey_sql "${BAWTFORD_LITELLM_KEY:-}" "brainsos-bawtford" "'brainsos-bawtford'"
-  upsert_vkey_sql "${TERRASTELLA_LITELLM_KEY:-}" "brainsos-terrastella" "'brainsos-terrastella'"
-  upsert_vkey_sql "${MARVIN_LITELLM_KEY:-}" "brainsos-marvin" "'brainsos-marvin'"
-  upsert_vkey_sql "${HERMES_LITELLM_KEY:-}" "hermes-agent" "'hermes-agent'"
-
-  SQL_STMTS="${SQL_STMTS}
-    UPDATE \"LiteLLM_SpendLogs\"
-    SET \"user\" = '${KEY_OWNER_USER}'
-    WHERE \"user\" IS NULL OR \"user\" = '' OR \"user\" = 'default_user_id';
-  "
-  docker exec -i "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" <<< "${SQL_STMTS}" >/dev/null 2>&1 || true
+  upsert_vkey_sql "${OPERATOR_LITELLM_KEY:-}" "brainsOs.console" "brainsOs.console,brainsOS.console,brainsos-operator"
+  upsert_vkey_sql "${BAWTFORD_LITELLM_KEY:-}" "brainsos-bawtford" "brainsos-bawtford"
+  upsert_vkey_sql "${TERRASTELLA_LITELLM_KEY:-}" "brainsos-terrastella" "brainsos-terrastella"
+  upsert_vkey_sql "${MARVIN_LITELLM_KEY:-}" "brainsos-marvin" "brainsos-marvin"
+  upsert_vkey_sql "${HERMES_LITELLM_KEY:-}" "hermes-agent" "hermes-agent"
   log_success "Database LiteLLM_UserTable synchronized with proxy_admin privileges."
 fi
 
 # ------------------------------------------------------------------------------
 # 3. Configure SSO Settings & Role Mappings in LiteLLM DB
 # ------------------------------------------------------------------------------
-log_info "Step 3: Configuring LiteLLM SSO role mappings (default_role: proxy_admin) via REST API..."
+LITELLM_DEFAULT_ROLE="${AUTH_LITELLM_DEFAULT_ROLE:-internal_user_viewer}"
+log_info "Step 3: Configuring LiteLLM SSO role mappings (default_role: ${LITELLM_DEFAULT_ROLE}) via REST API..."
 AUTH_CLIENT_ID="${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}"
-AUTH_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}"
+AUTH_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-}"
+if [ -z "${AUTH_CLIENT_SECRET}" ]; then
+  fail_check "AUTH_LITELLM_CLIENT_SECRET is not set in .env (run generate-env.sh to provision OAuth2 secrets)."
+fi
 AUTH_BASE_URL="https://${EXTERNAL_HOST}"
 
 SSO_PAYLOAD=$(cat <<EOF
@@ -322,11 +315,11 @@ SSO_PAYLOAD=$(cat <<EOF
   "generic_authorization_endpoint": "${AUTH_BASE_URL}/application/o/authorize/",
   "generic_token_endpoint": "http://authentik-server:9000/application/o/token/",
   "generic_userinfo_endpoint": "http://authentik-server:9000/application/o/userinfo/",
-  "default_role": "proxy_admin",
+  "default_role": "${LITELLM_DEFAULT_ROLE}",
   "role_mappings": {
     "provider": "generic",
     "group_claim": "groups",
-    "default_role": "proxy_admin",
+    "default_role": "${LITELLM_DEFAULT_ROLE}",
     "roles": {
       "proxy_admin": ["authentik Admins", "admins", "admin", "appliance-admins"]
     }
@@ -357,22 +350,27 @@ fi
 AUTH_SERVER_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-server$' | head -n 1 || true)"
 if [ -n "${AUTH_SERVER_C}" ]; then
   log_info "Step 4: Synchronizing Authentik administrator & superuser emails in local IdP..."
-  docker exec "${AUTH_SERVER_C}" python3 -c "
+  docker exec \
+    -e AK_PRIMARY_ADMIN_EMAIL="${PRIMARY_ADMIN_EMAIL}" \
+    -e AK_SUPERUSER_USERNAME="${SUPERUSER_USERNAME}" \
+    -e AK_SUPERUSER_EMAIL="${SUPERUSER_EMAIL}" \
+    "${AUTH_SERVER_C}" python3 -c '
 import os, django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'authentik.root.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "authentik.root.settings")
 django.setup()
 from authentik.core.models import User, Group
-admin_group = Group.objects.filter(name='authentik Admins').first()
-admin_user = User.objects.filter(username='admin').first()
+admin_group = Group.objects.filter(name="authentik Admins").first()
+primary_email = os.environ.get("AK_PRIMARY_ADMIN_EMAIL", "admin@brainsos.ai")
+su_name = os.environ.get("AK_SUPERUSER_USERNAME", "")
+su_email = os.environ.get("AK_SUPERUSER_EMAIL", "")
+admin_user = User.objects.filter(username="admin").first()
 if admin_user:
-    admin_email = '${PRIMARY_ADMIN_EMAIL}' if not '${PRIMARY_ADMIN_EMAIL}'.endswith('.local') else 'admin@brainsos.ai'
+    admin_email = primary_email if not primary_email.endswith(".local") else "admin@brainsos.ai"
     admin_user.email = admin_email
     if admin_group:
         admin_user.ak_groups.add(admin_group)
     admin_user.save()
-su_name = '${SUPERUSER_USERNAME}'
-su_email = '${SUPERUSER_EMAIL}'
-if su_name and su_name != 'admin':
+if su_name and su_name != "admin":
     su_user = User.objects.filter(username=su_name).first()
     if su_user:
         if su_email:
@@ -380,7 +378,7 @@ if su_name and su_name != 'admin':
         if admin_group:
             su_user.ak_groups.add(admin_group)
         su_user.save()
-" 2>/dev/null || log_warn "Could not update Authentik user emails directly."
+' 2>/dev/null || log_warn "Could not update Authentik user emails directly."
   log_success "Authentik IdP synchronization step completed."
 fi
 
@@ -391,14 +389,14 @@ log_info "Step 5: Verifying environment-credential security hardening..."
 READINESS_DETAILS=$(curl -s -X GET "${LITELLM_API_BASE}/health/readiness/details" \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "{}")
 
-WARN_STATUS=$(python3 -c "
+WARN_STATUS=$(printf '%s' "${READINESS_DETAILS}" | python3 -c '
 import json, sys
 try:
-    data = json.loads('''${READINESS_DETAILS}''')
-    print(data.get('show_env_credential_login_warning', 'unknown'))
+    data = json.load(sys.stdin)
+    print(data.get("show_env_credential_login_warning", "unknown"))
 except Exception:
-    print('error')
-")
+    print("error")
+')
 
 if [ "${WARN_STATUS}" = "False" ]; then
   log_success "Environment-credential warning is INACTIVE (disable_env_credential_login: true verified)."
@@ -415,21 +413,21 @@ USERS_JSON=$(curl -s -X GET "${LITELLM_API_BASE}/user/list" \
 
 echo ""
 echo -e "${BOLD}Current Active LiteLLM Proxy Administrators:${NC}"
-python3 -c "
+printf '%s' "${USERS_JSON}" | python3 -c '
 import json, sys
 try:
-    data = json.loads('''${USERS_JSON}''')
-    users = data.get('users', [])
-    print(f'{\"USER ID\":<32} {\"ROLE\":<20} {\"MODELS\":<25}')
-    print('-' * 77)
+    data = json.load(sys.stdin)
+    users = data.get("users", [])
+    print(f"{\"USER ID\":<32} {\"ROLE\":<20} {\"MODELS\":<25}")
+    print("-" * 77)
     for u in users:
-        uid = str(u.get('user_id', ''))
-        role = str(u.get('user_role', ''))
-        models = str(u.get('models', []))
-        print(f'{uid:<32} {role:<20} {models:<25}')
+        uid = str(u.get("user_id", ""))
+        role = str(u.get("user_role", ""))
+        models = str(u.get("models", []))
+        print(f"{uid:<32} {role:<20} {models:<25}")
 except Exception:
     pass
-"
+'
 
 log_success "======================================================================"
 log_success "LiteLLM SSO & Administrator Role Setup Completed Successfully."

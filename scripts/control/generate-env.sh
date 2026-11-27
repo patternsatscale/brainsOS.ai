@@ -303,6 +303,8 @@ secret_generators = {
     "AUTHENTIK_SECRET_KEY": lambda: gen_hex(32),
     "AUTHENTIK_POSTGRESQL__PASSWORD": lambda: gen_hex(20),
     "AUTHENTIK_BOOTSTRAP_TOKEN": lambda: f"ak-tok-{gen_hex(16)}",
+    "AUTH_LITELLM_CLIENT_SECRET": lambda: gen_hex(24),
+    "AUTH_LANGFUSE_CLIENT_SECRET": lambda: gen_hex(24),
     "HERMES_API_TERRASTELLA_KEY": lambda: f"sk-api-terra-{gen_hex(16)}",
     "HERMES_API_MARVIN_KEY": lambda: f"sk-api-marvin-{gen_hex(16)}",
     "HERMES_API_BAWTFORD_KEY": lambda: f"sk-api-bawt-{gen_hex(16)}",
@@ -454,7 +456,8 @@ if [ -f "${REAL_ENV_FILE}" ]; then
   BACKUP_FILE="${REAL_ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
   cp -p "${REAL_ENV_FILE}" "${BACKUP_FILE}"
   cp -p "${REAL_ENV_FILE}" "${REAL_ENV_FILE}.bak"
-  log_info "Safety backup created at ${BACKUP_FILE}"
+  chmod 600 "${BACKUP_FILE}" "${REAL_ENV_FILE}.bak"
+  log_info "Safety backup created at ${BACKUP_FILE} (permissions 600)"
 fi
 
 mv "${REAL_ENV_FILE}.tmp" "${REAL_ENV_FILE}"

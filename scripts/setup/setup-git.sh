@@ -262,7 +262,7 @@ URL_ENCODED_PASS="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quo
 GIT_CREDENTIALS_FILE="/data/.git/credentials"
 CRED_FILE="${DATA_ROOT}/.git/credentials"
 printf "http://%s:%s@gitea:3000\n" "${URL_ENCODED_USER}" "${URL_ENCODED_PASS}" > "${CRED_FILE}"
-chmod 664 "${CRED_FILE}" 2>/dev/null || true
+chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 if git -C "${DATA_ROOT}" remote get-url origin >/dev/null 2>&1; then
   git -C "${DATA_ROOT}" remote set-url origin "${REMOTE_URL}"
@@ -282,7 +282,7 @@ git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
 git -C "${DATA_ROOT}" config push.default simple
 git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
 chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || chmod -R a+rwX "${DATA_ROOT}/.git" 2>/dev/null || true
-chmod 664 "${CRED_FILE}" 2>/dev/null || true
+chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # 3. Start Gitea Container (unless --seed-only and container is not running)
@@ -418,7 +418,7 @@ git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
 git -C "${DATA_ROOT}" config push.default simple
 git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
 chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || chmod -R a+rwX "${DATA_ROOT}/.git" 2>/dev/null || true
-chmod 664 "${CRED_FILE}" 2>/dev/null || true
+chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 if docker inspect -f '{{.State.Running}}' brainsos-app-code-server 2>/dev/null | grep -q "true"; then
   docker exec brainsos-app-code-server git config --global credential.helper "store --file=/data/.git/credentials" 2>/dev/null || true

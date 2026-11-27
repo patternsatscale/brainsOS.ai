@@ -76,7 +76,7 @@ services:
       - GENERIC_USER_ID_ATTRIBUTE=preferred_username
       - GENERIC_INCLUDE_TOKEN_CLAIMS=true
       - GENERIC_ROLE_MAPPINGS_GROUP_CLAIM=groups
-      - GENERIC_ROLE_MAPPINGS_DEFAULT_ROLE=proxy_admin
+      - GENERIC_ROLE_MAPPINGS_DEFAULT_ROLE=${AUTH_LITELLM_DEFAULT_ROLE:-internal_user_viewer}
       - "GENERIC_ROLE_MAPPINGS_ROLES={'proxy_admin': ['authentik Admins', 'admins', 'admin', 'appliance-admins']}"
       # Vendor-neutral OpenTelemetry & Langfuse Observability Tracing (#299 / #375 / #382)
       - BRAINSOS_TELEMETRY_BACKEND=${BRAINSOS_TELEMETRY_BACKEND:-dual}
