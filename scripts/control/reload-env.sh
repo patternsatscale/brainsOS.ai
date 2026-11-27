@@ -259,6 +259,98 @@ for db in brainsos-control-litellm-db brainsos-app-sogo-db brainsos-app-auth-db 
   fi
 done
 
+# Safe parameterized PostgreSQL password & SOGo helpers (zero SQL interpolation)
+alter_pg_password() {
+  local container="$1"
+  local pg_user="$2"
+  local pg_db="$3"
+  local target_user="$4"
+  local new_pass="$5"
+  docker exec -i "${container}" psql -v ON_ERROR_STOP=1 -U "${pg_user}" -d "${pg_db}" \
+    -v target_user="${target_user}" -v new_pass="${new_pass}" <<'EOSQL' >/dev/null 2>&1
+ALTER USER :"target_user" WITH PASSWORD :'new_pass';
+EOSQL
+}
+
+sync_sogo_users() {
+  local container="$1"
+  local sogo_user="$2"
+  local sogo_db="$3"
+  local admin_mail_pass="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  local operator_mail_pass="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  local terrastella_pass="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
+  local bawtford_pass="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
+  local marvin_pass="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
+  local ping_pass="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
+  local claude_pass="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
+  local gpt_pass="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+  local mail_dom="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
+  local admin_user="${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}"
+  local superuser_cn="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
+  local admin_email="${admin_user}@${mail_dom}"
+  local admin_dom_uid="admin@${mail_dom}"
+  local akadmin_dom_uid="akadmin@${mail_dom}"
+  local su_dom_uid="${admin_user}@${mail_dom}"
+
+  docker exec -i "${container}" psql -U "${sogo_user}" -d "${sogo_db}" \
+    -v admin_mail_pass="${admin_mail_pass}" \
+    -v operator_mail_pass="${operator_mail_pass}" \
+    -v terrastella_pass="${terrastella_pass}" \
+    -v bawtford_pass="${bawtford_pass}" \
+    -v marvin_pass="${marvin_pass}" \
+    -v ping_pass="${ping_pass}" \
+    -v claude_pass="${claude_pass}" \
+    -v gpt_pass="${gpt_pass}" \
+    -v mail_dom="${mail_dom}" \
+    -v admin_user="${admin_user}" \
+    -v superuser_cn="${superuser_cn}" \
+    -v admin_email="${admin_email}" \
+    -v admin_dom_uid="${admin_dom_uid}" \
+    -v akadmin_dom_uid="${akadmin_dom_uid}" \
+    -v su_dom_uid="${su_dom_uid}" \
+    -v op_email="operator@${mail_dom}" \
+    -v op_dom_uid="operator@${mail_dom}" <<'EOSQL' >/dev/null 2>&1 || true
+    CREATE TABLE IF NOT EXISTS sogo_users (
+        c_uid VARCHAR(128) PRIMARY KEY,
+        c_name VARCHAR(128) NOT NULL,
+        c_password VARCHAR(128) NOT NULL,
+        c_cn VARCHAR(128) NOT NULL,
+        mail VARCHAR(128) NOT NULL
+    );
+    UPDATE sogo_users SET c_password = :'admin_mail_pass', mail = :'admin_email'
+      WHERE c_name = 'admin' OR c_uid IN ('admin', :'admin_dom_uid', 'admin@brainsos.local', 'akadmin', :'akadmin_dom_uid', 'akadmin@brainsos.local');
+    UPDATE sogo_users SET c_password = :'operator_mail_pass', mail = :'op_email'
+      WHERE c_name = 'operator' OR c_uid IN ('operator', :'op_dom_uid', 'operator@brainsos.local');
+    UPDATE sogo_users SET mail = c_name || '@' || :'mail_dom'
+      WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
+      ('admin', 'admin', :'admin_mail_pass', 'System Administrator', :'admin_email'),
+      (:'admin_dom_uid', 'admin', :'admin_mail_pass', 'System Administrator', :'admin_email'),
+      ('akadmin', 'admin', :'admin_mail_pass', 'System Administrator', :'admin_email'),
+      (:'akadmin_dom_uid', 'admin', :'admin_mail_pass', 'System Administrator', :'admin_email'),
+      ('operator', 'operator', :'operator_mail_pass', 'Human Operator', :'op_email'),
+      ('terrastella', 'terrastella', :'terrastella_pass', 'Terrastella Agent', 'terrastella@' || :'mail_dom'),
+      ('bawtford', 'bawtford', :'bawtford_pass', 'Bawtford Agent', 'bawtford@' || :'mail_dom'),
+      ('marvin', 'marvin', :'marvin_pass', 'Marvin Agent', 'marvin@' || :'mail_dom'),
+      ('ping', 'ping', :'ping_pass', 'Ping Autoresponder Agent', 'ping@' || :'mail_dom'),
+      ('claude', 'claude', :'claude_pass', 'Claude Demo Agent', 'claude@' || :'mail_dom'),
+      ('gpt', 'gpt', :'gpt_pass', 'GPT Demo Agent', 'gpt@' || :'mail_dom')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
+    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail)
+      SELECT :'admin_user', 'admin', :'admin_mail_pass', :'superuser_cn', :'admin_email'
+      WHERE :'admin_user' <> '' AND :'admin_user' NOT IN ('admin', 'akadmin')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
+    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail)
+      SELECT :'su_dom_uid', 'admin', :'admin_mail_pass', :'superuser_cn', :'admin_email'
+      WHERE :'admin_user' <> '' AND :'admin_user' NOT IN ('admin', 'akadmin')
+    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
+    CREATE OR REPLACE VIEW sogo_addressbook AS
+    SELECT c_uid, c_name, c_password, c_cn, mail
+    FROM sogo_users
+    WHERE c_uid IN (:'admin_user', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+EOSQL
+}
+
 # ------------------------------------------------------------------------------
 # 1. Synchronize LiteLLM PostgreSQL Database Password (Zero Data Loss)
 # ------------------------------------------------------------------------------
@@ -271,20 +363,15 @@ if [ -n "${DB_CONTAINER}" ]; then
   LITELLM_DB_PASSWORD="${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}"
 
   log_info "Synchronizing database password for user '${LITELLM_DB_USER}' in ${DB_CONTAINER}..."
-  # Execute ALTER USER inside the container via local socket (trust/peer auth)
-  if docker exec "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
-      -c "ALTER USER \"${LITELLM_DB_USER}\" WITH PASSWORD '${LITELLM_DB_PASSWORD}';" >/dev/null 2>&1; then
+  if alter_pg_password "${DB_CONTAINER}" "${LITELLM_DB_USER}" "${LITELLM_DB_NAME}" "${LITELLM_DB_USER}" "${LITELLM_DB_PASSWORD}"; then
     log_success "LiteLLM database password synchronized with .env (Zero data loss)."
   else
-    # Fallback to postgres superuser if user lacks ALTER privilege
-    if docker exec "${DB_CONTAINER}" psql -U postgres \
-        -c "ALTER USER \"${LITELLM_DB_USER}\" WITH PASSWORD '${LITELLM_DB_PASSWORD}';" >/dev/null 2>&1; then
+    if alter_pg_password "${DB_CONTAINER}" postgres "${LITELLM_DB_NAME}" "${LITELLM_DB_USER}" "${LITELLM_DB_PASSWORD}"; then
       log_success "LiteLLM database password synchronized via postgres role."
     else
       log_warn "Could not automatically alter LiteLLM password. Database may be initializing."
     fi
   fi
-  # Ensure the Operator Console virtual key alias is normalized to 'brainsOs.console'
   docker exec "${DB_CONTAINER}" psql -U "${LITELLM_DB_USER}" -d "${LITELLM_DB_NAME}" \
     -c "UPDATE \"LiteLLM_VerificationToken\" SET key_alias = 'brainsOs.console' WHERE key_alias LIKE '%/editor/%' OR key_alias = 'brainsos-operator';" >/dev/null 2>&1 || true
 else
@@ -303,62 +390,17 @@ if [ -n "${SOGO_DB_CONTAINER}" ]; then
   SOGO_DB_PASSWORD="${SOGO_DB_PASSWORD:-sogo_secret_pass}"
 
   log_info "Synchronizing database password for user '${SOGO_DB_USER}' in ${SOGO_DB_CONTAINER}..."
-  if docker exec "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" \
-      -c "ALTER USER \"${SOGO_DB_USER}\" WITH PASSWORD '${SOGO_DB_PASSWORD}';" >/dev/null 2>&1; then
+  if alter_pg_password "${SOGO_DB_CONTAINER}" "${SOGO_DB_USER}" "${SOGO_DB_NAME}" "${SOGO_DB_USER}" "${SOGO_DB_PASSWORD}"; then
     log_success "SOGo database password synchronized with .env (Zero data loss)."
   else
-    if docker exec "${SOGO_DB_CONTAINER}" psql -U postgres \
-        -c "ALTER USER \"${SOGO_DB_USER}\" WITH PASSWORD '${SOGO_DB_PASSWORD}';" >/dev/null 2>&1; then
+    if alter_pg_password "${SOGO_DB_CONTAINER}" postgres "${SOGO_DB_NAME}" "${SOGO_DB_USER}" "${SOGO_DB_PASSWORD}"; then
       log_success "SOGo database password synchronized via postgres role."
     else
       log_warn "Could not automatically alter SOGo password. Database may be initializing."
     fi
   fi
 
-  # Synchronize user account passwords and mail domain in sogo_users & sogo_addressbook
-  ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
-  BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
-  MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
-  PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
-  CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
-  GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
-  MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
-  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
-  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_name = 'admin' OR c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
-    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_name = 'operator' OR c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
-    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOM}' WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
-    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-      ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('operator', 'operator', '${OPERATOR_MAIL_PASS}', 'Human Operator', 'operator@${MAIL_DOM}'),
-      ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOM}'),
-      ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOM}'),
-      ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOM}'),
-      ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOM}'),
-      ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOM}'),
-      ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOM}')
-    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
-EOSQL
-  if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
-    SUPERUSER_CN="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
-    docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-      INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}'),
-        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}')
-      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
-EOSQL
-  fi
-  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    CREATE OR REPLACE VIEW sogo_addressbook AS
-    SELECT c_uid, c_name, c_password, c_cn, mail
-    FROM sogo_users
-    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
-EOSQL
+  sync_sogo_users "${SOGO_DB_CONTAINER}" "${SOGO_DB_USER}" "${SOGO_DB_NAME}"
   log_success "SOGo fleet accounts and passwords synchronized in sogo_users table."
 else
   log_info "SOGo database container is not running (skipping pre-up check)."
@@ -385,8 +427,7 @@ if [ -n "${AUTH_DB_CONTAINER}" ]; then
   AUTH_DB_PASSWORD="${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}"
 
   log_info "Synchronizing database password for user '${AUTH_DB_USER}' in ${AUTH_DB_CONTAINER}..."
-  if docker exec "${AUTH_DB_CONTAINER}" psql -U "${AUTH_DB_USER}" -d "${AUTH_DB_NAME}" \
-      -c "ALTER USER \"${AUTH_DB_USER}\" WITH PASSWORD '${AUTH_DB_PASSWORD}';" >/dev/null 2>&1; then
+  if alter_pg_password "${AUTH_DB_CONTAINER}" "${AUTH_DB_USER}" "${AUTH_DB_NAME}" "${AUTH_DB_USER}" "${AUTH_DB_PASSWORD}"; then
     log_success "Authentik database password synchronized with .env (Zero data loss)."
   else
     log_warn "Could not automatically alter Authentik database password."
@@ -411,8 +452,7 @@ if [ -n "${LF_DB_CONTAINER}" ]; then
     LF_DB_NAME=$(grep "^LANGFUSE_DB_NAME=" "${LANGFUSE_ENV_FILE}" 2>/dev/null | cut -d= -f2- || echo "${LF_DB_NAME}")
   fi
   if [ -n "${LF_DB_PASS}" ]; then
-    docker exec "${LF_DB_CONTAINER}" psql -U "${LF_DB_USER}" -d "${LF_DB_NAME}" \
-      -c "ALTER USER \"${LF_DB_USER}\" WITH PASSWORD '${LF_DB_PASS}';" >/dev/null 2>&1 || true
+    alter_pg_password "${LF_DB_CONTAINER}" "${LF_DB_USER}" "${LF_DB_NAME}" "${LF_DB_USER}" "${LF_DB_PASS}" || true
     log_success "Langfuse database password synchronized."
   fi
 
@@ -545,57 +585,9 @@ SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)
 if [ -n "${SOGO_DB_CONTAINER}" ]; then
   SOGO_DB_USER="${SOGO_DB_USER:-sogo}"
   SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
-  ADMIN_MAIL_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  OPERATOR_MAIL_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
-  BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
-  MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
-  PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
-  CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
-  GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
-  MAIL_DOM="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
-  ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
-  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    CREATE TABLE IF NOT EXISTS sogo_users (
-        c_uid VARCHAR(128) PRIMARY KEY,
-        c_name VARCHAR(128) NOT NULL,
-        c_password VARCHAR(128) NOT NULL,
-        c_cn VARCHAR(128) NOT NULL,
-        mail VARCHAR(128) NOT NULL
-    );
-    UPDATE sogo_users SET c_password = '${ADMIN_MAIL_PASS}', mail = '${ADMIN_USER}@${MAIL_DOM}' WHERE c_name = 'admin' OR c_uid IN ('admin', 'admin@${MAIL_DOM}', 'admin@brainsos.local', 'akadmin', 'akadmin@${MAIL_DOM}', 'akadmin@brainsos.local');
-    UPDATE sogo_users SET c_password = '${OPERATOR_MAIL_PASS}', mail = 'operator@${MAIL_DOM}' WHERE c_name = 'operator' OR c_uid IN ('operator', 'operator@${MAIL_DOM}', 'operator@brainsos.local');
-    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOM}' WHERE c_name IN ('terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
-    INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-      ('admin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('admin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('akadmin@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOM}'),
-      ('operator', 'operator', '${OPERATOR_MAIL_PASS}', 'Human Operator', 'operator@${MAIL_DOM}'),
-      ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOM}'),
-      ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOM}'),
-      ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOM}'),
-      ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOM}'),
-      ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOM}'),
-      ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOM}')
-    ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
-EOSQL
-  if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
-    SUPERUSER_CN="${BRAINSOS_SUPERUSER_NAME:-System Administrator}"
-    docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-      INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-        ('${ADMIN_USER}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}'),
-        ('${ADMIN_USER}@${MAIL_DOM}', 'admin', '${ADMIN_MAIL_PASS}', '${SUPERUSER_CN}', '${ADMIN_USER}@${MAIL_DOM}')
-      ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, c_cn = EXCLUDED.c_cn, mail = EXCLUDED.mail;
-EOSQL
-  fi
-  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" <<-EOSQL >/dev/null 2>&1 || true
-    CREATE OR REPLACE VIEW sogo_addressbook AS
-    SELECT c_uid, c_name, c_password, c_cn, mail
-    FROM sogo_users
-    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
-    DELETE FROM sogo_user_profile WHERE c_defaults LIKE '%@brainsos.local%' OR c_defaults LIKE '%@local.brainsos.ai%';
-EOSQL
+  sync_sogo_users "${SOGO_DB_CONTAINER}" "${SOGO_DB_USER}" "${SOGO_DB_NAME}"
+  docker exec -i "${SOGO_DB_CONTAINER}" psql -U "${SOGO_DB_USER}" -d "${SOGO_DB_NAME}" \
+    -c "DELETE FROM sogo_user_profile WHERE c_defaults LIKE '%@brainsos.local%' OR c_defaults LIKE '%@local.brainsos.ai%';" >/dev/null 2>&1 || true
 fi
 
 if [ -f "${SCRIPT_DIR}/../setup/setup-mail.sh" ]; then
@@ -635,16 +627,18 @@ if [ -n "${AUTH_SERVER_CONTAINER}" ]; then
   EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   log_info "Waiting for Authentik blueprint & Embedded Outpost readiness..."
   for i in $(seq 1 60); do
-    if docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
+    if docker exec -i -e EFFECTIVE_DOMAIN="${EFFECTIVE_DOMAIN}" "${AUTH_SERVER_CONTAINER}" ak shell -c '
+import os, sys
 from authentik.outposts.models import Outpost
-import sys
+dom = os.environ.get("EFFECTIVE_DOMAIN", "local.brainsos.ai")
+expected = f"https://{dom}"
 for o in Outpost.objects.all():
-    if o._config.get('authentik_host') != 'https://${EFFECTIVE_DOMAIN}':
-        o._config['authentik_host'] = 'https://${EFFECTIVE_DOMAIN}'
-        o._config['authentik_host_browser'] = 'https://${EFFECTIVE_DOMAIN}'
+    if o._config.get("authentik_host") != expected:
+        o._config["authentik_host"] = expected
+        o._config["authentik_host_browser"] = expected
         o.save()
 sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
-" >/dev/null 2>&1; then
+' >/dev/null 2>&1; then
       break
     fi
     # On a fresh database, default blueprints (flows/certs) may still be applying when
@@ -669,7 +663,7 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
   if [[ "${ADMIN_EMAIL}" == *.local ]]; then
     ADMIN_EMAIL="${SUPERUSER_USER}@brainsos.ai"
   fi
-  SUPERUSER_PASS="${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  SUPERUSER_PASS="${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
 
   # Resolve EC2 Instance ID so 'admin' / 'akadmin' stay bound to the Instance ID (#332)
   INSTANCE_ADMIN_PASS=""
@@ -683,98 +677,301 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
     INSTANCE_ADMIN_PASS="${BRAINSOS_INSTANCE_ID:-${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-${AUTHENTIK_BOOTSTRAP_PASSWORD:-${SUPERUSER_PASS}}}}"
   fi
 
-  docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
-from authentik.core.models import User, Group
-admin_group = Group.objects.filter(name='authentik Admins').first()
+  BREAKGLASS_ENABLED="${BRAINSOS_BREAKGLASS_ENABLED:-true}"
+  USER_SUB="${BRAINSOS_USER_SUB:-}"
+  OWNER_ONLY="${BRAINSOS_OWNER_ONLY:-true}"
+  COGNITO_ENABLED="${AUTH_COGNITO_ENABLED:-false}"
+  COGNITO_REGION="${AUTH_COGNITO_REGION:-}"
+  COGNITO_POOL_ID="${AUTH_COGNITO_USER_POOL_ID:-}"
+  COGNITO_DOMAIN="${AUTH_COGNITO_DOMAIN:-}"
+  COGNITO_CLIENT_ID="${AUTH_COGNITO_CLIENT_ID:-}"
+  COGNITO_CLIENT_SECRET="${AUTH_COGNITO_CLIENT_SECRET:-}"
+  COGNITO_ADMIN_GROUP="${AUTH_COGNITO_ADMIN_GROUP:-brainsos-admins}"
+  ALB_OIDC_ENABLED="${AUTH_ALB_OIDC_ENABLED:-false}"
 
-admin_u, _ = User.objects.get_or_create(username='admin', defaults={'name': 'Appliance Administrator', 'email': '${BREAKGLASS_ADMIN_EMAIL}'})
-admin_u.email = '${BREAKGLASS_ADMIN_EMAIL}'
-admin_u.set_password('${INSTANCE_ADMIN_PASS}')
-admin_u.is_active = True
-if admin_group:
-    admin_u.ak_groups.add(admin_group)
+  docker exec -i \
+    -e AK_BREAKGLASS_ENABLED="${BREAKGLASS_ENABLED}" \
+    -e AK_BREAKGLASS_EMAIL="${BREAKGLASS_ADMIN_EMAIL}" \
+    -e AK_INSTANCE_PASS="${INSTANCE_ADMIN_PASS}" \
+    -e AK_SUPERUSER_USER="${SUPERUSER_USER}" \
+    -e AK_SUPERUSER_NAME="${SUPERUSER_DISPLAY_NAME}" \
+    -e AK_ADMIN_EMAIL="${ADMIN_EMAIL}" \
+    -e AK_SUPERUSER_PASS="${SUPERUSER_PASS}" \
+    -e AK_EFFECTIVE_DOMAIN="${EFFECTIVE_DOMAIN:-brainsos.ai}" \
+    -e AK_USER_SUB="${USER_SUB}" \
+    -e AK_COGNITO_ENABLED="${COGNITO_ENABLED}" \
+    -e AK_ALB_OIDC_ENABLED="${ALB_OIDC_ENABLED}" \
+    "${AUTH_SERVER_CONTAINER}" ak shell -c '
+import os
+from authentik.core.models import User, Group
+
+admin_group = Group.objects.filter(name="authentik Admins").first()
+breakglass_enabled = os.environ.get("AK_BREAKGLASS_ENABLED", "true").strip().lower() not in ("false", "0", "no")
+su_user = os.environ.get("AK_SUPERUSER_USER", "").strip()
+su_name = os.environ.get("AK_SUPERUSER_NAME", "").strip() or su_user
+admin_email = os.environ.get("AK_ADMIN_EMAIL", "").strip()
+su_pass = os.environ.get("AK_SUPERUSER_PASS", "")
+bg_email = os.environ.get("AK_BREAKGLASS_EMAIL", "admin@brainsos.ai").strip()
+inst_pass = os.environ.get("AK_INSTANCE_PASS", "")
+dom = os.environ.get("AK_EFFECTIVE_DOMAIN", "brainsos.ai").strip() or "brainsos.ai"
+user_sub = os.environ.get("AK_USER_SUB", "").strip()
+cognito_on = os.environ.get("AK_COGNITO_ENABLED", "false").strip().lower() == "true"
+alb_on = os.environ.get("AK_ALB_OIDC_ENABLED", "false").strip().lower() == "true"
+
+has_named_su = bool(su_user and su_user not in ("admin", "akadmin"))
+has_owner_sso = bool(user_sub and (cognito_on or alb_on))
+lock_breakglass = (not breakglass_enabled) and (has_named_su or has_owner_sso)
+
+admin_u, _ = User.objects.get_or_create(
+    username="admin",
+    defaults={"name": "Appliance Administrator", "email": bg_email},
+)
+admin_u.email = bg_email
+if lock_breakglass:
+    admin_u.set_unusable_password()
+    admin_u.is_active = False
+else:
+    if inst_pass:
+        admin_u.set_password(inst_pass)
+    admin_u.is_active = True
+    if admin_group:
+        admin_u.ak_groups.add(admin_group)
 admin_u.save()
 
-if '${SUPERUSER_USER}' and '${SUPERUSER_USER}' != 'admin':
-    custom_u, _ = User.objects.get_or_create(username='${SUPERUSER_USER}', defaults={'name': '${SUPERUSER_DISPLAY_NAME}', 'email': '${ADMIN_EMAIL}'})
-    custom_u.name = '${SUPERUSER_DISPLAY_NAME}'
-    custom_u.email = '${ADMIN_EMAIL}'
-    custom_u.set_password('${SUPERUSER_PASS}')
+if has_named_su:
+    custom_u, _ = User.objects.get_or_create(
+        username=su_user,
+        defaults={"name": su_name, "email": admin_email},
+    )
+    custom_u.name = su_name
+    custom_u.email = admin_email
+    if su_pass:
+        custom_u.set_password(su_pass)
     custom_u.is_active = True
     try:
-        custom_u.attributes['is_superuser'] = True
+        custom_u.attributes["is_superuser"] = True
     except Exception:
         pass
     if admin_group:
         custom_u.ak_groups.add(admin_group)
     custom_u.save()
 
-ak_u = User.objects.filter(username='akadmin').first()
+ak_u = User.objects.filter(username="akadmin").first()
 if ak_u:
-    ak_u.email = 'akadmin@${EFFECTIVE_DOMAIN:-brainsos.ai}'
-    ak_u.set_password('${INSTANCE_ADMIN_PASS}')
+    ak_u.email = f"akadmin@{dom}"
+    if lock_breakglass:
+        ak_u.set_unusable_password()
+        ak_u.is_active = False
+    else:
+        if inst_pass:
+            ak_u.set_password(inst_pass)
+        ak_u.is_active = True
     ak_u.save()
 
-op_u, _ = User.objects.get_or_create(username='operator', defaults={'name': 'Appliance Operator', 'email': 'operator@brainsos.ai'})
-if op_u.email.endswith('.local'):
-    op_u.email = 'operator@brainsos.ai'
-op_u.set_password('${SUPERUSER_PASS}')
+op_u, _ = User.objects.get_or_create(
+    username="operator",
+    defaults={"name": "Appliance Operator", "email": "operator@brainsos.ai"},
+)
+if op_u.email.endswith(".local"):
+    op_u.email = "operator@brainsos.ai"
+if su_pass:
+    op_u.set_password(su_pass)
 op_u.is_active = True
 if admin_group:
     op_u.ak_groups.add(admin_group)
 op_u.save()
-" >/dev/null 2>&1 || true
-  log_success "Authentik accounts (${SUPERUSER_USER}, admin [instance-bound], akadmin, operator) synchronized."
+' >/dev/null 2>&1 || true
+  log_success "Authentik accounts (${SUPERUSER_USER}, admin [breakglass=${BREAKGLASS_ENABLED}], akadmin, operator) synchronized."
 
-  # Synchronize Authentik Outpost, Proxy Provider & OAuth2 OIDC secrets/domains
+  # Synchronize Authentik Outpost, Proxy Provider, OAuth2 OIDC secrets/domains, and Cognito OAuthSource
   RAW_URL="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"
   EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
-  LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}"
-  LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}"
-  docker exec -i "${AUTH_SERVER_CONTAINER}" ak shell -c "
+  LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-}"
+  LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-}"
+  docker exec -i \
+    -e AK_EFFECTIVE_DOMAIN="${EFFECTIVE_DOMAIN}" \
+    -e AK_LITELLM_CLIENT_SECRET="${LITELLM_CLIENT_SECRET}" \
+    -e AK_LANGFUSE_CLIENT_SECRET="${LANGFUSE_CLIENT_SECRET}" \
+    -e AK_COGNITO_ENABLED="${COGNITO_ENABLED}" \
+    -e AK_COGNITO_REGION="${COGNITO_REGION}" \
+    -e AK_COGNITO_POOL_ID="${COGNITO_POOL_ID}" \
+    -e AK_COGNITO_DOMAIN="${COGNITO_DOMAIN}" \
+    -e AK_COGNITO_CLIENT_ID="${COGNITO_CLIENT_ID}" \
+    -e AK_COGNITO_CLIENT_SECRET="${COGNITO_CLIENT_SECRET}" \
+    -e AK_COGNITO_ADMIN_GROUP="${COGNITO_ADMIN_GROUP}" \
+    -e AK_USER_SUB="${USER_SUB}" \
+    -e AK_OWNER_ONLY="${OWNER_ONLY}" \
+    "${AUTH_SERVER_CONTAINER}" ak shell -c '
+import json, os
 from authentik.outposts.models import Outpost
 from authentik.providers.proxy.models import ProxyProvider
 from authentik.providers.oauth2.models import OAuth2Provider
-from authentik.core.models import Application
+from authentik.core.models import Application, Group
+from authentik.flows.models import Flow
+from authentik.sources.oauth.models import OAuthSource, OAuthSourcePropertyMapping
+from authentik.stages.identification.models import IdentificationStage
 
-domain = '${EFFECTIVE_DOMAIN}'
-cookie_dom = 'local.brainsos.ai' if domain.endswith('local.brainsos.ai') else ''
+domain = os.environ.get("AK_EFFECTIVE_DOMAIN", "local.brainsos.ai").strip() or "local.brainsos.ai"
+cookie_dom = "local.brainsos.ai" if domain.endswith("local.brainsos.ai") else ""
+litellm_secret = os.environ.get("AK_LITELLM_CLIENT_SECRET", "")
+langfuse_secret = os.environ.get("AK_LANGFUSE_CLIENT_SECRET", "")
 
 for o in Outpost.objects.all():
-    o._config['authentik_host'] = f'https://{domain}'
-    o._config['authentik_host_browser'] = f'https://{domain}'
+    o._config["authentik_host"] = f"https://{domain}"
+    o._config["authentik_host_browser"] = f"https://{domain}"
     o.save()
 
+proxy_redirects = "\n".join([
+    f"https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true",
+    f"https://{domain}?X-authentik-auth-callback=true",
+    "https://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true",
+    "https://local.brainsos.ai?X-authentik-auth-callback=true",
+])
 for p in ProxyProvider.objects.all():
-    p.external_host = f'https://{domain}'
+    p.external_host = f"https://{domain}"
     p.cookie_domain = cookie_dom
-    p.access_token_validity = 'days=7'
-    p.refresh_token_validity = 'days=30'
-    p.redirect_uris = f'https://{domain}/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://{domain}?X-authentik-auth-callback=true\nhttps://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true\nhttps://local.brainsos.ai?X-authentik-auth-callback=true\n.*'
+    p.access_token_validity = "days=7"
+    p.refresh_token_validity = "days=30"
+    p.redirect_uris = proxy_redirects
     p.save()
 
+litellm_redirects = "\n".join([
+    f"https://{domain}/sso/callback",
+    f"https://{domain}/proxy/ui/sso/callback",
+    f"https://proxy.{domain}/sso/callback",
+    "https://local.brainsos.ai/sso/callback",
+    "https://local.brainsos.ai/proxy/ui/sso/callback",
+    "http://localhost:4000/sso/callback",
+])
+langfuse_redirects = "\n".join([
+    f"https://{domain}/api/auth/callback/custom",
+    f"https://langfuse.{domain}/api/auth/callback/custom",
+    "https://local.brainsos.ai/api/auth/callback/custom",
+    "http://localhost:3001/api/auth/callback/custom",
+])
 for oa in OAuth2Provider.objects.all():
-    if oa.client_id == 'litellm-proxy':
-        oa.client_secret = '${LITELLM_CLIENT_SECRET}'
-        oa.redirect_uris = f'https://{domain}/sso/callback\nhttps://{domain}/proxy/ui/sso/callback\nhttps://.*\\.brainsos\\.ai/sso/callback\nhttp://localhost:4000/sso/callback\n.*'
+    if oa.client_id == "litellm-proxy":
+        if litellm_secret:
+            oa.client_secret = litellm_secret
+        oa.redirect_uris = litellm_redirects
         oa.save()
-    elif oa.client_id == 'langfuse-trace':
-        oa.client_secret = '${LANGFUSE_CLIENT_SECRET}'
-        oa.redirect_uris = f'https://{domain}/api/auth/callback/custom\nhttps://langfuse.{domain}/api/auth/callback/custom\nhttps://langfuse\\..*/api/auth/callback/custom\nhttp://localhost:3001/api/auth/callback/custom\n.*'
+    elif oa.client_id == "langfuse-trace":
+        if langfuse_secret:
+            oa.client_secret = langfuse_secret
+        oa.redirect_uris = langfuse_redirects
         oa.save()
 
 for a in Application.objects.all():
-    if a.slug == 'brainsos-portal':
-        a.meta_launch_url = f'https://{domain}/'
+    if a.slug == "brainsos-portal":
+        a.meta_launch_url = f"https://{domain}/"
         a.save()
-    elif a.slug == 'litellm':
-        a.meta_launch_url = f'https://{domain}/proxy/ui/'
+    elif a.slug == "litellm":
+        a.meta_launch_url = f"https://{domain}/proxy/ui/"
         a.save()
-    elif a.slug == 'langfuse':
-        a.meta_launch_url = f'https://{domain}/project/brainsos/sessions'
+    elif a.slug == "langfuse":
+        a.meta_launch_url = f"https://{domain}/project/brainsos/sessions"
         a.save()
-" >/dev/null 2>&1 || true
-  log_success "Authentik SSO Outpost & Proxy Provider synchronized with domain '${EFFECTIVE_DOMAIN}'."
+
+# AWS Cognito Direct OIDC Federation (opt-in) & EBS Owner Mapping (#385)
+cognito_enabled = os.environ.get("AK_COGNITO_ENABLED", "false").strip().lower() == "true"
+cog_region = os.environ.get("AK_COGNITO_REGION", "").strip()
+cog_pool = os.environ.get("AK_COGNITO_POOL_ID", "").strip()
+cog_domain = os.environ.get("AK_COGNITO_DOMAIN", "").strip()
+cog_client_id = os.environ.get("AK_COGNITO_CLIENT_ID", "").strip()
+cog_client_secret = os.environ.get("AK_COGNITO_CLIENT_SECRET", "").strip()
+cog_admin_group = os.environ.get("AK_COGNITO_ADMIN_GROUP", "brainsos-admins").strip() or "brainsos-admins"
+owner_sub = os.environ.get("AK_USER_SUB", "").strip()
+owner_only = os.environ.get("AK_OWNER_ONLY", "true").strip().lower() not in ("false", "0", "no")
+
+ident_stage = IdentificationStage.objects.filter(name="default-authentication-identification").first()
+if cognito_enabled and cog_region and cog_pool and cog_client_id:
+    Group.objects.get_or_create(name="brainsos-viewers")
+    well_known = f"https://cognito-idp.{cog_region}.amazonaws.com/{cog_pool}/.well-known/openid-configuration"
+    auth_flow = Flow.objects.filter(slug="default-source-authentication").first()
+    enroll_flow = Flow.objects.filter(slug="default-source-enrollment").first()
+
+    pm_expr = "\n".join([
+        f"owner_sub = {json.dumps(owner_sub)}",
+        f"admin_group = {json.dumps(cog_admin_group)}",
+        f"owner_only = {bool(owner_only)!r}",
+        "sub = str(info.get(\"sub\") or \"\").strip()",
+        "raw_groups = info.get(\"cognito:groups\") or info.get(\"groups\") or []",
+        "if isinstance(raw_groups, str):",
+        "    raw_groups = [g.strip() for g in raw_groups.split(\",\") if g.strip()]",
+        "groups = [str(g).strip() for g in raw_groups if str(g).strip()]",
+        "is_owner = bool(owner_sub and sub == owner_sub)",
+        "is_group_admin = bool(admin_group and any(g.lower() == admin_group.lower() for g in groups))",
+        "is_admin = is_owner or is_group_admin",
+        "if is_admin and \"authentik Admins\" not in groups:",
+        "    groups.append(\"authentik Admins\")",
+        "elif not is_admin and \"brainsos-viewers\" not in groups:",
+        "    groups.append(\"brainsos-viewers\")",
+        "username = info.get(\"preferred_username\") or info.get(\"cognito:username\") or info.get(\"username\") or info.get(\"email\") or sub",
+        "return {",
+        "    \"username\": username,",
+        "    \"email\": info.get(\"email\") or f\"{username}@cognito.local\",",
+        "    \"name\": info.get(\"name\") or username,",
+        "    \"groups\": groups,",
+        "    \"is_active\": False if (owner_only and not is_admin) else True,",
+        "}",
+    ])
+    pm, _ = OAuthSourcePropertyMapping.objects.get_or_create(
+        name="brainsos-cognito-user-mapping",
+        defaults={"expression": pm_expr},
+    )
+    pm.expression = pm_expr
+    pm.save()
+
+    src, _ = OAuthSource.objects.get_or_create(
+        slug="cognito",
+        defaults={
+            "name": "AWS Cognito",
+            "provider_type": "openidconnect",
+            "consumer_key": cog_client_id,
+            "consumer_secret": cog_client_secret,
+            "oidc_well_known_url": well_known,
+            "additional_scopes": "openid email profile",
+            "user_matching_mode": "email_link",
+            "group_matching_mode": "name_link",
+            "enabled": True,
+        },
+    )
+    src.name = "AWS Cognito"
+    src.provider_type = "openidconnect"
+    src.consumer_key = cog_client_id
+    if cog_client_secret:
+        src.consumer_secret = cog_client_secret
+    src.oidc_well_known_url = well_known
+    if cog_domain:
+        cog_host = cog_domain if "://" in cog_domain else (
+            cog_domain if "." in cog_domain else f"{cog_domain}.auth.{cog_region}.amazoncognito.com"
+        )
+        cog_host = cog_host.removeprefix("https://").removeprefix("http://").rstrip("/")
+        src.authorization_url = f"https://{cog_host}/oauth2/authorize"
+        src.access_token_url = f"https://{cog_host}/oauth2/token"
+        src.profile_url = f"https://{cog_host}/oauth2/userInfo"
+    src.oidc_jwks_url = f"https://cognito-idp.{cog_region}.amazonaws.com/{cog_pool}/.well-known/jwks.json"
+    src.additional_scopes = "openid email profile"
+    src.user_matching_mode = "email_link"
+    src.group_matching_mode = "name_link"
+    if auth_flow:
+        src.authentication_flow = auth_flow
+    if enroll_flow:
+        src.enrollment_flow = enroll_flow
+    src.enabled = True
+    src.save()
+    src.user_property_mappings.set([pm])
+    if ident_stage:
+        ident_stage.sources.add(src)
+else:
+    existing_src = OAuthSource.objects.filter(slug="cognito").first()
+    if existing_src:
+        existing_src.enabled = False
+        existing_src.save()
+        if ident_stage:
+            ident_stage.sources.remove(existing_src)
+' >/dev/null 2>&1 || true
+  log_success "Authentik SSO Outpost, Proxy/OAuth2 Providers & Cognito federation synchronized with domain '${EFFECTIVE_DOMAIN}'."
 fi
 
 # ------------------------------------------------------------------------------

@@ -91,8 +91,8 @@ compose_cmd() {
 setup_langfuse() {
   log_info "Configuring Langfuse v4.58.0 distributed observability environment..."
 
-  mkdir -p "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}"
-  chmod 777 "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" 2>/dev/null || true
+  mkdir -p "${EFFECTIVE_TELEMETRY_DIR}" "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}"
+  chmod 750 "${EFFECTIVE_TELEMETRY_DIR}" "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_CLICKHOUSE_DATA_DIR}" "${LANGFUSE_MINIO_DATA_DIR}" "${LANGFUSE_REDIS_DATA_DIR}" 2>/dev/null || true
 
   if [ ! -f "${LANGFUSE_ENV_FILE}" ]; then
     log_info "Creating ${LANGFUSE_ENV_FILE} from template..."
@@ -182,7 +182,10 @@ with open(file_path, 'w') as f:
 
   LANGFUSE_INIT_USER_EMAIL="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-local.brainsos.ai}}}"
   LANGFUSE_INIT_USER_NAME="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
-  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
+  LANGFUSE_INIT_USER_PASSWORD="${LANGFUSE_INIT_USER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
+  if [ -z "${LANGFUSE_INIT_USER_PASSWORD}" ]; then
+    LANGFUSE_INIT_USER_PASSWORD="$(openssl rand -hex 16)"
+  fi
 
   # Propagate to container-specific env file (docker/langfuse/.env)
   update_env_var "LANGFUSE_INIT_USER_EMAIL" "${LANGFUSE_INIT_USER_EMAIL}" "${LANGFUSE_ENV_FILE}"
@@ -198,20 +201,25 @@ with open(file_path, 'w') as f:
   AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse}"
   update_env_var "NEXTAUTH_URL" "${NEXTAUTH_URL}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_CLIENT_ID" "${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}" "${LANGFUSE_ENV_FILE}"
-  update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}" "${LANGFUSE_ENV_FILE}"
+  if [ -n "${AUTH_LANGFUSE_CLIENT_SECRET:-}" ]; then
+    update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET}" "${LANGFUSE_ENV_FILE}"
+  fi
   update_env_var "AUTH_CUSTOM_ISSUER" "${AUTH_CUSTOM_ISSUER}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_NAME" "\"brainsOS SSO\"" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_FETCH_USERINFO" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_DISABLE_USERNAME_PASSWORD" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "BRAINSOS_DOMAIN" "${DOMAIN}" "${LANGFUSE_ENV_FILE}"
+  chmod 600 "${LANGFUSE_ENV_FILE}" 2>/dev/null || true
 
   # Synchronize database role password if DB container is already running
   local lf_db_c
   lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?db$' | head -n 1 || true)"
   if [ -n "${lf_db_c}" ]; then
     docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
-      -c "ALTER USER \"${LANGFUSE_DB_USER:-langfuse}\" WITH PASSWORD '${SEC_DB_PASS}';" >/dev/null 2>&1 || true
+      -v lf_user="${LANGFUSE_DB_USER:-langfuse}" -v lf_pass="${SEC_DB_PASS}" <<'EOSQL' >/dev/null 2>&1 || true
+ALTER USER :"lf_user" WITH PASSWORD :'lf_pass';
+EOSQL
   fi
 
   export LANGFUSE_HOST="http://127.0.0.1:${LANGFUSE_PORT}"
@@ -262,10 +270,16 @@ sync_user_password() {
         " "${LANGFUSE_INIT_USER_PASSWORD}" 2>/dev/null || true)
       fi
 
-      local admin_email="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@local.brainsos.ai}}"
+      local admin_email="${LANGFUSE_INIT_USER_EMAIL:-${BRAINSOS_SUPERUSER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@local.brainsos.ai}}}"
       local admin_name="${LANGFUSE_INIT_USER_NAME:-brainsOS Admin}"
+      local breakglass_email="${BRAINSOS_ADMIN_EMAIL:-admin@local.brainsos.ai}"
 
-      docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" <<-EOSQL >/dev/null 2>&1 || true
+      docker exec -i "${lf_db_c}" psql -U "${LANGFUSE_DB_USER:-langfuse}" -d "${LANGFUSE_DB_NAME:-langfuse}" \
+        -v pub_key="${SEC_PUBLIC_KEY:-${LANGFUSE_PUBLIC_KEY:-}}" \
+        -v admin_email="${admin_email}" \
+        -v breakglass_email="${breakglass_email}" \
+        -v admin_name="${admin_name}" \
+        -v user_hash="${user_hash}" <<'EOSQL' >/dev/null 2>&1 || true
         -- 1. Ensure brainsOS organization and project exist
         INSERT INTO organizations (id, name, created_at, updated_at)
         VALUES ('brainsos', 'brainsOS', NOW(), NOW())
@@ -276,7 +290,7 @@ sync_user_password() {
         ON CONFLICT (id) DO UPDATE SET name = 'brainsOS Fleet', org_id = 'brainsos', updated_at = NOW();
 
         -- 2. Reassign primary API key to brainsos project
-        UPDATE api_keys SET project_id = 'brainsos' WHERE public_key = '${SEC_PUBLIC_KEY:-${LANGFUSE_PUBLIC_KEY:-}}';
+        UPDATE api_keys SET project_id = 'brainsos' WHERE public_key = :'pub_key';
 
         -- 3. Wipe out legacy Titan tech debt
         DELETE FROM organization_memberships WHERE org_id = 'titan';
@@ -285,16 +299,48 @@ sync_user_password() {
         DELETE FROM organizations WHERE id = 'titan';
         DELETE FROM users WHERE email LIKE '%@titan.local';
 
-        -- 4. Install PostgreSQL triggers so any user created or linked via Authentik OIDC
-        --    is immediately granted admin=true, OWNER on org 'brainsos', and ADMIN on project 'brainsos'
-        --    within the exact same transaction (before NextAuth builds the session JWT).
-        CREATE OR REPLACE FUNCTION brainsos_users_before_ins_upd()
-        RETURNS TRIGGER AS \$\$
+        -- 3b. Record authorized admin emails cleanly for least-privilege OIDC triggers
+        CREATE TABLE IF NOT EXISTS brainsos_sso_config (
+          key TEXT PRIMARY KEY,
+          val TEXT NOT NULL
+        );
+        INSERT INTO brainsos_sso_config (key, val) VALUES ('primary_admin_email', :'admin_email')
+        ON CONFLICT (key) DO UPDATE SET val = EXCLUDED.val;
+        INSERT INTO brainsos_sso_config (key, val) VALUES ('breakglass_admin_email', :'breakglass_email')
+        ON CONFLICT (key) DO UPDATE SET val = EXCLUDED.val;
+
+        SELECT set_config('brainsos.admin_email', :'admin_email', false);
+        SELECT set_config('brainsos.admin_name', :'admin_name', false);
+        SELECT set_config('brainsos.user_hash', :'user_hash', false);
+
+        -- 4. Install least-privilege PostgreSQL triggers:
+        --    Only configured primary/break-glass admins receive admin=true and OWNER/ADMIN roles;
+        --    all other OIDC users receive non-admin VIEWER membership by default (#385).
+        CREATE OR REPLACE FUNCTION brainsos_is_authorized_admin_email(p_email TEXT)
+        RETURNS BOOLEAN AS $$
         BEGIN
-          NEW.admin := true;
+          IF p_email IS NULL OR btrim(p_email) = '' THEN
+            RETURN false;
+          END IF;
+          RETURN EXISTS (
+            SELECT 1 FROM brainsos_sso_config
+            WHERE key IN ('primary_admin_email', 'breakglass_admin_email')
+              AND LOWER(val) = LOWER(p_email)
+          );
+        END;
+        $$ LANGUAGE plpgsql;
+
+        CREATE OR REPLACE FUNCTION brainsos_users_before_ins_upd()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          IF brainsos_is_authorized_admin_email(NEW.email) THEN
+            NEW.admin := true;
+          ELSE
+            NEW.admin := COALESCE(NEW.admin, false);
+          END IF;
           RETURN NEW;
         END;
-        \$\$ LANGUAGE plpgsql;
+        $$ LANGUAGE plpgsql;
 
         DROP TRIGGER IF EXISTS trg_brainsos_users_before ON users;
         CREATE TRIGGER trg_brainsos_users_before
@@ -303,9 +349,11 @@ sync_user_password() {
         EXECUTE FUNCTION brainsos_users_before_ins_upd();
 
         CREATE OR REPLACE FUNCTION brainsos_users_after_ins_upd()
-        RETURNS TRIGGER AS \$\$
+        RETURNS TRIGGER AS $$
         DECLARE
           v_om_id TEXT;
+          v_org_role TEXT;
+          v_proj_role TEXT;
         BEGIN
           INSERT INTO organizations (id, name, created_at, updated_at)
           VALUES ('brainsos', 'brainsOS', NOW(), NOW())
@@ -315,20 +363,28 @@ sync_user_password() {
           VALUES ('brainsos', 'brainsOS Fleet', 'brainsos', NOW(), NOW())
           ON CONFLICT (id) DO NOTHING;
 
+          IF NEW.admin IS TRUE OR brainsos_is_authorized_admin_email(NEW.email) THEN
+            v_org_role := 'OWNER';
+            v_proj_role := 'ADMIN';
+          ELSE
+            v_org_role := 'VIEWER';
+            v_proj_role := 'VIEWER';
+          END IF;
+
           v_om_id := 'om_' || substr(md5(NEW.id || 'brainsos'), 1, 20);
 
           INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
-          VALUES (v_om_id, NEW.id, 'brainsos', 'OWNER', NOW(), NOW())
-          ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW()
+          VALUES (v_om_id, NEW.id, 'brainsos', v_org_role::"Role", NOW(), NOW())
+          ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
           RETURNING id INTO v_om_id;
 
           INSERT INTO project_memberships (project_id, user_id, org_membership_id, role, created_at, updated_at)
-          VALUES ('brainsos', NEW.id, v_om_id, 'ADMIN', NOW(), NOW())
-          ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', org_membership_id = EXCLUDED.org_membership_id, updated_at = NOW();
+          VALUES ('brainsos', NEW.id, v_om_id, v_proj_role::"Role", NOW(), NOW())
+          ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, org_membership_id = EXCLUDED.org_membership_id, updated_at = NOW();
 
           RETURN NEW;
         END;
-        \$\$ LANGUAGE plpgsql;
+        $$ LANGUAGE plpgsql;
 
         DROP TRIGGER IF EXISTS trg_brainsos_users_after ON users;
         CREATE TRIGGER trg_brainsos_users_after
@@ -337,42 +393,49 @@ sync_user_password() {
         EXECUTE FUNCTION brainsos_users_after_ins_upd();
 
         -- 5. Ensure primary admin user exists and matches current configured identity
-        DO \$\$
+        DO $$
+        DECLARE
+          v_email TEXT := current_setting('brainsos.admin_email', true);
+          v_name TEXT := current_setting('brainsos.admin_name', true);
+          v_hash TEXT := COALESCE(current_setting('brainsos.user_hash', true), '');
         BEGIN
-          IF EXISTS (SELECT 1 FROM users WHERE email = '${admin_email}') THEN
-            IF '${user_hash}' <> '' THEN
-              UPDATE users SET password = '${user_hash}', name = '${admin_name}', admin = true, updated_at = NOW() WHERE email = '${admin_email}';
+          IF EXISTS (SELECT 1 FROM users WHERE email = v_email) THEN
+            IF v_hash <> '' THEN
+              UPDATE users SET password = v_hash, name = v_name, admin = true, updated_at = NOW() WHERE email = v_email;
             ELSE
-              UPDATE users SET name = '${admin_name}', admin = true, updated_at = NOW() WHERE email = '${admin_email}';
+              UPDATE users SET name = v_name, admin = true, updated_at = NOW() WHERE email = v_email;
             END IF;
           ELSIF EXISTS (SELECT 1 FROM users) THEN
-            IF '${user_hash}' <> '' THEN
-              UPDATE users SET email = '${admin_email}', name = '${admin_name}', password = '${user_hash}', admin = true, updated_at = NOW()
+            IF v_hash <> '' THEN
+              UPDATE users SET email = v_email, name = v_name, password = v_hash, admin = true, updated_at = NOW()
               WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
             ELSE
-              UPDATE users SET email = '${admin_email}', name = '${admin_name}', admin = true, updated_at = NOW()
+              UPDATE users SET email = v_email, name = v_name, admin = true, updated_at = NOW()
               WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1);
             END IF;
           ELSE
             INSERT INTO users (id, name, email, password, admin, created_at, updated_at)
-            VALUES ('usr_brainsos_admin', '${admin_name}', '${admin_email}', NULLIF('${user_hash}', ''), true, NOW(), NOW())
+            VALUES ('usr_brainsos_admin', v_name, v_email, NULLIF(v_hash, ''), true, NOW(), NOW())
             ON CONFLICT (id) DO NOTHING;
           END IF;
-        END \$\$;
+        END $$;
 
-        -- 6. Grant OWNER on 'brainsos' organization and ADMIN on 'brainsos' project to ALL users in DB
-        UPDATE users SET admin = true WHERE admin IS DISTINCT FROM true;
+        -- 6. Grant OWNER/ADMIN on 'brainsos' strictly to authorized admin users; VIEWER to others
+        UPDATE users SET admin = brainsos_is_authorized_admin_email(email);
 
         INSERT INTO organization_memberships (id, user_id, org_id, role, created_at, updated_at)
-        SELECT 'om_' || substr(md5(u.id || 'brainsos'), 1, 20), u.id, 'brainsos', 'OWNER', NOW(), NOW()
+        SELECT 'om_' || substr(md5(u.id || 'brainsos'), 1, 20), u.id, 'brainsos',
+          CASE WHEN u.admin THEN 'OWNER'::"Role" ELSE 'VIEWER'::"Role" END, NOW(), NOW()
         FROM users u
-        ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'OWNER', updated_at = NOW();
+        ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW();
 
         INSERT INTO project_memberships (project_id, user_id, org_membership_id, role, created_at, updated_at)
-        SELECT 'brainsos', om.user_id, om.id, 'ADMIN', NOW(), NOW()
+        SELECT 'brainsos', om.user_id, om.id,
+          CASE WHEN u.admin THEN 'ADMIN'::"Role" ELSE 'VIEWER'::"Role" END, NOW(), NOW()
         FROM organization_memberships om
+        JOIN users u ON u.id = om.user_id
         WHERE om.org_id = 'brainsos'
-        ON CONFLICT (project_id, user_id) DO UPDATE SET role = 'ADMIN', org_membership_id = EXCLUDED.org_membership_id, updated_at = NOW();
+        ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, org_membership_id = EXCLUDED.org_membership_id, updated_at = NOW();
 EOSQL
       log_success "Langfuse organization 'brainsos', project memberships, and OIDC auto-grant triggers synchronized in PostgreSQL."
     fi

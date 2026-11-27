@@ -304,3 +304,58 @@ def test_set_domain_named_superuser_keeps_admin_bound_to_instance_id(tmp_path: P
     assert "BRAINSOS_SUPERUSER_EMAIL=jsm@jsm.aws.cloud.brainsos.ai" in proc.stdout
     assert "BRAINSOS_INSTANCE_ADMIN_PASSWORD=[REDACTED]" in proc.stdout
     assert "SuperSecretPass123!" not in proc.stdout
+
+
+def test_set_domain_breakglass_toggle_lockout_and_cognito_dry_run(tmp_path: Path):
+    """Verify set-domain.sh --no-breakglass lockout guard and Cognito/ALB flag handling (#385)."""
+    dummy_env = tmp_path / ".env"
+    dummy_env.write_text(
+        "BRAINSOS_DOMAIN=\"local.brainsos.ai\"\n"
+        "BRAINSOS_ADMIN_USERNAME=\"admin\"\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["BRAINSOS_ENV_FILE"] = str(dummy_env)
+
+    # 1. Refuses --no-breakglass when only 'admin' exists without Cognito/ALB user_sub
+    blocked = subprocess.run(
+        [str(SET_DOMAIN), "--no-breakglass", "--dry-run"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert blocked.returncode != 0
+    assert "Refusing to set BRAINSOS_BREAKGLASS_ENABLED=false" in blocked.stderr
+
+    # 2. Succeeds with --user-sub + --cognito-enabled + --alb-oidc and redacts client secret
+    allowed = subprocess.run(
+        [
+            str(SET_DOMAIN),
+            "--no-breakglass",
+            "--user-sub",
+            "user-sub-12345",
+            "--cognito-enabled",
+            "--cognito-region",
+            "us-east-1",
+            "--cognito-pool-id",
+            "us-east-1_Pool123",
+            "--cognito-client-id",
+            "client-abc",
+            "--cognito-client-secret",
+            "MySecretValue999!",
+            "--alb-oidc",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert allowed.returncode == 0
+    assert "BRAINSOS_BREAKGLASS_ENABLED=false" in allowed.stdout
+    assert "BRAINSOS_USER_SUB=user-sub-12345" in allowed.stdout
+    assert "AUTH_COGNITO_ENABLED=true" in allowed.stdout
+    assert "AUTH_ALB_OIDC_ENABLED=true" in allowed.stdout
+    assert "AUTH_COGNITO_CLIENT_SECRET=[REDACTED]" in allowed.stdout
+    assert "MySecretValue999!" not in allowed.stdout

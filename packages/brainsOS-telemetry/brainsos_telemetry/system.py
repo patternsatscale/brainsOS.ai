@@ -25,6 +25,17 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSock
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from brainsos_telemetry.alb_auth import (
+    SIGNER_ARN_RE,
+    AlbAuthError,
+    authenticate_alb_headers,
+    build_cognito_well_known_url,
+    compute_cognito_redirect_uri,
+    current_env_for_repo,
+    is_truthy,
+    sanitize_env_value,
+    validate_breakglass_toggle,
+)
 from brainsos_telemetry.tracing import resolve_active_backends
 
 logger = logging.getLogger("brainsos_telemetry.system")
@@ -970,6 +981,12 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     su_prefix = superuser_username.lower() if superuser_username else "username"
     suggested_local_domain = f"{su_prefix}.aws.cloud.brainsos.ai"
     console_user = _resolve_console_user(superuser_username)
+    merged_env = current_env_for_repo(file_env, env)
+    breakglass_enabled = is_truthy(merged_env.get("BRAINSOS_BREAKGLASS_ENABLED"), default=True)
+    cognito_enabled = is_truthy(merged_env.get("AUTH_COGNITO_ENABLED"), default=False)
+    alb_oidc_enabled = is_truthy(merged_env.get("AUTH_ALB_OIDC_ENABLED"), default=False)
+    user_sub = (merged_env.get("BRAINSOS_USER_SUB") or "").strip()
+    owner_only = is_truthy(merged_env.get("BRAINSOS_OWNER_ONLY"), default=True)
 
     return {
         "firstboot_wizard_completed": firstboot_wizard_completed,
@@ -982,7 +999,20 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "superuser_username": superuser_username,
         "admin_username": admin_username,
         "admin_email": admin_email,
-        "admin_bound_to_instance_id": True,
+        "breakglass_enabled": breakglass_enabled,
+        "admin_bound_to_instance_id": breakglass_enabled,
+        "cognito_enabled": cognito_enabled,
+        "cognito_region": (merged_env.get("AUTH_COGNITO_REGION") or "").strip(),
+        "cognito_user_pool_id": (merged_env.get("AUTH_COGNITO_USER_POOL_ID") or "").strip(),
+        "cognito_domain": (merged_env.get("AUTH_COGNITO_DOMAIN") or "").strip(),
+        "cognito_client_id": (merged_env.get("AUTH_COGNITO_CLIENT_ID") or "").strip(),
+        "cognito_admin_group": (merged_env.get("AUTH_COGNITO_ADMIN_GROUP") or "brainsos-admins").strip(),
+        "cognito_redirect_uri": compute_cognito_redirect_uri({**merged_env, "BRAINSOS_DOMAIN": url}),
+        "cognito_client_secret_configured": bool((merged_env.get("AUTH_COGNITO_CLIENT_SECRET") or "").strip()),
+        "alb_oidc_enabled": alb_oidc_enabled,
+        "alb_signer_arn": (merged_env.get("AUTH_ALB_SIGNER_ARN") or "").strip(),
+        "user_sub": user_sub,
+        "owner_only": owner_only,
         "tls_mode": tls_mode,
         "acme_email": acme_email,
         "route53_zone_id": route53_zone_id,
@@ -1347,6 +1377,25 @@ def create_system_api_app():
         command: str = Field(..., description="Shell command to execute in host console")
         cwd: Optional[str] = Field(None, description="Working directory (defaults to REPO_ROOT)")
 
+    class BreakglassConfigRequest(BaseModel):
+        enabled: bool = Field(..., description="Enable or disable EC2 Instance-ID Break-Glass admin login")
+        apply_now: bool = Field(True, description="Synchronize OS & Authentik account lock state asynchronously")
+
+    class CognitoConfigRequest(BaseModel):
+        enabled: Optional[bool] = Field(None, description="Enable Authentik Cognito OAuthSource federation")
+        region: Optional[str] = Field(None, description="AWS Cognito region (e.g. us-east-1)")
+        user_pool_id: Optional[str] = Field(None, description="Cognito User Pool ID (e.g. us-east-1_AbCdEfG)")
+        domain: Optional[str] = Field(None, description="Optional Cognito Hosted UI domain prefix or FQDN")
+        client_id: Optional[str] = Field(None, description="Cognito OAuth2 App Client ID")
+        client_secret: Optional[str] = Field(None, description="Cognito OAuth2 App Client Secret (never returned in GET responses)")
+        admin_group: Optional[str] = Field(None, description="Cognito group granted local admin rights (default: brainsos-admins)")
+        alb_oidc_enabled: Optional[bool] = Field(None, description="Enable zero-double-login AWS ALB x-amzn-oidc-data ES256 pass-through")
+        alb_signer_arn: Optional[str] = Field(None, description="Allowlisted AWS ALB ARN (or comma-separated ARNs)")
+        alb_issuer: Optional[str] = Field(None, description="Optional expected OIDC issuer claim for ALB JWTs")
+        user_sub: Optional[str] = Field(None, description="Bound EBS owner Cognito sub UUID (receives local admin on this VM)")
+        owner_only: Optional[bool] = Field(None, description="Reject non-owner Cognito subjects with 403 (default: true)")
+        reload_sso: bool = Field(True, description="Trigger reload-env.sh asynchronously to apply Cognito & Caddy config")
+
     @app.get("/health")
     @app.get("/api/v1/system/health")
     async def health():
@@ -1424,6 +1473,198 @@ def create_system_api_app():
                 "name": name,
                 "email": email,
                 "is_superuser": is_su,
+            }
+        )
+
+    @app.api_route(
+        "/api/v1/system/auth/alb-verify",
+        methods=["GET", "POST", "HEAD"],
+        dependencies=[Depends(verify_internal_auth)],
+    )
+    async def verify_alb_forward_auth(request: Request):
+        file_env = parse_env_file_only(repo_root)
+        merged_env = current_env_for_repo(file_env, os.environ)
+        try:
+            auth_result = authenticate_alb_headers(request.headers, merged_env)
+        except AlbAuthError as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+        return JSONResponse(
+            status_code=200,
+            content={
+                "authenticated": True,
+                "sub": auth_result["sub"],
+                "username": auth_result["username"],
+                "is_owner": auth_result["is_owner"],
+                "is_admin": auth_result["is_admin"],
+            },
+            headers=auth_result["headers"],
+        )
+
+    @app.get(
+        "/api/v1/system/security/breakglass",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_admin_read_security)],
+    )
+    async def get_breakglass_status():
+        file_env = parse_env_file_only(repo_root)
+        merged_env = current_env_for_repo(file_env, os.environ)
+        enabled = is_truthy(merged_env.get("BRAINSOS_BREAKGLASS_ENABLED"), default=True)
+        disable_block_reason = validate_breakglass_toggle(False, merged_env)
+        superuser = (
+            merged_env.get("BRAINSOS_SUPERUSER_USERNAME")
+            or merged_env.get("BRAINSOS_ADMIN_USERNAME")
+            or ""
+        ).strip()
+        return JSONResponse(
+            content={
+                "breakglass_enabled": enabled,
+                "has_named_superuser": bool(superuser and superuser.lower() not in ("admin", "akadmin")),
+                "user_sub": (merged_env.get("BRAINSOS_USER_SUB") or "").strip(),
+                "cognito_enabled": is_truthy(merged_env.get("AUTH_COGNITO_ENABLED"), default=False),
+                "alb_oidc_enabled": is_truthy(merged_env.get("AUTH_ALB_OIDC_ENABLED"), default=False),
+                "can_disable": disable_block_reason is None,
+                "disable_block_reason": disable_block_reason,
+            }
+        )
+
+    @app.post(
+        "/api/v1/system/security/breakglass",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def update_breakglass_status(req: BreakglassConfigRequest):
+        file_env = parse_env_file_only(repo_root)
+        merged_env = current_env_for_repo(file_env, os.environ)
+        err = validate_breakglass_toggle(req.enabled, merged_env)
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+
+        env_file = os.path.join(repo_root, ".env")
+        val_str = "true" if req.enabled else "false"
+        _upsert_env_keys(repo_root, env_file, {"BRAINSOS_BREAKGLASS_ENABLED": val_str})
+
+        if req.apply_now and os.environ.get("BRAINSOS_STAGE") != "test":
+            set_domain_script = os.path.join(repo_root, "scripts/control/set-domain.sh")
+            if os.path.isfile(set_domain_script):
+                flag = "--breakglass" if req.enabled else "--no-breakglass"
+                subprocess.Popen(
+                    ["bash", set_domain_script, "--internal", "--skip-dns-check", flag],
+                    cwd=repo_root,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        return JSONResponse(
+            content={
+                "status": "updated",
+                "breakglass_enabled": req.enabled,
+            }
+        )
+
+    @app.get(
+        "/api/v1/system/sso/cognito",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_admin_read_security)],
+    )
+    async def get_cognito_sso_config():
+        ident = get_appliance_identity(repo_root)
+        file_env = parse_env_file_only(repo_root)
+        merged_env = current_env_for_repo(file_env, os.environ)
+        return JSONResponse(
+            content={
+                "cognito_enabled": ident["cognito_enabled"],
+                "region": ident["cognito_region"],
+                "user_pool_id": ident["cognito_user_pool_id"],
+                "domain": ident["cognito_domain"],
+                "client_id": ident["cognito_client_id"],
+                "client_secret_configured": ident["cognito_client_secret_configured"],
+                "admin_group": ident["cognito_admin_group"],
+                "redirect_uri": ident["cognito_redirect_uri"],
+                "alb_oidc_enabled": ident["alb_oidc_enabled"],
+                "alb_signer_arn": ident["alb_signer_arn"],
+                "alb_issuer": (merged_env.get("AUTH_ALB_ISSUER") or "").strip(),
+                "user_sub": ident["user_sub"],
+                "owner_only": ident["owner_only"],
+            }
+        )
+
+    @app.post(
+        "/api/v1/system/sso/cognito",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
+    )
+    async def update_cognito_sso_config(req: CognitoConfigRequest):
+        file_env = parse_env_file_only(repo_root)
+        merged_env = current_env_for_repo(file_env, os.environ)
+        updates: Dict[str, str] = {}
+
+        try:
+            str_map = {
+                "AUTH_COGNITO_REGION": req.region,
+                "AUTH_COGNITO_USER_POOL_ID": req.user_pool_id,
+                "AUTH_COGNITO_DOMAIN": req.domain,
+                "AUTH_COGNITO_CLIENT_ID": req.client_id,
+                "AUTH_COGNITO_CLIENT_SECRET": req.client_secret,
+                "AUTH_COGNITO_ADMIN_GROUP": req.admin_group,
+                "AUTH_ALB_SIGNER_ARN": req.alb_signer_arn,
+                "AUTH_ALB_ISSUER": req.alb_issuer,
+                "BRAINSOS_USER_SUB": req.user_sub,
+            }
+            for k, v in str_map.items():
+                if v is not None:
+                    updates[k] = sanitize_env_value(v)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        if req.enabled is not None:
+            updates["AUTH_COGNITO_ENABLED"] = "true" if req.enabled else "false"
+        if req.alb_oidc_enabled is not None:
+            updates["AUTH_ALB_OIDC_ENABLED"] = "true" if req.alb_oidc_enabled else "false"
+        if req.owner_only is not None:
+            updates["BRAINSOS_OWNER_ONLY"] = "true" if req.owner_only else "false"
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No Cognito or ALB OIDC fields supplied")
+
+        next_env = {**merged_env, **updates}
+        signer_arns_raw = (next_env.get("AUTH_ALB_SIGNER_ARN") or "").strip()
+        if signer_arns_raw:
+            for item in [s.strip() for s in signer_arns_raw.split(",") if s.strip()]:
+                if not SIGNER_ARN_RE.match(item):
+                    raise HTTPException(status_code=400, detail=f"Invalid AWS ALB signer ARN: {item}")
+
+        if is_truthy(next_env.get("AUTH_COGNITO_ENABLED"), default=False):
+            reg = (next_env.get("AUTH_COGNITO_REGION") or "").strip()
+            pool = (next_env.get("AUTH_COGNITO_USER_POOL_ID") or "").strip()
+            cid = (next_env.get("AUTH_COGNITO_CLIENT_ID") or "").strip()
+            if not (reg and pool and cid):
+                raise HTTPException(
+                    status_code=400,
+                    detail="AUTH_COGNITO_ENABLED=true requires region, user_pool_id, and client_id",
+                )
+            try:
+                build_cognito_well_known_url(reg, pool)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+        env_file = os.path.join(repo_root, ".env")
+        _upsert_env_keys(repo_root, env_file, updates)
+
+        if req.reload_sso and os.environ.get("BRAINSOS_STAGE") != "test":
+            reload_script = os.path.join(repo_root, "scripts/control/reload-env.sh")
+            if os.path.isfile(reload_script):
+                subprocess.Popen(
+                    ["bash", reload_script, "--no-urls"],
+                    cwd=repo_root,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        ident = get_appliance_identity(repo_root)
+        return JSONResponse(
+            content={
+                "status": "updated",
+                "cognito_enabled": ident["cognito_enabled"],
+                "alb_oidc_enabled": ident["alb_oidc_enabled"],
+                "redirect_uri": ident["cognito_redirect_uri"],
+                "user_sub": ident["user_sub"],
+                "owner_only": ident["owner_only"],
             }
         )
 

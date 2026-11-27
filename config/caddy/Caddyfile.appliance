@@ -45,9 +45,9 @@
 }
 
 # ==============================================================================
-# Authentik Identity Provider & Forward Auth Gateway Snippets
+# Authentik Identity Provider & Forward Auth Gateway Snippets (ALB OIDC + Outpost)
 # ==============================================================================
-(authentik_forward_auth) {
+(strip_auth_identity_headers) {
 	request_header -X-Authentik-Username
 	request_header -X-Authentik-Groups
 	request_header -X-Authentik-Email
@@ -57,6 +57,11 @@
 	request_header -Remote-User
 	request_header -Remote-Email
 	request_header -X-Authentik-Outpost-Fallback
+	request_header -X-BrainsOS-Owner
+}
+
+(portal_auth_gate_false) {
+	request_header -X-Amzn-Oidc-Data
 	forward_auth authentik-server:9000 {
 		uri /outpost.goauthentik.io/auth/caddy
 		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
@@ -75,30 +80,42 @@
 	}
 }
 
-(firstboot_portal_auth_true) {
-	import authentik_forward_auth
+(portal_auth_gate_true) {
+	@has_alb_oidc header X-Amzn-Oidc-Data *
+	@no_alb_oidc not header X-Amzn-Oidc-Data *
+	forward_auth @has_alb_oidc host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
+		uri /api/v1/system/auth/alb-verify
+		header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN:}
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid Remote-Email X-BrainsOS-Owner
+		@alb_denied status 401 403
+		handle_response @alb_denied {
+			respond "Unauthorized: AWS ALB OIDC verification failed" {rp.status_code}
+		}
+		@alb_warming status 500 502 503 504
+		handle_response @alb_warming {
+			error 503
+		}
+	}
+	forward_auth @no_alb_oidc authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
+		trusted_proxies private_ranges
+		@outpost_warming status 404 502 503 504
+		handle_response @outpost_warming {
+			error 503
+		}
+		@outpost_zero_host {
+			status 302
+			header Location *0.0.0.0*
+		}
+		handle_response @outpost_zero_host {
+			error 503
+		}
+	}
 }
 
-(firstboot_portal_auth_false) {
-	request_header -X-Authentik-Username
-	request_header -X-Authentik-Groups
-	request_header -X-Authentik-Email
-	request_header -X-Authentik-Name
-	request_header -Remote-User
-	request_header X-BrainsOS-Prelogin-Wizard "true"
-}
-
-(system_api_auth_true) {
-	request_header -X-Authentik-Username
-	request_header -X-Authentik-Groups
-	request_header -X-Authentik-Email
-	request_header -X-Authentik-Name
-	request_header -X-Authentik-Uid
-	request_header -X-Authentik-Jwt
-	request_header -Remote-User
-	request_header -Remote-Email
-	request_header -X-Authentik-Outpost-Fallback
-	request_header -X-BrainsOS-Prelogin-Wizard
+(system_auth_gate_false) {
+	request_header -X-Amzn-Oidc-Data
 	forward_auth authentik-server:9000 {
 		uri /outpost.goauthentik.io/auth/caddy
 		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
@@ -114,16 +131,59 @@
 	}
 }
 
+(system_auth_gate_true) {
+	@sys_has_alb_oidc header X-Amzn-Oidc-Data *
+	@sys_no_alb_oidc not header X-Amzn-Oidc-Data *
+	forward_auth @sys_has_alb_oidc host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
+		uri /api/v1/system/auth/alb-verify
+		header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN:}
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid Remote-Email X-BrainsOS-Owner
+		@sys_alb_denied status 401 403
+		handle_response @sys_alb_denied {
+			respond "Unauthorized: AWS ALB OIDC verification failed" {rp.status_code}
+		}
+		@sys_alb_warming status 500 502 503 504
+		handle_response @sys_alb_warming {
+			error 503
+		}
+	}
+	forward_auth @sys_no_alb_oidc authentik-server:9000 {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username Remote-User X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt Remote-Email
+		trusted_proxies private_ranges
+		@outpost_denied status 302 401 403
+		handle_response @outpost_denied {
+			respond "Unauthorized: Authentik SSO session required" 401
+		}
+		@outpost_warming status 404 502 503 504
+		handle_response @outpost_warming {
+			error 503
+		}
+	}
+}
+
+(authentik_forward_auth) {
+	import strip_auth_identity_headers
+	import portal_auth_gate_{$AUTH_ALB_OIDC_ENABLED:false}
+}
+
+(firstboot_portal_auth_true) {
+	import authentik_forward_auth
+}
+
+(firstboot_portal_auth_false) {
+	import strip_auth_identity_headers
+	request_header X-BrainsOS-Prelogin-Wizard "true"
+}
+
+(system_api_auth_true) {
+	import strip_auth_identity_headers
+	request_header -X-BrainsOS-Prelogin-Wizard
+	import system_auth_gate_{$AUTH_ALB_OIDC_ENABLED:false}
+}
+
 (system_api_auth_false) {
-	request_header -X-Authentik-Username
-	request_header -X-Authentik-Groups
-	request_header -X-Authentik-Email
-	request_header -X-Authentik-Name
-	request_header -X-Authentik-Uid
-	request_header -X-Authentik-Jwt
-	request_header -Remote-User
-	request_header -Remote-Email
-	request_header -X-Authentik-Outpost-Fallback
+	import strip_auth_identity_headers
 	request_header X-BrainsOS-Prelogin-Wizard "true"
 	@prewizard_forbidden not path /api/v1/system/csrf /api/v1/system/health /api/v1/system/status /api/v1/system/identity /api/v1/system/dns-check /api/v1/system/setup /api/v1/system/firstboot/* /api/v1/system/jobs/* /api/v1/system/jobs-active
 	respond @prewizard_forbidden "Forbidden: complete First-Boot Setup Wizard or sign in first" 403
@@ -322,11 +382,13 @@
 	handle /api/v1/system/* {
 		import system_api_auth_{$BRAINSOS_WIZARD_COMPLETED:true}
 		reverse_proxy host.docker.internal:{$BRAINSOS_SYSTEM_API_PORT:8010} {
-			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN}
+			header_up X-BrainsOS-Internal {$SYSTEM_API_TOKEN:}
 			header_up X-Authentik-Username {header.X-Authentik-Username}
 			header_up X-Authentik-Name {header.X-Authentik-Name}
 			header_up X-Authentik-Email {header.X-Authentik-Email}
 			header_up X-Authentik-Groups {header.X-Authentik-Groups}
+			header_up X-Authentik-Uid {header.X-Authentik-Uid}
+			header_up X-BrainsOS-Owner {header.X-BrainsOS-Owner}
 			header_up Remote-User {header.Remote-User}
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Host {host}

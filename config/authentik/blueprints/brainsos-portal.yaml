@@ -44,10 +44,14 @@ entries:
       cookie_domain: !Env [AUTHENTIK_COOKIE_DOMAIN, ""]
       access_token_validity: "days=7"
       refresh_token_validity: "days=30"
-      redirect_uris: |
-        https://.*
-        http://.*
-        .*
+      redirect_uris: !Format
+        - |
+          https://%s/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
+          https://%s?X-authentik-auth-callback=true
+          https://local.brainsos.ai/outpost.goauthentik.io/callback?X-authentik-auth-callback=true
+          https://local.brainsos.ai?X-authentik-auth-callback=true
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
 
   # 3. BrainsOS Appliance Application
   - identifiers:
@@ -112,13 +116,17 @@ entries:
       client_type: "confidential"
       client_id: "litellm-proxy"
       client_secret: !Env [AUTH_LITELLM_CLIENT_SECRET, "brainsos_litellm_secret"]
-      redirect_uris: |
-        https://.*\.local\.brainsos\.ai/sso/callback
-        https://.*\.local\.brainsos\.ai/proxy/ui/sso/callback
-        https://.*\.brainsos\.ai/sso/callback
-        https://.*\.brainsos\.ai/proxy/ui/sso/callback
-        http://localhost:4000/sso/callback
-        .*
+      redirect_uris: !Format
+        - |
+          https://%s/sso/callback
+          https://%s/proxy/ui/sso/callback
+          https://proxy.%s/sso/callback
+          https://local.brainsos.ai/sso/callback
+          https://local.brainsos.ai/proxy/ui/sso/callback
+          http://localhost:4000/sso/callback
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
       authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
       include_claims_in_id_token: true
       issuer_mode: "per_provider"
@@ -151,12 +159,14 @@ entries:
       client_type: "confidential"
       client_id: "langfuse-trace"
       client_secret: !Env [AUTH_LANGFUSE_CLIENT_SECRET, "brainsos_langfuse_secret"]
-      redirect_uris: |
-        https://.*/api/auth/callback/custom
-        https://langfuse\..*/api/auth/callback/custom
-        https://.*\.brainsos\.ai/api/auth/callback/custom
-        http://localhost:3001/api/auth/callback/custom
-        .*
+      redirect_uris: !Format
+        - |
+          https://%s/api/auth/callback/custom
+          https://langfuse.%s/api/auth/callback/custom
+          https://local.brainsos.ai/api/auth/callback/custom
+          http://localhost:3001/api/auth/callback/custom
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
+        - !Env [BRAINSOS_DOMAIN, "local.brainsos.ai"]
       authorization_flow: !Find [authentik_flows.flow, [slug, "default-provider-authorization-implicit-consent"]]
       include_claims_in_id_token: true
       issuer_mode: "per_provider"
