@@ -308,6 +308,7 @@ secret_generators = {
     "MAIL_WEBHOOK_SECRET": lambda: gen_hex(24),
     "AUTH_LITELLM_CLIENT_SECRET": lambda: gen_hex(24),
     "AUTH_LANGFUSE_CLIENT_SECRET": lambda: gen_hex(24),
+    "AUTH_OPENBAO_CLIENT_SECRET": lambda: gen_hex(24),
     "HERMES_API_TERRASTELLA_KEY": lambda: f"sk-api-terra-{gen_hex(16)}",
     "HERMES_API_MARVIN_KEY": lambda: f"sk-api-marvin-{gen_hex(16)}",
     "HERMES_API_BAWTFORD_KEY": lambda: f"sk-api-bawt-{gen_hex(16)}",

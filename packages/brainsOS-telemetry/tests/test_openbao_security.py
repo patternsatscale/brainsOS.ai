@@ -260,3 +260,35 @@ def test_imds_guard_ipv6_and_compose_security_invariants(tmp_path):
                     sdk_mod._load_dynamic_script("/etc/passwd", "alpha")
             except ImportError:
                 pass
+
+
+def test_openbao_web_ui_oidc_and_caddy_isolation() -> None:
+    """Verify #393 OpenBao Web UI, Authentik OIDC wiring, Caddy routing & Portal subsystem icon."""
+    hcl = (REPO_ROOT / "config/openbao/openbao.hcl").read_text(encoding="utf-8")
+    assert "ui = true" in hcl
+
+    compose_ctrl = (REPO_ROOT / "docker/compose/compose.control.yml").read_text(encoding="utf-8")
+    openbao_section = compose_ctrl.split("openbao:", 1)[1]
+    assert "brainsos-ingress-net:" in openbao_section
+    assert "ports:" not in openbao_section
+    assert "caddy_root.crt:/etc/ssl/caddy/root.crt:ro" in openbao_section
+
+    blueprint = (REPO_ROOT / "config/authentik/blueprints/brainsos-portal.yaml").read_text(encoding="utf-8")
+    assert 'client_id: "openbao-vault"' in blueprint
+    assert "/ui/vault/auth/oidc/oidc/callback" in blueprint
+
+    setup_secrets = (REPO_ROOT / "scripts/setup/setup-secrets.sh").read_text(encoding="utf-8")
+    assert "--sync-oidc" in setup_secrets
+    assert 'default_role="admin"' in setup_secrets
+    assert "openbao-admin" in setup_secrets
+
+    for caddy_name in ("config/caddy/Caddyfile", "config/caddy/Caddyfile.appliance"):
+        caddy_txt = (REPO_ROOT / caddy_name).read_text(encoding="utf-8")
+        assert "handle @openbao_paths {" in caddy_txt
+        assert caddy_txt.index("handle @openbao_paths {") < caddy_txt.index("handle /ui/*")
+        assert caddy_txt.index("handle @openbao_paths {") < caddy_txt.index("handle @litellm_api {")
+        assert "/ui/vault/" in caddy_txt
+
+    subsystems = (REPO_ROOT / "packages/brainsOS-portal/src/data/subsystems.ts").read_text(encoding="utf-8")
+    assert 'id: "secrets"' in subsystems
+    assert 'route: "/secrets/"' in subsystems

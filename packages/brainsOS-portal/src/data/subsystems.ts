@@ -265,9 +265,35 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
         </div>
         <div style="background:#111622; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px; line-height:22px;">
           <div style="color:#94a3b8; margin-bottom:8px;">// Live Egress Inspection Stream:</div>
-          <div><span style="color:#fff;">[10:18:22]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#ec4899;">POST</span> https://api.github.com/graphql &rarr; <span style="color:#f59e0b;">INJECT: Authorization: Bearer [INJECTED_CINDY_TOKEN]</span> &rarr; <span style="color:#10b981;">200 OK (210ms)</span></div>
+          <div><span style="color:#fff;">[10:18:22]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#ec4899;">POST</span> https://api.github.com/graphql &rarr; <span style="color:#f59e0b;">INJECT: Authorization: Bearer [INJECTED_OPENBAO_SECRET]</span> &rarr; <span style="color:#10b981;">200 OK (210ms)</span></div>
           <div><span style="color:#fff;">[10:19:04]</span> <span style="color:#00f2fe;">192.168.128.4</span> <span style="color:#10b981;">GET</span> https://api.github.com/repos/brainsOS/issues &rarr; <span style="color:#f59e0b;">INJECT: Authorization</span> &rarr; <span style="color:#10b981;">200 OK (145ms)</span></div>
           <div><span style="color:#fff;">[10:20:11]</span> <span style="color:#eab308;">192.168.128.99</span> <span style="color:#ec4899;">CONNECT</span> https://unauthorized-host.com &rarr; <span style="color:#ef4444; font-weight:bold;">403 FORBIDDEN (Egress Policy Blocked)</span></div>
+        </div>
+      </div>
+    `
+  },
+  secrets: {
+    id: "secrets",
+    title: "Secrets Vault",
+    desc: "OpenBao Vault — OIDC-backed KV v2 secrets & AppRole policies",
+    route: "/secrets/",
+    hotkey: "Alt+V",
+    color: "#f59e0b",
+    icon: "KeyRound",
+    previewHtml: `
+      <div style="height:100vh; padding:28px 36px; font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0B0E14; color:#f8fafc; overflow-y:auto;">
+        <div style="border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h1 style="font-size:18px; font-weight:700; color:#f59e0b; margin:0;">OpenBao Secret Manager (KV v2)</h1>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Authentik OIDC SSO • Encrypted Raft Storage • Egress AppRole Isolation</div>
+          </div>
+          <span style="background:rgba(245,158,11,0.15); border:1px solid #f59e0b; color:#f59e0b; padding:4px 10px; border-radius:6px; font-size:11px; font-family:monospace;">VAULT UNSEALED</span>
+        </div>
+        <div style="background:#141a26; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; font-size:12px; font-family:monospace; line-height:22px;">
+          <div style="color:#94a3b8;">secret/tools (KV v2) &rarr; read-only AppRole: <span style="color:#10b981;">egress-proxy-ro</span></div>
+          <div>&bull; FIRECRAWL_API_KEY &rarr; <span style="color:#f59e0b;">[INJECTED_OPENBAO_SECRET]</span></div>
+          <div>&bull; TAVILY_API_KEY &rarr; <span style="color:#f59e0b;">[INJECTED_OPENBAO_SECRET]</span></div>
+          <div>&bull; GITHUB_TOKEN &rarr; <span style="color:#f59e0b;">[INJECTED_OPENBAO_SECRET]</span></div>
         </div>
       </div>
     `

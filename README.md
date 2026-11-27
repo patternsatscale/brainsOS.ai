@@ -513,6 +513,7 @@ Once running, all appliance services are unified behind single-origin HTTPS (`:4
 | **LiteLLM Control Plane** | [https://local.brainsos.ai/proxy/ui](https://local.brainsos.ai/proxy/ui) | `4000` | Authentik SSO (Injected Key) | Hardware-serialized routing (Ollama / Ambient Bedrock), budgets & virtual keys |
 | **LiteLLM Lens Telemetry** | [https://local.brainsos.ai/proxy/ui/?page=lens](https://local.brainsos.ai/proxy/ui/?page=lens) | `4318` | Authentik SSO + Scoped Trace Key | Native embedded agent/tool trace inspector, gateway spend matching & evaluations |
 | **Tool Egress Proxy Console** | [https://local.brainsos.ai/efw/](https://local.brainsos.ai/efw/) | `8081` | Authentik SSO | Mitmweb real-time egress flow inspection & secret masking |
+| **OpenBao Secrets Vault** | [https://local.brainsos.ai/ui/vault/](https://local.brainsos.ai/ui/vault/) | `8200` *(internal)* | Authentik SSO + OIDC (`openbao-admin`) | Segregated encrypted Raft KV v2 secret browser, AppRole policies & audit UI |
 | **Langfuse Observability** | [https://langfuse.local.brainsos.ai/](https://langfuse.local.brainsos.ai/) | `3001` | Authentik SSO | Distributed OpenTelemetry thread tracing & prompt token breakdown (`LANGFUSE_ENABLED`) |
 | **Hermes Runner WebUI** | [https://local.brainsos.ai/runner/](https://local.brainsos.ai/runner/) | `8787` | Authentik SSO | Multi-tenant stateless agent runner terminal & burn target |
 | **Agent Queue & System API** | `http://127.0.0.1:8000` | `8000` | *Internal Gateway* | Non-blocking email webhook ingestion, queue worker & host system API |

@@ -71,6 +71,7 @@ export function useHotkeys({
           '8': 'system',
           '9': 'help',
           '0': 'system',
+          'v': 'secrets',
           'i': 'auth',
           'h': 'help',
         };

@@ -128,6 +128,7 @@ services:
     volumes:
       - ../../config/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
       - ${BRAINSOS_OPENBAO_DATA_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/openbao}:/openbao/data
+      - ${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/caddy_root.crt:/etc/ssl/caddy/root.crt:ro
     networks:
       brainsos-control-net:
         aliases:
@@ -138,6 +139,11 @@ services:
         aliases:
           - openbao
           - secrets
+          - brainsos-control-secrets
+      brainsos-ingress-net:
+        aliases:
+          - openbao
+          - brainsos-openbao
           - brainsos-control-secrets
     logging: *default-logging
     healthcheck:

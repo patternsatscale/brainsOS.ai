@@ -788,10 +788,12 @@ op_u.save()
   EFFECTIVE_DOMAIN="$(printf '%s' "${RAW_URL}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-}"
   LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-}"
+  OPENBAO_CLIENT_SECRET="${AUTH_OPENBAO_CLIENT_SECRET:-}"
   docker exec -i \
     -e AK_EFFECTIVE_DOMAIN="${EFFECTIVE_DOMAIN}" \
     -e AK_LITELLM_CLIENT_SECRET="${LITELLM_CLIENT_SECRET}" \
     -e AK_LANGFUSE_CLIENT_SECRET="${LANGFUSE_CLIENT_SECRET}" \
+    -e AK_OPENBAO_CLIENT_SECRET="${OPENBAO_CLIENT_SECRET}" \
     -e AK_COGNITO_ENABLED="${COGNITO_ENABLED}" \
     -e AK_COGNITO_REGION="${COGNITO_REGION}" \
     -e AK_COGNITO_POOL_ID="${COGNITO_POOL_ID}" \
@@ -815,6 +817,7 @@ domain = os.environ.get("AK_EFFECTIVE_DOMAIN", "local.brainsos.ai").strip() or "
 cookie_dom = "local.brainsos.ai" if domain.endswith("local.brainsos.ai") else ""
 litellm_secret = os.environ.get("AK_LITELLM_CLIENT_SECRET", "")
 langfuse_secret = os.environ.get("AK_LANGFUSE_CLIENT_SECRET", "")
+openbao_secret = os.environ.get("AK_OPENBAO_CLIENT_SECRET", "")
 
 for o in Outpost.objects.all():
     o._config["authentik_host"] = f"https://{domain}"
@@ -860,6 +863,17 @@ for oa in OAuth2Provider.objects.all():
             oa.client_secret = langfuse_secret
         oa.redirect_uris = langfuse_redirects
         oa.save()
+    elif oa.client_id == "openbao-vault":
+        if openbao_secret:
+            oa.client_secret = openbao_secret
+        oa.redirect_uris = "\n".join([
+            f"https://{domain}/ui/vault/auth/oidc/oidc/callback",
+            f"https://secrets.{domain}/ui/vault/auth/oidc/oidc/callback",
+            "https://local.brainsos.ai/ui/vault/auth/oidc/oidc/callback",
+            "http://localhost:8200/ui/vault/auth/oidc/oidc/callback",
+            "http://localhost:8250/oidc/callback",
+        ])
+        oa.save()
 
 for a in Application.objects.all():
     if a.slug == "brainsos-portal":
@@ -870,6 +884,9 @@ for a in Application.objects.all():
         a.save()
     elif a.slug == "langfuse":
         a.meta_launch_url = f"https://{domain}/project/brainsos/sessions"
+        a.save()
+    elif a.slug == "openbao-vault":
+        a.meta_launch_url = f"https://{domain}/ui/vault/"
         a.save()
 
 # AWS Cognito Direct OIDC Federation (opt-in) & EBS Owner Mapping (#385)
@@ -982,6 +999,10 @@ log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue).
 
 if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" || true
+fi
+
+if [ -x "${REPO_ROOT}/scripts/setup/setup-secrets.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-secrets.sh" --sync-oidc || true
 fi
 
 # Synchronize LiteLLM Lens tenant-matched tracing key after LiteLLM SSO owner resolution (#375)
