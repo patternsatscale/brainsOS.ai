@@ -149,23 +149,250 @@ def test_hermes_config_keys_dict_payload(tmp_path):
         assert raw_key not in res.text
 
 
-def test_websocket_pty_fallback_username_when_sso_header_absent(tmp_path, monkeypatch):
-    """Verify /api/v1/system/terminal/ws falls back to BRAINSOS_SUPERUSER_USERNAME or 'admin' when SSO header is missing."""
-    monkeypatch.setenv("BRAINSOS_SUPERUSER_USERNAME", "su")
+def test_fail_closed_auth_rejects_outpost_fallback_cookies_and_ws_anonymous(tmp_path):
+    """Verify #384: outpost fallback headers, forged cookies, non-admin groups, and anonymous/cross-origin WS are rejected."""
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_DOMAIN=box.brainsos.ai\n"
+        "BRAINSOS_URL=https://box.brainsos.ai\n"
+        "BRAINSOS_LOCAL_DOMAIN=box.brainsos.ai\n"
+        "BRAINSOS_SUPERUSER_USERNAME=su\n"
+        "BRAINSOS_WIZARD_COMPLETED=true\n",
+        encoding="utf-8",
+    )
     with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
         app = create_system_api_app()
         client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        client.cookies.set("authentik_session", "forged-session-cookie")
+        client.cookies.set("brainsos_csrf_token", csrf_tok)
+
+        # 1. Outpost fallback + session cookie + matched CSRF cookie WITHOUT X-Authentik-Username -> 403
+        res_fallback = client.post(
+            "/api/v1/system/terminal/exec",
+            json={"command": "id"},
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Outpost-Fallback": "true",
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "https://box.brainsos.ai",
+            },
+        )
+        assert res_fallback.status_code == 403
+
+        # 2. Outpost fallback even WITH spoofed X-Authentik-Username -> 403
+        res_spoof = client.post(
+            "/api/v1/system/terminal/exec",
+            json={"command": "id"},
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Outpost-Fallback": "true",
+                "X-Authentik-Username": "su",
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "https://box.brainsos.ai",
+            },
+        )
+        assert res_spoof.status_code == 403
+
+        # 3. Authenticated non-admin group (e.g. federated viewer) -> 403
+        res_viewer = client.post(
+            "/api/v1/system/terminal/exec",
+            json={"command": "id"},
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "viewer_bob",
+                "X-Authentik-Groups": "cognito-viewers|developers",
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "https://box.brainsos.ai",
+            },
+        )
+        assert res_viewer.status_code == 403
+        assert "authentik Admins" in res_viewer.json()["detail"]
+
+        # 4. Authenticated member of 'authentik Admins' -> 200 and master tokens scrubbed from env
+        res_admin = client.post(
+            "/api/v1/system/terminal/exec",
+            json={"command": "printf '%s' \"${SYSTEM_API_TOKEN:-SCRUBBED}\""},
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "su",
+                "X-Authentik-Groups": "users|authentik Admins",
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "https://box.brainsos.ai",
+            },
+        )
+        assert res_admin.status_code == 200
+        assert res_admin.json()["stdout"] == "SCRUBBED"
+
+        # 5. WebSocket PTY rejects missing X-Authentik-Username (no fallback to su/admin)
+        from starlette.websockets import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                "/api/v1/system/terminal/ws",
+                headers={
+                    "X-BrainsOS-Internal": "test-secret-token-12345",
+                    "Origin": "https://box.brainsos.ai",
+                },
+            ):
+                pass
+
+        # 6. WebSocket PTY rejects cross-origin handshake (CSWSH defense)
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                "/api/v1/system/terminal/ws",
+                headers={
+                    "X-BrainsOS-Internal": "test-secret-token-12345",
+                    "X-Authentik-Username": "su",
+                    "X-Authentik-Groups": "authentik Admins",
+                    "Origin": "https://evil.example.com",
+                },
+            ):
+                pass
+
+        # 7. WebSocket PTY rejects non-admin group
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                "/api/v1/system/terminal/ws",
+                headers={
+                    "X-BrainsOS-Internal": "test-secret-token-12345",
+                    "X-Authentik-Username": "viewer_bob",
+                    "X-Authentik-Groups": "viewers",
+                    "Origin": "https://box.brainsos.ai",
+                },
+            ):
+                pass
+
+        # 8. WebSocket PTY accepts verified authentik Admins user + valid Origin
         with client.websocket_connect(
             "/api/v1/system/terminal/ws",
-            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "su",
+                "X-Authentik-Groups": "authentik Admins",
+                "Origin": "https://box.brainsos.ai",
+            },
         ) as ws:
             ready_msg = ws.receive_json()
             assert ready_msg["type"] == "ready"
             assert ready_msg["user"] == "su"
-            banner_msg = ws.receive_json()
-            assert banner_msg["type"] == "output"
-            assert banner_msg["data"].startswith("\x1b[2J\x1b[H")
-            assert "brainsOS Appliance Host Console" in banner_msg["data"]
+
+
+def test_instance_id_redacted_in_public_status_and_revealed_only_to_admin(tmp_path, monkeypatch):
+    """Verify #384/#365: instance_id is masked post-wizard on /identity and /status, and revealed only via admin endpoint."""
+    raw_iid = "i-0d32ae443d40e32d4"
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", raw_iid)
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_DOMAIN=box.brainsos.ai\n"
+        "BRAINSOS_SUPERUSER_USERNAME=su\n"
+        "BRAINSOS_WIZARD_COMPLETED=true\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-wizard-completed").write_text("2026-11-26T00:00:00Z\n", encoding="utf-8")
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+
+        # Public /identity and /status mask EC2 instance ID
+        id_res = client.get(
+            "/api/v1/system/identity",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert id_res.status_code == 200
+        assert id_res.json()["instance_id"] == "i-••••••••••••32d4"
+        assert id_res.json()["instance_id_masked"] is True
+        assert raw_iid not in id_res.text
+
+        st_res = client.get(
+            "/api/v1/system/status",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert st_res.status_code == 200
+        assert st_res.json()["instance_id"] == "i-••••••••••••32d4"
+        assert raw_iid not in st_res.text
+
+        # Unauthenticated reveal request -> 403
+        rev_denied = client.get(
+            "/api/v1/system/identity/instance-id",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert rev_denied.status_code == 403
+
+        # Authenticated admin reveal request -> 200 with raw_iid
+        rev_ok = client.get(
+            "/api/v1/system/identity/instance-id",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "su",
+                "X-Authentik-Groups": "authentik Admins",
+            },
+        )
+        assert rev_ok.status_code == 200
+        assert rev_ok.json()["instance_id"] == raw_iid
+        assert rev_ok.json()["masked_instance_id"] == "i-••••••••••••32d4"
+
+        # Non-EC2 local labels (local-gx10) are preserved unmasked
+        monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "local-gx10")
+        local_res = client.get(
+            "/api/v1/system/identity",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert local_res.json()["instance_id"] == "local-gx10"
+        assert local_res.json()["instance_id_masked"] is False
+
+
+def test_hermes_config_blocks_arbitrary_env_key_overwrite(tmp_path):
+    """Verify #384: extra_env and keys cannot overwrite SYSTEM_API_TOKEN, LITELLM_MASTER_KEY, PATH, or COMPOSE_FILE."""
+    (tmp_path / ".env").write_text("SYSTEM_API_TOKEN=keep-safe\nBRAINSOS_DATA_DIR=./data\n", encoding="utf-8")
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "su",
+            "X-Authentik-Groups": "authentik Admins",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        for forbidden_key in ("SYSTEM_API_TOKEN", "LITELLM_MASTER_KEY", "COMPOSE_FILE", "LD_PRELOAD"):
+            bad = client.post(
+                "/api/v1/system/runners/hermes/config",
+                json={"extra_env": {forbidden_key: "hijacked"}, "restart_runner": False},
+                headers=headers,
+            )
+            assert bad.status_code == 400
+            bad_keys = client.post(
+                "/api/v1/system/runners/hermes/config",
+                json={"keys": {forbidden_key: "hijacked"}, "restart_runner": False},
+                headers=headers,
+            )
+            assert bad_keys.status_code == 400
+
+        ok = client.post(
+            "/api/v1/system/runners/hermes/config",
+            json={"extra_env": {"HERMES_CUSTOM_MAX_DEPTH": "4"}, "restart_runner": False},
+            headers=headers,
+        )
+        assert ok.status_code == 200
+        assert "SYSTEM_API_TOKEN=keep-safe" in (tmp_path / ".env").read_text(encoding="utf-8")
+        assert "HERMES_CUSTOM_MAX_DEPTH=4" in (tmp_path / ".env").read_text(encoding="utf-8")
+
+
+def test_caddyfiles_enforce_fail_closed_auth_and_security_headers():
+    """Verify #384: Caddyfile and Caddyfile.appliance never emit X-Authentik-Outpost-Fallback true and set HSTS/CSP."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    for rel in ("config/caddy/Caddyfile", "config/caddy/Caddyfile.appliance"):
+        txt = (repo_root / rel).read_text(encoding="utf-8")
+        assert 'X-Authentik-Outpost-Fallback "true"' not in txt
+        assert "@outpost_denied status 302 401 403" in txt
+        assert "@prewizard_forbidden not path" in txt
+        assert "Strict-Transport-Security" in txt
+        assert "frame-ancestors 'self'" in txt
 
 
 def test_system_me_endpoint(tmp_path):

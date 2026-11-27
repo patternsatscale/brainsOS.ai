@@ -71,13 +71,14 @@ key_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@,+=%-]*$")
 
 def render(k: str, val: str) -> str:
-    # Already quoted by the caller ("..." or '...'): keep verbatim.
+    # Strip matching outer quotes so double-quoted $(...) / backticks can never survive
+    # into a bash-sourced .env file (#384).
     if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
-        return f"{k}={val}"
-    if SAFE_VALUE_RE.match(val):
-        return f"{k}={val}"
+        val = val[1:-1]
     if "'" in val:
         sys.exit(f"[ERROR] Value for {k} contains a single quote; refusing to write an unsafe .env line")
+    if SAFE_VALUE_RE.match(val):
+        return f"{k}={val}"
     return f"{k}='{val}'"
 
 overrides = {}
@@ -90,8 +91,8 @@ with open(pairs_path, encoding="utf-8") as fh:
         key = key.strip()
         if not key_re.match(key):
             sys.exit(f"[ERROR] Invalid env key: {key!r}")
-        if "\n" in value:
-            sys.exit(f"[ERROR] Newline in value for {key}")
+        if any(ch in value for ch in ("\n", "\r", "\x00")):
+            sys.exit(f"[ERROR] Control character in value for {key}")
         overrides[key] = value
 
 real_env_path = os.path.realpath(env_path)

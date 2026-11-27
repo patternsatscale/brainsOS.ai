@@ -29,12 +29,14 @@ class FakeRoute53Client:
     def __init__(
         self,
         existing_ip: str | None = None,
-        existing_owner: str | None = None,
+        existing_owner_claim: str | None = None,
+        legacy_owner: str | None = None,
         deny_list: bool = False,
         zones: list[dict[str, Any]] | None = None,
     ) -> None:
         self.existing_ip = existing_ip
-        self.existing_owner = existing_owner
+        self.existing_owner_claim = existing_owner_claim
+        self.legacy_owner = legacy_owner
         self.deny_list = deny_list
         self.zones = zones or []
         self.changes: list[dict[str, Any]] = []
@@ -63,13 +65,18 @@ class FakeRoute53Client:
                     "ResourceRecords": [{"Value": self.existing_ip}],
                 }
             )
-        if StartRecordType == "TXT" and self.existing_owner:
+        if StartRecordType == "TXT" and (self.existing_owner_claim or self.legacy_owner):
+            txt_val = (
+                f'"owner-sha256={self.existing_owner_claim}"'
+                if self.existing_owner_claim
+                else f'"instance-id={self.legacy_owner}"'
+            )
             rrs.append(
                 {
                     "Name": StartRecordName,
                     "Type": "TXT",
                     "TTL": 60,
-                    "ResourceRecords": [{"Value": f'"instance-id={self.existing_owner}"'}],
+                    "ResourceRecords": [{"Value": txt_val}],
                 }
             )
         return {"ResourceRecordSets": rrs}
@@ -81,22 +88,25 @@ class FakeRoute53Client:
         return {"ChangeInfo": {"Id": "/change/C1234567890", "Status": "PENDING"}}
 
 
-def test_sync_route53_upsert_and_idempotency():
+def test_sync_route53_upsert_redacts_instance_id_and_idempotency():
     mod = _load_sync_module()
     client = FakeRoute53Client()
+    raw_iid = "i-0123456789abcdef0"
 
     res = mod.sync_route53_record(
         route53_client=client,
         domain="https://alice.demo.infotechlabs.io/",
         ip="54.210.11.22",
         zone_id="/hostedzone/Z0987654321DEMO",
-        instance_id="i-0123456789abcdef0",
+        instance_id=raw_iid,
         ttl=60,
     )
+    expected_claim = mod.compute_owner_claim("alice.demo.infotechlabs.io", "Z0987654321DEMO", raw_iid)
     assert res["status"] == "updated"
     assert res["changed"] is True
     assert res["domain"] == "alice.demo.infotechlabs.io"
     assert res["zone_id"] == "Z0987654321DEMO"
+    assert res["owner_claim"] == expected_claim
     assert len(client.changes) == 1
     batch = client.changes[0]["ChangeBatch"]["Changes"]
     assert batch[0]["Action"] == "UPSERT"
@@ -104,31 +114,52 @@ def test_sync_route53_upsert_and_idempotency():
     assert batch[0]["ResourceRecordSet"]["ResourceRecords"] == [{"Value": "54.210.11.22"}]
     assert batch[1]["ResourceRecordSet"]["Name"] == "_brainsos-owner.alice.demo.infotechlabs.io"
     assert batch[1]["ResourceRecordSet"]["ResourceRecords"] == [
-        {"Value": '"instance-id=i-0123456789abcdef0"'}
+        {"Value": f'"owner-sha256={expected_claim}"'}
     ]
+    # Raw EC2 Instance ID must never appear anywhere in the public Route 53 ChangeBatch (#384)
+    assert raw_iid not in str(client.changes[0])
 
-    # Unchanged when IP and instance_id already match
+    # Unchanged when IP and hashed owner claim already match
     unchanged_client = FakeRoute53Client(
         existing_ip="54.210.11.22",
-        existing_owner="i-0123456789abcdef0",
+        existing_owner_claim=expected_claim,
     )
     res2 = mod.sync_route53_record(
         route53_client=unchanged_client,
         domain="alice.demo.infotechlabs.io",
         ip="54.210.11.22",
         zone_id="Z0987654321DEMO",
-        instance_id="i-0123456789abcdef0",
+        instance_id=raw_iid,
     )
     assert res2["status"] == "unchanged"
     assert res2["changed"] is False
     assert len(unchanged_client.changes) == 0
 
+    # Legacy plaintext instance-id= TXT record owned by same instance is automatically upgraded to owner-sha256=
+    legacy_same_client = FakeRoute53Client(
+        existing_ip="54.210.11.22",
+        legacy_owner=raw_iid,
+    )
+    res_mig = mod.sync_route53_record(
+        route53_client=legacy_same_client,
+        domain="alice.demo.infotechlabs.io",
+        ip="54.210.11.22",
+        zone_id="Z0987654321DEMO",
+        instance_id=raw_iid,
+    )
+    assert res_mig["status"] == "updated"
+    assert len(legacy_same_client.changes) == 1
+    assert raw_iid not in str(legacy_same_client.changes[0])
+
 
 def test_sync_route53_ownership_collision_and_force():
     mod = _load_sync_module()
+    other_claim = mod.compute_owner_claim(
+        "alice.demo.infotechlabs.io", "Z0987654321DEMO", "i-0aaaaaaaaaaaaaaa1"
+    )
     other_owner_client = FakeRoute53Client(
         existing_ip="3.91.10.20",
-        existing_owner="i-0aaaaaaaaaaaaaaa1",
+        existing_owner_claim=other_claim,
     )
 
     with pytest.raises(PermissionError, match="already owned by EC2 instance"):

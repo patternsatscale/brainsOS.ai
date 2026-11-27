@@ -225,26 +225,32 @@ start_system_api() {
     fi
   fi
 
-  log_info "Starting Host System Management & Telemetry API (port ${BRAINSOS_SYSTEM_API_PORT})..."
-  BRAINSOS_SYSTEM_API_HOST="0.0.0.0" \
+  local sys_api_host
+  sys_api_host="$(PYTHONPATH="${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" "${VENV_PYTHON}" -c "from brainsos_telemetry.system import get_default_api_host; print(get_default_api_host())" 2>/dev/null || echo "127.0.0.1")"
+  if [ -z "${sys_api_host}" ] || [ "${sys_api_host}" = "0.0.0.0" ] || [ "${sys_api_host}" = "::" ]; then
+    sys_api_host="127.0.0.1"
+  fi
+
+  log_info "Starting Host System Management & Telemetry API (${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT})..."
+  BRAINSOS_SYSTEM_API_HOST="${sys_api_host}" \
   BRAINSOS_SYSTEM_API_PORT="${BRAINSOS_SYSTEM_API_PORT}" \
   SYSTEM_API_TOKEN="${SYSTEM_API_TOKEN:-}" \
   PYTHONPATH="${REPO_ROOT}/packages/brainsOS-telemetry:${REPO_ROOT}/packages/brainsOS-appliance:${REPO_ROOT}/packages/brainsOS-agent:${PYTHONPATH:-}" \
-  nohup ${SETSID_CMD} "${VENV_PYTHON}" -m brainsos_telemetry.system --host 0.0.0.0 --port "${BRAINSOS_SYSTEM_API_PORT}" </dev/null >"${LOG_DIR}/system_api.log" 2>&1 &
+  nohup ${SETSID_CMD} "${VENV_PYTHON}" -m brainsos_telemetry.system --host "${sys_api_host}" --port "${BRAINSOS_SYSTEM_API_PORT}" </dev/null >"${LOG_DIR}/system_api.log" 2>&1 &
   local sys_api_pid=$!
   disown "${sys_api_pid}" 2>/dev/null || true
   echo "${sys_api_pid}" > "${SYSTEM_API_PID_FILE}"
 
   local ready=false
   for i in {1..30}; do
-    if curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
+    if curl -s "http://${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1 || curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
       ready=true
       break
     fi
     sleep 0.5
   done
   if [ "${ready}" = true ]; then
-    log_success "Host System API started (PID: ${sys_api_pid}, http://0.0.0.0:${BRAINSOS_SYSTEM_API_PORT})."
+    log_success "Host System API started (PID: ${sys_api_pid}, http://${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT})."
   else
     log_warn "Host System API launched (PID: ${sys_api_pid}), health endpoint still initializing."
   fi

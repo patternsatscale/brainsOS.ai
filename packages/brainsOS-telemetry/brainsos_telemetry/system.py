@@ -153,6 +153,9 @@ class JobManager:
             except Exception:
                 return None
 
+        if not re.match(r"^job-[0-9]+-[0-9a-f]{8,32}$", job_id):
+            return None
+
         if self.active_job and self.active_job["id"] == job_id:
             return self._format_job(self.active_job)
 
@@ -209,7 +212,7 @@ class JobManager:
                         "type": self.active_job["type"],
                     }
 
-            job_id = f"job-{int(time.time())}-{secrets.token_hex(4)}"
+            job_id = f"job-{int(time.time())}-{secrets.token_hex(12)}"
             log_file = os.path.join(self.jobs_dir, f"{job_id}.log")
 
             with open(log_file, "w", encoding="utf-8") as f:
@@ -745,6 +748,50 @@ def get_runners_status(repo_root: str) -> Dict[str, Any]:
     }
 
 
+_SAFE_ENV_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@,+=%-]*$")
+
+ALLOWED_HERMES_TOOL_KEYS = {
+    "FIRECRAWL_API_KEY",
+    "TAVILY_API_KEY",
+    "EXA_API_KEY",
+    "BRAVE_SEARCH_API_KEY",
+    "BRAVE_API_KEY",
+    "GITHUB_TOKEN",
+    "OPENROUTER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+}
+HERMES_CUSTOM_KEY_RE = re.compile(r"^HERMES_CUSTOM_[A-Z0-9_]{1,48}$")
+
+
+def _render_safe_env_line(key: str, raw_val: str) -> str:
+    """Format KEY=VALUE safely for bash-sourced .env files (POSIX single-quoted when needed)."""
+    val = str(raw_val)
+    if any(ch in val for ch in ("\n", "\r", "\x00")):
+        raise ValueError(f"Control character in value for {key}")
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+        val = val[1:-1]
+    if "'" in val:
+        raise ValueError(f"Single quote in value for {key}")
+    if _SAFE_ENV_VALUE_RE.match(val):
+        return f"{key}={val}"
+    return f"{key}='{val}'"
+
+
+def mask_instance_id(raw_id: str) -> str:
+    """Mask EC2 Hardware Instance ID (i-0d32ae443d40e32d4 -> i-••••••••••••32d4) while preserving local-* labels."""
+    clean = (raw_id or "").strip()
+    if not clean:
+        return ""
+    if clean.lower().startswith("local-"):
+        return clean
+    if clean.lower().startswith("i-") and len(clean) >= 8:
+        return f"i-••••••••••••{clean[-4:]}"
+    if len(clean) >= 8:
+        return f"{clean[:2]}••••••••••••{clean[-4:]}"
+    return "••••••••"
+
+
 def _upsert_env_keys(repo_root: str, target_file: str, updates: Dict[str, str]) -> None:
     """Safely upsert key=value pairs into an .env file with 0600 permissions."""
     os.makedirs(os.path.dirname(os.path.abspath(target_file)), exist_ok=True)
@@ -770,6 +817,7 @@ def _upsert_env_keys(repo_root: str, target_file: str, updates: Dict[str, str]) 
         )
         if res.returncode == 0:
             return
+        raise ValueError(res.stderr.strip() or f"env-upsert.sh rejected update for {target_file}")
 
     existing_lines: list[str] = []
     if os.path.isfile(target_file):
@@ -783,11 +831,11 @@ def _upsert_env_keys(repo_root: str, target_file: str, updates: Dict[str, str]) 
         if stripped and not stripped.startswith("#") and "=" in stripped:
             k = stripped.split("=", 1)[0].strip()
             if k in remaining:
-                new_lines.append(f"{k}={remaining.pop(k)}")
+                new_lines.append(_render_safe_env_line(k, remaining.pop(k)))
                 continue
         new_lines.append(line)
     for k, v in remaining.items():
-        new_lines.append(f"{k}={v}")
+        new_lines.append(_render_safe_env_line(k, v))
 
     with open(target_file, "w", encoding="utf-8") as f:
         f.write("\n".join(new_lines) + "\n")
@@ -908,9 +956,16 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     except Exception:
         os_hostname = local_domain
 
-    masked_instance_id = imds.get("instance_id", "")
-    if not firstboot_wizard_completed and masked_instance_id:
+    raw_instance_id = (
+        imds.get("instance_id")
+        or file_env.get("BRAINSOS_INSTANCE_ID")
+        or env.get("BRAINSOS_INSTANCE_ID")
+        or ""
+    ).strip()
+    if not firstboot_wizard_completed:
         masked_instance_id = ""
+    else:
+        masked_instance_id = mask_instance_id(raw_instance_id)
 
     su_prefix = superuser_username.lower() if superuser_username else "username"
     suggested_local_domain = f"{su_prefix}.aws.cloud.brainsos.ai"
@@ -937,6 +992,7 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "public_ipv4": imds.get("public_ipv4", ""),
         "local_ipv4": imds.get("local_ipv4", ""),
         "instance_id": masked_instance_id,
+        "instance_id_masked": bool(raw_instance_id and masked_instance_id != raw_instance_id),
         "repo_root": str(repo_root),
         "data_dir": str(data_dir),
         "console_user": console_user,
@@ -1055,47 +1111,114 @@ def verify_internal_auth(request: Request):
         )
 
 
-def _resolve_authenticated_identity(request: Request) -> Optional[str]:
-    """Resolve authenticated operator identity from Authentik headers or verified session cookies."""
+ADMIN_GROUP_NAMES = {"authentik admins", "admins", "appliance-admins"}
+
+
+def _resolve_authenticated_identity_from_headers(headers: Any) -> Optional[str]:
+    """Extract verified Authentik forward-auth identity; fail closed on outpost fallback or pre-wizard flags."""
+    if (headers.get("X-Authentik-Outpost-Fallback") or "").strip().lower() == "true":
+        return None
+    if (headers.get("X-BrainsOS-Prelogin-Wizard") or "").strip().lower() == "true":
+        return None
     username = (
-        request.headers.get("X-Authentik-Username")
-        or request.headers.get("X-Authentik-Email")
-        or request.headers.get("Remote-User")
+        headers.get("X-Authentik-Username")
+        or headers.get("X-Authentik-Email")
+        or headers.get("Remote-User")
     )
     if username and username.strip():
         return username.strip()
-
-    # Fallback when Authentik Outpost 1-hour cookie expired on a same-origin Portal session
-    # that still holds an active authentik_session or verified HttpOnly CSRF cookie via Caddy
-    has_session_cookie = any(
-        k == "authentik_session" or k.startswith("authentik_proxy_")
-        for k in request.cookies.keys()
-    )
-    csrf_hdr = request.headers.get("X-CSRF-Token")
-    csrf_cookie = request.cookies.get("brainsos_csrf_token")
-    has_matched_csrf_cookie = bool(
-        csrf_hdr and csrf_cookie and len(csrf_hdr) >= 16 and secrets.compare_digest(csrf_hdr, csrf_cookie)
-    )
-    outpost_fallback = request.headers.get("X-Authentik-Outpost-Fallback") == "true"
-
-    if has_session_cookie or has_matched_csrf_cookie or outpost_fallback:
-        ident = get_appliance_identity(get_repo_root())
-        return str(ident.get("superuser_username") or ident.get("admin_username") or "admin")
-
     return None
 
 
-def verify_state_change_security(request: Request):
-    """Enforce CSRF token, Origin check, and Authentik identity on state-changing endpoints."""
-    # 1. Authentik identity header (with same-origin session cookie fallback when outpost cookie rotates)
+def _resolve_authenticated_identity(request: Request) -> Optional[str]:
+    """Resolve authenticated operator identity strictly from proxy-verified Authentik headers."""
+    return _resolve_authenticated_identity_from_headers(request.headers)
+
+
+def _is_authorized_admin(headers: Any, username: str, repo_root: str) -> bool:
+    """Verify the authenticated user belongs to 'authentik Admins' (or configured superuser when group header omitted)."""
+    if not username or not username.strip():
+        return False
+
+    raw_groups = headers.get("X-Authentik-Groups")
+    if raw_groups is not None:
+        parsed_groups = {
+            part.strip().lower()
+            for token in raw_groups.split("|")
+            for part in token.split(",")
+            if part.strip()
+        }
+        return bool(parsed_groups & ADMIN_GROUP_NAMES)
+
+    ident = get_appliance_identity(repo_root)
+    allowed_users = {
+        "admin",
+        "akadmin",
+        "operator",
+        str(ident.get("superuser_username") or "").strip().lower(),
+        str(ident.get("admin_username") or "").strip().lower(),
+    }
+    allowed_users.discard("")
+    if username.strip().lower() in allowed_users:
+        return True
+    return os.environ.get("BRAINSOS_STAGE") == "test"
+
+
+def _is_allowed_origin(origin: Optional[str], repo_root: str) -> bool:
+    """Validate Origin header against configured appliance domains (immune to Host-header DNS rebinding)."""
+    if not origin:
+        return True
+    parsed = urlparse(origin)
+    origin_host = (parsed.hostname or "").strip().lower()
+    if not origin_host:
+        return False
+    env = parse_env_file(repo_root)
+    domain = normalize_url_host(env.get("BRAINSOS_DOMAIN", "localhost")).lower()
+    url_host = normalize_url_host(env.get("BRAINSOS_URL", domain)).lower()
+    local_dom = normalize_url_host(env.get("BRAINSOS_LOCAL_DOMAIN", domain)).lower()
+    allowed_hosts = {
+        "localhost",
+        "127.0.0.1",
+        domain,
+        url_host,
+        local_dom,
+        f"proxy.{domain}",
+    }
+    allowed_hosts.discard("")
+    return origin_host in allowed_hosts
+
+
+def verify_admin_read_security(request: Request):
+    """Require authenticated Authentik administrator identity on sensitive read endpoints."""
+    repo_root = get_repo_root()
     username = _resolve_authenticated_identity(request)
     if not username:
         raise HTTPException(
             status_code=403,
             detail="Forbidden: missing authenticated identity header (X-Authentik-Username)",
         )
+    if not _is_authorized_admin(request.headers, username, repo_root):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: administrator group ('authentik Admins') required",
+        )
 
-    # 2. Sec-Fetch-Site check
+
+def verify_state_change_security(request: Request):
+    """Enforce CSRF token, Origin check, and Authentik admin identity on state-changing endpoints."""
+    repo_root = get_repo_root()
+    username = _resolve_authenticated_identity(request)
+    if not username:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: missing authenticated identity header (X-Authentik-Username)",
+        )
+    if not _is_authorized_admin(request.headers, username, repo_root):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: administrator group ('authentik Admins') required",
+        )
+
     sec_fetch_site = request.headers.get("Sec-Fetch-Site")
     if sec_fetch_site and sec_fetch_site.lower() == "cross-site":
         raise HTTPException(
@@ -1103,32 +1226,13 @@ def verify_state_change_security(request: Request):
             detail="Forbidden: cross-site requests rejected",
         )
 
-    # 3. Origin check
     origin = request.headers.get("Origin")
-    if origin:
-        parsed = urlparse(origin)
-        origin_host = parsed.hostname or ""
-        req_host = request.headers.get("Host", "").split(":")[0]
-        env = parse_env_file(get_repo_root())
-        domain = normalize_url_host(env.get("BRAINSOS_DOMAIN", "localhost"))
-        url_host = normalize_url_host(env.get("BRAINSOS_URL", domain))
-        local_dom = normalize_url_host(env.get("BRAINSOS_LOCAL_DOMAIN", domain))
-        allowed_hosts = {
-            "localhost",
-            "127.0.0.1",
-            domain.lower(),
-            url_host.lower(),
-            local_dom.lower(),
-            f"proxy.{domain.lower()}",
-            req_host.lower(),
-        }
-        if origin_host.lower() not in allowed_hosts:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Forbidden: Origin '{origin}' is not permitted",
-            )
+    if origin and not _is_allowed_origin(origin, repo_root):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Origin '{origin}' is not permitted",
+        )
 
-    # 4. CSRF Token check
     csrf_token = request.headers.get("X-CSRF-Token")
     if not validate_csrf_token(csrf_token, request.cookies.get("brainsos_csrf_token")):
         raise HTTPException(
@@ -1138,11 +1242,17 @@ def verify_state_change_security(request: Request):
 
 
 def verify_setup_security(request: Request):
-    """Enforce CSRF token, Origin check, and either Authentik SSO identity or Pre-Login First-Boot Wizard mode."""
+    """Enforce CSRF token, Origin check, and either Authentik SSO admin identity or Pre-Login First-Boot Wizard mode."""
     repo_root = get_repo_root()
     ident = get_appliance_identity(repo_root)
     username = _resolve_authenticated_identity(request)
-    if not username and ident.get("firstboot_wizard_completed", True):
+    if username:
+        if not _is_authorized_admin(request.headers, username, repo_root):
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: administrator group ('authentik Admins') required",
+            )
+    elif ident.get("firstboot_wizard_completed", True):
         raise HTTPException(
             status_code=403,
             detail="Forbidden: missing authenticated identity header (X-Authentik-Username)",
@@ -1156,28 +1266,11 @@ def verify_setup_security(request: Request):
         )
 
     origin = request.headers.get("Origin")
-    if origin:
-        parsed = urlparse(origin)
-        origin_host = parsed.hostname or ""
-        req_host = request.headers.get("Host", "").split(":")[0]
-        env = parse_env_file(repo_root)
-        domain = normalize_url_host(env.get("BRAINSOS_DOMAIN", "localhost"))
-        url_host = normalize_url_host(env.get("BRAINSOS_URL", domain))
-        local_dom = normalize_url_host(env.get("BRAINSOS_LOCAL_DOMAIN", domain))
-        allowed_hosts = {
-            "localhost",
-            "127.0.0.1",
-            domain.lower(),
-            url_host.lower(),
-            local_dom.lower(),
-            f"proxy.{domain.lower()}",
-            req_host.lower(),
-        }
-        if origin_host.lower() not in allowed_hosts:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Forbidden: Origin '{origin}' is not permitted",
-            )
+    if origin and not _is_allowed_origin(origin, repo_root):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Origin '{origin}' is not permitted",
+        )
 
     csrf_token = request.headers.get("X-CSRF-Token")
     if not validate_csrf_token(csrf_token, request.cookies.get("brainsos_csrf_token")):
@@ -1280,6 +1373,27 @@ def create_system_api_app():
     async def identity():
         return JSONResponse(content=get_appliance_identity(repo_root))
 
+    @app.get(
+        "/api/v1/system/identity/instance-id",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_admin_read_security)],
+    )
+    async def reveal_instance_id():
+        file_env = parse_env_file_only(repo_root)
+        env = parse_env_file(repo_root)
+        imds = _query_imds_metadata()
+        raw_iid = (
+            imds.get("instance_id")
+            or file_env.get("BRAINSOS_INSTANCE_ID")
+            or env.get("BRAINSOS_INSTANCE_ID")
+            or ""
+        ).strip()
+        return JSONResponse(
+            content={
+                "instance_id": raw_iid,
+                "masked_instance_id": mask_instance_id(raw_iid),
+            }
+        )
+
     @app.get("/api/v1/system/me", dependencies=[Depends(verify_internal_auth)])
     async def current_user_me(request: Request):
         ident = get_appliance_identity(repo_root)
@@ -1303,12 +1417,13 @@ def create_system_api_app():
 
         local_dom = ident.get("local_domain") or "brainsos.ai"
         email = hdr_email or f"{username}@{local_dom}"
+        is_su = _is_authorized_admin(request.headers, username, repo_root)
         return JSONResponse(
             content={
                 "username": username,
                 "name": name,
                 "email": email,
-                "is_superuser": True,
+                "is_superuser": is_su,
             }
         )
 
@@ -1385,11 +1500,7 @@ def create_system_api_app():
     async def trigger_setup(req: SetupRequest, request: Request):
         ident = get_appliance_identity(repo_root)
         env = parse_env_file(repo_root)
-        has_sso = bool(
-            request.headers.get("X-Authentik-Username")
-            or request.headers.get("X-Authentik-Email")
-            or request.headers.get("Remote-User")
-        )
+        has_sso = bool(_resolve_authenticated_identity(request))
 
         # In pre-login First-Boot Setup Wizard mode (or whenever bootstrap_token is provided),
         # verify the EC2 Instance ID / initial bootstrap password before allowing any changes.
@@ -1437,7 +1548,7 @@ def create_system_api_app():
         unit_name: Optional[str] = None
         if req.unit_name is not None and req.unit_name.strip():
             unit_name = req.unit_name.strip()
-            if "\n" in unit_name or "\r" in unit_name or len(unit_name) > 128:
+            if "\n" in unit_name or "\r" in unit_name or "'" in unit_name or len(unit_name) > 128:
                 raise HTTPException(status_code=400, detail="Invalid unit_name.")
 
         # Fast-path: When saving ONLY unit_name from the System & Identity card, update .env
@@ -1453,19 +1564,10 @@ def create_system_api_app():
             and not (req.admin_password and req.admin_password.strip())
             and not (req.acme_email and req.acme_email.strip())
         )
-        if is_unit_name_only:
-            env_upsert = os.path.join(repo_root, "scripts/control/env-upsert.sh")
+        if is_unit_name_only and unit_name is not None:
             env_file = os.path.join(repo_root, ".env")
             try:
-                if os.path.isfile(env_upsert) and os.path.isfile(env_file):
-                    subprocess.run(
-                        [env_upsert, "--file", env_file, f"BRAINSOS_UNIT_NAME={unit_name}"],
-                        check=True,
-                        timeout=5,
-                    )
-                else:
-                    with open(env_file, "a", encoding="utf-8") as f:
-                        f.write(f'\nBRAINSOS_UNIT_NAME="{unit_name}"\n')
+                _upsert_env_keys(repo_root, env_file, {"BRAINSOS_UNIT_NAME": unit_name})
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed updating BRAINSOS_UNIT_NAME: {e}")
             updated_ident = get_appliance_identity(repo_root)
@@ -1609,7 +1711,11 @@ def create_system_api_app():
         )
 
     @app.get("/api/v1/system/jobs/{job_id}", dependencies=[Depends(verify_internal_auth)])
-    async def get_job_status(job_id: str):
+    async def get_job_status(job_id: str, request: Request):
+        if job_id in ("latest", "active"):
+            ident = get_appliance_identity(repo_root)
+            if ident.get("firstboot_wizard_completed", True) and not _resolve_authenticated_identity(request):
+                raise HTTPException(status_code=403, detail="Forbidden: authentication required to enumerate latest jobs")
         job = job_manager.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -1773,31 +1879,50 @@ def create_system_api_app():
                     raise HTTPException(status_code=400, detail=f"Invalid value for {env_key}")
                 updates[env_key] = val
 
-        for dict_field in (req.keys, req.extra_env):
-            if dict_field:
-                for env_key, raw_val in dict_field.items():
-                    if raw_val is None:
-                        continue
-                    k = env_key.strip()
-                    if not re.match(r"^[A-Z0-9_]{2,64}$", k):
-                        raise HTTPException(status_code=400, detail=f"Invalid key name '{env_key}'")
-                    val = str(raw_val).strip()
-                    if "\n" in val or "\r" in val:
-                        raise HTTPException(status_code=400, detail=f"Invalid value for {k}")
-                    updates[k] = val
+        if req.keys:
+            for env_key, raw_val in req.keys.items():
+                if raw_val is None:
+                    continue
+                k = env_key.strip()
+                if k not in ALLOWED_HERMES_TOOL_KEYS and not HERMES_CUSTOM_KEY_RE.match(k):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Disallowed runner key '{env_key}'. Use standard tool keys or HERMES_CUSTOM_* prefix.",
+                    )
+                val = str(raw_val).strip()
+                if any(ch in val for ch in ("\n", "\r", "\x00", "'")):
+                    raise HTTPException(status_code=400, detail=f"Invalid value for {k}")
+                updates[k] = val
+
+        if req.extra_env:
+            for env_key, raw_val in req.extra_env.items():
+                if raw_val is None:
+                    continue
+                k = env_key.strip()
+                if not HERMES_CUSTOM_KEY_RE.match(k):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Disallowed extra_env key '{env_key}'. Custom overrides must use HERMES_CUSTOM_* prefix.",
+                    )
+                val = str(raw_val).strip()
+                if any(ch in val for ch in ("\n", "\r", "\x00", "'")):
+                    raise HTTPException(status_code=400, detail=f"Invalid value for {k}")
+                updates[k] = val
 
         if not updates:
             raise HTTPException(status_code=400, detail="No runner tool keys provided to update")
 
         env_file = os.path.join(repo_root, ".env")
-        _upsert_env_keys(repo_root, env_file, updates)
-
-        file_env = parse_env_file_only(repo_root)
-        data_dir = file_env.get("BRAINSOS_DATA_DIR") or os.path.join(repo_root, "data")
-        if not os.path.isabs(data_dir):
-            data_dir = os.path.join(repo_root, data_dir.lstrip("./"))
-        hermes_env_path = os.path.join(data_dir, "runners", "hermes", ".env")
-        _upsert_env_keys(repo_root, hermes_env_path, updates)
+        try:
+            _upsert_env_keys(repo_root, env_file, updates)
+            file_env = parse_env_file_only(repo_root)
+            data_dir = file_env.get("BRAINSOS_DATA_DIR") or os.path.join(repo_root, "data")
+            if not os.path.isabs(data_dir):
+                data_dir = os.path.join(repo_root, data_dir.lstrip("./"))
+            hermes_env_path = os.path.join(data_dir, "runners", "hermes", ".env")
+            _upsert_env_keys(repo_root, hermes_env_path, updates)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         if (req.restart_runner is not False) and os.environ.get("BRAINSOS_STAGE") != "test":
             try:
@@ -1889,6 +2014,42 @@ def create_system_api_app():
             },
         )
 
+    def _resolve_privilege_drop_user(ident: Dict[str, Any]) -> Optional[pwd.struct_passwd]:
+        """When the System API daemon runs as root (UID 0), drop shell/PTY privileges to the operator OS user."""
+        if os.geteuid() != 0:
+            return None
+        for candidate in (ident.get("superuser_username") or "", "admin", "ubuntu"):
+            if not candidate:
+                continue
+            try:
+                return pwd.getpwnam(candidate)
+            except KeyError:
+                continue
+        return None
+
+    def _build_sanitized_terminal_env(work_dir: str, data_dir: str, target_pw: Optional[pwd.struct_passwd]) -> Dict[str, str]:
+        """Construct operator console environment without leaking control-plane master tokens."""
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"),
+            "LANG": os.environ.get("LANG", "C.UTF-8"),
+            "TERM": "xterm-256color",
+            "HUSHLOGIN": "TRUE",
+            "BASH_SILENCE_DEPRECATION_WARNING": "1",
+            "PYTHONWARNINGS": "ignore",
+            "BRAINSOS_HOME": str(work_dir),
+            "BRAINSOS_DATA_DIR": str(data_dir),
+            "PWD": str(work_dir),
+        }
+        if target_pw is not None:
+            env["HOME"] = target_pw.pw_dir
+            env["USER"] = target_pw.pw_name
+            env["LOGNAME"] = target_pw.pw_name
+        else:
+            env["HOME"] = os.environ.get("HOME", str(work_dir))
+            env["USER"] = os.environ.get("USER", getpass.getuser())
+            env["LOGNAME"] = env["USER"]
+        return env
+
     @app.post(
         "/api/v1/system/terminal/exec",
         dependencies=[Depends(verify_internal_auth), Depends(verify_state_change_security)],
@@ -1901,21 +2062,37 @@ def create_system_api_app():
         if req.cwd and os.path.isdir(req.cwd):
             work_dir = os.path.abspath(req.cwd)
 
-        env = {**os.environ, **parse_env_file_only(repo_root), "TERM": "xterm-256color"}
+        ident = get_appliance_identity(repo_root)
+        data_dir = ident.get("data_dir") or os.path.join(work_dir, "data")
+        target_pw = _resolve_privilege_drop_user(ident)
+        env = _build_sanitized_terminal_env(work_dir, str(data_dir), target_pw)
+        exec_kwargs: Dict[str, Any] = {}
+        spawn_cwd = work_dir
+        if target_pw is not None:
+            exec_kwargs["user"] = target_pw.pw_uid
+            exec_kwargs["group"] = target_pw.pw_gid
+            try:
+                exec_kwargs["extra_groups"] = os.getgrouplist(target_pw.pw_name, target_pw.pw_gid)
+            except Exception:
+                pass
+            if not os.access(work_dir, os.R_OK | os.X_OK):
+                spawn_cwd = target_pw.pw_dir if os.path.isdir(target_pw.pw_dir) else "/"
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 "/bin/bash",
                 "-c",
                 f"{cmd_str}\nprintf '\\n__BRAINSOS_CWD__=%s\\n' \"$(pwd)\"",
-                cwd=work_dir,
+                cwd=spawn_cwd,
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                **exec_kwargs,
             )
             stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=30.0)
             stdout_txt = stdout_b.decode("utf-8", errors="replace")
             stderr_txt = stderr_b.decode("utf-8", errors="replace")
-            new_cwd = work_dir
+            new_cwd = spawn_cwd
             if "__BRAINSOS_CWD__=" in stdout_txt:
                 parts = stdout_txt.rsplit("__BRAINSOS_CWD__=", 1)
                 stdout_txt = parts[0].rstrip("\n")
@@ -1933,7 +2110,7 @@ def create_system_api_app():
         except asyncio.TimeoutError:
             return JSONResponse(
                 status_code=408,
-                content={"stdout": "", "stderr": "Command timed out after 30 seconds.", "exit_code": 124, "cwd": work_dir},
+                content={"stdout": "", "stderr": "Command timed out after 30 seconds.", "exit_code": 124, "cwd": spawn_cwd},
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Terminal execution failed: {e}")
@@ -1941,8 +2118,8 @@ def create_system_api_app():
     @app.websocket("/api/v1/system/terminal/ws")
     async def terminal_ws(websocket: WebSocket):
         expected_token = os.environ.get("SYSTEM_API_TOKEN")
-        provided_internal = websocket.headers.get("X-BrainsOS-Internal") or websocket.query_params.get("internal_token")
-        if expected_token and os.environ.get("BRAINSOS_STAGE") != "test":
+        provided_internal = websocket.headers.get("X-BrainsOS-Internal")
+        if expected_token:
             valid_tokens = {expected_token}
             try:
                 disk_token = parse_env_file_only(repo_root).get("SYSTEM_API_TOKEN", "").strip()
@@ -1953,20 +2130,23 @@ def create_system_api_app():
             if not provided_internal or not any(secrets.compare_digest(provided_internal, tok) for tok in valid_tokens if tok):
                 await websocket.close(code=1008)
                 return
-        elif provided_internal and expected_token and not secrets.compare_digest(provided_internal, expected_token):
+        elif os.environ.get("BRAINSOS_STAGE") != "test":
             await websocket.close(code=1008)
             return
 
-        username = (
-            websocket.headers.get("X-Authentik-Username")
-            or websocket.headers.get("X-Authentik-Email")
-            or websocket.headers.get("Remote-User")
-        )
-        if not username:
-            if os.environ.get("BRAINSOS_STAGE") == "test" and not provided_internal:
+        ws_origin = websocket.headers.get("Origin")
+        if ws_origin:
+            if not _is_allowed_origin(ws_origin, repo_root):
                 await websocket.close(code=1008)
                 return
-            username = os.environ.get("BRAINSOS_SUPERUSER_USERNAME") or "admin"
+        elif os.environ.get("BRAINSOS_STAGE") != "test":
+            await websocket.close(code=1008)
+            return
+
+        username = _resolve_authenticated_identity_from_headers(websocket.headers)
+        if not username or not _is_authorized_admin(websocket.headers, username, repo_root):
+            await websocket.close(code=1008)
+            return
 
         await websocket.accept()
         ident = get_appliance_identity(repo_root)
@@ -1980,34 +2160,11 @@ def create_system_api_app():
         except OSError:
             pass
         shell_bin = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
-        env = {
-            **os.environ,
-            **parse_env_file_only(repo_root),
-            "TERM": "xterm-256color",
-            "HUSHLOGIN": "TRUE",
-            "BASH_SILENCE_DEPRECATION_WARNING": "1",
-            "PYTHONWARNINGS": "ignore",
-            "PS1": r"\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ ",
-            "BRAINSOS_HOME": str(work_dir),
-            "BRAINSOS_DATA_DIR": str(data_dir),
-            "PWD": str(work_dir),
-        }
-
-        target_pw = None
-        if os.geteuid() == 0:
-            for candidate in (ident.get("superuser_username") or "", "admin"):
-                if not candidate:
-                    continue
-                try:
-                    target_pw = pwd.getpwnam(candidate)
-                    break
-                except KeyError:
-                    continue
+        target_pw = _resolve_privilege_drop_user(ident)
+        env = _build_sanitized_terminal_env(work_dir, str(data_dir), target_pw)
+        env["PS1"] = r"\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "
 
         if target_pw is not None:
-            env["HOME"] = target_pw.pw_dir
-            env["USER"] = target_pw.pw_name
-            env["LOGNAME"] = target_pw.pw_name
             console_user = target_pw.pw_name
             try:
                 os.fchown(slave_fd, target_pw.pw_uid, target_pw.pw_gid)
@@ -2020,12 +2177,9 @@ def create_system_api_app():
                     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
                 except OSError:
                     pass
-                try:
-                    os.initgroups(target_pw.pw_name, target_pw.pw_gid)
-                    os.setgid(target_pw.pw_gid)
-                    os.setuid(target_pw.pw_uid)
-                except Exception:
-                    pass
+                os.initgroups(target_pw.pw_name, target_pw.pw_gid)
+                os.setgid(target_pw.pw_gid)
+                os.setuid(target_pw.pw_uid)
         else:
             def _preexec() -> None:
                 os.setsid()
@@ -2150,7 +2304,11 @@ def main():
     parser.add_argument("--port", type=int, default=None, help="Port to bind to (default: 8010)")
     args, _ = parser.parse_known_args()
 
-    host = args.host or get_default_api_host()
+    raw_host = (args.host or "").strip()
+    if raw_host in ("0.0.0.0", "::"):
+        logger.error("Refusing wildcard --host %r; falling back to auto-detected gateway.", raw_host)
+        raw_host = ""
+    host = raw_host or get_default_api_host()
     port = args.port or int(os.environ.get("BRAINSOS_SYSTEM_API_PORT", "8010"))
     logger.info(f"Starting brainsOS System API daemon on http://{host}:{port}")
     uvicorn.run("brainsos_telemetry.system:create_system_api_app", host=host, port=port, factory=True, log_level="info")
