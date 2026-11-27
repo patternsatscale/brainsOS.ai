@@ -99,6 +99,7 @@ export interface RunnerStatus {
 export interface ApplianceIdentity {
   unit_name?: string;
   instance_id?: string;
+  instance_id_masked?: boolean;
   firstboot_wizard_completed?: boolean;
   url?: string;
   local_domain?: string;
@@ -109,6 +110,20 @@ export interface ApplianceIdentity {
   admin_username?: string;
   admin_email?: string;
   admin_instance_bound?: boolean;
+  breakglass_enabled?: boolean;
+  admin_bound_to_instance_id?: boolean;
+  cognito_enabled?: boolean;
+  cognito_region?: string;
+  cognito_user_pool_id?: string;
+  cognito_domain?: string;
+  cognito_client_id?: string;
+  cognito_admin_group?: string;
+  cognito_redirect_uri?: string;
+  cognito_client_secret_configured?: boolean;
+  alb_oidc_enabled?: boolean;
+  alb_signer_arn?: string;
+  user_sub?: string;
+  owner_only?: boolean;
   tls_mode?: string;
   acme_email?: string;
   route53_zone_id?: string;
@@ -134,6 +149,20 @@ interface SystemStatus {
   admin_username?: string;
   admin_email?: string;
   admin_instance_bound?: boolean;
+  breakglass_enabled?: boolean;
+  admin_bound_to_instance_id?: boolean;
+  cognito_enabled?: boolean;
+  cognito_region?: string;
+  cognito_user_pool_id?: string;
+  cognito_domain?: string;
+  cognito_client_id?: string;
+  cognito_admin_group?: string;
+  cognito_redirect_uri?: string;
+  cognito_client_secret_configured?: boolean;
+  alb_oidc_enabled?: boolean;
+  alb_signer_arn?: string;
+  user_sub?: string;
+  owner_only?: boolean;
   tls_mode?: string;
   acme_email?: string;
   route53_zone_id?: string;
@@ -143,6 +172,7 @@ interface SystemStatus {
   public_ipv4?: string;
   local_ipv4?: string;
   instance_id?: string;
+  instance_id_masked?: boolean;
   repo_root?: string;
   data_dir?: string;
   mail_domain?: string;
@@ -230,10 +260,18 @@ const DEFAULT_STATUS: SystemStatus = {
   preserve_hostname: true,
   public_ipv4: '32.192.215.107',
   local_ipv4: '172.31.24.180',
-  instance_id: 'i-0d32ae443d40e32d4',
+  instance_id: 'i-••••••••••••32d4',
+  instance_id_masked: true,
+  breakglass_enabled: true,
+  admin_bound_to_instance_id: true,
+  cognito_enabled: false,
+  cognito_admin_group: 'brainsos-admins',
+  alb_oidc_enabled: false,
+  owner_only: true,
   identity: {
     unit_name: 'Enterprise Agent Box',
-    instance_id: 'i-0d32ae443d40e32d4',
+    instance_id: 'i-••••••••••••32d4',
+    instance_id_masked: true,
     firstboot_wizard_completed: true,
     url: 'ec2-32-192-215-107.compute-1.amazonaws.com',
     local_domain: 'jsm.aws.cloud.brainsos.ai',
@@ -244,6 +282,12 @@ const DEFAULT_STATUS: SystemStatus = {
     admin_username: 'jsm',
     admin_email: 'jsm@jsm.aws.cloud.brainsos.ai',
     admin_instance_bound: true,
+    breakglass_enabled: true,
+    admin_bound_to_instance_id: true,
+    cognito_enabled: false,
+    cognito_admin_group: 'brainsos-admins',
+    alb_oidc_enabled: false,
+    owner_only: true,
     tls_mode: 'internal',
     acme_email: '',
     public_ipv4: '32.192.215.107',
@@ -625,9 +669,41 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
       (cleanSuperuserUsername || rawAdminUsername || 'admin')
   ).trim() || 'admin';
 
+  const breakglassEnabled =
+    typeof nestedIdentity.breakglass_enabled === 'boolean'
+      ? nestedIdentity.breakglass_enabled
+      : typeof data.breakglass_enabled === 'boolean'
+      ? data.breakglass_enabled
+      : true;
+  const cognitoEnabled = Boolean(nestedIdentity.cognito_enabled ?? data.cognito_enabled ?? false);
+  const cognitoRegion = String(nestedIdentity.cognito_region ?? data.cognito_region ?? '').trim();
+  const cognitoUserPoolId = String(nestedIdentity.cognito_user_pool_id ?? data.cognito_user_pool_id ?? '').trim();
+  const cognitoDomain = String(nestedIdentity.cognito_domain ?? data.cognito_domain ?? '').trim();
+  const cognitoClientId = String(nestedIdentity.cognito_client_id ?? data.cognito_client_id ?? '').trim();
+  const cognitoAdminGroup = String(nestedIdentity.cognito_admin_group ?? data.cognito_admin_group ?? 'brainsos-admins').trim() || 'brainsos-admins';
+  const cognitoRedirectUri = String(
+    nestedIdentity.cognito_redirect_uri ?? data.cognito_redirect_uri ?? `https://${url}/source/oauth/callback/cognito/`
+  ).trim();
+  const cognitoSecretConfigured = Boolean(
+    nestedIdentity.cognito_client_secret_configured ?? data.cognito_client_secret_configured ?? false
+  );
+  const albOidcEnabled = Boolean(nestedIdentity.alb_oidc_enabled ?? data.alb_oidc_enabled ?? false);
+  const albSignerArn = String(nestedIdentity.alb_signer_arn ?? data.alb_signer_arn ?? '').trim();
+  const userSub = String(nestedIdentity.user_sub ?? data.user_sub ?? '').trim();
+  const ownerOnly =
+    typeof nestedIdentity.owner_only === 'boolean'
+      ? nestedIdentity.owner_only
+      : typeof data.owner_only === 'boolean'
+      ? data.owner_only
+      : true;
+  const instanceIdMasked = Boolean(
+    nestedIdentity.instance_id_masked ?? data.instance_id_masked ?? (instanceId.includes('•') || false)
+  );
+
   const normalizedIdentity: ApplianceIdentity = {
     unit_name: unitName,
     instance_id: instanceId,
+    instance_id_masked: instanceIdMasked,
     firstboot_wizard_completed: firstbootCompleted,
     url,
     local_domain: localDomain,
@@ -641,7 +717,21 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
         data.admin_email ??
         (cleanSuperuserUsername ? `${cleanSuperuserUsername}@${localDomain}` : `admin@${localDomain}`)
     ),
-    admin_instance_bound: true,
+    admin_instance_bound: breakglassEnabled,
+    breakglass_enabled: breakglassEnabled,
+    admin_bound_to_instance_id: breakglassEnabled,
+    cognito_enabled: cognitoEnabled,
+    cognito_region: cognitoRegion,
+    cognito_user_pool_id: cognitoUserPoolId,
+    cognito_domain: cognitoDomain,
+    cognito_client_id: cognitoClientId,
+    cognito_admin_group: cognitoAdminGroup,
+    cognito_redirect_uri: cognitoRedirectUri,
+    cognito_client_secret_configured: cognitoSecretConfigured,
+    alb_oidc_enabled: albOidcEnabled,
+    alb_signer_arn: albSignerArn,
+    user_sub: userSub,
+    owner_only: ownerOnly,
     tls_mode: tlsMode,
     acme_email: acmeEmail,
     route53_zone_id: route53ZoneId,
@@ -711,7 +801,21 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     superuser_username: cleanSuperuserUsername,
     admin_username: normalizedIdentity.admin_username,
     admin_email: normalizedIdentity.admin_email,
-    admin_instance_bound: true,
+    admin_instance_bound: breakglassEnabled,
+    breakglass_enabled: breakglassEnabled,
+    admin_bound_to_instance_id: breakglassEnabled,
+    cognito_enabled: cognitoEnabled,
+    cognito_region: cognitoRegion,
+    cognito_user_pool_id: cognitoUserPoolId,
+    cognito_domain: cognitoDomain,
+    cognito_client_id: cognitoClientId,
+    cognito_admin_group: cognitoAdminGroup,
+    cognito_redirect_uri: cognitoRedirectUri,
+    cognito_client_secret_configured: cognitoSecretConfigured,
+    alb_oidc_enabled: albOidcEnabled,
+    alb_signer_arn: albSignerArn,
+    user_sub: userSub,
+    owner_only: ownerOnly,
     tls_mode: tlsMode,
     acme_email: acmeEmail,
     route53_zone_id: route53ZoneId,
@@ -721,6 +825,7 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     public_ipv4: publicIpv4,
     local_ipv4: localIpv4,
     instance_id: instanceId,
+    instance_id_masked: instanceIdMasked,
     repo_root: repoRoot,
     data_dir: dataDir,
     mail_domain: mailDomain,
@@ -732,6 +837,15 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     runners: normalizeRunners(data.runners),
     overall_update_available: Boolean(data.overall_update_available),
   };
+}
+
+function maskInstanceId(raw?: string): string {
+  const clean = (raw || '').trim();
+  if (!clean) return 'local-dev';
+  if (clean.includes('•')) return clean;
+  if (clean.length <= 6) return '••••••';
+  const prefix = clean.startsWith('i-') ? 'i-' : clean.slice(0, 2);
+  return `${prefix}${'•'.repeat(Math.max(4, clean.length - prefix.length - 4))}${clean.slice(-4)}`;
 }
 
 function deriveUsernameFromFullName(fullName: string): string {
@@ -912,6 +1026,37 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   const [dnsCheckResult, setDnsCheckResult] = useState<DnsCheckResult | null>(null);
   const [newConfiguredUrl, setNewConfiguredUrl] = useState<string | null>(null);
 
+  // Security & Identity Hardening Controls (#365 / #385 / #386)
+  const [showInstanceId, setShowInstanceId] = useState<boolean>(false);
+  const [revealedInstanceId, setRevealedInstanceId] = useState<string>('');
+  const [revealInstanceLoading, setRevealInstanceLoading] = useState<boolean>(false);
+  const [wizardBreakglassEnabled, setWizardBreakglassEnabled] = useState<boolean>(true);
+  const [breakglassToggling, setBreakglassToggling] = useState<boolean>(false);
+  const [breakglassBanner, setBreakglassBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // AWS Cognito User Pool & ALB OIDC Owner SSO State (#385 / #386)
+  const [wizardCognitoExpanded, setWizardCognitoExpanded] = useState<boolean>(false);
+  const [cognitoEnabled, setCognitoEnabled] = useState<boolean>(Boolean(initialDevStatus?.cognito_enabled));
+  const [cognitoRegion, setCognitoRegion] = useState<string>(initialDevStatus?.cognito_region || '');
+  const [cognitoPoolId, setCognitoPoolId] = useState<string>(initialDevStatus?.cognito_user_pool_id || '');
+  const [cognitoDomain, setCognitoDomain] = useState<string>(initialDevStatus?.cognito_domain || '');
+  const [cognitoClientId, setCognitoClientId] = useState<string>(initialDevStatus?.cognito_client_id || '');
+  const [cognitoClientSecret, setCognitoClientSecret] = useState<string>('');
+  const [showCognitoSecret, setShowCognitoSecret] = useState<boolean>(false);
+  const [cognitoSecretConfigured, setCognitoSecretConfigured] = useState<boolean>(
+    Boolean(initialDevStatus?.cognito_client_secret_configured)
+  );
+  const [cognitoAdminGroup, setCognitoAdminGroup] = useState<string>(
+    initialDevStatus?.cognito_admin_group || 'brainsos-admins'
+  );
+  const [albOidcEnabled, setAlbOidcEnabled] = useState<boolean>(Boolean(initialDevStatus?.alb_oidc_enabled));
+  const [albSignerArn, setAlbSignerArn] = useState<string>(initialDevStatus?.alb_signer_arn || '');
+  const [userSub, setUserSub] = useState<string>(initialDevStatus?.user_sub || '');
+  const [ownerOnly, setOwnerOnly] = useState<boolean>(initialDevStatus?.owner_only !== false);
+  const [savingCognito, setSavingCognito] = useState<boolean>(false);
+  const [cognitoBanner, setCognitoBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [copiedCallbackUrl, setCopiedCallbackUrl] = useState<boolean>(false);
+
   // Agents & Runners API Key Configuration State (#334)
   const [firecrawlKey, setFirecrawlKey] = useState<string>('');
   const [tavilyKey, setTavilyKey] = useState<string>('');
@@ -1029,6 +1174,42 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         }
         if (data?.acme_email) {
           setSetupAcmeEmail((prev) => prev || data.acme_email!);
+        }
+        if (typeof data?.breakglass_enabled === 'boolean') {
+          setWizardBreakglassEnabled(data.breakglass_enabled);
+        }
+        if (typeof data?.cognito_enabled === 'boolean') {
+          setCognitoEnabled(data.cognito_enabled);
+        }
+        if (data?.cognito_region) {
+          setCognitoRegion((prev) => prev || data.cognito_region!);
+        }
+        if (data?.cognito_user_pool_id) {
+          setCognitoPoolId((prev) => prev || data.cognito_user_pool_id!);
+        }
+        if (data?.cognito_domain) {
+          setCognitoDomain((prev) => prev || data.cognito_domain!);
+        }
+        if (data?.cognito_client_id) {
+          setCognitoClientId((prev) => prev || data.cognito_client_id!);
+        }
+        if (data?.cognito_admin_group) {
+          setCognitoAdminGroup((prev) => prev || data.cognito_admin_group!);
+        }
+        if (typeof data?.cognito_client_secret_configured === 'boolean') {
+          setCognitoSecretConfigured(data.cognito_client_secret_configured);
+        }
+        if (typeof data?.alb_oidc_enabled === 'boolean') {
+          setAlbOidcEnabled(data.alb_oidc_enabled);
+        }
+        if (data?.alb_signer_arn) {
+          setAlbSignerArn((prev) => prev || data.alb_signer_arn!);
+        }
+        if (data?.user_sub) {
+          setUserSub((prev) => prev || data.user_sub!);
+        }
+        if (typeof data?.owner_only === 'boolean') {
+          setOwnerOnly(data.owner_only);
         }
         if (isFirstBootIncomplete && !wizardAutoOpened) {
           setWizardAutoOpened(true);
@@ -1884,6 +2065,210 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     }
   };
 
+  const handleToggleRevealInstanceId = async () => {
+    if (showInstanceId) {
+      setShowInstanceId(false);
+      return;
+    }
+    if (revealedInstanceId) {
+      setShowInstanceId(true);
+      return;
+    }
+    setRevealInstanceLoading(true);
+    try {
+      const res = await fetch('/api/v1/system/identity/instance-id');
+      if (res.ok) {
+        const d = await res.json();
+        if (d?.instance_id) {
+          setRevealedInstanceId(String(d.instance_id));
+          setShowInstanceId(true);
+          return;
+        }
+      }
+      const fallback = status?.identity?.instance_id || status?.instance_id || '';
+      if (fallback && !fallback.includes('•')) {
+        setRevealedInstanceId(fallback);
+        setShowInstanceId(true);
+      } else {
+        setIdentitySaveBanner({
+          type: 'error',
+          text: 'Could not reveal EC2 Instance ID: requires authenticated Administrator session.',
+        });
+      }
+    } catch {
+      if (import.meta.env.DEV) {
+        setRevealedInstanceId('i-0d32ae443d40e32d4');
+        setShowInstanceId(true);
+      }
+    } finally {
+      setRevealInstanceLoading(false);
+    }
+  };
+
+  const handleToggleBreakglass = async (nextEnabled: boolean) => {
+    setBreakglassBanner(null);
+    const suUser = (status?.superuser_username || '').trim();
+    const hasNamedSu = Boolean(suUser && !['admin', 'akadmin'].includes(suUser.toLowerCase()));
+    const hasOwnerSso = Boolean(
+      (userSub.trim() || status?.user_sub || '').trim() &&
+        (cognitoEnabled || albOidcEnabled || status?.cognito_enabled || status?.alb_oidc_enabled)
+    );
+
+    if (!nextEnabled && !hasNamedSu && !hasOwnerSso) {
+      setBreakglassBanner({
+        type: 'error',
+        text: 'Lockout prevention: provision a named Superuser (Wizard) or bind BRAINSOS_USER_SUB with Cognito/ALB SSO before disabling Instance-ID Break-Glass.',
+      });
+      return;
+    }
+
+    setBreakglassToggling(true);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    try {
+      const res = await fetch('/api/v1/system/security/breakglass', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ enabled: nextEnabled, apply_now: true }),
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const d = await res.json();
+          if (d?.detail) detail = d.detail;
+        } catch {}
+        throw new Error(detail);
+      }
+      setWizardBreakglassEnabled(nextEnabled);
+      setStatus((prev) =>
+        prev
+          ? {
+              ...prev,
+              breakglass_enabled: nextEnabled,
+              admin_bound_to_instance_id: nextEnabled,
+              admin_instance_bound: nextEnabled,
+              identity: {
+                ...(prev.identity || {}),
+                breakglass_enabled: nextEnabled,
+                admin_bound_to_instance_id: nextEnabled,
+              },
+            }
+          : prev
+      );
+      setBreakglassBanner({
+        type: 'success',
+        text: nextEnabled
+          ? 'EC2 Instance-ID Break-Glass (admin) re-enabled and synchronized.'
+          : 'EC2 Instance-ID Break-Glass (admin) disabled and locked cleanly.',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (import.meta.env.DEV) {
+        setWizardBreakglassEnabled(nextEnabled);
+        setStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                breakglass_enabled: nextEnabled,
+                admin_bound_to_instance_id: nextEnabled,
+                admin_instance_bound: nextEnabled,
+              }
+            : prev
+        );
+        setBreakglassBanner({
+          type: 'success',
+          text: `[Dev Preview] Break-Glass ${nextEnabled ? 'enabled' : 'disabled'}.`,
+        });
+      } else {
+        setBreakglassBanner({ type: 'error', text: msg });
+      }
+    } finally {
+      setBreakglassToggling(false);
+    }
+  };
+
+  const handleCopyCognitoCallback = async (callbackUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+      setCopiedCallbackUrl(true);
+      setTimeout(() => setCopiedCallbackUrl(false), 2000);
+    } catch {
+      setCognitoBanner({ type: 'error', text: `Copy manually: ${callbackUrl}` });
+    }
+  };
+
+  const handleSaveCognitoConfig = async () => {
+    setCognitoBanner(null);
+    if (cognitoEnabled && (!cognitoRegion.trim() || !cognitoPoolId.trim() || !cognitoClientId.trim())) {
+      setCognitoBanner({
+        type: 'error',
+        text: 'Region, User Pool ID, and App Client ID are required when Cognito federation is enabled.',
+      });
+      return;
+    }
+
+    setSavingCognito(true);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    const payload: Record<string, unknown> = {
+      enabled: cognitoEnabled,
+      region: cognitoRegion.trim(),
+      user_pool_id: cognitoPoolId.trim(),
+      domain: cognitoDomain.trim(),
+      client_id: cognitoClientId.trim(),
+      admin_group: cognitoAdminGroup.trim() || 'brainsos-admins',
+      alb_oidc_enabled: albOidcEnabled,
+      alb_signer_arn: albSignerArn.trim(),
+      user_sub: userSub.trim(),
+      owner_only: ownerOnly,
+      reload_sso: true,
+    };
+    if (cognitoClientSecret.trim()) {
+      payload.client_secret = cognitoClientSecret.trim();
+    }
+
+    try {
+      const res = await fetch('/api/v1/system/sso/cognito', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const d = await res.json();
+          if (d?.detail) detail = d.detail;
+        } catch {}
+        throw new Error(detail);
+      }
+      if (cognitoClientSecret.trim()) {
+        setCognitoSecretConfigured(true);
+        setCognitoClientSecret('');
+      }
+      setCognitoBanner({
+        type: 'success',
+        text: cognitoEnabled || albOidcEnabled
+          ? 'Cognito / ALB Owner SSO settings saved. Synchronizing Authentik & Caddy.'
+          : 'Cognito / ALB SSO settings saved (federation disabled).',
+      });
+      fetchStatus();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (import.meta.env.DEV) {
+        setCognitoBanner({
+          type: 'success',
+          text: '[Dev Preview] Cognito / ALB Owner SSO configuration saved.',
+        });
+      } else {
+        setCognitoBanner({ type: 'error', text: msg });
+      }
+    } finally {
+      setSavingCognito(false);
+    }
+  };
+
   const handleStartEditRouting = () => {
     const currentDomain = status?.local_domain || status?.url || 'dgx.local.brainsos.ai';
     setSetupLocalDomain(currentDomain);
@@ -2204,6 +2589,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       setWizardStep(3);
       return;
     }
+    if (cognitoEnabled && (!cognitoRegion.trim() || !cognitoPoolId.trim() || !cognitoClientId.trim())) {
+      setSetupError('AWS Cognito Region, User Pool ID, and App Client ID are required when Cognito federation is enabled.');
+      setWizardStep(1);
+      return;
+    }
 
     const previousUrl = status?.url || '';
     const wasFirstBoot = isInitialBoot;
@@ -2229,6 +2619,18 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           acme_email: setupAcmeEmail.trim() || undefined,
           mark_wizard_completed: true,
           force: true,
+          breakglass_enabled: wizardBreakglassEnabled,
+          cognito_enabled: wizardCognitoExpanded ? cognitoEnabled : undefined,
+          cognito_region: wizardCognitoExpanded && cognitoEnabled ? cognitoRegion.trim() : undefined,
+          cognito_user_pool_id: wizardCognitoExpanded && cognitoEnabled ? cognitoPoolId.trim() : undefined,
+          cognito_domain: wizardCognitoExpanded && cognitoDomain.trim() ? cognitoDomain.trim() : undefined,
+          cognito_client_id: wizardCognitoExpanded && cognitoEnabled ? cognitoClientId.trim() : undefined,
+          cognito_client_secret: wizardCognitoExpanded && cognitoClientSecret.trim() ? cognitoClientSecret.trim() : undefined,
+          cognito_admin_group: wizardCognitoExpanded && cognitoAdminGroup.trim() ? cognitoAdminGroup.trim() : undefined,
+          alb_oidc_enabled: wizardCognitoExpanded ? albOidcEnabled : undefined,
+          alb_signer_arn: wizardCognitoExpanded && albSignerArn.trim() ? albSignerArn.trim() : undefined,
+          user_sub: wizardCognitoExpanded && userSub.trim() ? userSub.trim() : undefined,
+          owner_only: wizardCognitoExpanded ? ownerOnly : undefined,
         }),
       });
     } catch (netErr: unknown) {
@@ -2652,6 +3054,148 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 ))}
               </div>
             </div>
+
+            {/* Instance-ID Break-Glass Recovery Toggle (#385 / #386) */}
+            <div className="p-3.5 rounded-xl bg-[#07090E] border border-amber-500/25 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="text-slate-200 font-semibold">
+                    Instance-ID Break-Glass Recovery (<code className="text-amber-300">admin</code>)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={wizardBreakglassEnabled}
+                  aria-label="Toggle Instance-ID Break-Glass Recovery"
+                  onClick={() => {
+                    const nextVal = !wizardBreakglassEnabled;
+                    if (!nextVal && !setupAdminUsername.trim() && !userSub.trim()) {
+                      setSetupError('Provision a personal Superuser username or Cognito owner sub before disabling Break-Glass.');
+                      return;
+                    }
+                    setWizardBreakglassEnabled(nextVal);
+                  }}
+                  className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                    wizardBreakglassEnabled
+                      ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                      : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
+                  }`}
+                >
+                  {wizardBreakglassEnabled ? 'Enabled (Instance-ID Bound)' : 'Disabled After Setup (Hardened)'}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 font-sans">
+                {wizardBreakglassEnabled
+                  ? 'Emergency admin / akadmin login stays bound to the EC2 Instance ID. Disable once your named Superuser is verified.'
+                  : 'Break-glass admin / akadmin recovery will be locked (unusable password + passwd -l) immediately after Superuser setup completes.'}
+              </p>
+            </div>
+
+            {/* Optional: Federate with AWS Cognito User Pool (#385 / #386) */}
+            {(() => {
+              const wizHost = (setupUrl.trim() || status?.url || setupLocalDomain.trim() || 'local.brainsos.ai')
+                .replace(/^https?:\/\//i, '')
+                .replace(/\/.*$/, '');
+              const wizCallbackUrl = `https://${wizHost}/source/oauth/callback/cognito/`;
+              return (
+                <div className="rounded-xl bg-[#07090E] border border-white/10 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setWizardCognitoExpanded((prev) => !prev)}
+                    className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-white/[0.03] transition-colors"
+                  >
+                    <span className="flex items-center gap-2 text-slate-200 font-semibold">
+                      <KeyRound className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                      <span>Optional: Federate with AWS Cognito User Pool &amp; ALB SSO</span>
+                    </span>
+                    <span className="text-[10px] text-[#00f2fe] font-bold uppercase tracking-wider">
+                      {wizardCognitoExpanded ? 'Hide' : cognitoEnabled ? 'Configured' : 'Configure'}
+                    </span>
+                  </button>
+                  {wizardCognitoExpanded && (
+                    <div className="p-3.5 pt-2 border-t border-white/10 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[#0B0E14] border border-white/10">
+                        <div className="min-w-0">
+                          <span className="text-[10px] uppercase text-slate-500 block">
+                            Allowed Cognito Callback URL (Redirect URI)
+                          </span>
+                          <code className="text-[11px] text-[#00f2fe] break-all">{wizCallbackUrl}</code>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCognitoCallback(wizCallbackUrl)}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-slate-200 flex items-center gap-1 shrink-0"
+                        >
+                          {copiedCallbackUrl ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedCallbackUrl ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-4">
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={cognitoEnabled}
+                            onChange={(e) => setCognitoEnabled(e.target.checked)}
+                            className="rounded border-white/20 bg-[#0B0E14] text-[#00f2fe] focus:ring-0"
+                          />
+                          <span>Enable Cognito OIDC Sign-In</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 cursor-pointer text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={albOidcEnabled}
+                            onChange={(e) => setAlbOidcEnabled(e.target.checked)}
+                            className="rounded border-white/20 bg-[#0B0E14] text-[#00f2fe] focus:ring-0"
+                          />
+                          <span>ALB JWT Pass-Through (<code className="text-[#00f2fe]">X-Amzn-Oidc-Data</code>)</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <input
+                          type="text"
+                          value={cognitoRegion}
+                          onChange={(e) => setCognitoRegion(e.target.value)}
+                          placeholder="AWS Region (e.g. us-east-1)"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        />
+                        <input
+                          type="text"
+                          value={cognitoPoolId}
+                          onChange={(e) => setCognitoPoolId(e.target.value)}
+                          placeholder="User Pool ID (e.g. us-east-1_AbCdEfG)"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        />
+                        <input
+                          type="text"
+                          value={cognitoClientId}
+                          onChange={(e) => setCognitoClientId(e.target.value)}
+                          placeholder="App Client ID"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        />
+                        <input
+                          type="password"
+                          value={cognitoClientSecret}
+                          onChange={(e) => setCognitoClientSecret(e.target.value)}
+                          placeholder="App Client Secret (optional for public)"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        />
+                        <input
+                          type="text"
+                          value={userSub}
+                          onChange={(e) => setUserSub(e.target.value)}
+                          placeholder="EBS Owner Cognito Sub UUID (BRAINSOS_USER_SUB)"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs sm:col-span-2"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -2664,8 +3208,23 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <span className="text-[11px] uppercase tracking-wider text-[#00f2fe] font-bold">
                   1. Unit Identity (Logical Display Name &amp; Hardware Unit ID)
                 </span>
-                <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] text-slate-300">
-                  Hardware Unit ID: <strong className="text-white">{setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev'}</strong>
+                <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] text-slate-300 flex items-center gap-1.5">
+                  <span>
+                    Hardware Unit ID:{' '}
+                    <strong className="text-white">
+                      {showBootstrapToken
+                        ? (setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev')
+                        : maskInstanceId(setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id)}
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowBootstrapToken((prev) => !prev)}
+                    aria-label={showBootstrapToken ? 'Hide Hardware Unit ID' : 'Show Hardware Unit ID'}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {showBootstrapToken ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  </button>
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
@@ -2702,7 +3261,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/10 space-y-0.5">
                   <span className="text-[10px] uppercase text-slate-500 block">Immutable Hardware ID</span>
                   <span className="text-white font-semibold block truncate">
-                    {setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev'}
+                    {showBootstrapToken
+                      ? (setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev')
+                      : maskInstanceId(setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id)}
                   </span>
                   <span className="text-[10px] text-emerald-400 block">Read-only cloud/hardware binding</span>
                 </div>
@@ -2817,7 +3378,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                       <span className="text-slate-500 block">Unit Identity:</span>
                       <span className="text-white font-semibold truncate block">{setupUnitName.trim() || 'Enterprise Agent Box'}</span>
                       <span className="text-emerald-400 block text-[10px] mt-0.5">
-                        ID: {setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev'}
+                        ID: {showBootstrapToken
+                          ? (setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id || 'local-dev')
+                          : maskInstanceId(setupBootstrapToken.trim() || status?.identity?.instance_id || status?.instance_id)}
                       </span>
                     </div>
                     <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
@@ -3399,13 +3962,28 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono text-xs">
                 {/* Card 1: Unit Identity & Source Paths */}
                 <div className="p-4 rounded-xl border border-white/10 bg-[#0B0E14] space-y-3">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2.5 gap-2 flex-wrap">
                     <span className="text-[11px] uppercase tracking-wider text-[#00f2fe] font-bold">
                       1. Unit Identity &amp; Source Paths
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-semibold">
-                      Hardware Unit ID: {status?.identity?.instance_id || status?.instance_id || 'local-gx10'}
-                    </span>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-300 font-semibold">
+                      <span>
+                        Hardware Unit ID:{' '}
+                        {showInstanceId && revealedInstanceId
+                          ? revealedInstanceId
+                          : maskInstanceId(status?.identity?.instance_id || status?.instance_id) || 'local-gx10'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleToggleRevealInstanceId}
+                        disabled={revealInstanceLoading}
+                        aria-label={showInstanceId ? 'Hide EC2 Instance ID' : 'Reveal EC2 Instance ID'}
+                        title={showInstanceId ? 'Mask Instance ID' : 'Reveal Instance ID (Admin Only)'}
+                        className="text-emerald-200 hover:text-white disabled:opacity-50"
+                      >
+                        {showInstanceId ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="block text-slate-300 font-semibold">
@@ -3433,11 +4011,25 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                     </div>
                   </div>
                   <div className="pt-2 border-t border-white/5 space-y-1.5 text-[11px]">
-                    <div className="flex items-center justify-between py-0.5">
+                    <div className="flex items-center justify-between py-0.5 gap-2">
                       <span className="text-slate-400">Hardware Unit ID (<code className="text-slate-300">instance_id</code>):</span>
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-semibold">
-                        {status?.identity?.instance_id || status?.instance_id || 'local-gx10'} (Read-Only)
-                      </span>
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-semibold">
+                        <span>
+                          {showInstanceId && revealedInstanceId
+                            ? revealedInstanceId
+                            : maskInstanceId(status?.identity?.instance_id || status?.instance_id) || 'local-gx10'}{' '}
+                          (Read-Only)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleRevealInstanceId}
+                          disabled={revealInstanceLoading}
+                          aria-label={showInstanceId ? 'Mask instance_id' : 'Unmask instance_id'}
+                          className="text-emerald-200 hover:text-white disabled:opacity-50"
+                        >
+                          {showInstanceId ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        </button>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between py-0.5 border-t border-white/5">
                       <span className="text-slate-400">brainsOS Source Root:</span>
@@ -3573,7 +4165,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
               {/* Clean Administrative & Host OS Accounts Card */}
               <div className="rounded-xl border border-white/10 bg-[#0B0E14] overflow-hidden divide-y divide-white/5 font-mono text-xs">
-                <div className="px-4 py-2.5 bg-[#101520] flex items-center justify-between">
+                <div className="px-4 py-2.5 bg-[#101520] flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[10px] uppercase tracking-wider text-slate-300 font-bold">
                     Administrative &amp; Host OS Accounts
                   </span>
@@ -3581,13 +4173,55 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                     {status?.platform_name || 'brainsOS Appliance'} • {status?.os?.distro || 'Ubuntu 24.04 LTS'} ({status?.os?.arch || 'aarch64'})
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3.5 gap-2 items-start">
+                <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3.5 gap-3 items-start">
                   <div className="flex items-center gap-2 text-amber-300 font-semibold">
                     <Shield className="w-3.5 h-3.5 shrink-0" />
                     <span>Break-Glass &amp; OS Admin (<code className="text-white">admin</code>)</span>
                   </div>
-                  <div className="sm:col-span-2 text-slate-300 font-sans text-xs leading-relaxed">
-                    Bound to EC2 Instance ID on AWS (or local admin password). Full <code className="font-mono text-amber-300">proxy_admin</code> in LiteLLM, Authentik Admin, and Linux <code className="font-mono text-emerald-300">sudo</code> access.
+                  <div className="sm:col-span-2 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          status?.breakglass_enabled !== false
+                            ? 'bg-amber-500/15 border-amber-400/40 text-amber-200'
+                            : 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+                        }`}
+                      >
+                        {status?.breakglass_enabled !== false
+                          ? 'ACTIVE (Bound to EC2 Instance ID)'
+                          : 'LOCKED (Disabled via Security Policy)'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={breakglassToggling}
+                        onClick={() => handleToggleBreakglass(status?.breakglass_enabled === false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-semibold border transition-all disabled:opacity-50 ${
+                          status?.breakglass_enabled !== false
+                            ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-500/40 text-rose-200'
+                            : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-200'
+                        }`}
+                      >
+                        {breakglassToggling
+                          ? 'Updating...'
+                          : status?.breakglass_enabled !== false
+                          ? 'Disable Break-Glass'
+                          : 'Enable Break-Glass'}
+                      </button>
+                    </div>
+                    <p className="text-slate-300 font-sans text-xs leading-relaxed">
+                      Bound to EC2 Instance ID on AWS (or local admin password). Disabling locks Authentik <code className="font-mono text-white">admin</code>/<code className="font-mono text-white">akadmin</code> and OS <code className="font-mono text-white">passwd -l admin</code>; requires a named Superuser or <code className="font-mono text-[#00f2fe]">BRAINSOS_USER_SUB</code> SSO to prevent lockout.
+                    </p>
+                    {breakglassBanner && (
+                      <div
+                        className={`p-2.5 rounded-lg border text-[11px] font-mono ${
+                          breakglassBanner.type === 'success'
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+                            : 'bg-red-500/15 border-red-500/40 text-red-200'
+                        }`}
+                      >
+                        {breakglassBanner.text}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 px-4 py-3.5 gap-2 items-start">
@@ -3600,6 +4234,211 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                   </div>
                 </div>
               </div>
+
+              {/* Federate with AWS Cognito User Pool & Zero-Double-Login ALB OIDC (#385 / #386) */}
+              {(() => {
+                const liveHost = (status?.url || status?.local_domain || 'local.brainsos.ai')
+                  .replace(/^https?:\/\//i, '')
+                  .replace(/\/.*$/, '');
+                const callbackUrl = status?.cognito_redirect_uri || `https://${liveHost}/source/oauth/callback/cognito/`;
+                return (
+                  <div className="rounded-xl border border-white/10 bg-[#0B0E14] overflow-hidden font-mono text-xs">
+                    <div className="px-4 py-3 bg-[#101520] border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                        <span className="text-[11px] uppercase tracking-wider text-white font-bold">
+                          Federate with AWS Cognito User Pool &amp; ALB SSO
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          cognitoEnabled || albOidcEnabled
+                            ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+                            : 'bg-white/5 border-white/15 text-slate-400'
+                        }`}
+                      >
+                        {albOidcEnabled
+                          ? 'ALB JWT Pass-Through + Owner SSO'
+                          : cognitoEnabled
+                          ? 'Cognito Direct OIDC Active'
+                          : 'Disabled (Local Auth Only)'}
+                      </span>
+                    </div>
+
+                    <div className="p-4 space-y-4">
+                      {cognitoBanner && (
+                        <div
+                          className={`p-3 rounded-lg border text-xs ${
+                            cognitoBanner.type === 'success'
+                              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+                              : 'bg-red-500/15 border-red-500/40 text-red-200'
+                          }`}
+                        >
+                          {cognitoBanner.text}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-[#07090E] border border-white/10">
+                        <div className="min-w-0">
+                          <span className="text-[10px] uppercase text-slate-500 block">
+                            Allowed Cognito Callback URL (Redirect URI)
+                          </span>
+                          <code className="text-xs text-[#00f2fe] break-all">{callbackUrl}</code>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCognitoCallback(callbackUrl)}
+                          className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-slate-200 flex items-center gap-1.5 shrink-0"
+                        >
+                          {copiedCallbackUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-[#00f2fe]" />}
+                          <span>{copiedCallbackUrl ? 'Copied' : 'Copy Callback URI'}</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <label className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#07090E] border border-white/10 cursor-pointer text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={cognitoEnabled}
+                            onChange={(e) => setCognitoEnabled(e.target.checked)}
+                            className="rounded border-white/20 bg-[#0B0E14] text-[#00f2fe] focus:ring-0"
+                          />
+                          <span>Enable Cognito OIDC (<code className="text-[#00f2fe]">AUTH_COGNITO</code>)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#07090E] border border-white/10 cursor-pointer text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={albOidcEnabled}
+                            onChange={(e) => setAlbOidcEnabled(e.target.checked)}
+                            className="rounded border-white/20 bg-[#0B0E14] text-[#00f2fe] focus:ring-0"
+                          />
+                          <span>ALB JWT Pass-Through (<code className="text-[#00f2fe]">X-Amzn-Oidc-Data</code>)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#07090E] border border-white/10 cursor-pointer text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={ownerOnly}
+                            onChange={(e) => setOwnerOnly(e.target.checked)}
+                            className="rounded border-white/20 bg-[#0B0E14] text-[#00f2fe] focus:ring-0"
+                          />
+                          <span>Single-Owner Lock (<code className="text-[#00f2fe]">OWNER_ONLY</code>)</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-[11px] text-slate-400">AWS Region</label>
+                          <input
+                            type="text"
+                            value={cognitoRegion}
+                            onChange={(e) => setCognitoRegion(e.target.value)}
+                            placeholder="us-east-1"
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] text-slate-400">Cognito User Pool ID</label>
+                          <input
+                            type="text"
+                            value={cognitoPoolId}
+                            onChange={(e) => setCognitoPoolId(e.target.value)}
+                            placeholder="us-east-1_AbCdEfG"
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] text-slate-400">Hosted UI Domain (optional)</label>
+                          <input
+                            type="text"
+                            value={cognitoDomain}
+                            onChange={(e) => setCognitoDomain(e.target.value)}
+                            placeholder="auth.myorg.com"
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] text-slate-400">App Client ID</label>
+                          <input
+                            type="text"
+                            value={cognitoClientId}
+                            onChange={(e) => setCognitoClientId(e.target.value)}
+                            placeholder="app-client-id"
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] text-slate-400">
+                            App Client Secret {cognitoSecretConfigured ? <span className="text-emerald-400">(Configured)</span> : ''}
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showCognitoSecret ? 'text' : 'password'}
+                              value={cognitoClientSecret}
+                              onChange={(e) => setCognitoClientSecret(e.target.value)}
+                              placeholder={cognitoSecretConfigured ? '•••••••• (leave blank to keep)' : 'Enter secret (if confidential client)'}
+                              className="w-full pl-3 pr-8 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowCognitoSecret((prev) => !prev)}
+                              aria-label={showCognitoSecret ? 'Hide Cognito secret' : 'Show Cognito secret'}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                            >
+                              {showCognitoSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] text-slate-400">Cognito Admin Group</label>
+                          <input
+                            type="text"
+                            value={cognitoAdminGroup}
+                            onChange={(e) => setCognitoAdminGroup(e.target.value)}
+                            placeholder="brainsos-admins"
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="block text-[11px] text-slate-400">
+                            Bound EBS Owner Cognito <code className="text-[#00f2fe]">sub</code> (receives local admin on this VM)
+                          </label>
+                          <input
+                            type="text"
+                            value={userSub}
+                            onChange={(e) => setUserSub(e.target.value)}
+                            placeholder="e.g. 94f8a4b8-20c1-709b-..."
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+                          <label className="block text-[11px] text-slate-400">ALB Signer ARN Allowlist</label>
+                          <input
+                            type="text"
+                            value={albSignerArn}
+                            onChange={(e) => setAlbSignerArn(e.target.value)}
+                            placeholder="arn:aws:elasticloadbalancing:..."
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/10">
+                        <span className="text-[11px] font-sans text-slate-400">
+                          When ALB pass-through is enabled, requests carrying a valid <code className="font-mono text-[#00f2fe]">X-Amzn-Oidc-Data</code> ES256 token sign in seamlessly once; matching <code className="font-mono text-white">sub</code> receives <code className="font-mono text-emerald-300">authentik Admins</code> &amp; <code className="font-mono text-emerald-300">proxy_admin</code>.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleSaveCognitoConfig}
+                          disabled={savingCognito}
+                          className="px-4 py-2 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[#00f2fe] font-semibold shrink-0 disabled:opacity-50"
+                        >
+                          {savingCognito ? 'Saving & Syncing...' : 'Save Cognito & ALB SSO'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
