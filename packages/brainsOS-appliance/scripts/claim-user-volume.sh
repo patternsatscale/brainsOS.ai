@@ -552,7 +552,9 @@ if [ "${SKIP_SERVICE_START}" != true ] && [ "${SKIP_HEALTH_WAIT}" != true ]; the
   HEALTH_OK=false
   LAST_HTTP="000"
   while [ "$(date +%s)" -le "${DEADLINE}" ]; do
-    LAST_HTTP="$(curl -sk -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "${HEALTH_URL}" 2>/dev/null || echo "000")"
+    LAST_HTTP="$(curl -sk -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "${HEALTH_URL}" 2>/dev/null || true)"
+    LAST_HTTP="${LAST_HTTP:0:3}"
+    [ -z "${LAST_HTTP}" ] && LAST_HTTP="000"
     if [[ "${LAST_HTTP}" =~ ^(200|301|302|303|307|308|401)$ ]]; then
       HEALTH_OK=true
       break

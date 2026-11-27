@@ -589,6 +589,7 @@ def test_claim_service_start_and_https_health_gate(tmp_path: Path):
             attempts["count"] += 1
             code = 502 if attempts["count"] == 1 else 302
             self.send_response(code)
+            self.send_header("Content-Length", "0")
             self.end_headers()
 
         def log_message(self, *_args):
