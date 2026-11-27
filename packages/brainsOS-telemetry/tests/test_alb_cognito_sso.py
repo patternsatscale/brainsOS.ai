@@ -424,3 +424,60 @@ def test_rbac_redirect_and_script_hardening_invariants():
     assert 'chmod 600 "${LANGFUSE_ENV_FILE}"' in langfuse_sh
     assert "brainsos_is_authorized_admin_email" in langfuse_sh
     assert "v_org_role := 'VIEWER'" in langfuse_sh
+
+
+def test_setup_endpoint_passes_breakglass_and_cognito_flags(tmp_path, monkeypatch):
+    """Verify POST /api/v1/system/setup propagates wizard break-glass and Cognito options (#386)."""
+    mock_iid = "i-0" + ("c" * 16)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
+    (tmp_path / ".env").write_text(
+        f"BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_INSTANCE_ID={mock_iid}\nBRAINSOS_WIZARD_COMPLETED=false\n",
+        encoding="utf-8",
+    )
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    set_domain_sh = script_dir / "set-domain.sh"
+    set_domain_sh.write_text('#!/usr/bin/env bash\necho "SETUP_ARGS: $*"\n', encoding="utf-8")
+    set_domain_sh.chmod(0o755)
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        csrf_tok = issue_csrf_token()
+        headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "https://box.brainsos.ai",
+        }
+        res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": mock_iid,
+                "unit_name": "Alice Agent Box",
+                "superuser_name": "Alice Operator",
+                "superuser_username": "alice",
+                "superuser_password": "StrongUserPass99!",
+                "local_domain": "alice.aws.cloud.brainsos.ai",
+                "url": "box.brainsos.ai",
+                "tls_mode": "internal",
+                "breakglass_enabled": False,
+                "cognito_enabled": True,
+                "cognito_region": "us-east-1",
+                "cognito_user_pool_id": "us-east-1_TestPool1",
+                "cognito_client_id": "client-xyz",
+                "cognito_client_secret": "SecretFromWizard123!",
+                "alb_oidc_enabled": True,
+                "alb_signer_arn": SAMPLE_SIGNER_ARN,
+                "user_sub": "owner-sub-xyz",
+                "owner_only": True,
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+        assert "--no-breakglass" in res.text
+        assert "--cognito-enabled" in res.text
+        assert "--cognito-region us-east-1" in res.text
+        assert "--cognito-pool-id us-east-1_TestPool1" in res.text
+        assert "--alb-oidc" in res.text
+        assert "--user-sub owner-sub-xyz" in res.text
+        assert "SecretFromWizard123!" not in res.text

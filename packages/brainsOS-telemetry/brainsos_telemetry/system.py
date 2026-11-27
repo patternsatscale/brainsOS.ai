@@ -1354,6 +1354,18 @@ def create_system_api_app():
         dismiss_only: bool = Field(False, description="Only dismiss the First-Boot Setup Wizard without reconfiguring")
         dry_run: bool = Field(False, description="Simulate configuration without modifying disk or restarting services")
         force: bool = Field(True, description="Proceed even if DNS pre-flight check warns")
+        breakglass_enabled: Optional[bool] = Field(None, description="Keep EC2 Instance-ID Break-Glass enabled (true/false)")
+        cognito_enabled: Optional[bool] = Field(None, description="Enable optional AWS Cognito OIDC federation during setup")
+        cognito_region: Optional[str] = Field(None, description="AWS Cognito region")
+        cognito_user_pool_id: Optional[str] = Field(None, description="AWS Cognito User Pool ID")
+        cognito_domain: Optional[str] = Field(None, description="Optional Cognito Hosted UI domain")
+        cognito_client_id: Optional[str] = Field(None, description="AWS Cognito OAuth2 App Client ID")
+        cognito_client_secret: Optional[str] = Field(None, description="AWS Cognito OAuth2 App Client Secret (never logged)")
+        cognito_admin_group: Optional[str] = Field(None, description="Cognito admin group name (default: brainsos-admins)")
+        alb_oidc_enabled: Optional[bool] = Field(None, description="Enable AWS ALB OIDC pass-through")
+        alb_signer_arn: Optional[str] = Field(None, description="Allowlisted AWS ALB signer ARN")
+        user_sub: Optional[str] = Field(None, description="Bound EBS owner Cognito sub UUID")
+        owner_only: Optional[bool] = Field(None, description="Reject non-owner Cognito subjects")
 
     class HermesConfigRequest(BaseModel):
         keys: Optional[Dict[str, str]] = Field(default=None, description="Map of tool API keys (e.g. FIRECRAWL_API_KEY)")
@@ -1915,6 +1927,46 @@ def create_system_api_app():
 
         if req.mark_wizard_completed:
             cmd.append("--mark-wizard-completed")
+        if req.breakglass_enabled is True:
+            cmd.append("--breakglass")
+        elif req.breakglass_enabled is False:
+            cmd.append("--no-breakglass")
+        if req.cognito_enabled is True:
+            cmd.append("--cognito-enabled")
+            if not (req.cognito_region and req.cognito_user_pool_id and req.cognito_client_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cognito federation requires region, user_pool_id, and client_id.",
+                )
+            try:
+                build_cognito_well_known_url(req.cognito_region, req.cognito_user_pool_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            cmd.extend(["--cognito-region", sanitize_env_value(req.cognito_region)])
+            cmd.extend(["--cognito-pool-id", sanitize_env_value(req.cognito_user_pool_id)])
+            cmd.extend(["--cognito-client-id", sanitize_env_value(req.cognito_client_id)])
+            if req.cognito_domain and req.cognito_domain.strip():
+                cmd.extend(["--cognito-domain", sanitize_env_value(req.cognito_domain)])
+            if req.cognito_admin_group and req.cognito_admin_group.strip():
+                cmd.extend(["--cognito-admin-group", sanitize_env_value(req.cognito_admin_group)])
+        elif req.cognito_enabled is False:
+            cmd.append("--no-cognito")
+        if req.alb_oidc_enabled is True:
+            cmd.append("--alb-oidc")
+        elif req.alb_oidc_enabled is False:
+            cmd.append("--no-alb-oidc")
+        if req.alb_signer_arn and req.alb_signer_arn.strip():
+            signer_clean = sanitize_env_value(req.alb_signer_arn)
+            for item in [s.strip() for s in signer_clean.split(",") if s.strip()]:
+                if not SIGNER_ARN_RE.match(item):
+                    raise HTTPException(status_code=400, detail=f"Invalid AWS ALB signer ARN: {item}")
+            cmd.extend(["--alb-signer-arn", signer_clean])
+        if req.user_sub and req.user_sub.strip():
+            cmd.extend(["--user-sub", sanitize_env_value(req.user_sub)])
+        if req.owner_only is True:
+            cmd.append("--owner-only")
+        elif req.owner_only is False:
+            cmd.append("--no-owner-only")
         if req.force:
             cmd.append("--force")
         if req.dry_run:
@@ -1924,6 +1976,8 @@ def create_system_api_app():
         if raw_password:
             extra_env["BRAINSOS_NEW_ADMIN_PASSWORD"] = raw_password
             extra_env["BRAINSOS_NEW_SUPERUSER_PASSWORD"] = raw_password
+        if req.cognito_client_secret and req.cognito_client_secret.strip():
+            extra_env["BRAINSOS_NEW_COGNITO_CLIENT_SECRET"] = sanitize_env_value(req.cognito_client_secret)
         if superuser_name:
             extra_env["BRAINSOS_SUPERUSER_NAME"] = superuser_name
         if unit_name:
