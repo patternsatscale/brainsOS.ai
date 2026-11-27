@@ -9,6 +9,6 @@ FROM caddy:2-builder-alpine AS builder
 RUN xcaddy build \
     --with github.com/caddy-dns/route53
 
-FROM caddy:2-alpine
+FROM caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy

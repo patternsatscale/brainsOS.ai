@@ -112,6 +112,14 @@ run_ipt() {
   fi
 }
 
+run_ip6t() {
+  if [ "${DRY_RUN}" = true ]; then
+    echo "ip6tables $*"
+  elif command -v ip6tables >/dev/null 2>&1; then
+    ip6tables "$@"
+  fi
+}
+
 RAW_IPS="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' brainsos-control-litellm 2>/dev/null || true)"
 LITELLM_IPS=()
 for ip in ${RAW_IPS}; do
@@ -119,10 +127,13 @@ for ip in ${RAW_IPS}; do
     LITELLM_IPS+=("${ip}")
   fi
 done
+if [ "${#LITELLM_IPS[@]}" -eq 0 ] && [ -n "${BRAINSOS_LITELLM_STATIC_IP:-}" ]; then
+  LITELLM_IPS+=("${BRAINSOS_LITELLM_STATIC_IP}")
+fi
 
 case "${ACTION}" in
   apply)
-    log_info "Applying IMDS container isolation guard (chain BRAINSOS-IMDS)..."
+    log_info "Applying IMDS container isolation guard (chains BRAINSOS-IMDS & BRAINSOS-IMDS6)..."
     if [ "${DRY_RUN}" = true ]; then
       run_ipt -N BRAINSOS-IMDS
       run_ipt -F BRAINSOS-IMDS
@@ -136,6 +147,14 @@ case "${ACTION}" in
       if ! iptables -C DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS 2>/dev/null; then
         run_ipt -I DOCKER-USER 1 -d 169.254.169.254/32 -j BRAINSOS-IMDS
       fi
+      # IPv6 EC2 IMDS (fd00:ec2::254/128) blanket container DROP (#387)
+      run_ip6t -N BRAINSOS-IMDS6
+      run_ip6t -F BRAINSOS-IMDS6
+      run_ip6t -A BRAINSOS-IMDS6 -j DROP
+      run_ip6t -N DOCKER-USER
+      if command -v ip6tables >/dev/null 2>&1 && ! ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null; then
+        run_ip6t -I DOCKER-USER 1 -d fd00:ec2::254/128 -j BRAINSOS-IMDS6
+      fi
     else
       iptables -N BRAINSOS-IMDS 2>/dev/null || true
       iptables -F BRAINSOS-IMDS
@@ -148,16 +167,26 @@ case "${ACTION}" in
       iptables -N DOCKER-USER 2>/dev/null || true
       iptables -C DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS 2>/dev/null \
         || iptables -I DOCKER-USER 1 -d 169.254.169.254/32 -j BRAINSOS-IMDS
+      if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -N BRAINSOS-IMDS6 2>/dev/null || true
+        ip6tables -F BRAINSOS-IMDS6
+        ip6tables -A BRAINSOS-IMDS6 -j DROP
+        ip6tables -N DOCKER-USER 2>/dev/null || true
+        ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null \
+          || ip6tables -I DOCKER-USER 1 -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null || true
+      fi
       log_info "Active BRAINSOS-IMDS rules:"
       iptables -S BRAINSOS-IMDS
     fi
-    log_success "IMDS guard applied (${#LITELLM_IPS[@]} LiteLLM IP(s) allowed; all other containers dropped)."
+    log_success "IMDS guard applied (${#LITELLM_IPS[@]} LiteLLM IP(s) allowed; IPv4/IPv6 metadata dropped for all other containers)."
     ;;
 
   check)
     if [ "${DRY_RUN}" = true ]; then
       run_ipt -C DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS
       run_ipt -S BRAINSOS-IMDS
+      run_ip6t -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6
+      run_ip6t -S BRAINSOS-IMDS6
       exit 0
     fi
     if ! iptables -C DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS 2>/dev/null; then
@@ -182,7 +211,13 @@ case "${ACTION}" in
         fi
       fi
     done
-    log_success "IMDS guard verified: jump present, ${#LITELLM_IPS[@]} LiteLLM IP(s) permitted, ending with DROP."
+    if command -v ip6tables >/dev/null 2>&1 && ip6tables -L DOCKER-USER >/dev/null 2>&1; then
+      if ! ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null; then
+        log_error "DOCKER-USER IPv6 jump to BRAINSOS-IMDS6 is missing."
+        exit 1
+      fi
+    fi
+    log_success "IMDS guard verified: jump present, ${#LITELLM_IPS[@]} LiteLLM IP(s) permitted, ending with DROP (IPv4 & IPv6)."
     ;;
 
   remove)
@@ -191,12 +226,22 @@ case "${ACTION}" in
       run_ipt -D DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS
       run_ipt -F BRAINSOS-IMDS
       run_ipt -X BRAINSOS-IMDS
+      run_ip6t -D DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6
+      run_ip6t -F BRAINSOS-IMDS6
+      run_ip6t -X BRAINSOS-IMDS6
     else
       while iptables -C DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS 2>/dev/null; do
         iptables -D DOCKER-USER -d 169.254.169.254/32 -j BRAINSOS-IMDS 2>/dev/null || break
       done
       iptables -F BRAINSOS-IMDS 2>/dev/null || true
       iptables -X BRAINSOS-IMDS 2>/dev/null || true
+      if command -v ip6tables >/dev/null 2>&1; then
+        while ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null; do
+          ip6tables -D DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null || break
+        done
+        ip6tables -F BRAINSOS-IMDS6 2>/dev/null || true
+        ip6tables -X BRAINSOS-IMDS6 2>/dev/null || true
+      fi
     fi
     log_success "IMDS guard removed."
     ;;

@@ -56,6 +56,8 @@ def _sign_alb_jwt(
 @pytest.fixture(autouse=True)
 def _clean_auth_env(monkeypatch):
     clear_key_cache()
+    for var in ("BRAINSOS_URL", "BRAINSOS_DOMAIN", "BRAINSOS_LOCAL_DOMAIN", "BRAINSOS_USER_SUB"):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("SYSTEM_API_TOKEN", "test-secret-token-12345")
     monkeypatch.setenv("BRAINSOS_STAGE", "test")
     yield

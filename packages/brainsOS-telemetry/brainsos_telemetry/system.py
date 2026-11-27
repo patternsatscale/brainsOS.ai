@@ -36,6 +36,15 @@ from brainsos_telemetry.alb_auth import (
     sanitize_env_value,
     validate_breakglass_toggle,
 )
+from brainsos_telemetry.openbao_client import (
+    DUMMY_PLACEHOLDER as OPENBAO_DUMMY_PLACEHOLDER,
+)
+from brainsos_telemetry.openbao_client import (
+    TOOL_SECRET_KEYS as OPENBAO_TOOL_SECRET_KEYS,
+)
+from brainsos_telemetry.openbao_client import (
+    put_tool_secrets,
+)
 from brainsos_telemetry.tracing import resolve_active_backends
 
 logger = logging.getLogger("brainsos_telemetry.system")
@@ -727,7 +736,7 @@ def get_runners_status(repo_root: str) -> Dict[str, Any]:
     )
     tool_keys: Dict[str, Any] = {}
     for k in tool_key_names:
-        raw_val = hermes_env.get(k) or file_env.get(k) or ""
+        raw_val = file_env.get(k) or hermes_env.get(k) or ""
         tool_keys[k] = _mask_api_key(raw_val)
 
     return {
@@ -2209,13 +2218,27 @@ def create_system_api_app():
 
         env_file = os.path.join(repo_root, ".env")
         try:
-            _upsert_env_keys(repo_root, env_file, updates)
             file_env = parse_env_file_only(repo_root)
+            stored_in_openbao = put_tool_secrets(repo_root, updates, file_env=file_env)
+
+            env_updates: Dict[str, str] = {}
+            runner_env_updates: Dict[str, str] = {}
+            for k, val in updates.items():
+                if k in OPENBAO_TOOL_SECRET_KEYS:
+                    placeholder = OPENBAO_DUMMY_PLACEHOLDER if val else ""
+                    runner_env_updates[k] = placeholder
+                    # Only retain real keys in host .env when OpenBao isn't active yet
+                    env_updates[k] = placeholder if stored_in_openbao else val
+                else:
+                    env_updates[k] = val
+                    runner_env_updates[k] = val
+
+            _upsert_env_keys(repo_root, env_file, env_updates)
             data_dir = file_env.get("BRAINSOS_DATA_DIR") or os.path.join(repo_root, "data")
             if not os.path.isabs(data_dir):
                 data_dir = os.path.join(repo_root, data_dir.lstrip("./"))
             hermes_env_path = os.path.join(data_dir, "runners", "hermes", ".env")
-            _upsert_env_keys(repo_root, hermes_env_path, updates)
+            _upsert_env_keys(repo_root, hermes_env_path, runner_env_updates)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -2230,7 +2253,13 @@ def create_system_api_app():
             except Exception as e:
                 logger.warning(f"Failed restarting runner-hermes: {e}")
 
-        return JSONResponse(content={"status": "updated", "runners": get_runners_status(repo_root)})
+        return JSONResponse(
+            content={
+                "status": "updated",
+                "stored_in_openbao": stored_in_openbao,
+                "runners": get_runners_status(repo_root),
+            }
+        )
 
     @app.post(
         "/api/v1/system/os-upgrade",

@@ -219,7 +219,7 @@ def provision_operator_key(op_k, master_k):
             "key": op_k,
             "key_alias": "brainsOs.console",
             "user_id": "admin",
-            "max_budget": 100.0,
+            "max_budget": float(os.environ.get("LITELLM_DEFAULT_MAX_BUDGET", "25.0")),
             "models": [],
         }
         req_gen = urllib.request.Request(
@@ -486,8 +486,8 @@ def write_configs(active_key):
     except Exception:
         pass
 
-op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KEY") or "sk-brainsos-operator-virtual-key"
-master_key = os.environ.get("LITELLM_MASTER_KEY") or ""
+op_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPERATOR_LITELLM_KEY") or ""
+master_key = ""
 
 existing_key = ""
 if os.path.exists(lm_json_path):
@@ -505,10 +505,6 @@ if not is_background:
     if wait_for_litellm(timeout_sec):
         if existing_key and key_returns_models(existing_key):
             op_key = existing_key
-        elif not key_returns_models(op_key) and master_key:
-            op_key = provision_operator_key(op_key, master_key)
-            if not key_returns_models(op_key) and key_returns_models(master_key):
-                op_key = master_key
         write_configs(op_key)
 else:
     # Background loop: wait up to timeout_sec (180s) for LiteLLM liveness and valid /v1/models
@@ -516,13 +512,7 @@ else:
     synced_with_models = False
     while time.time() < deadline:
         if wait_for_litellm(5):
-            candidate = op_key
-            if existing_key and key_returns_models(existing_key):
-                candidate = existing_key
-            elif not key_returns_models(candidate) and master_key:
-                candidate = provision_operator_key(op_key, master_key)
-                if not key_returns_models(candidate) and key_returns_models(master_key):
-                    candidate = master_key
+            candidate = existing_key if (existing_key and key_returns_models(existing_key)) else op_key
             if key_returns_models(candidate):
                 op_key = candidate
                 write_configs(op_key)
@@ -591,7 +581,6 @@ CADDY_ROOT_CA="/etc/ssl/caddy/root.crt"
 if [ -s "${CADDY_ROOT_CA}" ]; then
   grep -q "NODE_EXTRA_CA_CERTS" /home/coder/.bashrc 2>/dev/null || cat << EOF >> /home/coder/.bashrc
 export NODE_EXTRA_CA_CERTS="${CADDY_ROOT_CA}"
-export NODE_TLS_REJECT_UNAUTHORIZED=0
 export SSL_CERT_FILE="${CADDY_ROOT_CA}"
 export REQUESTS_CA_BUNDLE="${CADDY_ROOT_CA}"
 export CURL_CA_BUNDLE="${CADDY_ROOT_CA}"

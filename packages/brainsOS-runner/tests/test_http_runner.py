@@ -161,3 +161,44 @@ async def test_health_check_failure():
         transport=FailingTransport(),
     )
     assert await client.check_health() is False
+
+
+@pytest.mark.asyncio
+async def test_x_runner_token_enforced(sample_request: AgentTurnRequest):
+    from brainsos_runner.models import AgentTurnResponse
+    from brainsos_runner.server import create_runner_app
+    from fastapi.testclient import TestClient
+
+    async def handler(req: AgentTurnRequest) -> AgentTurnResponse:
+        return AgentTurnResponse(
+            run_id=req.run_id,
+            status="completed",
+            output_text="ok",
+        )
+
+    app = create_runner_app(handler, auth_token="secret-runner-tok")
+    tc = TestClient(app)
+
+    # Missing or wrong token returns 401
+    unauth = tc.post("/v1/agent/run", json=sample_request.model_dump())
+    assert unauth.status_code == 401
+    bad = tc.post(
+        "/v1/agent/run",
+        json=sample_request.model_dump(),
+        headers={"X-Runner-Token": "wrong"},
+    )
+    assert bad.status_code == 401
+
+    # /healthz remains accessible without token
+    assert tc.get("/healthz").status_code == 200
+
+    # Valid client with auth_token succeeds
+    client = WarmHttpRunnerClient(
+        endpoint="http://testserver",
+        auth_token="secret-runner-tok",
+        transport=httpx.ASGITransport(app=app),
+    )
+    resp = await client.execute_turn(sample_request)
+    assert resp.status == "completed"
+    assert resp.output_text == "ok"
+    await client.aclose()

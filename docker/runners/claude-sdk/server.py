@@ -4,6 +4,7 @@ import importlib.util
 import inspect
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -36,18 +37,32 @@ logger = logging.getLogger("brainsos.runners.claude")
 logging.basicConfig(level=logging.INFO)
 
 
-def _load_dynamic_script(script_path_str: str) -> Any:
-    """Load a custom agent script via importlib with security path verification."""
-    script_path = Path(script_path_str).resolve()
-    path_str = str(script_path).lower()
+SAFE_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
-    if "docker.sock" in path_str or "memories" in path_str:
-        raise PermissionError(f"Access denied: Script path violates isolation guardrails ({script_path})")
 
-    if not script_path.is_file():
-        raise FileNotFoundError(f"Custom runner script not found: {script_path}")
+def _validate_agent_id(agent_id: str) -> str:
+    clean = (agent_id or "").strip()
+    if not SAFE_AGENT_ID_RE.match(clean):
+        raise PermissionError(f"Access denied: invalid agent_id '{agent_id}'")
+    return clean
 
-    module_name = f"dynamic_claude_agent_{script_path.stem}_{int(time.time())}"
+
+def _load_dynamic_script(script_path_str: str, agent_id: str = "") -> Any:
+    """Load a custom agent script strictly allowlisted to the calling agent's runner/agent directory."""
+    clean_agent = _validate_agent_id(agent_id)
+    script_real = os.path.realpath(script_path_str)
+    allowed_roots = [
+        os.path.realpath(f"/data/runners/claude-sdk/{clean_agent}"),
+        os.path.realpath(f"/data/agents/{clean_agent}"),
+    ]
+    if not any(os.path.commonpath([root, script_real]) == root for root in allowed_roots):
+        raise PermissionError(f"Access denied: Script path outside allowlisted agent roots ({script_real})")
+
+    script_path = Path(script_real)
+    if not script_path.is_file() or script_path.suffix != ".py":
+        raise FileNotFoundError(f"Custom runner Python script not found: {script_path}")
+
+    module_name = f"dynamic_claude_agent_{clean_agent}_{script_path.stem}_{int(time.time())}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module specification from {script_path}")
@@ -61,28 +76,12 @@ def _get_anthropic_client(
     timeout_sec: float,
     default_headers: Optional[Dict[str, str]] = None,
 ) -> Any:
-    """Instantiate AsyncAnthropic client for Direct API, Amazon Bedrock, or LiteLLM gateway."""
-    use_bedrock = os.getenv("CLAUDE_USE_BEDROCK", "false").lower() in ("true", "1")
-    extra_kwargs: Dict[str, Any] = {"default_headers": default_headers} if default_headers else {}
-
-    if use_bedrock:
-        try:
-            from anthropic import AsyncAnthropicBedrock
-
-            logger.info("Initializing Anthropic Bedrock client")
-            return AsyncAnthropicBedrock(
-                aws_region=os.getenv("AWS_REGION", "us-east-1"),
-                timeout=timeout_sec,
-                **extra_kwargs,
-            )
-        except Exception as exc:
-            logger.warning("Could not initialize Bedrock client, falling back to standard API: %s", exc)
-
+    """Instantiate AsyncAnthropic client routing strictly via LiteLLM gateway (no runner AWS creds)."""
     from anthropic import AsyncAnthropic
 
     base_url = os.getenv("ANTHROPIC_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000")).rstrip("/")
-    api_key = os.getenv("ANTHROPIC_API_KEY", os.getenv("LITELLM_MASTER_KEY", "sk-brainsos-master-key"))
-    return AsyncAnthropic(base_url=base_url, api_key=api_key, timeout=timeout_sec, **extra_kwargs)
+    api_key = os.getenv("ANTHROPIC_API_KEY", os.getenv("CLAUDE_SDK_LITELLM_KEY", ""))
+    return AsyncAnthropic(base_url=base_url, api_key=api_key, timeout=timeout_sec, **({"default_headers": default_headers} if default_headers else {}))
 
 
 def _extract_input_text(request: AgentTurnRequest) -> str:
@@ -145,16 +144,17 @@ async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
         client = None
         logger.warning("Could not instantiate Anthropic client: %s", exc)
 
-    # 1. Check for dynamic custom script execution
+    # 1. Check for dynamic custom script execution (strictly allowlisted by agent_id)
     script_path = request.extra_params.get("script_path")
     if not script_path and request.agent_id:
-        convention_path = Path(f"/data/runners/claude-sdk/{request.agent_id}/agent.py")
+        clean_agent = _validate_agent_id(request.agent_id)
+        convention_path = Path(f"/data/runners/claude-sdk/{clean_agent}/agent.py")
         if convention_path.is_file():
             script_path = str(convention_path)
 
     if script_path:
         try:
-            module = _load_dynamic_script(str(script_path))
+            module = _load_dynamic_script(str(script_path), request.agent_id)
             if not hasattr(module, "handle_turn"):
                 raise AttributeError(f"Script {script_path} does not export 'handle_turn' function")
 

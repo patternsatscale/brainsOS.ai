@@ -31,8 +31,9 @@ def test_compose_apps_defines_gitea_service():
     networks = gitea.get("networks", {})
     assert "brainsos-ingress-net" in networks
     assert "brainsos-ide-net" in networks
-    assert "brainsos-internal-net" in networks
-    aliases = networks["brainsos-internal-net"].get("aliases", [])
+    # Hardened (#387): Gitea is isolated from brainsos-internal-net (agent plane)
+    assert "brainsos-internal-net" not in networks
+    aliases = networks["brainsos-ide-net"].get("aliases", [])
     for expected_alias in ("gitea", "git", "brainsos-git", "brainsos-app-git"):
         assert expected_alias in aliases
 
@@ -62,8 +63,9 @@ def test_compose_agents_hermes_webui_and_search_keys():
 
     assert "HERMES_DASHBOARD_HOST=0.0.0.0" in env_joined
     assert "HERMES_DASHBOARD_PORT=9119" in env_joined
+    # Hardened (#387): runner receives non-secret OpenBao placeholder; real keys stay in OpenBao KV v2
     for key_var in ("FIRECRAWL_API_KEY", "TAVILY_API_KEY", "EXA_API_KEY", "BRAVE_SEARCH_API_KEY"):
-        assert f"{key_var}=${{{key_var}:-}}" in env_joined
+        assert f"{key_var}=${{{key_var}:+in-transit-openbao-managed}}" in env_joined
 
 
 def test_caddyfiles_route_git_and_hermes_runner():

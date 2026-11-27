@@ -97,10 +97,13 @@ if [ "${TARGET_TENANT}" != "all" ]; then
     log_info "Container for tenant '${TARGET_TENANT}' is not currently running."
   fi
 
-  # Resolve tenant virtual key (macOS Bash 3.2 compatible)
+  # Resolve tenant virtual key safely via printenv (#387)
   UPPER_TENANT=$(echo "${TARGET_TENANT}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
   TENANT_VAR_NAME="${UPPER_TENANT}_LITELLM_KEY"
-  eval "KEY_VAL=\${${TENANT_VAR_NAME}:-}"
+  KEY_VAL=""
+  if [[ "${TENANT_VAR_NAME}" =~ ^[A-Z0-9_]+$ ]]; then
+    KEY_VAL="$(printenv "${TENANT_VAR_NAME}" 2>/dev/null || true)"
+  fi
   if [ -z "${KEY_VAL}" ]; then
     KEY_VAL="sk-brainsos-${TARGET_TENANT}-key"
   fi
@@ -139,30 +142,34 @@ else
 
   # Revoke all manifest keys if possible
   if [ -f "${REPO_ROOT}/config/agents.yaml" ] && command -v python3 >/dev/null 2>&1; then
-    python3 -c "
-import os, urllib.request, json, yaml
-manifest_path = '${REPO_ROOT}/config/agents.yaml'
-master_key = '${MASTER_KEY}'
-litellm_url = '${LITELLM_URL}'
-if os.path.exists(manifest_path) and master_key:
-    with open(manifest_path) as f:
+    BRAINSOS_ESTOP_MANIFEST="${REPO_ROOT}/config/agents.yaml" \
+    BRAINSOS_ESTOP_MASTER_KEY="${MASTER_KEY}" \
+    BRAINSOS_ESTOP_LITELLM_URL="${LITELLM_URL}" \
+    python3 -c '
+import json, os, urllib.request, yaml
+manifest_path = os.environ.get("BRAINSOS_ESTOP_MANIFEST", "")
+master_key = os.environ.get("BRAINSOS_ESTOP_MASTER_KEY", "")
+litellm_url = os.environ.get("BRAINSOS_ESTOP_LITELLM_URL", "")
+if os.path.exists(manifest_path) and master_key and litellm_url:
+    with open(manifest_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    for a in data.get('agents', []):
-        aid = a['id']
-        key_name = a.get('routing', {}).get('virtual_key', f'{aid.upper().replace(\"-\", \"_\")}_LITELLM_KEY')
-        key_val = os.environ.get(key_name, f'sk-brainsos-{aid}-key')
+    for a in data.get("agents", []):
+        aid = a["id"]
+        key_name = a.get("routing", {}).get("virtual_key", f"{aid.upper().replace(\"-\", \"_\")}_LITELLM_KEY")
+        key_val = os.environ.get(key_name, f"sk-brainsos-{aid}-key")
         req = urllib.request.Request(
-            f'{litellm_url}/key/delete',
-            data=json.dumps({'keys': [key_val]}).encode(),
-            headers={'Authorization': f'Bearer {master_key}', 'Content-Type': 'application/json'}
+            f"{litellm_url}/key/delete",
+            data=json.dumps({"keys": [key_val]}).encode("utf-8"),
+            headers={"Authorization": f"Bearer {master_key}", "Content-Type": "application/json"},
+            method="POST",
         )
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 if resp.status == 200:
-                    print(f'[SUCCESS] Revoked key for {aid}')
+                    print(f"[SUCCESS] Revoked key for {aid}")
         except Exception:
             pass
-" 2>/dev/null || true
+' 2>/dev/null || true
   fi
 
   log_success "Fleet-wide emergency intervention complete. Core platform remains intact."

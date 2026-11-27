@@ -10,7 +10,7 @@ services:
       context: ../..
       dockerfile: docker/editor/Dockerfile
       args:
-        CODE_SERVER_IMAGE_TAG: ${CODE_SERVER_IMAGE_TAG:-latest}
+        CODE_SERVER_IMAGE_TAG: ${CODE_SERVER_IMAGE_TAG:-4.145.2}
     image: brainsos-code-server:latest
     container_name: brainsos-app-code-server
     restart: unless-stopped
@@ -34,7 +34,6 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - CODE_SERVER_AUTH=${CODE_SERVER_AUTH:-none}
-      - PASSWORD=${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}
       - BRAINSOS_URL=${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-brainsos.local}}
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
       - BRAINSOS_LOCAL_DOMAIN=${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
@@ -47,9 +46,7 @@ services:
       - CADDY_HTTPS_PORT=${CADDY_HTTPS_PORT:-443}
       - CODE_SERVER_PORT=${CODE_SERVER_PORT:-8443}
       - OPERATOR_USER=${OPERATOR_USER:-operator}
-      - CODE_SERVER_PASSWORD=${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}
       - LITELLM_PORT=${LITELLM_PORT:-4000}
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-}
       - SOGO_PORT=${SOGO_PORT:-20000}
       - LANGFUSE_PORT=${LANGFUSE_PORT:-3001}
       - LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}
@@ -57,22 +54,15 @@ services:
       - HERMES_RUNNER_PORT=${HERMES_RUNNER_PORT:-8642}
       - OPENAI_RUNNER_PORT=${OPENAI_RUNNER_PORT:-8002}
       - AGENT_QUEUE_PORT=${AGENT_QUEUE_PORT:-8000}
-      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
-      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
-      - OPENAI_API_BASE=http://litellm:4000/v1
-      - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}
+      - OPENAI_API_BASE=http://host.docker.internal:${LITELLM_PORT:-4000}/v1
+      - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-}
       - OPERATOR_LITELLM_KEY=${OPERATOR_LITELLM_KEY:-}
-      - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
-      - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
-      - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
-      - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_EXTRA_CA_CERTS=/etc/ssl/caddy/root.crt
       - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
       - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
       - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
     networks:
       - brainsos-ide-net
-      - brainsos-internal-net
 
   # Communications & Mail Plane: SOGo Database (PostgreSQL 16)
   sogo-db:
@@ -88,7 +78,7 @@ services:
     volumes:
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/sogo/db:/var/lib/postgresql/data
     networks:
-      brainsos-internal-net:
+      brainsos-mail-net:
         aliases:
           - sogo-db
           - brainsos-sogo-db
@@ -127,7 +117,7 @@ services:
       - ../../docker/sogo/nginx.conf:/etc/nginx/sites-enabled/default:ro
     networks:
       brainsos-ingress-net:
-      brainsos-internal-net:
+      brainsos-mail-net:
         aliases:
           - sogo
           - brainsos-net-sogo
@@ -203,6 +193,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
+      brainsos-mail-net:
       brainsos-internal-net:
         aliases:
           - mail-server
@@ -212,7 +203,7 @@ services:
 
   # Communications Daemon: Signal CLI REST/JSON-RPC (Port 8080)
   signal-cli:
-    image: bbernhard/signal-cli-rest-api:latest
+    image: bbernhard/signal-cli-rest-api@sha256:2cf09d66a86fdd210e42ee91662216364acc27da1163a8c44167a77ea3a6559a
     container_name: brainsos-app-signal-cli
     restart: unless-stopped
     entrypoint: [ "/entrypoint-brainsos.sh" ]
@@ -249,7 +240,7 @@ services:
     volumes:
       - ${BRAINSOS_AUTHENTIK_DB_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_db}:/var/lib/postgresql/data
     networks:
-      brainsos-internal-net:
+      brainsos-auth-net:
         aliases:
           - authentik-db
           - brainsos-auth-db
@@ -272,14 +263,15 @@ services:
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
+    command: ["redis-server", "--requirepass", "${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}"]
     networks:
-      brainsos-internal-net:
+      brainsos-auth-net:
         aliases:
           - authentik-redis
           - brainsos-auth-redis
           - brainsos-app-auth-redis
     healthcheck:
-      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
+      test: [ "CMD-SHELL", "redis-cli -a \"${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}\" ping | grep -q PONG" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -294,6 +286,7 @@ services:
       - "no-new-privileges:true"
     environment:
       AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}
       AUTHENTIK_POSTGRESQL__HOST: authentik-db
       AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
@@ -322,7 +315,7 @@ services:
       - "127.0.0.1:${AUTHENTIK_PORT:-9002}:9000"
     networks:
       brainsos-ingress-net:
-      brainsos-internal-net:
+      brainsos-auth-net:
         aliases:
           - authentik-server
           - brainsos-auth-server
@@ -343,6 +336,7 @@ services:
       - "no-new-privileges:true"
     environment:
       AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}
       AUTHENTIK_POSTGRESQL__HOST: authentik-db
       AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
@@ -368,7 +362,7 @@ services:
       - ../../config/authentik/blueprints:/blueprints/brainsos:ro
       - ${BRAINSOS_AUTHENTIK_MEDIA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_media}:/media
     networks:
-      brainsos-internal-net:
+      brainsos-auth-net:
         aliases:
           - authentik-worker
           - brainsos-auth-worker
@@ -403,12 +397,12 @@ services:
       - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY:-brainsos_gitea_secret_key}
       - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN:-brainsos_gitea_internal_token}
       - GITEA__security__REVERSE_PROXY_LIMIT=1
-      - GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES=*
+      - GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES=${CADDY_TRUSTED_PROXIES:-172.16.0.0/12,10.0.0.0/8,127.0.0.0/8}
       - GITEA__security__REVERSE_PROXY_AUTHENTICATION_USER=X-Authentik-Username
       - GITEA__security__REVERSE_PROXY_AUTHENTICATION_EMAIL=X-Authentik-Email
       - GITEA__security__REVERSE_PROXY_AUTHENTICATION_FULL_NAME=X-Authentik-Name
-      - GITEA__service__DISABLE_REGISTRATION=false
-      - GITEA__service__ALLOW_ONLY_EXTERNAL_REGISTRATION=false
+      - GITEA__service__DISABLE_REGISTRATION=true
+      - GITEA__service__ALLOW_ONLY_EXTERNAL_REGISTRATION=true
       - GITEA__service__ENABLE_REVERSE_PROXY_AUTHENTICATION=true
       - GITEA__service__ENABLE_REVERSE_PROXY_AUTO_REGISTRATION=true
       - GITEA__service__ENABLE_REVERSE_PROXY_EMAIL=true
@@ -424,7 +418,6 @@ services:
     networks:
       brainsos-ingress-net:
       brainsos-ide-net:
-      brainsos-internal-net:
         aliases:
           - gitea
           - git

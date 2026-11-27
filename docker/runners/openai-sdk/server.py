@@ -4,6 +4,7 @@ import importlib.util
 import inspect
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -37,21 +38,33 @@ logger = logging.getLogger("brainsos.runners.openai")
 logging.basicConfig(level=logging.INFO)
 
 LITELLM_BASE_URL = os.getenv("OPENAI_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000/v1")).rstrip("/")
-LITELLM_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("LITELLM_MASTER_KEY", "sk-brainsos-master-key"))
+LITELLM_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("OPENAI_SDK_LITELLM_KEY", ""))
+SAFE_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
-def _load_dynamic_script(script_path_str: str) -> Any:
-    """Load a custom agent script via importlib with security path verification."""
-    script_path = Path(script_path_str).resolve()
-    path_str = str(script_path).lower()
+def _validate_agent_id(agent_id: str) -> str:
+    clean = (agent_id or "").strip()
+    if not SAFE_AGENT_ID_RE.match(clean):
+        raise PermissionError(f"Access denied: invalid agent_id '{agent_id}'")
+    return clean
 
-    if "docker.sock" in path_str or "memories" in path_str:
-        raise PermissionError(f"Access denied: Script path violates isolation guardrails ({script_path})")
 
-    if not script_path.is_file():
-        raise FileNotFoundError(f"Custom runner script not found: {script_path}")
+def _load_dynamic_script(script_path_str: str, agent_id: str = "") -> Any:
+    """Load a custom agent script strictly allowlisted to the calling agent's runner/agent directory."""
+    clean_agent = _validate_agent_id(agent_id)
+    script_real = os.path.realpath(script_path_str)
+    allowed_roots = [
+        os.path.realpath(f"/data/runners/openai-sdk/{clean_agent}"),
+        os.path.realpath(f"/data/agents/{clean_agent}"),
+    ]
+    if not any(os.path.commonpath([root, script_real]) == root for root in allowed_roots):
+        raise PermissionError(f"Access denied: Script path outside allowlisted agent roots ({script_real})")
 
-    module_name = f"dynamic_agent_{script_path.stem}_{int(time.time())}"
+    script_path = Path(script_real)
+    if not script_path.is_file() or script_path.suffix != ".py":
+        raise FileNotFoundError(f"Custom runner Python script not found: {script_path}")
+
+    module_name = f"dynamic_agent_{clean_agent}_{script_path.stem}_{int(time.time())}"
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load module specification from {script_path}")
@@ -119,16 +132,17 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
         },
     )
 
-    # 1. Check for dynamic custom script execution
+    # 1. Check for dynamic custom script execution (strictly allowlisted by agent_id)
     script_path = request.extra_params.get("script_path")
     if not script_path and request.agent_id:
-        convention_path = Path(f"/data/runners/openai-sdk/{request.agent_id}/agent.py")
+        clean_agent = _validate_agent_id(request.agent_id)
+        convention_path = Path(f"/data/runners/openai-sdk/{clean_agent}/agent.py")
         if convention_path.is_file():
             script_path = str(convention_path)
 
     if script_path:
         try:
-            module = _load_dynamic_script(str(script_path))
+            module = _load_dynamic_script(str(script_path), request.agent_id)
             if not hasattr(module, "handle_turn"):
                 raise AttributeError(f"Script {script_path} does not export 'handle_turn' function")
 

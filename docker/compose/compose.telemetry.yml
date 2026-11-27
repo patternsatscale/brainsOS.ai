@@ -20,7 +20,7 @@ services:
       minio:
         condition: service_healthy
     ports:
-      - "${LANGFUSE_PORT:-3001}:3000"
+      - "127.0.0.1:${LANGFUSE_PORT:-3001}:3000"
     environment:
       - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}}
@@ -33,7 +33,7 @@ services:
       - LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR=${LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR:-direct}
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
-      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/caddy/root.crt
       # Native Authentik OIDC Single Sign-On
       - AUTH_CUSTOM_CLIENT_ID=${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}
       - AUTH_CUSTOM_CLIENT_SECRET=${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
@@ -292,7 +292,7 @@ services:
 
   # MinIO Object Storage (S3-Compatible)
   minio:
-    image: cgr.dev/chainguard/minio
+    image: cgr.dev/chainguard/minio@sha256:0a01100085e30fb08d2f39e39c9f5c9d83a95707f220b007d813b690cd41622d
     container_name: brainsos-telemetry-minio
     restart: unless-stopped
     entrypoint: sh
@@ -303,7 +303,7 @@ services:
     volumes:
       - ${LANGFUSE_MINIO_DATA_DIR:-${BRAINSOS_TELEMETRY_DIR:-${BRAINSOS_DATA_DIR:-../../data}/telemetry}/minio}:/data
     ports:
-      - "9090:9000"
+      - "127.0.0.1:${MINIO_PORT:-9090}:9000"
       - "127.0.0.1:9091:9001"
     networks:
       brainsos-telemetry-net:

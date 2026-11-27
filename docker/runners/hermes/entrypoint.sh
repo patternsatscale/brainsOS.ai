@@ -9,10 +9,11 @@
 set -euo pipefail
 
 echo "[INFO] Initializing Hermes configuration directory..."
-mkdir -p /root/.hermes
+HERMES_HOME_DIR="${HOME:-/tmp}/.hermes"
+mkdir -p "${HERMES_HOME_DIR}"
 
-if [ -f "/config/hermes/config.yaml" ] && [ ! -f "/root/.hermes/config.yaml" ]; then
-  cp -r /config/hermes/* /root/.hermes/ 2>/dev/null || true
+if [ -f "/config/hermes/config.yaml" ] && [ ! -f "${HERMES_HOME_DIR}/config.yaml" ]; then
+  cp -r /config/hermes/* "${HERMES_HOME_DIR}/" 2>/dev/null || true
 fi
 
 echo "[INFO] Starting Hermes WebUI on port 8787..."

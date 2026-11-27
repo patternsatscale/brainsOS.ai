@@ -18,6 +18,9 @@ services:
     image: brainsos-hermes-runner:latest
     container_name: brainsos-agent-runner-hermes
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    pids_limit: 256
     security_opt:
       - "no-new-privileges:true"
     ports:
@@ -26,27 +29,26 @@ services:
     environment:
       - API_SERVER_HOST=0.0.0.0
       - API_SERVER_PORT=8642
-      - API_SERVER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - API_SERVER_KEY=${RUNNER_AUTH_TOKEN:-}
       - HERMES_DASHBOARD=true
       - HERMES_DASHBOARD_HOST=0.0.0.0
       - HERMES_DASHBOARD_PORT=9119
       - HERMES_TRUST_REVERSE_PROXY_AUTH=true
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${BRAINSOS_SUPERUSER_USERNAME:-${BRAINSOS_ADMIN_USERNAME:-admin}}
-      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}}
-      - HERMES_DASHBOARD_BASIC_AUTH_SECRET=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}-hermes-dashboard-secret
-      - HERMES_UID=1000
-      - HERMES_GID=1000
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD:-}
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET=${HERMES_DASHBOARD_SESSION_SECRET:-}
+      - HERMES_UID=${HERMES_UID:-10001}
+      - HERMES_GID=${HERMES_GID:-10001}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
-      - OPENAI_API_KEY=${BAWTFORD_LITELLM_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
-      - BAWTFORD_LITELLM_KEY=${BAWTFORD_LITELLM_KEY:-}
+      - OPENAI_API_KEY=${HERMES_LITELLM_KEY:-${TERRASTELLA_LITELLM_KEY:-}}
       - TERRASTELLA_LITELLM_KEY=${TERRASTELLA_LITELLM_KEY:-}
       - MARVIN_LITELLM_KEY=${MARVIN_LITELLM_KEY:-}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
-      # Web search & crawling provider keys (#334)
-      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
-      - EXA_API_KEY=${EXA_API_KEY:-}
-      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
+      # Third-party tool keys are held in OpenBao & injected in transit by tool-egress-proxy (#387)
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:+in-transit-openbao-managed}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:+in-transit-openbao-managed}
+      - EXA_API_KEY=${EXA_API_KEY:+in-transit-openbao-managed}
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:+in-transit-openbao-managed}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
       - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web,lens,brainsos-lens,brainsos-telemetry-lens
@@ -114,14 +116,18 @@ services:
     image: brainsos-runner-openai:latest
     container_name: brainsos-agent-runner-openai
     restart: unless-stopped
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    pids_limit: 256
     security_opt:
       - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${OPENAI_RUNNER_PORT:-8002}:8002"
     environment:
+      - RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-${LITELLM_URL:-http://litellm:4000/v1}}
-      - OPENAI_API_KEY=${BAWTFORD_LITELLM_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
-      - BAWTFORD_LITELLM_KEY=${BAWTFORD_LITELLM_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_SDK_LITELLM_KEY:-${TERRASTELLA_LITELLM_KEY:-}}
       - TERRASTELLA_LITELLM_KEY=${TERRASTELLA_LITELLM_KEY:-}
       - MARVIN_LITELLM_KEY=${MARVIN_LITELLM_KEY:-}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
@@ -157,15 +163,19 @@ services:
     image: brainsos-runner-claude:latest
     container_name: brainsos-agent-runner-claude
     restart: unless-stopped
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    pids_limit: 256
     security_opt:
       - "no-new-privileges:true"
     ports:
       - "127.0.0.1:${CLAUDE_RUNNER_PORT:-8001}:8001"
     environment:
+      - RUNNER_AUTH_TOKEN=${RUNNER_AUTH_TOKEN:-}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-http://litellm:4000}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
+      - ANTHROPIC_API_KEY=${CLAUDE_SDK_LITELLM_KEY:-${TERRASTELLA_LITELLM_KEY:-}}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000}
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
       - BRAINSOS_TELEMETRY_BACKEND=${BRAINSOS_TELEMETRY_BACKEND:-dual}
       - LENS_ENABLED=${LENS_ENABLED:-true}
       - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-true}
@@ -174,9 +184,6 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - BRAINSOS_LANGFUSE_URL=${HERMES_LANGFUSE_BASE_URL:-http://langfuse-web:3000}
-      - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
-      - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
-      - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
       - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,lens,brainsos-lens,brainsos-telemetry-lens,langfuse,langfuse-web,brainsos-langfuse-web,brainsos-telemetry-langfuse-web
@@ -184,7 +191,6 @@ services:
     volumes:
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}:/data/runners:ro
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/data/agents:rw
-      - ${HOME}/.aws:/root/.aws:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -208,16 +214,26 @@ services:
       - "127.0.0.1:${TOOL_EGRESS_WEB_PORT:-8081}:8081"
     environment:
       - PYTHONUNBUFFERED=1
-      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}
-      - GITHUB_TOKEN_CINDY=${GITHUB_TOKEN_CINDY:-}
-      - GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY:-}
+      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}
+      - OPENBAO_ADDR=${OPENBAO_ADDR:-http://openbao:8200}
+      - OPENBAO_APPROLE_ENV=/run/secrets/openbao/egress-approle.env
+      - OPENBAO_ROLE_ID=${OPENBAO_ROLE_ID:-}
+      - OPENBAO_SECRET_ID=${OPENBAO_SECRET_ID:-}
+      - TOOL_EGRESS_ALLOWED_CONTAINERS=${TOOL_EGRESS_ALLOWED_CONTAINERS:-runner-hermes,runner-openai,runner-claude}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
     command: >
-      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 --set block_global=false --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}} --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
+      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 --set block_global=false --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}} --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
     volumes:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
       - ../../config/egress/addons:/addons:ro
       - ../../config/egress/theme:/theme:ro
+      - ${BRAINSOS_OPENBAO_APPROLE_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane}/openbao_approle}:/run/secrets/openbao:ro
     networks:
+      brainsos-secrets-net: {}
       brainsos-internal-net:
         aliases:
           - brainsos-net-egress-proxy

@@ -52,15 +52,6 @@ if [ -f .env ]; then
     echo 'BRAINSOS_UNIT_NAME="Enterprise Agent Box"' >> .env
     export BRAINSOS_UNIT_NAME="Enterprise Agent Box"
   fi
-  if [ -n "${GITHUB_TOKEN_CINDY:-}" ] && [ -z "${GITHUB_BASIC_AUTH_CINDY:-}" ]; then
-    GITHUB_BASIC_AUTH_CINDY="$(printf 'x-access-token:%s' "${GITHUB_TOKEN_CINDY}" | base64 | tr -d '\r\n')"
-    export GITHUB_BASIC_AUTH_CINDY
-    if grep -q "^GITHUB_BASIC_AUTH_CINDY=" .env; then
-      sed -i.bak "s|^GITHUB_BASIC_AUTH_CINDY=.*|GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}|" .env && rm -f .env.bak
-    else
-      echo "GITHUB_BASIC_AUTH_CINDY=${GITHUB_BASIC_AUTH_CINDY}" >> .env
-    fi
-  fi
 fi
 
 PID_DIR="${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}"
@@ -705,14 +696,20 @@ start_services() {
     }
 
     OPERATOR_KEY_ALIAS="brainsOs.console"
-    provision_vkey "${OPERATOR_LITELLM_KEY}" "${OPERATOR_KEY_ALIAS}" 100.0
+    DEFAULT_VKEY_BUDGET="${LITELLM_DEFAULT_MAX_BUDGET:-25.0}"
+    provision_vkey "${OPERATOR_LITELLM_KEY}" "${OPERATOR_KEY_ALIAS}" "${DEFAULT_VKEY_BUDGET}"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -qE '^brainsos-(app-)?code-server$'; then
       docker compose up -d code-server >/dev/null 2>&1 || true
     fi
-    provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella"
-    provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin"
-    provision_vkey "${BAWTFORD_LITELLM_KEY}" "brainsos-bawtford"
-    provision_vkey "${HERMES_LITELLM_KEY}" "hermes-agent"
+    provision_vkey "${TERRASTELLA_LITELLM_KEY}" "brainsos-terrastella" "${DEFAULT_VKEY_BUDGET}"
+    provision_vkey "${MARVIN_LITELLM_KEY}" "brainsos-marvin" "${DEFAULT_VKEY_BUDGET}"
+    provision_vkey "${BAWTFORD_LITELLM_KEY}" "brainsos-bawtford" "${DEFAULT_VKEY_BUDGET}"
+    provision_vkey "${HERMES_LITELLM_KEY}" "hermes-agent" "${DEFAULT_VKEY_BUDGET}"
+  fi
+
+  # 4c. Ensure segregated OpenBao secret manager & egress AppRole are ready (#387)
+  if [ -x "${REPO_ROOT}/scripts/setup/setup-secrets.sh" ]; then
+    "${REPO_ROOT}/scripts/setup/setup-secrets.sh" || log_warn "Could not initialize OpenBao secret manager (Docker may be inactive)."
   fi
 
   # 5. Start Shared Stateless Hermes Agent Runner container

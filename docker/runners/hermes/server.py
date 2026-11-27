@@ -19,7 +19,7 @@ logger = logging.getLogger("brainsos.runners.hermes")
 logging.basicConfig(level=logging.INFO)
 
 LITELLM_BASE_URL = os.getenv("OPENAI_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000/v1")).rstrip("/")
-LITELLM_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("LITELLM_MASTER_KEY", "sk-brainsos-master-key"))
+LITELLM_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("HERMES_LITELLM_KEY", ""))
 
 
 async def handle_hermes_turn(request: AgentTurnRequest) -> AgentTurnResponse:

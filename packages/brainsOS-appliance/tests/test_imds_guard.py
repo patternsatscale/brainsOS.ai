@@ -28,9 +28,10 @@ def _make_shims(
     )
     docker_shim.chmod(0o755)
 
-    ipt_shim = bin_dir / "iptables"
-    ipt_shim.write_text(
-        f"""#!/usr/bin/env bash
+    for tool_name in ("iptables", "ip6tables"):
+        ipt_shim = bin_dir / tool_name
+        ipt_shim.write_text(
+            f"""#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "{ipt_log}"
 for arg in "$@"; do
   if [ "$arg" = "-C" ]; then
@@ -39,9 +40,9 @@ for arg in "$@"; do
 done
 exit 0
 """,
-        encoding="utf-8",
-    )
-    ipt_shim.chmod(0o755)
+            encoding="utf-8",
+        )
+        ipt_shim.chmod(0o755)
 
 
 def test_noop_on_non_appliance(tmp_path: Path):

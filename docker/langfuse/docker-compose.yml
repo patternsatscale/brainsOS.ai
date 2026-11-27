@@ -24,7 +24,7 @@ services:
       minio:
         condition: service_healthy
     ports:
-      - "${LANGFUSE_PORT:-3001}:3000"
+      - "127.0.0.1:${LANGFUSE_PORT:-3001}:3000"
     environment:
       - DATABASE_URL=postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-brainsos_langfuse_secret_change_me}@langfuse-db:5432/${LANGFUSE_DB_NAME:-langfuse}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://langfuse.${BRAINSOS_DOMAIN:-local.brainsos.ai}}
@@ -37,7 +37,6 @@ services:
       - LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR=${LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR:-direct}
       - NODE_ENV=production
       - HOSTNAME=0.0.0.0
-      - NODE_TLS_REJECT_UNAUTHORIZED=0
       # Native Authentik OIDC Single Sign-On
       - AUTH_CUSTOM_CLIENT_ID=${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}
       - AUTH_CUSTOM_CLIENT_SECRET=${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
