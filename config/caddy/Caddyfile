@@ -433,6 +433,31 @@ import tls_policy.caddy
 		}
 	}
 
+	# C2. Subsystem 2b: OpenBao Secret Manager Web UI & Vault API (Authentik OIDC + Forward-Auth, #393)
+	# Placed BEFORE LiteLLM /ui/* and /v1/* catch-alls so Ember UI assets and Vault/OIDC API calls never collide.
+	@openbao_root path /secrets /secrets/
+	handle @openbao_root {
+		import authentik_forward_auth
+		redir /ui/vault/ 302
+	}
+	@openbao_subdomain_root {
+		header_regexp Host ^secrets\.
+		path /
+	}
+	handle @openbao_subdomain_root {
+		import authentik_forward_auth
+		redir /ui/vault/ 302
+	}
+	@openbao_paths path /ui/vault /ui/vault/* /ui/assets/* /ui/engines-dist/* /ui/sw* /ui/favicon.svg /ui/opensearch.xml /v1/sys/* /v1/auth/* /v1/secret/* /v1/identity/* /v1/cubbyhole/*
+	handle @openbao_paths {
+		import authentik_forward_auth
+		reverse_proxy {$OPENBAO_UPSTREAM:openbao:8200} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
+
 	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
 	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui
 	redir @proxy_ui_defaults /sso/key/generate 302
@@ -640,7 +665,7 @@ import tls_policy.caddy
 	# Future-proof catch-all for any new endpoint called by the LiteLLM Admin UI (/ui/*)
 	@litellm_ui_referer {
 		header_regexp Referer ^https?://[^/]+/(proxy/)?ui(/|$|\?)
-		not path /ui/* /proxy/* /lens-ingest/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
+		not path /ui/* /proxy/* /lens-ingest/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /secrets* /v1/sys/* /v1/auth/* /v1/secret/* /v1/identity/* /v1/cubbyhole/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
 	}
 	handle @litellm_ui_referer {
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {

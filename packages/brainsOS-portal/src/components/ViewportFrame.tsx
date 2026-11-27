@@ -10,6 +10,7 @@ import {
   Activity,
   Cpu,
   Users,
+  KeyRound,
   HelpCircle
 } from 'lucide-react';
 import { Subsystem, SUBSYSTEMS } from '../data/subsystems';
@@ -53,6 +54,9 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
       case 'egress':
       case 'network':
         return <Network {...props} />;
+      case 'secrets':
+      case 'vault':
+        return <KeyRound {...props} />;
       case 'telemetry':
       case 'trace':
         return <Activity {...props} />;
@@ -75,6 +79,9 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
     const proto = window.location.protocol;
     const port = window.location.port ? `:${window.location.port}` : '';
 
+    if (item.id === 'secrets' || item.id === 'vault' || item.route.includes('/secrets')) {
+      return `${proto}//${host}${port}/ui/vault/`;
+    }
     if (item.id === 'telemetry' || item.id === 'trace' || item.route.includes('/langfuse')) {
       return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
@@ -115,6 +122,9 @@ export const ViewportFrame: React.FC<ViewportFrameProps> = ({
         return `${host}/if/flow/default-user-settings-flow/`;
       }
       return `${host}${currentCustomUrl.startsWith('/') ? '' : '/'}${currentCustomUrl}`;
+    }
+    if (subsystem.id === 'secrets' || subsystem.id === 'vault') {
+      return `${host}/ui/vault/`;
     }
     if (subsystem.id === 'telemetry' || subsystem.id === 'trace') {
       return `${host}/project/brainsos/sessions`;

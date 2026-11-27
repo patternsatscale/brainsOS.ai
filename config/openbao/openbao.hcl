@@ -1,7 +1,7 @@
 # brainsOS: Segregated OpenBao Secret Manager Configuration (#387)
 # Encrypted integrated Raft storage isolated from LiteLLM DB and Authentik Redis.
 
-ui = false
+ui = true
 disable_mlock = true
 
 storage "raft" {

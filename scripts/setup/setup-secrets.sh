@@ -26,6 +26,19 @@ fi
 
 cd "${REPO_ROOT}"
 
+SYNC_OIDC_ONLY=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --sync-oidc)
+      SYNC_OIDC_ONLY=true
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
 ENV_FILE="${BRAINSOS_ENV_FILE:-${REPO_ROOT}/.env}"
 if [ -f "${ENV_FILE}" ]; then
   set -a
@@ -54,8 +67,15 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 0
 fi
 
-log_info "Starting segregated OpenBao secret manager container (${CONTAINER_NAME})..."
-docker compose up -d openbao >/dev/null 2>&1 || true
+if [ "${SYNC_OIDC_ONLY}" = true ]; then
+  if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qw "${CONTAINER_NAME}"; then
+    log_warn "OpenBao container (${CONTAINER_NAME}) is not running; skipping OIDC sync until stack start."
+    exit 0
+  fi
+else
+  log_info "Starting segregated OpenBao secret manager container (${CONTAINER_NAME})..."
+  docker compose up -d openbao >/dev/null 2>&1 || true
+fi
 
 log_info "Waiting for OpenBao API health..."
 READY=false
@@ -111,6 +131,68 @@ fi
 if [ -f "${SEAL_FILE}" ]; then
   ROOT_TOKEN=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["root_token"])' "${SEAL_FILE}")
 
+  # Configure Authentik OIDC auth backend & openbao-admin policy (#393)
+  sync_openbao_oidc() {
+    local root_tok="$1"
+    local raw_url="${BRAINSOS_URL:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}"
+    local eff_dom
+    eff_dom="$(printf '%s' "${raw_url}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
+    [ -n "${eff_dom}" ] || eff_dom="local.brainsos.ai"
+    local oidc_client_secret="${AUTH_OPENBAO_CLIENT_SECRET:-brainsos_openbao_secret}"
+    local discovery_url="https://${eff_dom}/application/o/openbao-vault/"
+    local redirect_uris="https://${eff_dom}/ui/vault/auth/oidc/oidc/callback,https://secrets.${eff_dom}/ui/vault/auth/oidc/oidc/callback,https://local.brainsos.ai/ui/vault/auth/oidc/oidc/callback,http://localhost:8200/ui/vault/auth/oidc/oidc/callback"
+
+    local admin_policy='path "*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}'
+    printf '%s\n' "${admin_policy}" | docker exec -i -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="${root_tok}" "${CONTAINER_NAME}" \
+      bao policy write openbao-admin - >/dev/null
+
+    docker exec -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="${root_tok}" "${CONTAINER_NAME}" \
+      bao auth list -format=json 2>/dev/null | grep -q '"oidc/"' || \
+      docker exec -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="${root_tok}" "${CONTAINER_NAME}" \
+        bao auth enable -listing-visibility=unauth oidc >/dev/null
+
+    # Combine system CAs + mounted Caddy Root CA so internal & ACME HTTPS discovery both validate.
+    docker exec "${CONTAINER_NAME}" sh -c '
+      : > /tmp/openbao_ca.pem
+      [ -r /etc/ssl/cert.pem ] && cat /etc/ssl/cert.pem >> /tmp/openbao_ca.pem || true
+      if [ -r /etc/ssl/caddy/root.crt ] && grep -q "BEGIN CERTIFICATE" /etc/ssl/caddy/root.crt 2>/dev/null; then
+        printf "\n" >> /tmp/openbao_ca.pem
+        cat /etc/ssl/caddy/root.crt >> /tmp/openbao_ca.pem
+      fi
+    ' >/dev/null 2>&1 || true
+
+    if docker exec -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="${root_tok}" "${CONTAINER_NAME}" \
+      bao write auth/oidc/config \
+        oidc_discovery_url="${discovery_url}" \
+        oidc_discovery_ca_pem=@/tmp/openbao_ca.pem \
+        oidc_client_id="openbao-vault" \
+        oidc_client_secret="${oidc_client_secret}" \
+        default_role="admin" >/dev/null 2>&1; then
+      docker exec -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="${root_tok}" "${CONTAINER_NAME}" \
+        bao write auth/oidc/role/admin \
+          bound_audiences="openbao-vault" \
+          allowed_redirect_uris="${redirect_uris}" \
+          user_claim="email" \
+          groups_claim="groups" \
+          oidc_scopes="openid,email,profile,groups" \
+          'bound_claims={"groups":["authentik Admins","admins","admin","appliance-admins"]}' \
+          token_policies="openbao-admin" \
+          token_ttl="1h" \
+          token_max_ttl="24h" >/dev/null 2>&1 || true
+      log_success "Configured OpenBao Authentik OIDC login (${discovery_url}, default_role=admin)."
+    else
+      log_warn "Authentik OIDC discovery (${discovery_url}) unreachable right now; run './scripts/setup/setup-secrets.sh --sync-oidc' after Caddy + Authentik are healthy."
+    fi
+    docker exec "${CONTAINER_NAME}" rm -f /tmp/openbao_ca.pem >/dev/null 2>&1 || true
+  }
+
+  if [ "${SYNC_OIDC_ONLY}" = true ]; then
+    sync_openbao_oidc "${ROOT_TOKEN}"
+    exit 0
+  fi
+
   # Ensure KV v2 engine at secret/
   docker exec -e BAO_ADDR=http://127.0.0.1:8200 -e BAO_TOKEN="${ROOT_TOKEN}" "${CONTAINER_NAME}" \
     bao secrets list -format=json 2>/dev/null | grep -q '"secret/"' || \
@@ -164,6 +246,8 @@ if payload:
       log_success "Seeded tool secrets into OpenBao KV v2 (secret/tools)."
     fi
   }
+
+  sync_openbao_oidc "${ROOT_TOKEN}"
 fi
 
 log_success "OpenBao secret manager ready and egress-proxy AppRole provisioned."

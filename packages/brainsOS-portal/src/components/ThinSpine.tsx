@@ -11,6 +11,7 @@ import {
   Sliders,
   Users,
   HelpCircle,
+  KeyRound,
   Maximize2
 } from 'lucide-react';
 import { SUBSYSTEMS, Subsystem } from '../data/subsystems';
@@ -53,6 +54,9 @@ export const ThinSpine: React.FC<ThinSpineProps> = ({
       case 'egress':
       case 'network':
         return <Network className="w-5 h-5" />;
+      case 'secrets':
+      case 'vault':
+        return <KeyRound className="w-5 h-5" />;
       case 'telemetry':
       case 'trace':
         return <Activity className="w-5 h-5" />;

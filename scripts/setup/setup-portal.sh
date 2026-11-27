@@ -143,6 +143,7 @@ if [ -n "${AUTH_SERVER_C}" ]; then
     -e AK_OPERATOR_PASSWORD="${AUTHENTIK_OPERATOR_PASSWORD:-}" \
     -e AK_LITELLM_CLIENT_SECRET="${AUTH_LITELLM_CLIENT_SECRET:-}" \
     -e AK_LANGFUSE_CLIENT_SECRET="${AUTH_LANGFUSE_CLIENT_SECRET:-}" \
+    -e AK_OPENBAO_CLIENT_SECRET="${AUTH_OPENBAO_CLIENT_SECRET:-}" \
     "${AUTH_SERVER_C}" ak shell -c '
 import os
 from authentik.outposts.models import Outpost
@@ -161,6 +162,7 @@ domain = os.environ.get("AK_EFFECTIVE_DOMAIN", "local.brainsos.ai").strip() or "
 cookie_dom = "local.brainsos.ai" if domain.endswith("local.brainsos.ai") else ""
 litellm_secret = os.environ.get("AK_LITELLM_CLIENT_SECRET", "")
 langfuse_secret = os.environ.get("AK_LANGFUSE_CLIENT_SECRET", "")
+openbao_secret = os.environ.get("AK_OPENBAO_CLIENT_SECRET", "")
 
 for o in Outpost.objects.all():
     o._config["authentik_host"] = f"https://{domain}"
@@ -188,6 +190,9 @@ for a in Application.objects.all():
     elif a.slug == "langfuse":
         a.meta_launch_url = f"https://{domain}/project/brainsos/sessions"
         a.save()
+    elif a.slug == "openbao-vault":
+        a.meta_launch_url = f"https://{domain}/ui/vault/"
+        a.save()
 
 for oa in OAuth2Provider.objects.all():
     if oa.client_id == "litellm-proxy":
@@ -212,8 +217,22 @@ for oa in OAuth2Provider.objects.all():
             "http://localhost:3001/api/auth/callback/custom",
         ])
         oa.save()
+    elif oa.client_id == "openbao-vault":
+        if openbao_secret:
+            oa.client_secret = openbao_secret
+        oa.redirect_uris = "\n".join([
+            f"https://{domain}/ui/vault/auth/oidc/oidc/callback",
+            f"https://secrets.{domain}/ui/vault/auth/oidc/oidc/callback",
+            "https://local.brainsos.ai/ui/vault/auth/oidc/oidc/callback",
+            "http://localhost:8200/ui/vault/auth/oidc/oidc/callback",
+            "http://localhost:8250/oidc/callback",
+        ])
+        oa.save()
 '
   log_success "Authentik blueprint applied and domain synchronized with '${EFFECTIVE_DOMAIN}'."
+  if [ -x "${REPO_ROOT}/scripts/setup/setup-secrets.sh" ]; then
+    "${REPO_ROOT}/scripts/setup/setup-secrets.sh" --sync-oidc || true
+  fi
 fi
 
 # ------------------------------------------------------------------------------
