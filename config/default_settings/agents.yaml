@@ -20,8 +20,6 @@ agents:
       address: "terrastella@brainsos.local"
       user_env: "TERRASTELLA_MAIL_USER"
       password_env: "TERRASTELLA_MAIL_PASSWORD"
-    signal:
-      enabled: false
     telegram:
       enabled: false
       bot_name: "@Terrastella_bot"
@@ -54,7 +52,7 @@ agents:
       enabled: true
       http_proxy: "http://brainsos-net-egress-proxy:8082"
       https_proxy: "http://brainsos-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -73,8 +71,6 @@ agents:
       address: "marvin@brainsos.local"
       user_env: "MARVIN_MAIL_USER"
       password_env: "MARVIN_MAIL_PASSWORD"
-    signal:
-      enabled: false
     telegram:
       enabled: false
       bot_name: "@Marvin_bot"
@@ -107,7 +103,7 @@ agents:
       enabled: true
       http_proxy: "http://brainsos-net-egress-proxy:8082"
       https_proxy: "http://brainsos-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -126,11 +122,6 @@ agents:
       address: "bawtford@brainsos.local"
       user_env: "BAWTFORD_MAIL_USER"
       password_env: "BAWTFORD_MAIL_PASSWORD"
-    signal:
-      enabled: true
-      http_url: "http://signal-cli:8080"
-      account_env: "SIGNAL_ACCOUNT"
-      allowed_users_env: "SIGNAL_ALLOWED_USERS"
     telegram:
       enabled: true
       bot_name: "@BawtfordBot"
@@ -215,7 +206,7 @@ agents:
       enabled: true
       http_proxy: "http://brainsos-net-egress-proxy:8082"
       https_proxy: "http://brainsos-net-egress-proxy:8082"
-      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,signal-cli,brainsos-signal-cli,brainsos-net-signal-cli,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+      no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
 
     # Cross-Cutting: Observability & Evaluation
     observability:

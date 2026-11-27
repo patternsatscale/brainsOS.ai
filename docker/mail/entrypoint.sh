@@ -47,23 +47,65 @@ for d in "${RAW_DOMAINS[@]}"; do
     fi
 done
 
+# Hash mail password via doveadm (BLF-CRYPT preferred, SHA512-CRYPT fallback, #388)
+hash_mail_password() {
+    local raw_pw="$1"
+    local hashed=""
+    if command -v doveadm >/dev/null 2>&1; then
+        hashed="$(doveadm pw -s BLF-CRYPT -p "${raw_pw}" 2>/dev/null || doveadm pw -s SHA512-CRYPT -p "${raw_pw}" 2>/dev/null || true)"
+    fi
+    if [ -z "${hashed}" ] && command -v python3 >/dev/null 2>&1; then
+        hashed="$(RAW_PW="${raw_pw}" python3 -c "import os, crypt; print('{SHA512-CRYPT}' + crypt.crypt(os.environ['RAW_PW'], crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null || true)"
+    fi
+    if [ -n "${hashed}" ]; then
+        printf '%s' "${hashed}"
+    else
+        echo "[BRAINSOS-MAIL] ERROR: unable to hash mail password safely (no doveadm/python3 crypt)" >&2
+        exit 1
+    fi
+}
+
+ADMIN_HASH="$(hash_mail_password "${ADMIN_PASS}")"
+OPERATOR_HASH="$(hash_mail_password "${OPERATOR_PASS}")"
+TERRASTELLA_HASH="$(hash_mail_password "${TERRASTELLA_PASS}")"
+BAWTFORD_HASH="$(hash_mail_password "${BAWTFORD_PASS}")"
+MARVIN_HASH="$(hash_mail_password "${MARVIN_PASS}")"
+PING_HASH="$(hash_mail_password "${PING_PASS}")"
+CLAUDE_HASH="$(hash_mail_password "${CLAUDE_PASS}")"
+GPT_HASH="$(hash_mail_password "${GPT_PASS}")"
+
+# Scope Dovecot static proxy passdb strictly to resolved SOGo container IP + loopback
+SOGO_PROXY_IP="$(getent hosts sogo 2>/dev/null | awk '{print $1}' | head -n 1 || true)"
+if [ -n "${SOGO_PROXY_IP}" ]; then
+    ALLOW_NETS="${SOGO_PROXY_IP}/32,127.0.0.1/8"
+else
+    ALLOW_NETS="127.0.0.1/8"
+fi
+cat << EOF > /etc/mail-brainsos/sogo-proxy-passdb.conf
+passdb {
+  driver = static
+  args = nopassword=y allow_nets=${ALLOW_NETS}
+}
+EOF
+chmod 0640 /etc/mail-brainsos/sogo-proxy-passdb.conf
+
 # Provision configuration files in mounted volume
-echo "[BRAINSOS-MAIL] Provisioning accounts in /etc/mail-brainsos/users..."
+echo "[BRAINSOS-MAIL] Provisioning hashed accounts in /etc/mail-brainsos/users..."
 > /etc/mail-brainsos/users
 > /etc/mail-brainsos/vmailbox
 > /etc/mail-brainsos/virtual
 
 for d in "${UNIQUE_DOMAINS[@]}"; do
 cat << EOF >> /etc/mail-brainsos/users
-admin@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
-operator@${d}:{PLAIN}${OPERATOR_PASS}:5000:5000::/var/mail/vmail/operator::
-akadmin@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::
-terrastella@${d}:{PLAIN}${TERRASTELLA_PASS}:5000:5000::/var/mail/vmail/terrastella::
-bawtford@${d}:{PLAIN}${BAWTFORD_PASS}:5000:5000::/var/mail/vmail/bawtford::
-marvin@${d}:{PLAIN}${MARVIN_PASS}:5000:5000::/var/mail/vmail/marvin::
-ping@${d}:{PLAIN}${PING_PASS}:5000:5000::/var/mail/vmail/ping::
-claude@${d}:{PLAIN}${CLAUDE_PASS}:5000:5000::/var/mail/vmail/claude::
-gpt@${d}:{PLAIN}${GPT_PASS}:5000:5000::/var/mail/vmail/gpt::
+admin@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::
+operator@${d}:${OPERATOR_HASH}:5000:5000::/var/mail/vmail/operator::
+akadmin@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::
+terrastella@${d}:${TERRASTELLA_HASH}:5000:5000::/var/mail/vmail/terrastella::
+bawtford@${d}:${BAWTFORD_HASH}:5000:5000::/var/mail/vmail/bawtford::
+marvin@${d}:${MARVIN_HASH}:5000:5000::/var/mail/vmail/marvin::
+ping@${d}:${PING_HASH}:5000:5000::/var/mail/vmail/ping::
+claude@${d}:${CLAUDE_HASH}:5000:5000::/var/mail/vmail/claude::
+gpt@${d}:${GPT_HASH}:5000:5000::/var/mail/vmail/gpt::
 EOF
 
 cat << EOF >> /etc/mail-brainsos/vmailbox
@@ -85,16 +127,20 @@ akadmin@${d} admin@${d}
 cindy@${d} bawtford@${d}
 EOF
 if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
-    echo "${ADMIN_USER}@${d}:{PLAIN}${ADMIN_PASS}:5000:5000::/var/mail/vmail/admin::" >> /etc/mail-brainsos/users
+    echo "${ADMIN_USER}@${d}:${ADMIN_HASH}:5000:5000::/var/mail/vmail/admin::" >> /etc/mail-brainsos/users
     echo "${ADMIN_USER}@${d} admin" >> /etc/mail-brainsos/vmailbox
 fi
 done
 
-# Configure Postfix hostname, domain & virtual mailbox domains
+chmod 0640 /etc/mail-brainsos/users
+
+# Configure Postfix hostname, domain, loopback mynetworks & SASL recipient restrictions (#388)
 DOMAINS_STR=$(IFS=', '; echo "${UNIQUE_DOMAINS[*]}")
 postconf -e "myhostname = ${PRIMARY_LOCAL_DOMAIN}"
 postconf -e "mydomain = ${PRIMARY_LOCAL_DOMAIN}"
 postconf -e "virtual_mailbox_domains = ${DOMAINS_STR}"
+postconf -e "mynetworks = 127.0.0.0/8 [::1]/128"
+postconf -e "smtpd_recipient_restrictions = reject_non_fqdn_recipient, permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination, reject"
 
 # Compile Postfix lookup databases
 postmap lmdb:/etc/mail-brainsos/vmailbox

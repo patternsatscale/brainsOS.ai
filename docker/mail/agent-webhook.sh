@@ -30,6 +30,9 @@ HEADERS=(--header "Content-Type: message/rfc822")
 if [ -n "${1:-}" ]; then
     HEADERS+=(--header "X-Envelope-To: ${1}")
 fi
+if [ -n "${MAIL_WEBHOOK_SECRET:-}" ]; then
+    HEADERS+=(--header "X-Mail-Webhook-Secret: ${MAIL_WEBHOOK_SECRET}")
+fi
 HEADERS+=(--header "X-Spool-Filename: $(basename "${SPOOL_FILE}")")
 
 

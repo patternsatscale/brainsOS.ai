@@ -39,6 +39,7 @@ if [ -z "${REPO_ROOT}" ]; then
 fi
 
 MOUNT_PATH="${BRAINSOS_MOUNT_ROOT:-/mnt/brainsos-data}"
+SUDOERS_FILE="${BRAINSOS_SUDOERS_FILE:-/etc/sudoers.d/90-brainsos-admin}"
 SKIP_SERVICE_STOP=false
 SKIP_UMOUNT=false
 DRY_RUN=false
@@ -98,8 +99,10 @@ fi
 if [ "${DRY_RUN}" = true ]; then
   if [ "${SKIP_SERVICE_STOP}" != true ]; then
     log_info "[DRY-RUN] Would stop brainsos.service, brainsos-system-api.service, and any containers mounting ${MOUNT_PATH}"
+    log_info "[DRY-RUN] Would purge sensitive ephemeral Docker named volumes (brainsos_caddy_config, brainsos_tool_egress_proxy_data, etc.)"
   fi
-  log_info "[DRY-RUN] Would remove symlinks ${REPO_ROOT}/.env and ${REPO_ROOT}/.brainsos-initialized"
+  log_info "[DRY-RUN] Would remove host files ${REPO_ROOT}/.env, ${REPO_ROOT}/.brainsos-initialized, ${REPO_ROOT}/.brainsos-wizard-completed, ${REPO_ROOT}/docker/langfuse/.env, and host data/system_jobs/*"
+  log_info "[DRY-RUN] Would delete prior tenant OS user(s) listed in ${SUDOERS_FILE} and remove ${SUDOERS_FILE}"
   log_info "[DRY-RUN] Would run sync"
   if [ "${SKIP_UMOUNT}" != true ]; then
     log_info "[DRY-RUN] Would unmount ${MOUNT_PATH} and verify ! mountpoint -q ${MOUNT_PATH}"
@@ -161,14 +164,64 @@ if [ "${SKIP_SERVICE_STOP}" != true ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 2. Remove Ephemeral Host Symlinks (/opt/brainsos/.env & .brainsos-initialized)
+# 2. Scrub Root-Disk Secrets, Wizard State, Job Logs & Named Volumes (#388)
 # ------------------------------------------------------------------------------
-for link_path in "${REPO_ROOT}/.env" "${REPO_ROOT}/.brainsos-initialized"; do
-  if [ -L "${link_path}" ]; then
-    rm -f "${link_path}"
-    log_info "Removed host symlink: ${link_path}"
+for host_artifact in \
+  "${REPO_ROOT}/.env" \
+  "${REPO_ROOT}/.brainsos-initialized" \
+  "${REPO_ROOT}/.brainsos-wizard-completed" \
+  "${REPO_ROOT}/docker/langfuse/.env"; do
+  if [ -L "${host_artifact}" ] || [ -f "${host_artifact}" ]; then
+    rm -f "${host_artifact}"
+    log_info "Removed root-disk state artifact: ${host_artifact}"
   fi
 done
+
+# Scrub transient host-disk job logs (never touch mounted user EBS volume data)
+HOST_JOBS_DIR="${REPO_ROOT}/data/system_jobs"
+if [ -d "${HOST_JOBS_DIR}" ] && [ ! -L "${HOST_JOBS_DIR}" ]; then
+  REAL_JOBS="$(readlink -f "${HOST_JOBS_DIR}" 2>/dev/null || printf '%s' "${HOST_JOBS_DIR}")"
+  REAL_MOUNT_CMP="$(readlink -f "${MOUNT_PATH}" 2>/dev/null || printf '%s' "${MOUNT_PATH}")"
+  case "${REAL_JOBS}" in
+    "${MOUNT_PATH}"|"${MOUNT_PATH}/"*|"${REAL_MOUNT_CMP}"|"${REAL_MOUNT_CMP}/"*)
+      log_warn "Skipping system_jobs scrub because ${HOST_JOBS_DIR} resolves inside ${MOUNT_PATH}."
+      ;;
+    *)
+      find "${HOST_JOBS_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+      log_info "Scrubbed host system job directory: ${HOST_JOBS_DIR}"
+      ;;
+  esac
+fi
+
+# Delete prior tenant Linux OS user(s) referenced in sudoers and remove 90-brainsos-admin
+if [ -f "${SUDOERS_FILE}" ]; then
+  if [ "$(id -u)" -eq 0 ]; then
+    while IFS= read -r sudo_user; do
+      [ -z "${sudo_user}" ] && continue
+      case "${sudo_user}" in
+        root|admin|ubuntu|ec2-user|ec2_user|debian|patternsatscale)
+          continue
+          ;;
+      esac
+      if [[ "${sudo_user}" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] && id -u "${sudo_user}" >/dev/null 2>&1; then
+        userdel -r "${sudo_user}" 2>/dev/null || userdel "${sudo_user}" 2>/dev/null || true
+        log_info "Removed prior tenant OS account: ${sudo_user}"
+      fi
+    done < <(awk '!/^[[:space:]]*(#|$)/ {print $1}' "${SUDOERS_FILE}" 2>/dev/null || true)
+  fi
+  rm -f "${SUDOERS_FILE}" 2>/dev/null || true
+  log_info "Removed sudoers file: ${SUDOERS_FILE}"
+fi
+
+# Purge ephemeral named Docker volumes containing per-tenant certificates/secrets/caches
+if [ "${SKIP_SERVICE_STOP}" != true ] && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  for vol_name in brainsos_caddy_config brainsos_tool_egress_proxy_data; do
+    if docker volume inspect "${vol_name}" >/dev/null 2>&1; then
+      docker volume rm -f "${vol_name}" >/dev/null 2>&1 || true
+      log_info "Purged ephemeral Docker named volume: ${vol_name}"
+    fi
+  done
+fi
 
 # ------------------------------------------------------------------------------
 # 3. Flush Filesystem Buffers

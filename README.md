@@ -244,7 +244,7 @@ graph TD
 │ L7: Communications, UX, OS Control Center & Operator IDE                    │
 │     - Single-Origin TLS Ingress: Caddy (:80/:443) + Authentik Forward-Auth  │
 │     - Thin-Spine Portal & OS Control Center: / & /#system (XTerm.js PTY)    │
-│     - Messaging Daemons: brainsos-app-signal-cli, Postfix SMTP, SOGo        │
+│     - Messaging Daemons: Postfix SMTP, Dovecot IMAP, SOGo Webmail          │
 │     - Operator IDE & SCM: VS Code (/editor/ :8443) + Gitea (/git/ :3000)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L6: Agent Execution Plane (Non-Root Stateless Runners & Dynamic Profiles)   │

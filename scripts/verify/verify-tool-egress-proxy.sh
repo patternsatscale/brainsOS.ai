@@ -10,7 +10,7 @@
 #   4. Mitmproxy CA certificate trust across agent sandbox runtimes (curl, OpenSSL, Python)
 #   5. Outbound HTTP/HTTPS tool traffic interception & flow capture
 #   6. Live flow audit via mitmweb REST/JSON API (/flows)
-#   7. Strict internal plane bypass (NO_PROXY) for LiteLLM, Signal, and internal routes
+#   7. Strict internal plane bypass (NO_PROXY) for LiteLLM and internal routes
 # ==============================================================================
 
 set -euo pipefail
@@ -219,21 +219,7 @@ if echo "${FLOWS_JSON}" | grep -qi "host.docker.internal"; then
 fi
 log_success "Verified zero LiteLLM inference traffic intercepted by tool egress proxy (Rule 2)."
 
-# 2. Signal messaging daemon bypass
-SIGNAL_ABOUT=$(docker exec "${AGENT_CONTAINER}" curl -s http://signal-cli:8080/v1/about || echo "FAIL")
-if ! echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
-  log_error "Signal daemon bypass check failed (Got: ${SIGNAL_ABOUT})."
-  exit 1
-fi
-log_success "Signal daemon directly reachable via internal bypass (HTTP 200)."
-
-if echo "${FLOWS_JSON}" | grep -qi "signal-cli"; then
-  log_error "SECURITY VIOLATION: signal-cli was intercepted by tool egress proxy."
-  exit 1
-fi
-log_success "Verified zero Signal messaging traffic intercepted by tool egress proxy."
-
 echo ""
 log_success "================================================================="
-log_success "  ALL 7 TOOL EGRESS GATEWAY VERIFICATION CHECKS PASSED           "
+log_success "  ALL TOOL EGRESS GATEWAY VERIFICATION CHECKS PASSED             "
 log_success "================================================================="

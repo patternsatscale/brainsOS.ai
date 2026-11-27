@@ -18,10 +18,14 @@ class LocalMailInjector:
         host: str = "127.0.0.1",
         port: int = 25,
         timeout: float = 10.0,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
     ) -> None:
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.username = username
+        self.password = password
 
     def inject(self, msg: EmailMessage, recipients: Optional[List[str]] = None) -> bool:
         """Sends an EmailMessage via SMTP to local mail server.
@@ -55,6 +59,8 @@ class LocalMailInjector:
 
         try:
             with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as smtp:
+                if self.username and self.password:
+                    smtp.login(self.username, self.password)
                 smtp.send_message(msg, from_addr=from_addr, to_addrs=target_recipients)
             logger.info("Successfully delivered message <%s> to local SMTP", msg.get("Message-ID"))
             return True

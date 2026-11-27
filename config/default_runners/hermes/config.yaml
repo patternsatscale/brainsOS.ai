@@ -126,8 +126,6 @@ _left_core_installed:
 platforms:
   api_server:
     enabled: true
-  signal:
-    enabled: false
   telegram:
     enabled: false
   email:

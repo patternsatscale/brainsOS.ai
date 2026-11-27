@@ -144,7 +144,17 @@ export function createCaddyAcmeCredentials(subdomain: string, zoneId: any) {
         {
           "Effect": "Allow",
           "Action": "route53:ChangeResourceRecordSets",
-          "Resource": "arn:aws:route53:::hostedzone/${zoneId}"
+          "Resource": "arn:aws:route53:::hostedzone/${zoneId}",
+          "Condition": {
+            "ForAllValues:StringLike": {
+              "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
+                "_acme-challenge.${subdomain}*"
+              ],
+              "route53:ChangeResourceRecordSetsRecordTypes": [
+                "TXT"
+              ]
+            }
+          }
         },
         {
           "Effect": "Allow",
