@@ -89,7 +89,7 @@ def test_langfuse_disabled_keeps_lens_worker_trace_active(monkeypatch: pytest.Mo
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     monkeypatch.setenv("LENS_ENABLED", "true")
     monkeypatch.setenv("LENS_OTLP_ENDPOINT", "http://lens.test:4318")
-    monkeypatch.setenv("LITELLM_TRACING_KEY", "lens-trace-test-key-375")
+    monkeypatch.setenv("LITELLM_TRACING_KEY", "lens-trace-test-key-375")  # gitleaks:allow
 
     assert langfuse_trace.is_langfuse_enabled() is False
     assert langfuse_trace.langfuse_settings() is None
@@ -164,7 +164,7 @@ def test_hermes_lens_otel_multi_step_tool_turn_with_langfuse_disabled(monkeypatc
     monkeypatch.setenv("LANGFUSE_ENABLED", "false")
     monkeypatch.setenv("LENS_ENABLED", "true")
     monkeypatch.setenv("LENS_OTLP_ENDPOINT", "http://lens.internal:4318")
-    monkeypatch.setenv("LITELLM_TRACING_KEY", "lens-trace-hermes-375")
+    monkeypatch.setenv("LITELLM_TRACING_KEY", "lens-trace-hermes-375")  # gitleaks:allow
     monkeypatch.setenv("BRAINSOS_LOCAL_DOMAIN", "dgx.local.brainsos.ai")
 
     plugin_init = REPO_ROOT / "docker/hermes/plugins/observability/langfuse/__init__.py"
@@ -177,7 +177,12 @@ def test_hermes_lens_otel_multi_step_tool_turn_with_langfuse_disabled(monkeypatc
 
     lens_mod = plugin_mod._lens_otel
     exported: list[tuple[str, str, dict[str, Any]]] = []
-    lens_mod.set_custom_transport(lambda url, token, payload: (exported.append((url, token, payload)) or True))
+
+    def _capture_transport(url: str, token: str, payload: dict[str, Any]) -> bool:
+        exported.append((url, token, payload))
+        return True
+
+    lens_mod.set_custom_transport(_capture_transport)
 
     try:
         trace_id = thread_trace_id(SESSION)
@@ -299,7 +304,7 @@ def test_hermes_lens_otel_multi_step_tool_turn_with_langfuse_disabled(monkeypatc
     gateway_spans: list[dict[str, Any]] = []
     for url, token, payload in exported:
         assert url == "http://lens.internal:4318/v1/traces"
-        assert token == "lens-trace-hermes-375"
+        assert token == "lens-trace-hermes-375"  # gitleaks:allow
         for scope_block in payload["resourceSpans"][0]["scopeSpans"]:
             scope_name = scope_block["scope"]["name"]
             if scope_name == "hermes-otel-plugin":

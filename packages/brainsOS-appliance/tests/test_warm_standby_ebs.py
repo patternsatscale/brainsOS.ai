@@ -274,6 +274,8 @@ def test_env_upsert_preserves_symlink_across_mount(tmp_path: Path):
 @pytest.mark.skipif(BLKID_BIN is None or MKFS_EXT4_BIN is None, reason="blkid / mkfs.ext4 required")
 def test_claim_and_release_lifecycle_across_two_hosts(tmp_path: Path):
     """Full warm-standby claim -> DB state write -> release -> detach -> attach to Host B resume lifecycle."""
+    assert BLKID_BIN is not None
+    assert MKFS_EXT4_BIN is not None
     host_a = _stage_appliance_host(tmp_path, "warm_host_a")
     host_b = _stage_appliance_host(tmp_path, "warm_host_b")
 
