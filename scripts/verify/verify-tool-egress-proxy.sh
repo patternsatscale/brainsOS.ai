@@ -174,11 +174,14 @@ fi
 log_success "Outbound HTTPS curl executed successfully through proxy with clean TLS verification."
 
 # Test Python requests library through proxy
-PYTHON_PROBE=$(docker exec "${AGENT_CONTAINER}" /opt/hermes/.venv/bin/python3 -c "
-import requests, json
-r = requests.get('https://httpbin.org/anything?python_nonce=${PROBE_NONCE}')
-print(r.json().get('args', {}).get('python_nonce', ''))
-" 2>/dev/null || echo "PYTHON_FAILED")
+PYTHON_PROBE=$(docker exec -i -e PROBE_NONCE="${PROBE_NONCE}" "${AGENT_CONTAINER}" /opt/hermes/.venv/bin/python3 - << 'EOF' 2>/dev/null || echo "PYTHON_FAILED"
+import os
+import requests
+
+r = requests.get("https://httpbin.org/anything", params={"python_nonce": os.environ["PROBE_NONCE"]})
+print(r.json().get("args", {}).get("python_nonce", ""))
+EOF
+)
 
 if [ "${PYTHON_PROBE}" != "${PROBE_NONCE}" ]; then
   log_error "Python requests execution through proxy failed (Got: '${PYTHON_PROBE}')."

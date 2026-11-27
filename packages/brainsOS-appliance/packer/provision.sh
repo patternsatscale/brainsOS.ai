@@ -112,12 +112,12 @@ snapshot_scan() {
     findings=$((findings + 1))
   done < <(grep -rIlE "sk-brainsos-[0-9a-f]{32}" --exclude-dir=node_modules "${root}" 2>/dev/null || true)
 
-  # 5. No SSH keys, AWS credentials or shell histories in home directories
+  # 5. No SSH keys, AWS credentials or shell/python histories in home directories
   if [ -n "${home_root}" ]; then
     while IFS= read -r f; do
       log_error "SCAN: credential material present: ${f}"
       findings=$((findings + 1))
-    done < <(find "${home_root}/root" "${home_root}/home" \( -name "authorized_keys" -o -name ".bash_history" -o -path "*/.aws/credentials" -o -name "id_rsa" -o -name "id_ed25519" \) -type f -print 2>/dev/null)
+    done < <(find "${home_root}/root" "${home_root}/home" \( -name "authorized_keys" -o -name ".*history" -o -name ".python_history" -o -path "*/.aws/credentials" -o -name "id_rsa" -o -name "id_ed25519" \) -type f -print 2>/dev/null)
 
     while IFS= read -r f; do
       log_error "SCAN: SSH host key present (must be regenerated per instance): ${f}"
@@ -144,7 +144,7 @@ if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Simulating AMI provisioner sequence (app dir: ${APP_DIR})..."
   log_info "[DRY-RUN] 1. apt: dist-upgrade + noble-proposed linux-aws kernel + curl, jq, ufw, logrotate, git, make, python3, NodeSource nodejs 22 LTS (purge python3-pip*/python3-venv/node-lodash*)"
   log_info "[DRY-RUN] 2. Ensure a single AWS SSM Agent (reuse Canonical snap if present)"
-  log_info "[DRY-RUN] 3. Install Docker CE + Compose plugin; install latest uv"
+  log_info "[DRY-RUN] 3. Install Docker CE + Compose plugin; install pinned uv"
   log_info "[DRY-RUN] 4. Install brainsos.service, brainsos-firstboot.service & brainsos-system-api.service"
   log_info "[DRY-RUN] 5. Execute ${SCRIPTS_DIR}/harden-host.sh"
   log_info "[DRY-RUN] 6. make runner-base build; docker compose pull (incl. gitea/gitea:1.22); verify images; portal build; .venv (bootstrap-env.sh)"
@@ -298,13 +298,36 @@ if [ -d /etc/sudoers.d ]; then
 fi
 log_success "Docker CE, Compose plugin, and Linux 'admin' user configured."
 
-log_info "Installing Astral uv..."
-curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
+UV_VERSION="0.12.10"
+case "$(uname -m)" in
+  aarch64|arm64)
+    UV_ARCHIVE="uv-aarch64-unknown-linux-gnu.tar.gz"
+    UV_SHA256="9ff6b9d4665edcdd3a88dcc73cd1eb641754deb927f14e8c62ebfde6bf4f5f5e"
+    ;;
+  x86_64|amd64)
+    UV_ARCHIVE="uv-x86_64-unknown-linux-gnu.tar.gz"
+    UV_SHA256="173d95a0c32d18c896c46ba6fafbf3cf9c14ab74b033f81b76c883ef492a976b"
+    ;;
+  *)
+    log_error "Unsupported architecture for pinned uv installation: $(uname -m)"
+    exit 1
+    ;;
+esac
+UV_URL="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${UV_ARCHIVE}"
+log_info "Installing pinned Astral uv ${UV_VERSION} (${UV_ARCHIVE}) with SHA-256 verification..."
+UV_TMP="$(mktemp -d)"
+curl -fsSL "${UV_URL}" -o "${UV_TMP}/${UV_ARCHIVE}"
+printf '%s  %s\n' "${UV_SHA256}" "${UV_TMP}/${UV_ARCHIVE}" | sha256sum -c -
+tar -xzf "${UV_TMP}/${UV_ARCHIVE}" -C "${UV_TMP}"
+UV_EXTRACTED_DIR="${UV_TMP}/${UV_ARCHIVE%.tar.gz}"
+install -m 0755 "${UV_EXTRACTED_DIR}/uv" /usr/local/bin/uv
+install -m 0755 "${UV_EXTRACTED_DIR}/uvx" /usr/local/bin/uvx
+rm -rf "${UV_TMP}"
 if [ -x "/usr/local/bin/uv" ]; then
-  /usr/local/bin/uv self update >/dev/null 2>&1 || true
-  log_success "uv installed at /usr/local/bin/uv ($(/usr/local/bin/uv --version 2>/dev/null || echo 'latest'))."
+  log_success "uv installed at /usr/local/bin/uv ($(/usr/local/bin/uv --version 2>/dev/null || echo "${UV_VERSION}"))."
 else
-  log_warn "uv not found at /usr/local/bin/uv after install."
+  log_error "uv not found at /usr/local/bin/uv after verified install."
+  exit 1
 fi
 
 # ------------------------------------------------------------------------------
@@ -467,8 +490,9 @@ if [ -n "${LATEST_IMAGE}" ]; then
   fi
 fi
 
-# Shell histories, temp files, package caches, logs
-rm -f /root/.bash_history /home/ubuntu/.bash_history
+# Shell and Python histories, temp files, package caches, logs
+rm -f /root/.*history /root/.python_history /home/ubuntu/.*history /home/ubuntu/.python_history /home/admin/.*history /home/admin/.python_history
+find /root /home -maxdepth 2 -type f \( -name ".*history" -o -name ".python_history" \) -delete 2>/dev/null || true
 rm -rf /tmp/* /var/tmp/*
 apt-get clean
 rm -rf /var/lib/apt/lists/*

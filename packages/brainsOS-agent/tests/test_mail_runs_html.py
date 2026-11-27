@@ -252,6 +252,125 @@ class TestMailRunsHTMLAndChain(unittest.TestCase):
         self.assertNotIn("<script", rich_reply.lower())
         self.assertNotIn("onerror", rich_reply.lower())
 
+    def test_format_inline_markdown_blocks_unsafe_schemes_and_preserves_safe_links(self):
+        from brainsos_agent.mail_runs import _format_inline_markdown
+
+        for bad_url in (
+            "javascript:alert(1)",
+            "javascript:alert(String.fromCharCode(88))",
+            "JaVaScRiPt:alert(1)",
+            "java\tscript:alert(1)",
+            "java&#x09;script:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:msgbox(1)",
+            "//evil.example/phish",
+            "/relative/path",
+            "cid:inline@img",
+        ):
+            out = _format_inline_markdown(f"[click]({bad_url})")
+            self.assertNotIn("<a ", out.lower(), f"Unsafe link rendered for {bad_url!r}: {out}")
+            self.assertNotIn("javascript:", out.lower())
+            self.assertNotIn("vbscript:", out.lower())
+            self.assertNotIn("data:text/html", out.lower())
+            self.assertIn("click", out)
+
+        for good_url in (
+            "https://brainsos.ai/docs_(v1)",
+            "http://example.com/path?a=1&b=2",
+            "mailto:ops@brainsos.ai",
+        ):
+            out = _format_inline_markdown(f"[docs]({good_url})")
+            self.assertIn("<a ", out)
+            self.assertIn("docs</a>", out)
+
+        md_xss = markdown_to_clean_html(
+            "# Report\n\n[x](javascript:alert(1)) and <img src=x onerror=alert(2)>"
+        )
+        self.assertNotIn("javascript:", md_xss.lower())
+        self.assertNotIn("onerror", md_xss.lower())
+
+        sanitized_entity = sanitize_html(
+            '<a href="java&#x09;script:alert(1)">bad</a>'
+            '<a href="javascript&#58;alert(2)">bad2</a>'
+            '<a href="//evil.example">bad3</a>'
+            '<img src="cid:logo@brainsos.ai" alt="logo">'
+        )
+        self.assertNotIn("href=", sanitized_entity)
+        self.assertIn('src="cid:logo@brainsos.ai"', sanitized_entity)
+
+    def test_sanitize_html_blocks_obfuscated_css_styles_and_preserves_safe_styles(self):
+        obfuscated_payloads = [
+            '<p style="color: ex\\70 ression(alert(1))">s3</p>',
+            '<p style="color: expr/*x*/ession(alert(1))">s4</p>',
+            '<p style="background: u\\72 l(javascript:alert(1))">s6</p>',
+            '<p style="background: url/*x*/(https://evil.com/leak)">s7</p>',
+            '<p style="color: \\65xpression(alert(1))">css_hex1</p>',
+            '<p style="background: \\75 rl(https://evil.com)">css_hex3</p>',
+            '<p style="color: exp/*comment*/ression(alert(1))">css_comment</p>',
+            '<p style="color: expr/*unclosed">unclosed</p>',
+            '<p style="color: e\\xpression(alert(1))">char_esc</p>',
+            '<p style="background: u\\000072\\00006c(https://evil.com)">hex6</p>',
+            '<p style="color: expr&#x65;ssion(alert(1))">entity1</p>',
+            '<p style="color: expr&amp;#x65;ssion(alert(1))">entity2</p>',
+            '<p style="color: ex&#92;70 ression(alert(1))">entity_bs</p>',
+            '<p style="color: expr\x00ession(alert(1))">nul</p>',
+            '<p style="color: expr\nession(alert(1))">newline</p>',
+            '<p style="background: image-set(\'https://evil.com/x.png\' 1x)">imgset</p>',
+            '<p style="background: -webkit-image-set(\'https://evil.com/x.png\' 1x)">wkimgset</p>',
+            '<p style="filter: progid:DXImageTransform.Microsoft.Alpha(opacity=0)">progid</p>',
+            '<p style="background: data:text/html,foo">data_uri</p>',
+        ]
+        for payload in obfuscated_payloads:
+            cleaned = sanitize_html(payload)
+            self.assertNotIn("style=", cleaned.lower(), f"Bypass survived sanitize_html: {payload!r} -> {cleaned!r}")
+            md_rendered = markdown_to_clean_html(payload)
+            inner_lines = [ln for ln in md_rendered.splitlines() if ln.strip().startswith("<p")]
+            self.assertEqual(len(inner_lines), 1, f"Expected inner <p> line for {payload!r}: {md_rendered!r}")
+            self.assertNotIn("style=", inner_lines[0].lower(), f"Bypass survived markdown_to_clean_html: {md_rendered!r}")
+
+        safe_html = (
+            '<p style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; '
+            'font-size: 14px; line-height: 1.6; color: #111827;">Hello</p>'
+        )
+        sanitized_safe = sanitize_html(safe_html)
+        self.assertIn("style=", sanitized_safe)
+        self.assertIn("color: #111827;", sanitized_safe)
+        self.assertIn("font-size: 14px;", sanitized_safe)
+
+    def test_send_welcome_email_blocks_obfuscated_css_styles_and_renders_onboarding(self):
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        swe_path = Path(__file__).resolve().parents[3] / "scripts" / "control" / "send-welcome-email.py"
+        if not swe_path.is_file():
+            self.skipTest("send-welcome-email.py not present in standalone package layout")
+        spec = importlib.util.spec_from_file_location("send_welcome_email_test", swe_path)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["send_welcome_email_test"] = mod
+        spec.loader.exec_module(mod)
+
+        for payload in (
+            '<p style="color: ex\\70 ression(alert(1))">s3</p>',
+            '<p style="color: expr/*x*/ession(alert(1))">s4</p>',
+            '<p style="background: u\\72 l(javascript:alert(1))">s6</p>',
+            '<p style="background: url/*x*/(https://evil.com/leak)">s7</p>',
+            '<p style="background: \\75 rl(https://evil.com)">css_hex3</p>',
+            '<p style="color: exp/*comment*/ression(alert(1))">css_comment</p>',
+            '<p style="color: ex&#92;70 ression(alert(1))">entity_bs</p>',
+            '<p style="background: image-set(\'https://evil.com/x.png\' 1x)">imgset</p>',
+        ):
+            cleaned = mod.sanitize_html(payload)
+            self.assertNotIn("style=", cleaned.lower(), f"Bypass survived send-welcome-email sanitize_html: {cleaned!r}")
+
+        safe = '<code style="color: #38bdf8; background-color: #1e293b; font-family: \'JetBrains Mono\', monospace;">x</code>'
+        self.assertIn("color: #38bdf8;", mod.sanitize_html(safe))
+        msgs = mod.build_onboarding_messages()
+        self.assertEqual(len(msgs), 5)
+        for msg in msgs:
+            self.assertIn("style=", msg.html_body)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -109,6 +109,11 @@ if [ "${FORCE}" -eq 0 ] && [ ! -f "${TRIGGER_FILE}" ]; then
 fi
 
 WEEK_SLUG="${CUSTOM_SLUG:-$(date +%Y-w%U)}"
+WEEK_SLUG_LOWER="$(printf '%s' "${WEEK_SLUG}" | tr '[:upper:]' '[:lower:]')"
+if [[ ! "${WEEK_SLUG}" =~ ^[A-Za-z0-9._-]+$ ]] || [[ "${WEEK_SLUG}" == *".."* ]] || [ "${WEEK_SLUG}" = "." ] || [ "${WEEK_SLUG_LOWER}" = ".git" ] || [ "${WEEK_SLUG_LOWER}" = ".github" ]; then
+  log_error "Invalid week slug: '${WEEK_SLUG}'"
+  exit 1
+fi
 SNAPSHOT_DIR="${ARCHIVE_DIR}/${WEEK_SLUG}"
 
 log_info "================================================================="
@@ -152,18 +157,23 @@ CURRENT_CODING_MODEL="brainsos-core"
 if [ -f "${RECAP_FILE}" ]; then
   log_info "Found agent recap at ${RECAP_FILE}."
   # Use Python to safely parse JSON
-  PARSED_DATA=$(${PYTHON_BIN} - << EOF
-import json, sys
+  PARSED_DATA=$(RECAP_FILE="${RECAP_FILE}" THEME_NAME="${THEME_NAME}" DATE_RANGE="${DATE_RANGE}" CLOSING_QUOTE="${CLOSING_QUOTE}" "${PYTHON_BIN}" - << 'EOF'
+import json, os
+
+recap_file = os.environ["RECAP_FILE"]
+theme_default = os.environ["THEME_NAME"]
+date_default = os.environ["DATE_RANGE"]
+quote_default = os.environ["CLOSING_QUOTE"]
 try:
-    with open("${RECAP_FILE}", "r", encoding="utf-8") as f:
+    with open(recap_file, "r", encoding="utf-8") as f:
         d = json.load(f)
-    print(d.get("theme_name", "${THEME_NAME}"))
-    print(d.get("date_range", "${DATE_RANGE}"))
-    print(d.get("closing_quote", d.get("founding_quote", "${CLOSING_QUOTE}")))
-except Exception as e:
-    print("${THEME_NAME}")
-    print("${DATE_RANGE}")
-    print("${CLOSING_QUOTE}")
+    print(str(d.get("theme_name", theme_default)).replace("\r", " ").replace("\n", " "))
+    print(str(d.get("date_range", date_default)).replace("\r", " ").replace("\n", " "))
+    print(str(d.get("closing_quote", d.get("founding_quote", quote_default))).replace("\r", " ").replace("\n", " "))
+except Exception:
+    print(theme_default)
+    print(date_default)
+    print(quote_default)
 EOF
 )
   THEME_NAME=$(echo "${PARSED_DATA}" | sed -n '1p')
@@ -178,10 +188,17 @@ fi
 CURRENT_CODING_MODEL="${CURRENT_CODING_MODEL:-brainsos-core}"
 
 # Update eras.json
-ERA_RECORD=$(${PYTHON_BIN} - << EOF
+ERA_RECORD=$(ERAS_FILE="${ERAS_FILE}" WEEK_SLUG="${WEEK_SLUG}" THEME_NAME="${THEME_NAME}" DATE_RANGE="${DATE_RANGE}" CLOSING_QUOTE="${CLOSING_QUOTE}" CURRENT_CODING_MODEL="${CURRENT_CODING_MODEL}" SNAPSHOT_DIR="${SNAPSHOT_DIR}" "${PYTHON_BIN}" - << 'EOF'
 import json, os, datetime
 
-eras_path = "${ERAS_FILE}"
+eras_path = os.environ["ERAS_FILE"]
+week_slug = os.environ["WEEK_SLUG"]
+theme_name = os.environ["THEME_NAME"]
+date_range = os.environ["DATE_RANGE"]
+closing_quote = os.environ["CLOSING_QUOTE"]
+coding_model = os.environ["CURRENT_CODING_MODEL"]
+snapshot_dir = os.environ["SNAPSHOT_DIR"]
+
 if os.path.exists(eras_path):
     with open(eras_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -194,23 +211,23 @@ data["active_era"] = next_era
 
 new_entry = {
     "era": next_era,
-    "slug": "${WEEK_SLUG}",
-    "theme_name": """${THEME_NAME}""",
-    "date_range": """${DATE_RANGE}""",
-    "quote": """${CLOSING_QUOTE}""",
-    "coding_model": "${CURRENT_CODING_MODEL}",
+    "slug": week_slug,
+    "theme_name": theme_name,
+    "date_range": date_range,
+    "quote": closing_quote,
+    "coding_model": coding_model,
     "archived_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
 }
 
 # Avoid duplicate slugs
-data["eras"] = [e for e in data.get("eras", []) if e.get("slug") != "${WEEK_SLUG}"]
+data["eras"] = [e for e in data.get("eras", []) if e.get("slug") != week_slug]
 data["eras"].append(new_entry)
 
 with open(eras_path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 
 # Ensure snapshot also has recap.json
-snapshot_recap = os.path.join("${SNAPSHOT_DIR}", "recap.json")
+snapshot_recap = os.path.join(snapshot_dir, "recap.json")
 with open(snapshot_recap, "w", encoding="utf-8") as f:
     json.dump(new_entry, f, indent=2)
 
@@ -244,11 +261,11 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Phase 4: Rotating active coding engine from model pool..."
 
-NEW_MODEL=$(${PYTHON_BIN} - << EOF
+NEW_MODEL=$(MODEL_POOL_FILE="${MODEL_POOL_FILE}" CURRENT_CODING_MODEL="${CURRENT_CODING_MODEL}" "${PYTHON_BIN}" - << 'EOF'
 import json, random, os
 
-pool_path = "${MODEL_POOL_FILE}"
-current_model = "${CURRENT_CODING_MODEL}"
+pool_path = os.environ["MODEL_POOL_FILE"]
+current_model = os.environ["CURRENT_CODING_MODEL"]
 models = ["qwen2.5:latest", "llama3.2:3b", "brainsos-core"]
 
 if os.path.exists(pool_path):
@@ -271,11 +288,11 @@ EOF
 log_info "Selected next autonomous coding engine: '${NEW_MODEL}'."
 
 # Update LiteLLM config alias for cindy-active-coding-model
-${PYTHON_BIN} - << EOF
+LITELLM_CONFIG="${LITELLM_CONFIG}" NEW_MODEL="${NEW_MODEL}" "${PYTHON_BIN}" - << 'EOF'
 import os, re
 
-cfg_path = "${LITELLM_CONFIG}"
-new_model = "${NEW_MODEL}"
+cfg_path = os.environ["LITELLM_CONFIG"]
+new_model = os.environ["NEW_MODEL"]
 backend_target = f"ollama_chat/{new_model}" if not new_model.startswith("ollama_chat/") else new_model
 
 with open(cfg_path, "r", encoding="utf-8") as f:
@@ -283,7 +300,7 @@ with open(cfg_path, "r", encoding="utf-8") as f:
 
 pattern = r"(- model_name:\s*cindy-active-coding-model\s*\n\s*litellm_params:\s*\n\s*model:\s*)[^\n]+"
 if re.search(pattern, content):
-    new_content = re.sub(pattern, rf"\g<1>{backend_target}", content)
+    new_content = re.sub(pattern, lambda m: f"{m.group(1)}{backend_target}", content)
     with open(cfg_path, "w", encoding="utf-8") as f:
         f.write(new_content)
 else:

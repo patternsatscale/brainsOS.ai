@@ -74,8 +74,8 @@ Most "agent platforms" force a false choice: either rent seats on a multi-tenant
 
 1. **☁️ Sovereign Cloud Appliance (AWS ARM64 Graviton AMI + Ambient Bedrock)**:
    - **Turnkey Golden AMI (`packages/brainsOS-appliance`)**: Pre-built from a clean Git tag via HashiCorp Packer (`make build-ami`) over AWS SSM Session Manager, gated by a fail-closed secret/key scanner and AWS Inspector vulnerability checks.
-   - **Keyless Ambient Amazon Bedrock + Kernel IMDS Guard**: LiteLLM routes to **Amazon Bedrock** (Anthropic Claude, Amazon Nova, cross-region inference profiles) using the EC2 Instance Role over **IMDSv2**—**zero LLM API keys stored in `.env`**. Simultaneously, `scripts/setup/imds-guard.sh` enforces the `BRAINSOS-IMDS` `iptables` chain on `169.254.169.254/32`, permitting *only* the LiteLLM container to reach instance metadata and dropping all packets from agent runners and app containers.
-   - **First-Boot Identity Wizard, Toggleable Break-Glass & Owner-Bound Cognito/ALB SSO**: First boot (`firstboot.sh`) generates unique per-instance credentials, binds toggleable break-glass `admin`/`akadmin` recovery to the **EC2 Instance ID** (`BRAINSOS_BREAKGLASS_ENABLED=true|false`), and supports both a guided local **Superuser Wizard** and opt-in **AWS Cognito OIDC** (`AUTH_COGNITO_*`) or zero-double-login **AWS ALB JWT Pass-Through** (`AUTH_ALB_OIDC_ENABLED=true`, verifying `X-Amzn-Oidc-Data` ES256 tokens) that automatically elevate the bound EBS volume owner (`BRAINSOS_USER_SUB`) to local administrator across **Authentik SSO**, **SOGo Webmail**, **Gitea**, and **LiteLLM** (`proxy_admin`), with built-in Let's Encrypt or keyless Route 53 DNS-01 TLS (`<username>.aws.cloud.brainsos.ai` or custom BYOD domain).
+   - **Keyless Ambient Amazon Bedrock + Kernel IMDS & Egress Guard**: LiteLLM routes to **Amazon Bedrock** (Anthropic Claude, Amazon Nova, cross-region inference profiles) using the EC2 Instance Role over **IMDSv2**—**zero LLM API keys stored in `.env`**. Simultaneously, `scripts/setup/imds-guard.sh` enforces `DOCKER-USER` chains: `BRAINSOS-IMDS` permits *only* LiteLLM (and Caddy solely when `BRAINSOS_TLS_MODE=route53` DNS-01 ACME is active) to reach `169.254.169.254/32`, while `BRAINSOS-EGRESS` restricts `brainsos-internal-net` WAN egress exclusively to `tool-egress-proxy:8082`.
+   - **First-Boot Identity Wizard, Auto-Disabling Break-Glass & Owner-Bound Cognito/ALB SSO**: First boot (`firstboot.sh`) generates unique per-instance credentials and a persisted 256-bit `BRAINSOS_DDNS_OWNER_SECRET` for keyed `_brainsos-owner.<fqdn>` Route 53 TXT claims, auto-disables `BRAINSOS_BREAKGLASS_ENABLED` after First-Boot Wizard credential setup or Cognito SSO completion unless re-enabled by an admin, and supports both a guided local **Superuser Wizard** (with self-hosted static Authentik login CSS) and fail-closed **AWS Cognito OIDC** (`AUTH_COGNITO_*`, requiring `email_verified`) or **AWS ALB JWT Pass-Through** (`AUTH_ALB_OIDC_ENABLED=true`, requiring explicit `AUTH_ALB_SIGNER_ARN`, `AUTH_ALB_ISSUER`, and `AUTH_ALB_TRUSTED_CIDRS`) that elevate the bound EBS volume owner (`BRAINSOS_USER_SUB`) across **Authentik SSO**, **SOGo Webmail**, **Gitea**, and **LiteLLM** (`proxy_admin`), with Let's Encrypt or keyless Route 53 DNS-01 TLS.
    - **Zero-Inbound-SSH Perimeter Lockdown**: UFW default-deny exposes only `80`/`443` via Caddy TLS. Port `22` is closed; operators manage the host via **AWS SSM** or the built-in browser **OS Control Center (`/#system`)** with an interactive **XTerm.js** host PTY, live APT security patch telemetry, and one-click unattended OS upgrades.
 2. **⚡ Bare-Metal Edge & Workstation Appliance (ASUS Ascent GX10 / Apple Silicon / Linux)**:
    - **100% Local Inference & Hardware Serialization**: Runs offline or on-LAN on the **ASUS Ascent GX10** (NVIDIA GB10 Grace Blackwell Superchip, 128 GB unified LPDDR5x @ ~273 GB/s) or **Apple Silicon**, binding **Ollama / vLLM** strictly to host loopback (`127.0.0.1:11434`) while LiteLLM serializes completions (`max_parallel_requests: 1`) to prevent unified memory bus thrashing.
@@ -128,7 +128,7 @@ Replaces unpredictable synchronous agent loops with a decoupled queuing harness 
 Translates ACSG agent safety into hard physical boundaries. If an autonomous agent diverges or enters an unconstrained loop, brainsOS drains or drops queue workers, cutting execution deterministically via `./scripts/control/emergency-stop.sh` or virtual key invalidation before cloud budgets spike, battery reserves collapse, or silicon reaches thermal limits.
 
 ### 3. Least-Privilege Host Sandboxing & Kernel IMDS Isolation
-Enforces strict boundary isolation on both bare-metal silicon and AWS EC2. Agent runtimes drop elevated Linux capabilities (`cap_drop: [ALL]`), operate under non-root identities (`PUID=1000`, `PGID=1000`), block exposure of `/var/run/docker.sock`, and are blocked at the Linux kernel `iptables` layer (`BRAINSOS-IMDS`) from reaching EC2 instance metadata (`169.254.169.254/32`).
+Enforces strict boundary isolation on both bare-metal silicon and AWS EC2. Agent turns execute in ephemeral per-tenant `docker run --rm` sandboxes (`EphemeralDockerRunnerClient`, `--user=10001:10001`, `--read-only`, `--tmpfs /tmp:rw,noexec,nosuid,size=128m`, `--cap-drop=ALL`, `--security-opt no-new-privileges:true`, `--pids-limit=256`, `--label brainsos.tenant=<tenant_id>`) mounting only that tenant's `/workspace` and `/memories`, blocking exposure of `/var/run/docker.sock`, and dropping instance metadata (`169.254.169.254/32`) via the Linux kernel `iptables` layer (`BRAINSOS-IMDS`).
 
 ### 4. Memory Plane Purity (Open Knowledge Format) & Local Git Versioning
 Runtimes are ephemeral and disposable. Long-term agent knowledge is preserved exclusively in human-auditable flat-file Markdown notes using the Open Knowledge Format (OKF) via `packages/brainsOS-memory` and versioned in the appliance's embedded **Gitea** server (`operator/agent-box`). Binary indices, SQLite databases, and packages are strictly forbidden in `/memories` and reside in `/workspace`.
@@ -140,19 +140,19 @@ Exposes agent tools across all domain packages dynamically via the Model Context
 
 ## 3. Out-of-the-Box Governance Stack (18 Embedded Services)
 
-brainsOS unifies 18 enterprise-grade open-source components into a single, pre-wired appliance across 5 isolated bridge networks:
+brainsOS unifies 18 enterprise-grade open-source components into a single, pre-wired appliance across isolated bridge networks:
 
 | Component | Role in brainsOS Appliance | Governance & Security Boundary |
 |---|---|---|
 | **Thin-Spine Portal & OS Control Center** | Unified full-bleed workspace (`/`) + appliance administration (`/#system`) | Built-in First-Boot Superuser Wizard, interactive **XTerm.js** host PTY, APT security patch manager, runner/tool key manager, and universal update/rollback. |
-| **[Authentik](https://goauthentik.io) & [Caddy](https://caddyserver.com)** | Single-origin TLS (`:443`) reverse proxy & Zero-Trust Forward-Auth IdP | Enforces single sign-on across every appliance UI; supports internal Root CA, Let's Encrypt HTTP-01, and keyless Route 53 DNS-01 ACME. |
-| **[LiteLLM](https://github.com/BerriAI/litellm) (`v1.109.1`)** | Token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1`) for unified memory buses; routes to **Ambient AWS Bedrock (IMDSv2)** or loopback **Ollama/vLLM**. |
-| **IMDSv2 Firewall (`imds-guard.sh`)** | Kernel-level EC2 metadata isolation (`packages/brainsOS-appliance`) | `DOCKER-USER` → `BRAINSOS-IMDS` `iptables` chain allows only LiteLLM to reach `169.254.169.254/32` and drops all agent/app containers. |
-| **[LiteLLM Lens](https://github.com/BerriAI/lens) & [Langfuse v4](https://langfuse.com)** | Dual OpenTelemetry GenAI tracing & spend correlation (shared ClickHouse `26.2` + `KeeperMap`) | First-class embedded Lens UI (`/proxy/ui/?page=lens`, rootless `65532:65532` `:4318`) correlating Hermes agent/tool spans 1:1 with gateway spend via W3C `traceparent`, side-by-side with Langfuse (`LANGFUSE_ENABLED=true\|false`). |
-| **In-Transit Egress Proxy ([mitmproxy](https://mitmproxy.org))** | Outbound L7 firewall & multi-tenant credential injection (`:8081`/`:8082`) | Containers hold **zero ambient secrets**; proxy injects GitHub/API credentials in transit by container IP and masks tokens in `mitmweb` logs. |
-| **[Postfix](https://www.postfix.org), [Dovecot](https://www.dovecot.org) & [SOGo](https://sogo.nu)** | Decoupled, auditable asynchronous email & CalDAV groupware backbone | Every inbound email triggers one checkpointed Hermes run and returns one reply—eliminating fragile synchronous polling loops. |
-| **Operator IDE ([code-server](https://github.com/coder/code-server))** | Browser-based VS Code workspace (`/editor/`) behind Authentik SSO | Pre-wired to `/data` (`operator/agent-box`) for inspecting and editing agent personas, skills, and OKF memories. |
-| **Source Control ([Gitea](https://about.gitea.com))** | Embedded self-hosted Git server (`/git/`) with Authentik reverse-proxy SSO | Automatically seeded with `operator/agent-box` (`main` & `initial-setup` branches) to version `/data` prompts, `SOUL.md` personas, and memories locally. |
+| **[Authentik](https://goauthentik.io) & [Caddy](https://caddyserver.com)** | Single-origin TLS (`:443`) reverse proxy & Zero-Trust Forward-Auth IdP | Enforces single sign-on across every appliance UI (`authentik Admins` RBAC on `/editor/*`, `/efw/*`, `/runner*`, `/git/*`, OpenBao); supports internal Root CA, Let's Encrypt HTTP-01, and keyless Route 53 DNS-01 ACME. |
+| **[LiteLLM](https://github.com/BerriAI/litellm) (`v1.109.1`)** | Token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1` local / `2` Bedrock) for unified memory buses; routes to **Ambient AWS Bedrock (IMDSv2)** or loopback **Ollama/vLLM**. |
+| **IMDSv2 & Egress Firewall (`imds-guard.sh`)** | Kernel-level EC2 metadata & WAN egress isolation (`packages/brainsOS-appliance`) | `DOCKER-USER` → `BRAINSOS-IMDS` allows LiteLLM (and Route 53 Caddy when active) to reach `169.254.169.254/32` while `BRAINSOS-EGRESS` routes `brainsos-internal-net` WAN egress strictly via `tool-egress-proxy:8082`. |
+| **[LiteLLM Lens](https://github.com/BerriAI/lens) & [Langfuse v4](https://langfuse.com)** | Dual OpenTelemetry GenAI tracing & spend correlation (shared ClickHouse `26.2` + `KeeperMap`) | First-class embedded Lens UI (`/proxy/ui/?page=lens`, rootless `65532:65532` `:4318`) correlating agent/tool spans 1:1 with gateway spend via W3C `traceparent` (`LANGFUSE_SECRET_KEY` stripped from agent sandboxes). |
+| **In-Transit Egress Proxy ([mitmproxy](https://mitmproxy.org))** | Outbound L7 firewall & multi-tenant credential injection (`:8081`/`:8082`) | Containers hold **zero ambient secrets**; `OpenBaoEgressAddon` fetches keys via internal-TLS OpenBao AppRole, enforces SNI/Host/peer-IP SSRF checks, validates per-run `Proxy-Authorization` + `GITHUB_ALLOWED_REPOS`, scrubs Tavily `api_key`, and masks headers as `[INJECTED_OPENBAO_SECRET]`. |
+| **[Postfix](https://www.postfix.org), [Dovecot](https://www.dovecot.org) & [SOGo](https://sogo.nu)** | Decoupled, auditable asynchronous email & CalDAV groupware backbone | Every inbound email triggers one checkpointed run and returns one reply—with `smtpd_sender_login_maps` anti-spoofing, `{SHA512-CRYPT}` sync, and `X-Caddy-Ingress-Token` protection. |
+| **Operator IDE ([code-server](https://github.com/coder/code-server))** | Browser-based VS Code workspace (`/editor/`) behind `authentik Admins` RBAC | Pre-wired to `/data` (`operator/agent-box`) with workspace trust enabled and `/data/control_plane` + `/data/backups` masked via read-only `tmpfs`. |
+| **Source Control ([Gitea](https://about.gitea.com))** | Embedded self-hosted Git server (`/git/`) with `authentik Admins` reverse-proxy SSO | Automatically seeded with `operator/agent-box` (`main` & `initial-setup` branches) with random secrets and Caddy-only `REVERSE_PROXY_TRUSTED_PROXIES`. |
 
 ---
 
@@ -247,9 +247,9 @@ graph TD
 │     - Messaging Daemons: Postfix SMTP, Dovecot IMAP, SOGo Webmail          │
 │     - Operator IDE & SCM: VS Code (/editor/ :8443) + Gitea (/git/ :3000)    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L6: Agent Execution Plane (Non-Root Stateless Runners & Dynamic Profiles)   │
-│     - Shared Runners (UID 10001, cap_drop: ALL, X-Runner-Token, :8642)      │
-│     - Dynamic Manifest Registry: config/agents.yaml (Zero Container Drift)  │
+│ L6: Agent Execution Plane (Ephemeral Per-Tenant Runners & Dynamic Profiles) │
+│     - Ephemeral Sandboxes (`docker run --rm`, 10001:10001, --read-only)     │
+│     - Dynamic Manifest Registry: config/default_settings/{agents,runners}   │
 │     - Asynchronous Agent Core SPI: packages/brainsOS-agent                  │
 │     - Agent-Centric Storage: data/agents/<tenant>/ (SOUL, memories, work)   │
 ├─────────────────────────────────────────────────────────────────────────────┤
@@ -261,15 +261,15 @@ graph TD
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing, Secrets & ACSG Control Plane                                   │
 │     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
-│     - Hardware Serialization: max_parallel_requests: 1 (LPDDR5x guard)      │
-│     - OpenBao Secret Manager: brainsos-control-secrets (Raft, zero host ports)│
-│     - Tool Egress Proxy: brainsos-agent-egress-proxy (AppRole in-transit)   │
+│     - Hardware Serialization: max_parallel_requests: 1 (GX10) / 2 (Bedrock) │
+│     - OpenBao Secret Manager: internal TLS (:8200), seal outside /data      │
+│     - Tool Egress Proxy: OpenBaoEgressAddon (Proxy-Auth + SSRF + SNI)       │
 │     - Control Plane DB: brainsos-control-litellm-db (PostgreSQL, isolated)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane (Dual Sovereign Modes)                                  │
 │     - Bare-Metal Mode: Host Ollama / vLLM bound to loopback (127.0.0.1:11434)│
 │     - AWS Appliance Mode: Ambient Amazon Bedrock via EC2 IMDSv2 IAM Role    │
-│     - Kernel Guard: BRAINSOS-IMDS / IMDS6 iptables drops all non-LiteLLM    │
+│     - Kernel Guard: BRAINSOS-IMDS + BRAINSOS-EGRESS (DOCKER-USER)           │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L2: Virtualization & 8 Isolated Bridge Networks                             │
 │     - brainsos-ingress-net (Caddy -> Service ports & Authentik SSO gates)   │
@@ -505,18 +505,18 @@ Once running, all appliance services are unified behind single-origin HTTPS (`:4
 | Service | Ingress URL | Internal Port | Auth / Access | Role |
 |---|---|---|---|---|
 | **Thin-Spine Portal** | [https://local.brainsos.ai/](https://local.brainsos.ai/) | `80` / `443` | *Public / SSO* | Bespoke Thin-Spine React shell (<4% rail, 96%+ full-bleed viewport) |
-| **OS Control Center** | [https://local.brainsos.ai/#system](https://local.brainsos.ai/#system) | `8000` | Authentik SSO | Superuser Wizard, XTerm.js Host PTY, APT patching, Runner & Tool Keys, Updates |
+| **OS Control Center (System API)** | [https://local.brainsos.ai/#system](https://local.brainsos.ai/#system) | `8010` *(ingress-net)* | `Authentik Admins` / Wizard | Superuser Wizard, XTerm.js Host PTY, APT patching, Runner & Tool Keys, Updates |
 | **Authentik SSO Ingress** | [https://local.brainsos.ai/auth/](https://local.brainsos.ai/auth/) | `9000` | Superuser / `admin` (`EC2 ID`) | Centralized Zero-Trust SSO & Forward-Auth identity gateway |
-| **Operator IDE (VS Code)** | [https://local.brainsos.ai/editor/](https://local.brainsos.ai/editor/) | `8443` | Authentik SSO (`CODE_SERVER_AUTH=none`) | Containerized VS Code (`code-server`) pre-wired to `/data` Git repo |
-| **Gitea Source Control** | [https://local.brainsos.ai/git/](https://local.brainsos.ai/git/) | `3000` | Authentik SSO (Reverse-Proxy Auth) | Self-hosted Git server tracking `operator/agent-box` (`SOUL.md`, skills, memories) |
-| **SOGo Webmail & Groupware** | [https://local.brainsos.ai/mail/](https://local.brainsos.ai/mail/) | `20000` | Authentik SSO (Trusted Proxy) | Webmail, agent mailboxes & CalDAV calendars |
+| **Operator IDE (VS Code)** | [https://local.brainsos.ai/editor/](https://local.brainsos.ai/editor/) | `8443` | `Authentik Admins` (`CODE_SERVER_AUTH=none`) | Containerized VS Code (`code-server`) pre-wired to `/data` (excludes `/data/control_plane` & `/data/backups`) |
+| **Gitea Source Control** | [https://local.brainsos.ai/git/](https://local.brainsos.ai/git/) | `3000` | `Authentik Admins` (Reverse-Proxy Auth) | Self-hosted Git server tracking `operator/agent-box` (`SOUL.md`, skills, memories) |
+| **SOGo Webmail & Groupware** | [https://local.brainsos.ai/mail/](https://local.brainsos.ai/mail/) | `20000` | Authentik SSO (`X-Caddy-Ingress-Token`) | Webmail, agent mailboxes & CalDAV calendars |
 | **LiteLLM Control Plane** | [https://local.brainsos.ai/proxy/ui](https://local.brainsos.ai/proxy/ui) | `4000` | Authentik SSO (Injected Key) | Hardware-serialized routing (Ollama / Ambient Bedrock), budgets & virtual keys |
 | **LiteLLM Lens Telemetry** | [https://local.brainsos.ai/proxy/ui/?page=lens](https://local.brainsos.ai/proxy/ui/?page=lens) | `4318` | Authentik SSO + Scoped Trace Key | Native embedded agent/tool trace inspector, gateway spend matching & evaluations |
-| **Tool Egress Proxy Console** | [https://local.brainsos.ai/efw/](https://local.brainsos.ai/efw/) | `8081` | Authentik SSO | Mitmweb real-time egress flow inspection & secret masking |
-| **OpenBao Secrets Vault** | [https://local.brainsos.ai/ui/vault/](https://local.brainsos.ai/ui/vault/) | `8200` *(internal)* | Authentik SSO + OIDC (`openbao-admin`) | Segregated encrypted Raft KV v2 secret browser, AppRole policies & audit UI |
+| **Tool Egress Proxy Console** | [https://local.brainsos.ai/efw/](https://local.brainsos.ai/efw/) | `8081` | `Authentik Admins` | Mitmweb real-time egress flow inspection & `[INJECTED_OPENBAO_SECRET]` masking |
+| **OpenBao Secrets Vault** | [https://local.brainsos.ai/ui/vault/](https://local.brainsos.ai/ui/vault/) | `8200` *(internal TLS)* | `Authentik Admins` + OIDC (`openbao-admin`) | Segregated encrypted Raft KV v2 secret browser (seal at `/etc/brainsos/openbao-seal.json`) |
 | **Langfuse Observability** | [https://langfuse.local.brainsos.ai/](https://langfuse.local.brainsos.ai/) | `3001` | Authentik SSO | Distributed OpenTelemetry thread tracing & prompt token breakdown (`LANGFUSE_ENABLED`) |
-| **Hermes Runner WebUI** | [https://local.brainsos.ai/runner/](https://local.brainsos.ai/runner/) | `8787` | Authentik SSO | Multi-tenant stateless agent runner terminal & burn target |
-| **Agent Queue & System API** | `http://127.0.0.1:8000` | `8000` | *Internal Gateway* | Non-blocking email webhook ingestion, queue worker & host system API |
+| **Hermes Dashboard** | [https://local.brainsos.ai/runner/](https://local.brainsos.ai/runner/) | `9119` *(internal)* | `Authentik Admins` (`X-Hermes-Proxy-Token` + `X-Runner-Token`) | Hermes dashboard behind Caddy forward-auth (`runner-hermes` detached from `brainsos-ingress-net`) |
+| **Agent Mail Webhook & Queue** | `http://127.0.0.1:8000` | `8000` *(mail-net)* | *Internal Gateway* (`MAIL_WEBHOOK_SECRET`) | Non-blocking email webhook ingestion & queue worker (`brainsos_agent.worker`) |
 
 ---
 
@@ -541,7 +541,7 @@ make langfuse       # Start Langfuse v4 distributed observability stack
 make langfuse-status# Check Langfuse health, container status, and OTel ingestion
 make lens-setup     # Provision ClickHouse KeeperMap, isolated 'lens' DB, and tenant tracing key
 make lens-status    # Check LiteLLM Lens /health/ready and gateway /lens/service connection
-make emergency-stop # Instantly terminate all agent containers
+make emergency-stop # Dynamically discover LiteLLM, kill brainsos.tenant sandboxes, stop worker & revoke keys
 
 # Fleet snapshots & backups
 ./scripts/control/snapshot-memories.sh # Automated Git commit/push of private fleet repo
@@ -549,7 +549,7 @@ make emergency-stop # Instantly terminate all agent containers
 # Appliance Ingress Lockdown & Host Perimeter Security (Ticket #312 / #332)
 docker compose -f docker-compose.yml -f docker/compose/compose.appliance.yml up -d # Single-origin port 443 lockdown
 sudo ./packages/brainsOS-appliance/scripts/harden-host.sh # Enforce UFW firewall, SSH hardening, and Docker log constraints
-sudo ./scripts/setup/imds-guard.sh --check       # Verify EC2 IMDSv2 container isolation (LiteLLM allowed, all other containers dropped)
+sudo ./scripts/setup/imds-guard.sh --check       # Verify EC2 IMDSv2 & egress container isolation
 ./scripts/verify/verify-appliance-ingress.sh  # Verify published ports and Caddy TLS invariants
 ./scripts/verify/verify-ami-coldboot.sh       # Verify cold-boot provisioning, Superuser wizard & Gitea integration
 make build-ami ARGS="--ref v0.1.1 --dry-run" # Stage clean artifact from a git tag + fail-closed scan, print Packer command (#313/#322)
@@ -572,13 +572,13 @@ docker compose logs -f hermes-runner
 
 ### Email → Agent Run → Reply
 
-Every inbound email to an agent triggers **one** asynchronous Hermes run and produces **one** reply:
+Every inbound email to an agent triggers **one** asynchronous run in an isolated ephemeral sandbox (`EphemeralDockerRunnerClient`) and produces **one** sanitized HTML/Markdown reply:
 
-1. The queue worker submits `POST /v1/runs` (persona + OKF rules as `instructions`, OKF thread turns as `conversation_history`, canonical `session_id = mail-<agent>-<thread>`, `Idempotency-Key = Message-ID`) and checkpoints the `run_id` on the queue task.
+1. The queue worker submits `POST /v1/runs` (persona + OKF rules as `instructions`, structured JSONL thread turns as `conversation_history`, anchored `session_id = ^mail-([a-z0-9_-]+)-...`, `Idempotency-Key = Message-ID`) and checkpoints the `run_id` on the queue task.
 2. It polls `GET /v1/runs/{run_id}` with no socket held open, so runs may last hours. A wall-clock budget (`HERMES_RUN_MAX_SEC`, default 4h) calls `/stop`. A worker restart resumes polling the same run instead of resubmitting.
-3. `completed` → the result is emailed and the turn is recorded in OKF. `failed` / `cancelled` / `interrupted` / timeout → the sender gets a plain failure email with recommendations; raw errors go to logs and Langfuse only.
-4. Concurrency is 1 at both layers: Hermes `max_concurrent_runs: 1` (the worker backs off on 429) and LiteLLM `max_parallel_requests: 1`.
-5. **Dual OpenTelemetry Tracing (LiteLLM Lens + Langfuse)**: Each email thread produces a single deterministic thread trace (`thread_trace_id(session_id) = sha256(f"{sid}::{sid}")[:16]`). Both the queue worker (`invoke_workflow` / `email-run`) and Hermes (`invoke_agent`, `chat`, `execute_tool`, and `gateway.request` spans) export OTLP traces in parallel to **LiteLLM Lens** (`http://lens:4318/v1/traces` via `LITELLM_TRACING_KEY`) and **Langfuse v4** (`/api/public/otel/v1/traces`, gated by `LANGFUSE_ENABLED=true|false`). Hermes requests to LiteLLM attach W3C `traceparent` headers and `no-log: true` via the `brainsos-litellm-session` plugin so LiteLLM correlates gateway spend 1:1 with Lens `chat` spans via `LensExporter` without duplicating Langfuse root traces.
+3. `completed` → the result is sanitized (`sanitize_html()`), emailed, and the turn is recorded in OKF JSONL. `failed` / `cancelled` / `interrupted` / timeout → the sender gets a plain failure email with recommendations; raw errors go to logs and telemetry only.
+4. Hardware serialization enforces `max_parallel_requests: 1` for local Ollama/GX10 unified memory buses (`config/litellm/config.bedrock.yaml` caps Amazon Bedrock at `max_parallel_requests: 2`), with Hermes `max_concurrent_runs: 1` (worker backs off on 429).
+5. **Write-Only Lens OpenTelemetry Tracing**: Each email thread produces a single deterministic thread trace (`thread_trace_id(session_id) = sha256(f"{sid}::{sid}")[:16]`). Ephemeral agent sandboxes strip `LANGFUSE_SECRET_KEY` and export OTLP traces strictly via write-only **LiteLLM Lens** (`http://lens:4318/v1/traces` via `LITELLM_TRACING_KEY`), while host/gateway components may additionally forward to Langfuse v4 (`/api/public/otel/v1/traces`, gated by `LANGFUSE_ENABLED=true|false`). Requests to LiteLLM attach W3C `traceparent` headers and `no-log: true` via the `brainsos-litellm-session` plugin so LiteLLM correlates gateway spend 1:1 with Lens `chat` spans via `LensExporter`.
 
 ---
 

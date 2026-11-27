@@ -47,6 +47,14 @@ def test_compose_apps_defines_gitea_service():
     assert "GITEA__service__ENABLE_REVERSE_PROXY_AUTHENTICATION=true" in env_joined
     assert "GITEA__service__ENABLE_REVERSE_PROXY_AUTO_REGISTRATION=true" in env_joined
     assert "GITEA__ui__DEFAULT_THEME=gitea-dark" in env_joined
+    assert "GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY:-}" in env_joined
+    assert "GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN:-}" in env_joined
+    assert "brainsos_gitea_secret_key" not in env_joined
+    assert "brainsos_gitea_internal_token" not in env_joined
+    assert "172.16.0.0/12" not in env_joined
+    assert "10.0.0.0/8" not in env_joined
+    assert "127.0.0.0/8" not in env_joined
+    assert "GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES=${CADDY_TRUSTED_PROXIES:-172.28.0.10/32,172.28.6.10/32}" in env_joined
 
 
 def test_compose_appliance_resets_gitea_ports():
@@ -56,9 +64,10 @@ def test_compose_appliance_resets_gitea_ports():
 
 
 def test_compose_agents_hermes_webui_and_search_keys():
-    """Verify compose.agents.yml binds Hermes dashboard to 0.0.0.0 and forwards web search API keys (#334)."""
+    """Verify compose.agents.yml binds Hermes dashboard to 0.0.0.0, detaches ingress-net, and forwards web search API keys (#334 / #399)."""
     data = yaml.safe_load(COMPOSE_AGENTS.read_text(encoding="utf-8"))
     hermes = data["services"]["runner-hermes"]
+    assert "brainsos-ingress-net" not in hermes.get("networks", {})
     env_joined = "\n".join(hermes.get("environment", []))
 
     assert "HERMES_DASHBOARD_HOST=0.0.0.0" in env_joined
@@ -84,7 +93,9 @@ def test_caddyfiles_route_git_and_hermes_runner():
         assert "header_up X-Forwarded-Prefix /runner" in content, f"Missing X-Forwarded-Prefix /runner in {caddy_path}"
         assert "runner-hermes:8787" not in content, f"Stale runner-hermes:8787 found in {caddy_path}"
         assert "(system_api_auth_true)" in content
-        assert "path /api/v1/system/jobs/* /api/v1/system/jobs-active /api/v1/system/health /api/v1/system/identity /api/v1/system/status /api/v1/system/csrf" in content
+        assert "path /api/v1/system/jobs-active /api/v1/system/health /api/v1/system/identity /api/v1/system/csrf" in content
+        assert "@system_public_status" in content
+        assert "(authentik_admin_forward_auth)" in content
         assert "header_up X-Authentik-Email {header.X-Authentik-Email}" in content
 
 
@@ -98,6 +109,14 @@ def test_setup_git_syntax_and_dry_run(tmp_path: Path):
     )
     assert syntax.returncode == 0, syntax.stderr
 
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+    fake_docker.chmod(0o755)
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+
     env_file = tmp_path / ".env"
     env_file.write_text(
         'BRAINSOS_URL="ec2-1-2-3-4.compute-1.amazonaws.com"\n'
@@ -106,10 +125,18 @@ def test_setup_git_syntax_and_dry_run(tmp_path: Path):
         encoding="utf-8",
     )
     env = {
-        **os.environ,
-        "BRAINSOS_ENV_FILE": str(env_file),
-        "BRAINSOS_DATA_DIR": str(tmp_path / "data"),
+        k: v
+        for k, v in os.environ.items()
+        if not (k.startswith("BRAINSOS_") and k.endswith("_DIR"))
     }
+    env.update(
+        {
+            "HOME": str(fake_home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+            "BRAINSOS_ENV_FILE": str(env_file),
+            "BRAINSOS_DATA_DIR": str(tmp_path / "data"),
+        }
+    )
     proc = subprocess.run(
         [str(SETUP_GIT), "--dry-run"],
         capture_output=True,
@@ -125,6 +152,18 @@ def test_setup_git_syntax_and_dry_run(tmp_path: Path):
 
 def test_setup_git_seed_only_initializes_repo_and_gitignore(tmp_path: Path):
     """Verify setup-git.sh --seed-only initializes /data as a main-branch Git repo with strict .gitignore."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker_log = tmp_path / "docker.log"
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "{docker_log}"\nexit 1\n',
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+
     data_dir = tmp_path / "data"
     (data_dir / "souls").mkdir(parents=True)
     (data_dir / "souls" / "bawtford.md").write_text("# Bawtford Soul\n", encoding="utf-8")
@@ -139,10 +178,18 @@ def test_setup_git_seed_only_initializes_repo_and_gitignore(tmp_path: Path):
         encoding="utf-8",
     )
     env = {
-        **os.environ,
-        "BRAINSOS_ENV_FILE": str(env_file),
-        "BRAINSOS_DATA_DIR": str(data_dir),
+        k: v
+        for k, v in os.environ.items()
+        if not (k.startswith("BRAINSOS_") and k.endswith("_DIR"))
     }
+    env.update(
+        {
+            "HOME": str(fake_home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+            "BRAINSOS_ENV_FILE": str(env_file),
+            "BRAINSOS_DATA_DIR": str(data_dir),
+        }
+    )
     proc = subprocess.run(
         [str(SETUP_GIT), "--seed-only"],
         capture_output=True,
@@ -151,6 +198,7 @@ def test_setup_git_seed_only_initializes_repo_and_gitignore(tmp_path: Path):
         env=env,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert not docker_log.exists(), f"--seed-only must not invoke docker, got: {docker_log.read_text()}"
     assert (data_dir / "git").is_dir()
     assert (data_dir / ".gitignore").is_file()
     assert (data_dir / ".git").is_dir()

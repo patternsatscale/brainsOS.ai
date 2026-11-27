@@ -55,6 +55,8 @@ def _load_dynamic_script(script_path_str: str, agent_id: str = "") -> Any:
         os.path.realpath(f"/data/runners/claude-sdk/{clean_agent}"),
         os.path.realpath(f"/data/agents/{clean_agent}"),
     ]
+    if os.getenv("BRAINSOS_AGENT_ID", "").strip() == clean_agent:
+        allowed_roots.append(os.path.realpath("/workspace"))
     if not any(os.path.commonpath([root, script_real]) == root for root in allowed_roots):
         raise PermissionError(f"Access denied: Script path outside allowlisted agent roots ({script_real})")
 
@@ -80,7 +82,7 @@ def _get_anthropic_client(
     from anthropic import AsyncAnthropic
 
     base_url = os.getenv("ANTHROPIC_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000")).rstrip("/")
-    api_key = os.getenv("ANTHROPIC_API_KEY", os.getenv("CLAUDE_SDK_LITELLM_KEY", ""))
+    api_key = os.getenv("LITELLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_SDK_LITELLM_KEY", "")
     return AsyncAnthropic(base_url=base_url, api_key=api_key, timeout=timeout_sec, **({"default_headers": default_headers} if default_headers else {}))
 
 
@@ -273,3 +275,19 @@ async def handle_claude_turn(request: AgentTurnRequest) -> AgentTurnResponse:
 
 
 app = create_runner_app(handle_claude_turn, title="brainsOS Claude Runner")
+
+
+def _run_ephemeral_cli() -> int:
+    import asyncio
+    import sys
+
+    req_file = os.getenv("BRAINSOS_REQUEST_FILE", "").strip()
+    raw_json = Path(req_file).read_text(encoding="utf-8") if (req_file and Path(req_file).is_file()) else sys.stdin.read()
+    turn_req = AgentTurnRequest.model_validate_json(raw_json)
+    resp = asyncio.run(handle_claude_turn(turn_req))
+    print(resp.model_dump_json())
+    return 0 if resp.status == "completed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_ephemeral_cli())

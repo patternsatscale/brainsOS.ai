@@ -31,8 +31,38 @@ runners:
     concurrency_limit: 4
 
   # ----------------------------------------------------------------------------
-  # Ephemeral Docker Sandboxes (On-Demand Execution)
+  # Ephemeral Docker Sandboxes (On-Demand Per-Tenant Execution)
   # ----------------------------------------------------------------------------
+  - id: "hermes-ephemeral"
+    name: "Nous Hermes Ephemeral Per-Tenant Runner"
+    type: "ephemeral_docker"
+    image: "brainsos-runner-hermes:latest"
+    command: ["python3", "/app/server.py"]
+    timeout_sec: 300
+    concurrency_limit: 4
+    memory_limit: "2g"
+    cpu_limit: "2.0"
+
+  - id: "openai-ephemeral"
+    name: "OpenAI SDK Ephemeral Per-Tenant Runner"
+    type: "ephemeral_docker"
+    image: "brainsos-runner-openai:latest"
+    command: ["python3", "/app/server.py"]
+    timeout_sec: 300
+    concurrency_limit: 4
+    memory_limit: "2g"
+    cpu_limit: "2.0"
+
+  - id: "claude-ephemeral"
+    name: "Anthropic Claude SDK Ephemeral Per-Tenant Runner"
+    type: "ephemeral_docker"
+    image: "brainsos-runner-claude:latest"
+    command: ["python3", "/app/server.py"]
+    timeout_sec: 300
+    concurrency_limit: 4
+    memory_limit: "2g"
+    cpu_limit: "2.0"
+
   - id: "openhands-sandbox"
     name: "OpenHands Ephemeral Docker Sandbox"
     type: "ephemeral_docker"

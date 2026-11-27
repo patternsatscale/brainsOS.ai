@@ -74,6 +74,7 @@ class AgentTurnRequest(BaseModel):
     conversation: list[ChatMessage]
     mcp_servers: list[McpServerConfig] = Field(default_factory=list)
     workspace_dir: str
+    memory_dir: Optional[str] = None
     timeout_sec: int = Field(default=120, gt=0)
     extra_params: dict[str, Any] = Field(default_factory=dict)
 

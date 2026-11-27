@@ -361,10 +361,15 @@ def test_every_compose_pull_ignores_buildable():
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker not on PATH")
-def test_targeted_buildable_service_is_rebuilt(tmp_path: Path):
+def test_targeted_buildable_service_is_rebuilt(scratch_repo: Path, tmp_path: Path):
     """Targeting a locally built service (caddy) pulls with --ignore-buildable and rebuilds it."""
     real_docker = shutil.which("docker")
     assert real_docker is not None
+
+    (scratch_repo / ".env").write_text(
+        f"BRAINSOS_DATA_DIR=./data\nCOMPOSE_FILE={REPO_ROOT}/docker-compose.yml\n",
+        encoding="utf-8",
+    )
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -391,19 +396,32 @@ exit 0
 
     env = {
         **os.environ,
+        "BRAINSOS_REPO_ROOT": str(scratch_repo),
         "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
     }
-    subprocess.run(
-        [str(UPDATE_SCRIPT), "--service", "caddy", "--unattended", "--no-backup", "--health-timeout", "1"],
-        cwd=REPO_ROOT,
+    proc = subprocess.run(
+        [
+            str(scratch_repo / "scripts" / "control" / "update.sh"),
+            "--service",
+            "caddy",
+            "--unattended",
+            "--no-backup",
+            "--health-timeout",
+            "1",
+        ],
+        cwd=scratch_repo,
         env=env,
         capture_output=True,
         text=True,
         check=False,
     )
+    combined = proc.stdout + proc.stderr
     log_text = docker_log.read_text(encoding="utf-8")
+    assert proc.returncode != 0
     assert "compose pull --ignore-buildable caddy" in log_text
     assert "compose build caddy" in log_text
+    assert "compose up -d --no-deps caddy" in log_text
+    assert "Automated rollback completed" in combined
 
 
 def test_version_rejected_for_caddy():
@@ -479,6 +497,45 @@ def test_update_branch_selection_dry_run():
     assert proc.returncode == 0
     assert "task/320-appliance-rehearsal" in proc.stdout
     assert "origin/task/320-appliance-rehearsal" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "bad_branch",
+    [
+        "; touch /tmp/pwn",
+        "--upload-pack=evil",
+        "main/../other",
+        "a//b",
+        "/leading",
+        "trailing/",
+        "branch.lock",
+        "main$(id)",
+    ],
+)
+def test_update_rejects_malicious_branch_names(scratch_repo: Path, bad_branch: str):
+    """F22: update.sh rejects malicious or malformed --branch values upfront."""
+    env = {**os.environ, "BRAINSOS_REPO_ROOT": str(scratch_repo)}
+    proc = subprocess.run(
+        [str(scratch_repo / "scripts" / "control" / "update.sh"), "--branch", bad_branch, "--dry-run", "--unattended"],
+        cwd=scratch_repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "Invalid branch name" in proc.stderr
+
+
+def test_update_has_no_shell_true_or_unquoted_heredocs():
+    """F22: update.sh uses shell=False and single-quoted Python heredocs."""
+    txt = UPDATE_SCRIPT.read_text(encoding="utf-8")
+    assert "shell=True" not in txt
+    assert "python3 - << EOF" not in txt
+    assert "float('${PRE_PCT_FREE}')" not in txt
+    assert "float('${POST_CHECK}')" not in txt
+    assert "repos/${repo}/releases" not in txt
+
 
 
 

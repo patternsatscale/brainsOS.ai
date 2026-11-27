@@ -19,6 +19,8 @@ class RunnerConfig(BaseModel):
     concurrency_limit: int = Field(default=4, gt=0)
     memory_limit: Optional[str] = None
     cpu_limit: Optional[str] = None
+    network: Optional[str] = None
+    command: Optional[list[str]] = None
     script_path: Optional[str] = None
 
     @model_validator(mode="after")

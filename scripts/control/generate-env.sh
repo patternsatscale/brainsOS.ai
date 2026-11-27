@@ -231,24 +231,45 @@ echo ""
 # ------------------------------------------------------------------------------
 log_info "Generating secure environment file (.env)..."
 
-python3 - << EOF
+# Create safety backup of existing .env before atomic replacement
+if [ -f "${REAL_ENV_FILE}" ]; then
+  BACKUP_FILE="${REAL_ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
+  (
+    umask 077
+    cp "${REAL_ENV_FILE}" "${BACKUP_FILE}"
+    cp "${REAL_ENV_FILE}" "${REAL_ENV_FILE}.bak"
+  )
+  chmod 600 "${BACKUP_FILE}" "${REAL_ENV_FILE}.bak"
+  log_info "Safety backup created at ${BACKUP_FILE} (permissions 600)"
+fi
+
+ENV_FILE="${ENV_FILE}" \
+EXAMPLE_FILE="${EXAMPLE_FILE}" \
+TARGET_DOMAIN="${TARGET_DOMAIN}" \
+TARGET_MAIL_DOMAIN="${TARGET_MAIL_DOMAIN}" \
+TARGET_DATA_DIR="${TARGET_DATA_DIR}" \
+REPO_ROOT="${REPO_ROOT}" \
+FORCE_PASSWORDS="${FORCE_PASSWORDS}" \
+python3 - << 'EOF'
 import base64
 import os
+import re
 import secrets
 import sys
+import tempfile
 
-env_file = "${ENV_FILE}"
+env_file = os.environ["ENV_FILE"]
 target_path = os.path.realpath(env_file) if os.path.islink(env_file) else os.path.abspath(env_file)
-os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
-example_file = "${EXAMPLE_FILE}"
-temp_file = f"{target_path}.tmp"
+env_dir = os.path.dirname(os.path.abspath(target_path))
+os.makedirs(env_dir, exist_ok=True)
+example_file = os.environ["EXAMPLE_FILE"]
 
-target_domain = "${TARGET_DOMAIN}"
-target_mail_domain = "${TARGET_MAIL_DOMAIN}"
-target_data_dir = "${TARGET_DATA_DIR}"
+target_domain = os.environ["TARGET_DOMAIN"]
+target_mail_domain = os.environ["TARGET_MAIL_DOMAIN"]
+target_data_dir = os.environ["TARGET_DATA_DIR"]
 if not os.path.isabs(target_data_dir):
-    target_data_dir = os.path.abspath(os.path.join("${REPO_ROOT}", target_data_dir))
-force_passwords = ("${FORCE_PASSWORDS}".lower() == "true")
+    target_data_dir = os.path.abspath(os.path.join(os.environ["REPO_ROOT"], target_data_dir))
+force_passwords = (os.environ.get("FORCE_PASSWORDS", "false").lower() == "true")
 
 # Parse existing .env or .env.bak if present
 current_vars = {}
@@ -335,12 +356,20 @@ secret_generators = {
     "LENS_GATEWAY_SECRET": lambda: gen_hex(32),
     "LITELLM_LENS_SERVICE_TOKEN": lambda: gen_hex(32),
     "SYSTEM_API_TOKEN": lambda: gen_hex(16),
+    "CADDY_INGRESS_TOKEN": lambda: gen_hex(32),
+    "GITEA_SECRET_KEY": lambda: gen_hex(32),
+    "GITEA_INTERNAL_TOKEN": lambda: gen_hex(32),
+    "BRAINSOS_DDNS_OWNER_SECRET": lambda: gen_hex(32),
 }
 
 generated_secrets = {}
 for key, gen_fn in secret_generators.items():
     current_val = current_vars.get(key, "")
-    if force_passwords or is_placeholder(current_val):
+    invalid_ddns_secret = (
+        key == "BRAINSOS_DDNS_OWNER_SECRET"
+        and not re.fullmatch(r"[0-9a-fA-F]{64}", current_val.strip().strip('"').strip("'"))
+    )
+    if force_passwords or is_placeholder(current_val) or invalid_ddns_secret:
         generated_secrets[key] = gen_fn()
     else:
         generated_secrets[key] = current_val
@@ -401,14 +430,25 @@ with open(example_file, "r", encoding="utf-8") as f:
         else:
             output_lines.append(line_rstrip)
 
-# Ensure BRAINSOS_MAIL_DOMAIN, SYSTEM_API_TOKEN, and BRAINSOS_UNIT_NAME are present
+# Ensure BRAINSOS_MAIL_DOMAIN, SYSTEM_API_TOKEN, CADDY_INGRESS_TOKEN, GITEA_*, BRAINSOS_DDNS_OWNER_SECRET, and BRAINSOS_UNIT_NAME are present
 if "BRAINSOS_MAIL_DOMAIN" not in handled_keys:
     output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
     handled_keys.add("BRAINSOS_MAIL_DOMAIN")
 
-if "SYSTEM_API_TOKEN" not in handled_keys:
-    output_lines.append(f"SYSTEM_API_TOKEN={generated_secrets['SYSTEM_API_TOKEN']}")
-    handled_keys.add("SYSTEM_API_TOKEN")
+for req_key in (
+    "SYSTEM_API_TOKEN",
+    "CADDY_INGRESS_TOKEN",
+    "GITEA_SECRET_KEY",
+    "GITEA_INTERNAL_TOKEN",
+    "BRAINSOS_DDNS_OWNER_SECRET",
+):
+    if req_key not in handled_keys:
+        output_lines.append(f"{req_key}={generated_secrets[req_key]}")
+        handled_keys.add(req_key)
+
+if sys.platform == "darwin" and "BRAINSOS_MAIL_CONTROL_PLANE_HOST" not in handled_keys and "BRAINSOS_MAIL_CONTROL_PLANE_HOST" not in current_vars:
+    output_lines.append("BRAINSOS_MAIL_CONTROL_PLANE_HOST=host-gateway")
+    handled_keys.add("BRAINSOS_MAIL_CONTROL_PLANE_HOST")
 
 if "BRAINSOS_UNIT_NAME" not in handled_keys:
     unit_name_val = current_vars.get("BRAINSOS_UNIT_NAME", "").strip() or "Enterprise Agent Box"
@@ -450,21 +490,20 @@ if unmapped:
     for k in sorted(unmapped):
         output_lines.append(f"{k}={current_vars[k]}")
 
-with open(temp_file, "w", encoding="utf-8") as f:
-    f.write("\n".join(output_lines) + "\n")
+rendered = "\n".join(output_lines) + "\n"
+fd, temp_file = tempfile.mkstemp(prefix=".env.", dir=env_dir)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(rendered)
+    os.chmod(temp_file, 0o600)
+    os.replace(temp_file, target_path)
+except Exception:
+    if os.path.exists(temp_file):
+        os.unlink(temp_file)
+    raise
 
 EOF
 
-# Create safety backup of existing .env
-if [ -f "${REAL_ENV_FILE}" ]; then
-  BACKUP_FILE="${REAL_ENV_FILE}.bak-$(date +%Y%m%d%H%M%S)"
-  cp -p "${REAL_ENV_FILE}" "${BACKUP_FILE}"
-  cp -p "${REAL_ENV_FILE}" "${REAL_ENV_FILE}.bak"
-  chmod 600 "${BACKUP_FILE}" "${REAL_ENV_FILE}.bak"
-  log_info "Safety backup created at ${BACKUP_FILE} (permissions 600)"
-fi
-
-mv "${REAL_ENV_FILE}.tmp" "${REAL_ENV_FILE}"
 chmod 600 "${REAL_ENV_FILE}"
 log_success "Generated secure .env file with permissions 600."
 

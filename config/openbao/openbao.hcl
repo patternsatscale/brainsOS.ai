@@ -10,6 +10,8 @@ storage "raft" {
 }
 
 listener "tcp" {
-  address     = "0.0.0.0:8200"
-  tls_disable = 1
+  address       = "0.0.0.0:8200"
+  tls_disable   = 0
+  tls_cert_file = "/openbao/tls/openbao.crt"
+  tls_key_file  = "/openbao/tls/openbao.key"
 }

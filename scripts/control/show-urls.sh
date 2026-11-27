@@ -99,16 +99,24 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Execute formatting and extraction via Python helper
-python3 - << EOF
+ENV_FILE="${ENV_FILE}" \
+MASK_SECRETS="${MASK_SECRETS}" \
+NO_HOSTS="${NO_HOSTS}" \
+APPLY_HOSTS="${APPLY_HOSTS}" \
+PORTAL_ONLY="${PORTAL_ONLY}" \
+python3 - << 'EOF'
+import datetime
 import os
 import re
+import subprocess
 import sys
+import tempfile
 
-env_file = "${ENV_FILE}"
-mask_secrets = ("${MASK_SECRETS}".lower() == "true")
-no_hosts = ("${NO_HOSTS}".lower() == "true")
-apply_hosts = ("${APPLY_HOSTS}".lower() == "true")
-portal_only = ("${PORTAL_ONLY}".lower() == "true")
+env_file = os.environ["ENV_FILE"]
+mask_secrets = (os.environ.get("MASK_SECRETS", "false").lower() == "true")
+no_hosts = (os.environ.get("NO_HOSTS", "false").lower() == "true")
+apply_hosts = (os.environ.get("APPLY_HOSTS", "false").lower() == "true")
+portal_only = (os.environ.get("PORTAL_ONLY", "false").lower() == "true")
 
 env = {}
 with open(env_file, "r", encoding="utf-8") as f:
@@ -391,8 +399,8 @@ if no_hosts:
     print(f"  echo \"{hosts_line}\" | sudo tee -a /etc/hosts\n")
     sys.exit(0)
 
-# Write temp hosts file for safe substitution
-temp_hosts = "/tmp/hosts.brainsos.new"
+# Write temp hosts file safely with 0600 permissions
+temp_hosts = None
 try:
     if hosts_block_header in hosts_file_content and hosts_block_footer in hosts_file_content:
         # Replace existing managed block
@@ -402,31 +410,40 @@ try:
         # Append managed block
         updated_content = hosts_file_content.rstrip() + "\n\n" + new_block
 
-    with open(temp_hosts, "w", encoding="utf-8") as f:
-        f.write(updated_content)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="hosts.brainsos.", delete=False) as tf:
+        temp_hosts = tf.name
+        os.chmod(temp_hosts, 0o600)
+        tf.write(updated_content)
 except Exception as e:
+    if temp_hosts and os.path.exists(temp_hosts):
+        os.unlink(temp_hosts)
     print(f"{RED}[ERROR] Failed to write temporary hosts file: {e}{NC}")
     sys.exit(1)
 
-# Prompt or apply
-should_apply = apply_hosts
-if not should_apply and sys.stdin.isatty():
-    resp = input(f"Would you like to automatically update /etc/hosts now? (Requires sudo) [Y/n]: ").strip()
-    if resp.lower() not in ("n", "no"):
-        should_apply = True
+try:
+    should_apply = apply_hosts
+    if not should_apply and sys.stdin.isatty():
+        resp = input("Would you like to automatically update /etc/hosts now? (Requires sudo) [Y/n]: ").strip()
+        if resp.lower() not in ("n", "no"):
+            should_apply = True
 
-if should_apply:
-    print(f"{BLUE}[INFO] Updating /etc/hosts (sudo authentication may be requested)...{NC}")
-    cmd = f'sudo cp /etc/hosts "/etc/hosts.bak-\$(date +%Y%m%d%H%M%S)" && sudo cp "{temp_hosts}" /etc/hosts && rm -f "{temp_hosts}"'
-    ret = os.system(f'bash -c \'{cmd}\'')
-    if ret == 0:
-        print(f"{GREEN}[SUCCESS] Successfully updated /etc/hosts with brainsOS service domains!{NC}")
+    if should_apply:
+        print(f"{BLUE}[INFO] Updating /etc/hosts (sudo authentication may be requested)...{NC}")
+        backup_path = f"/etc/hosts.bak-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        bak_res = subprocess.run(["sudo", "cp", "/etc/hosts", backup_path], check=False)
+        cp_res = subprocess.run(["sudo", "cp", temp_hosts, "/etc/hosts"], check=False) if bak_res.returncode == 0 else bak_res
+        if cp_res.returncode == 0:
+            subprocess.run(["sudo", "chmod", "0644", "/etc/hosts"], check=False)
+            print(f"{GREEN}[SUCCESS] Successfully updated /etc/hosts with brainsOS service domains!{NC}")
+        else:
+            print(f"{RED}[WARN] Could not update /etc/hosts automatically.{NC}")
+            print("Run the following command manually:")
+            print(f'  echo "{hosts_line}" | sudo tee -a /etc/hosts\n')
     else:
-        print(f"{RED}[WARN] Could not update /etc/hosts automatically.{NC}")
-        print(f"Run the following command manually:")
-        print(f"  echo \"{hosts_line}\" | sudo tee -a /etc/hosts\n")
-else:
-    print(f"{BLUE}[INFO] To manually add these domains to /etc/hosts, run:{NC}")
-    print(f"  echo \"{hosts_line}\" | sudo tee -a /etc/hosts\n")
+        print(f"{BLUE}[INFO] To manually add these domains to /etc/hosts, run:{NC}")
+        print(f'  echo "{hosts_line}" | sudo tee -a /etc/hosts\n')
+finally:
+    if temp_hosts and os.path.exists(temp_hosts):
+        os.unlink(temp_hosts)
 
 EOF

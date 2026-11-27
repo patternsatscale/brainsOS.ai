@@ -38,7 +38,7 @@ logger = logging.getLogger("brainsos.runners.openai")
 logging.basicConfig(level=logging.INFO)
 
 LITELLM_BASE_URL = os.getenv("OPENAI_BASE_URL", os.getenv("LITELLM_URL", "http://litellm:4000/v1")).rstrip("/")
-LITELLM_API_KEY = os.getenv("OPENAI_API_KEY", os.getenv("OPENAI_SDK_LITELLM_KEY", ""))
+LITELLM_API_KEY = os.getenv("LITELLM_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_SDK_LITELLM_KEY", "")
 SAFE_AGENT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
@@ -57,6 +57,8 @@ def _load_dynamic_script(script_path_str: str, agent_id: str = "") -> Any:
         os.path.realpath(f"/data/runners/openai-sdk/{clean_agent}"),
         os.path.realpath(f"/data/agents/{clean_agent}"),
     ]
+    if os.getenv("BRAINSOS_AGENT_ID", "").strip() == clean_agent:
+        allowed_roots.append(os.path.realpath("/workspace"))
     if not any(os.path.commonpath([root, script_real]) == root for root in allowed_roots):
         raise PermissionError(f"Access denied: Script path outside allowlisted agent roots ({script_real})")
 
@@ -210,12 +212,15 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
 
         if choice.message.tool_calls:
             for idx, tc in enumerate(choice.message.tool_calls):
+                fn = getattr(tc, "function", None)
+                if fn is None:
+                    continue
                 tool_records.append(
                     ToolCallRecord(
                         id=tc.id or f"call_{idx}",
-                        tool_name=tc.function.name,
-                        arguments={"args": tc.function.arguments},
-                        output=f"Invoked {tc.function.name}",
+                        tool_name=fn.name,
+                        arguments={"args": fn.arguments},
+                        output=f"Invoked {fn.name}",
                         exit_code=0,
                     )
                 )
@@ -261,3 +266,19 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
 
 
 app = create_runner_app(handle_openai_turn, title="brainsOS OpenAI Runner")
+
+
+def _run_ephemeral_cli() -> int:
+    import asyncio
+    import sys
+
+    req_file = os.getenv("BRAINSOS_REQUEST_FILE", "").strip()
+    raw_json = Path(req_file).read_text(encoding="utf-8") if (req_file and Path(req_file).is_file()) else sys.stdin.read()
+    turn_req = AgentTurnRequest.model_validate_json(raw_json)
+    resp = asyncio.run(handle_openai_turn(turn_req))
+    print(resp.model_dump_json())
+    return 0 if resp.status == "completed" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_ephemeral_cli())

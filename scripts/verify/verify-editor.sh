@@ -273,12 +273,12 @@ else
   fail_check "Extension auto-update is not disabled in settings.json!"
 fi
 
-# Workspace trust and SSL bypass verification
-log_info "Verifying Workspace Trust disabled and SSL bypass in settings.json..."
-if docker compose exec -T code-server grep -q '"security.workspace.trust.enabled": false' /home/coder/.local/share/code-server/User/settings.json; then
-  log_success "Workspace trust is explicitly disabled in editor settings.json."
+# Workspace trust verification
+log_info "Verifying Workspace Trust enabled in settings.json..."
+if docker compose exec -T code-server grep -q '"security.workspace.trust.enabled": true' /home/coder/.local/share/code-server/User/settings.json; then
+  log_success "Workspace trust is explicitly enabled in editor settings.json."
 else
-  fail_check "Workspace trust is not disabled in editor settings.json!"
+  fail_check "Workspace trust is not enabled in editor settings.json!"
 fi
 
 # Dark Theme verification

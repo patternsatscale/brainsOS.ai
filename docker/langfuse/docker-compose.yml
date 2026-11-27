@@ -237,7 +237,7 @@ services:
     volumes:
       - ${LANGFUSE_MINIO_DATA_DIR:-${BRAINSOS_TELEMETRY_DIR:-../../data/telemetry}/minio}:/data
     ports:
-      - "9090:9000"
+      - "127.0.0.1:9090:9000"
       - "127.0.0.1:9091:9001"
     networks:
       - langfuse-net

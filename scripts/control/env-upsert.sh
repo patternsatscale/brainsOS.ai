@@ -50,25 +50,26 @@ if [ ! -f "${ENV_FILE}" ]; then
   exit 1
 fi
 
-PAIRS_TMP="$(mktemp)"
+PAIRS_TMP="$(umask 077 && mktemp)"
 trap 'rm -f "${PAIRS_TMP}"' EXIT
-if [ -n "${FROM_FILE}" ]; then
-  cat "${FROM_FILE}" > "${PAIRS_TMP}"
-fi
 if [ "${#PAIRS[@]}" -gt 0 ]; then
-  printf '%s\n' "${PAIRS[@]}" >> "${PAIRS_TMP}"
+  printf '%s\0' "${PAIRS[@]}" > "${PAIRS_TMP}"
 fi
 
-python3 - "${ENV_FILE}" "${PAIRS_TMP}" "${SECTION}" "${UNSET_KEYS[@]+"${UNSET_KEYS[@]}"}" <<'PYEOF'
+python3 - "${ENV_FILE}" "${PAIRS_TMP}" "${SECTION}" "${FROM_FILE}" "${UNSET_KEYS[@]+"${UNSET_KEYS[@]}"}" <<'PYEOF'
 import os
 import re
 import sys
 import tempfile
 
-env_path, pairs_path, section = sys.argv[1], sys.argv[2], sys.argv[3]
-unset_keys = set(sys.argv[4:])
+env_path, pairs_path, section, from_file_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+unset_keys = set(sys.argv[5:])
 key_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@,+=%-]*$")
+
+for uk in unset_keys:
+    if not key_re.fullmatch(uk):
+        sys.exit(f"[ERROR] Invalid unset env key: {uk!r}")
 
 def render(k: str, val: str) -> str:
     # Strip matching outer quotes so double-quoted $(...) / backticks can never survive
@@ -77,23 +78,42 @@ def render(k: str, val: str) -> str:
         val = val[1:-1]
     if "'" in val:
         sys.exit(f"[ERROR] Value for {k} contains a single quote; refusing to write an unsafe .env line")
-    if SAFE_VALUE_RE.match(val):
+    if SAFE_VALUE_RE.fullmatch(val):
         return f"{k}={val}"
     return f"{k}='{val}'"
 
 overrides = {}
-with open(pairs_path, encoding="utf-8") as fh:
-    for raw in fh:
-        raw = raw.rstrip("\n")
-        if not raw or raw.startswith("#") or "=" not in raw:
-            continue
-        key, value = raw.split("=", 1)
-        key = key.strip()
-        if not key_re.match(key):
-            sys.exit(f"[ERROR] Invalid env key: {key!r}")
+
+def parse_entry(raw: str) -> None:
+    if not raw or "=" not in raw:
+        if any(ch in raw for ch in ("\n", "\r", "\x00")):
+            sys.exit("[ERROR] Control character in env pair")
+        return
+    raw_key, value = raw.split("=", 1)
+    if any(ch in raw_key for ch in ("\n", "\r", "\x00")):
+        sys.exit(f"[ERROR] Control character in env key: {raw_key!r}")
+    key = raw_key.strip()
+    if key.startswith("#"):
         if any(ch in value for ch in ("\n", "\r", "\x00")):
-            sys.exit(f"[ERROR] Control character in value for {key}")
-        overrides[key] = value
+            sys.exit(f"[ERROR] Control character in env pair for {key!r}")
+        return
+    if not key_re.fullmatch(key):
+        sys.exit(f"[ERROR] Invalid env key: {key!r}")
+    if any(ch in value for ch in ("\n", "\r", "\x00")):
+        sys.exit(f"[ERROR] Control character in value for {key}")
+    overrides[key] = value
+
+if from_file_path:
+    with open(from_file_path, "r", encoding="utf-8", newline="\n") as fh:
+        for raw in fh:
+            parse_entry(raw.rstrip("\n"))
+
+with open(pairs_path, "r", encoding="utf-8", newline="") as fh:
+    pairs_blob = fh.read()
+for raw in pairs_blob.split("\0"):
+    if not raw:
+        continue
+    parse_entry(raw)
 
 real_env_path = os.path.realpath(env_path)
 lines, seen = [], set()
@@ -103,7 +123,7 @@ with open(real_env_path, encoding="utf-8") as fh:
         is_comment = line.startswith("#")
         body = line[1:].lstrip() if is_comment else line
         key = body.split("=", 1)[0].strip() if "=" in body else None
-        if key and key_re.match(key):
+        if key and key_re.fullmatch(key):
             if not is_comment and key in unset_keys:
                 continue
             if key in overrides:

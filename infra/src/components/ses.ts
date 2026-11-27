@@ -75,6 +75,7 @@ export function createMailReceiptRule(
   stage: string,
   ingressDomains: string[],
   bucketId: any,
+  lambdaArn?: any,
   dependsOn?: any[]
 ) {
   const cleanStage = stage.toLowerCase().replace(/[^a-zA-Z0-9]/g, "-");
@@ -98,6 +99,17 @@ export function createMailReceiptRule(
           position: 1,
         },
       ],
+      ...(lambdaArn
+        ? {
+            lambdaActions: [
+              {
+                functionArn: lambdaArn,
+                invocationType: "Event",
+                position: 2,
+              },
+            ],
+          }
+        : {}),
     },
     { dependsOn: dependsOn || [] }
   );

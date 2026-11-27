@@ -116,3 +116,10 @@ issues_dump.json
 
 # Local TLS Certificates
 config/caddy/root.crt
+
+# Externalized OpenBao fallback secrets (host-local only)
+.secrets/
+openbao-seal.json
+openbao-system-api.token
+openbao-oidc-sync.token
+openbao_tls/

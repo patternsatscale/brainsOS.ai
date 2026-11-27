@@ -53,6 +53,8 @@ class RunnerRegistry:
                 default_timeout_sec=config.timeout_sec,
                 memory_limit=config.memory_limit,
                 cpu_limit=config.cpu_limit,
+                network=config.network,
+                command=config.command,
             )
 
         self._client_factories["warm_http"] = _create_warm_http

@@ -38,11 +38,10 @@ for pkg in ["brainsOS-mail", "brainsOS-queue", "brainsOS-agent", "brainsOS-runne
     if pkg_path not in sys.path:
         sys.path.insert(0, pkg_path)
 
-from brainsos_mail.models import ParsedInboundEmail
-from brainsos_runner import AgentTurnRequest, ChatMessage, WarmHttpRunnerClient
-
-from brainsos_agent.adapters import get_runtime_adapter
-from brainsos_agent.models import AgentProfile
+from brainsos_agent.adapters import get_runtime_adapter  # noqa: E402
+from brainsos_agent.models import AgentProfile  # noqa: E402
+from brainsos_mail.models import ParsedInboundEmail  # noqa: E402
+from brainsos_runner import AgentTurnRequest, ChatMessage, WarmHttpRunnerClient  # noqa: E402
 
 GREEN = "\033[0;32m"
 BLUE = "\033[0;34m"

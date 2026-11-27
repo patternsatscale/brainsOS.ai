@@ -190,8 +190,14 @@ start_system_api() {
     current_pid="$(cat "${SYSTEM_API_PID_FILE}")"
   fi
 
-  if [ -n "${current_pid}" ] && curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
-    log_info "Host System API is already running and healthy (PID: ${current_pid}, port ${BRAINSOS_SYSTEM_API_PORT})."
+  local sys_api_host
+  sys_api_host="$(PYTHONPATH="${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" "${VENV_PYTHON}" -c "from brainsos_telemetry.system import get_default_api_host; print(get_default_api_host())" 2>/dev/null || echo "127.0.0.1")"
+  if [ -z "${sys_api_host}" ] || [ "${sys_api_host}" = "0.0.0.0" ] || [ "${sys_api_host}" = "::" ]; then
+    sys_api_host="127.0.0.1"
+  fi
+
+  if [ -n "${current_pid}" ] && { curl -s "http://${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1 || curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; }; then
+    log_info "Host System API is already running and healthy (PID: ${current_pid}, http://${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT})."
     return 0
   fi
 
@@ -214,12 +220,6 @@ start_system_api() {
     if [ -n "${port_pids}" ]; then
       for p in ${port_pids}; do kill -9 "${p}" 2>/dev/null || true; done
     fi
-  fi
-
-  local sys_api_host
-  sys_api_host="$(PYTHONPATH="${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" "${VENV_PYTHON}" -c "from brainsos_telemetry.system import get_default_api_host; print(get_default_api_host())" 2>/dev/null || echo "127.0.0.1")"
-  if [ -z "${sys_api_host}" ] || [ "${sys_api_host}" = "0.0.0.0" ] || [ "${sys_api_host}" = "::" ]; then
-    sys_api_host="127.0.0.1"
   fi
 
   log_info "Starting Host System Management & Telemetry API (${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT})..."
@@ -289,8 +289,14 @@ status_system_api() {
     [ -n "${pid}" ] && echo "${pid}" > "${SYSTEM_API_PID_FILE}"
   fi
 
-  if curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
-    log_success "Host System API: RUNNING (PID: ${pid:-unknown}, http://0.0.0.0:${BRAINSOS_SYSTEM_API_PORT})"
+  local sys_api_host
+  sys_api_host="$(PYTHONPATH="${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" "${VENV_PYTHON}" -c "from brainsos_telemetry.system import get_default_api_host; print(get_default_api_host())" 2>/dev/null || echo "127.0.0.1")"
+  if [ -z "${sys_api_host}" ] || [ "${sys_api_host}" = "0.0.0.0" ] || [ "${sys_api_host}" = "::" ]; then
+    sys_api_host="127.0.0.1"
+  fi
+
+  if curl -s "http://${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1 || curl -s "http://127.0.0.1:${BRAINSOS_SYSTEM_API_PORT}/health" >/dev/null 2>&1; then
+    log_success "Host System API: RUNNING (PID: ${pid:-unknown}, http://${sys_api_host}:${BRAINSOS_SYSTEM_API_PORT})"
   elif [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
     log_warn "Host System API: STARTING (PID: ${pid}, port ${BRAINSOS_SYSTEM_API_PORT})"
   else
@@ -717,6 +723,18 @@ start_services() {
   docker compose up -d runner-hermes 2>/dev/null || log_warn "Could not start runner-hermes container (Docker may be inactive)."
 
   # 6. Start Unified Asynchronous Queue Worker & Mail Ingress
+  if [ "$(uname -s)" = "Linux" ] && command -v ip >/dev/null 2>&1; then
+    if ! ip link show "${BRAINSOS_MAIL_BRIDGE:-br-mail}" >/dev/null 2>&1; then
+      docker compose up --no-start mail-server >/dev/null 2>&1 || true
+    fi
+  fi
+
+  local mail_ingress_host
+  mail_ingress_host="$(PYTHONPATH="${REPO_ROOT}/packages/brainsOS-mail:${REPO_ROOT}/packages/brainsOS-queue:${REPO_ROOT}/packages/brainsOS-agent:${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" "${VENV_PYTHON}" -c "from brainsos_agent.worker import get_default_ingress_host; print(get_default_ingress_host())" 2>/dev/null || echo "127.0.0.1")"
+  if [ -z "${mail_ingress_host}" ] || [ "${mail_ingress_host}" = "0.0.0.0" ] || [ "${mail_ingress_host}" = "::" ]; then
+    mail_ingress_host="127.0.0.1"
+  fi
+
   CURRENT_WORKER_PID=""
   if [ -f "${QUEUE_WORKER_PID_FILE}" ] && kill -0 "$(cat "${QUEUE_WORKER_PID_FILE}")" 2>/dev/null; then
     CURRENT_WORKER_PID="$(cat "${QUEUE_WORKER_PID_FILE}")"
@@ -724,8 +742,8 @@ start_services() {
 
   ALL_WORKER_PIDS="$(pgrep -f "brainsos_agent.worker" 2>/dev/null || true)"
 
-  if [ -n "${CURRENT_WORKER_PID}" ] && [ "${ALL_WORKER_PIDS}" = "${CURRENT_WORKER_PID}" ] && curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
-    log_info "Unified Queue Worker is already running and healthy (PID: ${CURRENT_WORKER_PID})."
+  if [ -n "${CURRENT_WORKER_PID}" ] && [ "${ALL_WORKER_PIDS}" = "${CURRENT_WORKER_PID}" ] && { curl -s "http://${mail_ingress_host}:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1 || curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; }; then
+    log_info "Unified Queue Worker is already running and healthy (PID: ${CURRENT_WORKER_PID}, http://${mail_ingress_host}:${BRAINSOS_INGRESS_PORT})."
   else
     if [ -n "${ALL_WORKER_PIDS}" ]; then
       log_warn "Sweeping stale or duplicate queue worker process(es): ${ALL_WORKER_PIDS}..."
@@ -749,7 +767,8 @@ start_services() {
       fi
     fi
 
-    log_info "Starting Unified Asynchronous Queue Worker & Mail Ingress (port ${BRAINSOS_INGRESS_PORT})..."
+    log_info "Starting Unified Asynchronous Queue Worker & Mail Ingress (${mail_ingress_host}:${BRAINSOS_INGRESS_PORT})..."
+    BRAINSOS_INGRESS_HOST="${mail_ingress_host}" \
     BRAINSOS_INGRESS_PORT="${BRAINSOS_INGRESS_PORT}" \
     BRAINSOS_QUEUE_LOCK_FILE="${QUEUE_WORKER_LOCK_FILE}" \
     PYTHONPATH="${REPO_ROOT}/packages/brainsOS-mail:${REPO_ROOT}/packages/brainsOS-queue:${REPO_ROOT}/packages/brainsOS-agent:${REPO_ROOT}/packages/brainsOS-telemetry:${PYTHONPATH:-}" \
@@ -761,14 +780,14 @@ start_services() {
     # Wait for Ingress HTTP readiness
     READY=false
     for i in {1..30}; do
-      if curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
+      if curl -s "http://${mail_ingress_host}:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1 || curl -s "http://127.0.0.1:${BRAINSOS_INGRESS_PORT}/health/liveness" >/dev/null 2>&1; then
         READY=true
         break
       fi
       sleep 0.5
     done
     if [ "${READY}" = true ]; then
-      log_success "Unified Queue Worker & Mail Ingress started (PID: ${QUEUE_WORKER_PID}, port ${BRAINSOS_INGRESS_PORT})."
+      log_success "Unified Queue Worker & Mail Ingress started (PID: ${QUEUE_WORKER_PID}, http://${mail_ingress_host}:${BRAINSOS_INGRESS_PORT})."
     else
       log_warn "Queue Worker started (PID: ${QUEUE_WORKER_PID}), ingress endpoint still pending."
     fi

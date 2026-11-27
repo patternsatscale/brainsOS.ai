@@ -34,14 +34,48 @@ def test_default_path_resolvers(monkeypatch):
     data_dir = get_data_dir()
     assert data_dir == Path("./data").resolve()
     assert get_agents_dir() == data_dir / "agents"
-    expected_agent_centric = (data_dir / "agents") if (data_dir / "agents").is_dir() else None
-    assert get_souls_dir() == (expected_agent_centric or data_dir / "souls")
-    assert get_memories_dir() == (expected_agent_centric or data_dir / "agent_memories")
-    assert get_workspaces_dir() == (expected_agent_centric or data_dir / "agent_workspaces")
+    has_agents = (data_dir / "agents").is_dir()
+    assert get_souls_dir() == ((data_dir / "agents") if has_agents and not (data_dir / "souls").is_dir() else data_dir / "souls")
+    assert get_memories_dir() == (
+        (data_dir / "agents") if has_agents and not (data_dir / "agent_memories").is_dir() else data_dir / "agent_memories"
+    )
+    assert get_workspaces_dir() == (
+        (data_dir / "agents")
+        if has_agents and not (data_dir / "agent_workspaces").is_dir()
+        else data_dir / "agent_workspaces"
+    )
     assert get_settings_dir() == data_dir / "settings"
-    assert get_agent_apps_dir() == (expected_agent_centric or data_dir / "agent_apps")
+    assert get_agent_apps_dir() == (
+        (data_dir / "agents") if has_agents and not (data_dir / "agent_apps").is_dir() else data_dir / "agent_apps"
+    )
     assert get_runners_dir() == data_dir / "runners"
     assert get_comms_dir() == data_dir / "comms"
+
+
+def test_default_path_resolvers_pure_and_mixed_layouts(monkeypatch, tmp_path):
+    """Verify agent-centric fallback applies per directory only when legacy dir is absent."""
+    monkeypatch.delenv("BRAINSOS_DATA_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENTS_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_SOULS_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_MEMORIES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENT_MEMORIES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_WORKSPACES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENT_WORKSPACES_DIR", raising=False)
+    monkeypatch.delenv("BRAINSOS_AGENT_APPS_DIR", raising=False)
+
+    (tmp_path / "data" / "agents").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    data_dir = (tmp_path / "data").resolve()
+    assert get_souls_dir() == data_dir / "agents"
+    assert get_memories_dir() == data_dir / "agents"
+    assert get_workspaces_dir() == data_dir / "agents"
+    assert get_agent_apps_dir() == data_dir / "agents"
+
+    # When a legacy directory coexists, that specific resolver uses the legacy dir while others stay agent-centric.
+    (tmp_path / "data" / "agent_workspaces").mkdir()
+    assert get_workspaces_dir() == data_dir / "agent_workspaces"
+    assert get_memories_dir() == data_dir / "agents"
 
 
 def test_external_data_dir_override(monkeypatch, tmp_path):

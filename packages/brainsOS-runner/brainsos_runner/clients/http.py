@@ -70,7 +70,7 @@ class WarmHttpRunnerClient(RunnerClient):
         url = f"{self.endpoint}/v1/agent/run"
         timeout_sec = request.timeout_sec or self.default_timeout_sec
         client = await self._get_client()
-        payload = request.model_dump(mode="json")
+        payload = request.model_dump(mode="json", exclude_none=True)
 
         req_headers: Dict[str, str] = {}
         if self.auth_token:

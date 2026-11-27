@@ -5,17 +5,27 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
 from pydantic import BaseModel, Field
+
+
+def load_runtime_dotenv() -> None:
+    """Load .env when running the ingress CLI/daemon (never at module import time)."""
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
 
 
 class IngressConfig(BaseModel):
     """Configuration for SQS claim-check consumer and local SMTP injector."""
+
+    @classmethod
+    def from_env(cls) -> "IngressConfig":
+        """Load runtime .env if present and construct IngressConfig from environment."""
+        load_runtime_dotenv()
+        return cls()
 
     aws_region: str = Field(
         default_factory=lambda: os.getenv("AWS_REGION")

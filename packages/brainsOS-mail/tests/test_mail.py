@@ -10,23 +10,34 @@ class TestBrainsOSMailClient(unittest.TestCase):
     """Test suite for BrainsOSMailClient."""
 
     def setUp(self):
-        # Read .env if present
+        self._dot_env: dict[str, str] = {}
         env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"))
-        if os.path.exists(env_path):
+        if os.getenv("BRAINSOS_RUN_LIVE_MAIL_TESTS") == "1" and os.path.exists(env_path):
             with open(env_path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         k, v = line.split("=", 1)
-                        k, v = k.strip(), v.strip().strip("'\"")
-                        if k not in os.environ:
-                            os.environ[k] = v
+                        self._dot_env[k.strip()] = v.strip().strip("'\"")
 
-        self.smtp_host = os.getenv("TEST_MAIL_HOST", "127.0.0.1")
-        self.smtp_port = int(os.getenv("TEST_MAIL_SMTP_PORT", "10025"))
-        self.imap_port = int(os.getenv("TEST_MAIL_IMAP_PORT", "10143"))
-        self.admin_pass = os.getenv("ADMIN_MAIL_PASSWORD") or os.getenv("BRAINSOS_ADMIN_PASSWORD", "brainsos_admin_mail_secret_change_me")
-        self.agent_pass = os.getenv("TERRASTELLA_MAIL_PASSWORD", "brainsos_terrastella_mail_secret_change_me")
+        self.smtp_host = self._get_env("TEST_MAIL_HOST", "127.0.0.1")
+        self.smtp_port = int(self._get_env("TEST_MAIL_SMTP_PORT", "10025"))
+        self.imap_port = int(self._get_env("TEST_MAIL_IMAP_PORT", "10143"))
+        self.admin_pass = (
+            self._get_env("ADMIN_MAIL_PASSWORD")
+            or self._get_env("BRAINSOS_ADMIN_PASSWORD")
+            or "brainsos_admin_mail_secret_change_me"
+        )
+        self.agent_pass = (
+            self._get_env("TERRASTELLA_MAIL_PASSWORD")
+            or "brainsos_terrastella_mail_secret_change_me"
+        )
+
+    def _get_env(self, key: str, default: str = "") -> str:
+        val = os.getenv(key)
+        if val is not None:
+            return val
+        return self._dot_env.get(key, default)
 
     def test_client_init_and_env(self):
         """Verify client instantiation from parameters and environment."""
@@ -44,6 +55,9 @@ class TestBrainsOSMailClient(unittest.TestCase):
 
     def test_live_smtp_and_imap_shared_roundtrip(self):
         """End-to-end integration test across SMTP submission and IMAP shared folder read."""
+        if os.getenv("BRAINSOS_RUN_LIVE_MAIL_TESTS") != "1":
+            self.skipTest("Live mail integration test skipped unless BRAINSOS_RUN_LIVE_MAIL_TESTS=1")
+
         import socket
 
         try:
@@ -52,7 +66,8 @@ class TestBrainsOSMailClient(unittest.TestCase):
         except OSError:
             self.skipTest(f"Live mail server not reachable on {self.smtp_host}:{self.smtp_port}")
 
-        mail_domain = os.getenv("BRAINSOS_MAIL_DOMAIN", os.getenv("BRAINSOS_DOMAIN", "brainsos.local"))
+        domain = self._get_env("BRAINSOS_DOMAIN", "brainsos.local")
+        mail_domain = self._get_env("BRAINSOS_MAIL_DOMAIN", domain)
         terra_user = f"terrastella@{mail_domain}"
         admin_user = f"admin@{mail_domain}"
 
@@ -67,14 +82,16 @@ class TestBrainsOSMailClient(unittest.TestCase):
         )
 
         # 2. Agent sends email to admin
-        subject = "Unit Test: Status Ping"
-        body = "Automated unit test validating RFC threading and shared mailbox access."
+        import uuid
+
+        run_tag = uuid.uuid4().hex[:8]
+        subject = f"Unit Test: Status Ping [{run_tag}]"
+        body = f"Automated unit test ({run_tag}) validating RFC threading and shared mailbox access."
         msg_id = agent_client.send_mail(
             to=admin_user,
             subject=subject,
             body=body,
         )
-        domain = os.getenv("BRAINSOS_DOMAIN", "brainsos.local")
         self.assertTrue(
             msg_id.startswith("<")
             and (
@@ -99,11 +116,11 @@ class TestBrainsOSMailClient(unittest.TestCase):
             password=self.admin_pass,
         )
 
-        messages = admin_client.fetch_messages(folder="INBOX", limit=5)
+        messages = admin_client.fetch_messages(folder="INBOX", limit=20)
         matching = [m for m in messages if m["subject"] == subject]
         self.assertTrue(len(matching) >= 1)
         self.assertIn("terrastella@", matching[-1]["from"])
-        self.assertIn("Automated unit test validating", matching[-1]["body"])
+        self.assertIn(f"Automated unit test ({run_tag}) validating", matching[-1]["body"])
 
         # 4. Admin verifies shared folders list
         folders = admin_client.list_folders()
@@ -111,11 +128,11 @@ class TestBrainsOSMailClient(unittest.TestCase):
         self.assertTrue(any("terrastella" in f for f in folders))
 
         # 5. Search messages by subject and keyword
-        searched = admin_client.search_messages(subject="Status Ping")
+        searched = admin_client.search_messages(subject=f"Status Ping [{run_tag}]")
         self.assertTrue(len(searched) >= 1)
         self.assertEqual(searched[-1]["subject"], subject)
 
-        body_searched = admin_client.search_messages(query="RFC threading")
+        body_searched = admin_client.search_messages(query=run_tag)
         self.assertTrue(len(body_searched) >= 1)
 
         # 6. Read specific message by Message-ID using read_message()
@@ -146,8 +163,10 @@ class TestBrainsOSMailClient(unittest.TestCase):
         time.sleep(1.5)
 
         # Agent reads reply and verifies threading headers
-        agent_msgs = agent_client.fetch_messages(folder="INBOX", limit=5)
-        reply_matches = [m for m in agent_msgs if m["subject"] == reply_subject]
+        agent_msgs = agent_client.fetch_messages(folder="INBOX", limit=20)
+        reply_matches = [
+            m for m in agent_msgs if m.get("in_reply_to") == msg_id or m["subject"] == reply_subject
+        ]
         self.assertTrue(len(reply_matches) >= 1)
         self.assertEqual(reply_matches[-1]["in_reply_to"], msg_id)
         self.assertEqual(reply_matches[-1]["references"], msg_id)

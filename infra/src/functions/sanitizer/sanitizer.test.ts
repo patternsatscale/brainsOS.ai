@@ -165,6 +165,129 @@ describe("Email Sanitizer Defensive Pipeline", () => {
         expect(verdict.payload.details).toContain("spf=fail");
       }
     });
+
+    it("quarantines on GRAY, PROCESSING_FAILED, DISABLED, missing, or empty SES receipt verdicts even if MIME headers claim pass (#401)", async () => {
+      const mime = createRawMime({
+        authResults:
+          "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=pass header.from=gmail.com",
+      });
+      const parsed = await simpleParser(mime);
+
+      const badReceipts = [
+        { spfVerdict: { status: "PASS" }, dkimVerdict: { status: "GRAY" }, dmarcVerdict: { status: "PASS" } },
+        { spfVerdict: { status: "PASS" }, dkimVerdict: { status: "PASS" }, dmarcVerdict: { status: "PROCESSING_FAILED" } },
+        { spfVerdict: { status: "DISABLED" }, dkimVerdict: { status: "PASS" }, dmarcVerdict: { status: "PASS" } },
+        { spfVerdict: { status: "PASS" }, dkimVerdict: { status: "PASS" } },
+        {},
+      ];
+
+      for (const sesReceipt of badReceipts) {
+        const verdict = processEmailThroughPipeline("msg-bad-ses", parsed, {
+          ...DEFAULT_OPTIONS,
+          sesReceipt,
+        });
+        expect(verdict.status).toBe("QUARANTINED");
+        if (verdict.status === "QUARANTINED") {
+          expect(verdict.payload.rejectionReason).toBe("REJECTED_CRYPTO_AUTH");
+        }
+      }
+    });
+
+    it("evaluates strictly the topmost trusted SES Authentication-Results entry (#401)", async () => {
+      const headersFailTop = {
+        "authentication-results": [
+          "mx.amazonses.com; dkim=fail; spf=fail; dmarc=fail",
+          "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=pass header.from=gmail.com",
+        ],
+      };
+      const resFailTop = verifyCryptographicOrigin(headersFailTop, "patternsatscale@gmail.com");
+      expect(resFailTop.valid).toBe(false);
+
+      const headersPassTopAfterUntrusted = {
+        "authentication-results": [
+          "spoofed.evil.com; dkim=pass; spf=pass; dmarc=pass",
+          "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=pass header.from=gmail.com",
+          "mx.amazonses.com; dkim=fail; spf=fail; dmarc=fail",
+        ],
+      };
+      const resPassTop = verifyCryptographicOrigin(headersPassTopAfterUntrusted, "patternsatscale@gmail.com");
+      expect(resPassTop.valid).toBe(true);
+    });
+
+    it("fails closed when Authentication-Results lacks alignment claims (#401)", () => {
+      const res = verifyCryptographicOrigin(
+        { "authentication-results": ["mx.amazonses.com; dkim=pass; spf=pass; dmarc=pass"] },
+        "patternsatscale@gmail.com"
+      );
+      expect(res.valid).toBe(false);
+      expect(res.details).toContain("alignment claims missing");
+    });
+
+    it("enforces directional domain alignment (allows From subdomain of claim, rejects claim subdomain of From) (#401)", () => {
+      const claimSubdomain = verifyCryptographicOrigin(
+        {
+          "authentication-results": [
+            "mx.amazonses.com; dkim=pass header.d=sub.gmail.com; spf=pass; dmarc=pass header.from=sub.gmail.com",
+          ],
+        },
+        "op@gmail.com"
+      );
+      expect(claimSubdomain.valid).toBe(false);
+
+      const cousinDomain = verifyCryptographicOrigin(
+        {
+          "authentication-results": [
+            "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=pass header.from=gmail.com",
+          ],
+        },
+        "op@evilgmail.com"
+      );
+      expect(cousinDomain.valid).toBe(false);
+
+      const fromSubdomain = verifyCryptographicOrigin(
+        {
+          "authentication-results": [
+            "mx.amazonses.com; dkim=pass header.d=example.com; spf=pass; dmarc=pass header.from=example.com",
+          ],
+        },
+        "op@mail.example.com"
+      );
+      expect(fromSubdomain.valid).toBe(true);
+    });
+
+    it("rejects RFC 5322 comments, nested parens, semicolons-in-comments, quoted semicolons, and propspec spoofing in Authentication-Results (#401)", async () => {
+      const spoofedAuthHeaders = [
+        "mx.amazonses.com; spf=fail (dkim=pass spf=pass dmarc=pass); dkim=fail header.d=gmail.com; dmarc=fail header.from=gmail.com",
+        "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=fail (not dmarc=pass) header.from=gmail.com",
+        "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass (outer (dmarc=pass) inner); dmarc=permerror header.from=gmail.com",
+        "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=fail (reason; dmarc=pass) header.from=gmail.com",
+        'mx.amazonses.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=fail reason="foo; dmarc=pass" header.from=gmail.com',
+        "mx.amazonses.com; dkim=pass header.d=gmail.com; spf=fail smtp.mailfrom=spf=pass; dmarc=pass header.from=gmail.com",
+        "mx.amazonses.com; dkim=fail; dkim=pass header.d=gmail.com; spf=pass; dmarc=pass header.from=gmail.com",
+        "mx.amazonses.com; dkim=pass; spf=pass; dmarc=pass (header.from=gmail.com)",
+        'mx.amazonses.com; dkim=pass; spf=pass; dmarc=pass reason="header.from=gmail.com"',
+        "mx.amazonses.com; dkim=pass header.d=attacker.com; spf=pass; dmarc=pass (header.from=gmail.com)",
+        "(mx.amazonses.com) evil.example.com; dkim=pass header.d=gmail.com; spf=pass; dmarc=pass header.from=gmail.com",
+      ];
+
+      for (const authResults of spoofedAuthHeaders) {
+        const mime = createRawMime({ authResults });
+        const parsed = await simpleParser(mime);
+        const verdict = processEmailThroughPipeline("msg-comment-spoof", parsed, DEFAULT_OPTIONS);
+        expect(verdict.status).toBe("QUARANTINED");
+        if (verdict.status === "QUARANTINED") {
+          expect(verdict.payload.rejectionReason).toBe("REJECTED_CRYPTO_AUTH");
+        }
+      }
+
+      const legitMime = createRawMime({
+        authResults:
+          "mx.amazonses.com; dkim=pass (2048-bit key) header.d=gmail.com; spf=pass (client-ip=209.85.220.41); dmarc=pass (p=NONE sp=NONE) header.from=gmail.com",
+      });
+      const legitParsed = await simpleParser(legitMime);
+      const legitVerdict = processEmailThroughPipeline("msg-comment-legit", legitParsed, DEFAULT_OPTIONS);
+      expect(legitVerdict.status).toBe("APPROVED");
+    });
   });
 
   describe("Stage 2: Strict Sender Allowlist Validation", () => {
@@ -219,6 +342,56 @@ describe("Email Sanitizer Defensive Pipeline", () => {
         ["brainsos.ai"]
       );
       expect(exactRes.valid).toBe(true);
+    });
+
+    it("quarantines multi-address, group-syntax, and duplicate From headers while allowing single display-name addresses with commas (#401)", async () => {
+      const passingSes = {
+        ...DEFAULT_OPTIONS,
+        sesReceipt: {
+          spfVerdict: { status: "PASS" },
+          dkimVerdict: { status: "PASS" },
+          dmarcVerdict: { status: "PASS" },
+        },
+      };
+
+      for (const multiFrom of [
+        "patternsatscale@gmail.com, attacker@evil.com",
+        "attacker@evil.com, patternsatscale@gmail.com",
+        "Team: patternsatscale@gmail.com, attacker@evil.com;",
+      ]) {
+        const mime = createRawMime({ from: multiFrom, authResults: "" });
+        const parsed = await simpleParser(mime);
+        const verdict = processEmailThroughPipeline("msg-multi-from", parsed, passingSes);
+        expect(verdict.status).toBe("QUARANTINED");
+        if (verdict.status === "QUARANTINED") {
+          expect(verdict.payload.rejectionReason).toBe("REJECTED_UNAUTHORIZED_SENDER");
+        }
+      }
+
+      const duplicateHeaderMime =
+        "From: patternsatscale@gmail.com\r\n" +
+        "From: attacker@evil.com\r\n" +
+        "To: bawtford@local.brainsos.ai\r\n" +
+        "Subject: Duplicate From\r\n" +
+        "MIME-Version: 1.0\r\n" +
+        "Content-Type: text/plain; charset=UTF-8\r\n\r\n" +
+        "Test";
+      const dupParsed = await simpleParser(duplicateHeaderMime);
+      const dupVerdict = processEmailThroughPipeline("msg-dup-from", dupParsed, passingSes);
+      expect(dupVerdict.status).toBe("QUARANTINED");
+      if (dupVerdict.status === "QUARANTINED") {
+        expect(dupVerdict.payload.rejectionReason).toBe("REJECTED_UNAUTHORIZED_SENDER");
+      }
+
+      for (const safeDisplayFrom of [
+        '"Operator, Primary" <patternsatscale@gmail.com>',
+        "Doe, John <patternsatscale@gmail.com>",
+      ]) {
+        const mime = createRawMime({ from: safeDisplayFrom, authResults: "" });
+        const parsed = await simpleParser(mime);
+        const verdict = processEmailThroughPipeline("msg-safe-display-from", parsed, passingSes);
+        expect(verdict.status).toBe("APPROVED");
+      }
     });
   });
 

@@ -283,6 +283,257 @@ _CODE_SPAN_STYLE = (
 )
 
 
+_SAFE_EMAIL_HTML_TAGS = {
+    "html", "head", "title", "body",
+    "div", "span", "p", "br", "hr",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "strong", "b", "em", "i", "u", "s", "del", "ins", "small", "sub", "sup",
+    "code", "pre", "blockquote", "q",
+    "ul", "ol", "li", "dl", "dt", "dd",
+    "a", "img",
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+}
+
+_DROP_CONTENT_HTML_TAGS = {
+    "script", "style", "iframe", "object", "embed", "applet",
+    "svg", "math", "form", "input", "button", "textarea", "select",
+    "meta", "link", "base", "template", "noscript",
+}
+
+_VOID_HTML_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr",
+}
+
+_SAFE_HTML_GLOBAL_ATTRS = {"class", "title", "dir", "lang", "align", "valign", "style"}
+_SAFE_HTML_TAG_ATTRS = {
+    "a": {"href", "name", "target"},
+    "img": {"src", "alt", "width", "height"},
+    "table": {"border", "cellpadding", "cellspacing", "width"},
+    "td": {"colspan", "rowspan", "width", "height"},
+    "th": {"colspan", "rowspan", "width", "height", "scope"},
+    "col": {"span", "width"},
+    "colgroup": {"span", "width"},
+}
+
+_UNSAFE_STYLE_RE = re.compile(
+    r"(?:expression\s*\(|javascript\s*:|vbscript\s*:|data\s*:|-moz-binding|behavior\s*:|@import|url\s*\(|(?:-\w+-)?image-set\s*\(|progid\s*:)",
+    re.IGNORECASE,
+)
+_CSS_COMMENT_RE = re.compile(r"/\*[\s\S]*?(?:\*/|$)")
+_CSS_ESCAPE_HEX_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?")
+_CSS_ESCAPE_LINE_CONT_RE = re.compile(r"\\(?:\r\n|[\r\n\f])")
+_CSS_ESCAPE_CHAR_RE = re.compile(r"\\(.)", re.DOTALL)
+_STYLE_CTRL_WHITESPACE_RE = re.compile(r"[\x00-\x20\x7f]+")
+_STYLE_FORBIDDEN_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _decode_css_escapes(text: str) -> str:
+    """Decode CSS backslash escapes (CSS Syntax Level 3) for fail-closed inspection."""
+    text = _CSS_ESCAPE_LINE_CONT_RE.sub("", text)
+
+    def _repl_hex(m: re.Match[str]) -> str:
+        code = int(m.group(1), 16)
+        if code == 0 or code > 0x10FFFF or 0xD800 <= code <= 0xDFFF:
+            return ""
+        return chr(code)
+
+    text = _CSS_ESCAPE_HEX_RE.sub(_repl_hex, text)
+    return _CSS_ESCAPE_CHAR_RE.sub(r"\1", text)
+
+
+def _is_safe_url(raw_url: str, *, allow_cid: bool = False) -> bool:
+    """Validate URLs against explicit safe URI schemes after iterative entity decoding."""
+    from urllib.parse import urlparse
+
+    decoded = raw_url or ""
+    for _ in range(5):
+        next_decoded = html.unescape(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    candidate = re.sub(r"[\x00-\x20\x7f]+", "", decoded.strip())
+    if not candidate or candidate.startswith("//"):
+        return False
+    parsed = urlparse(candidate)
+    scheme = (parsed.scheme or "").lower()
+    allowed = {"http", "https", "mailto"}
+    if allow_cid:
+        allowed.add("cid")
+    if scheme not in allowed:
+        return False
+    if scheme in ("http", "https") and not parsed.netloc:
+        return False
+    if scheme == "mailto" and not parsed.path.strip():
+        return False
+    return True
+
+
+def _sanitize_style(raw_style: str) -> str:
+    """Strip unsafe CSS directives, comments, backslash escapes, and control characters."""
+    if not raw_style or not isinstance(raw_style, str):
+        return ""
+
+    decoded = raw_style
+    for _ in range(5):
+        next_decoded = html.unescape(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+
+    if "\\" in raw_style or "\\" in decoded:
+        return ""
+    if "/*" in raw_style or "*/" in raw_style or "/*" in decoded or "*/" in decoded:
+        return ""
+    if _STYLE_FORBIDDEN_CTRL_RE.search(raw_style) or _STYLE_FORBIDDEN_CTRL_RE.search(decoded):
+        return ""
+
+    normalized = _CSS_COMMENT_RE.sub("", decoded)
+    normalized = _decode_css_escapes(normalized)
+    if _UNSAFE_STYLE_RE.search(normalized):
+        return ""
+    if _UNSAFE_STYLE_RE.search(_STYLE_CTRL_WHITESPACE_RE.sub("", normalized)):
+        return ""
+    return raw_style.strip()
+
+
+def _replace_markdown_links(text: str, render_fn: Any) -> str:
+    """Replace Markdown [label](url) links with balanced parenthesis support in url."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == "[":
+            close_bracket = text.find("]", i + 1)
+            if (
+                close_bracket != -1
+                and close_bracket > i + 1
+                and close_bracket + 1 < n
+                and text[close_bracket + 1] == "("
+                and "\n" not in text[i + 1 : close_bracket]
+            ):
+                label = text[i + 1 : close_bracket]
+                j = close_bracket + 2
+                depth = 1
+                while j < n and depth > 0:
+                    ch = text[j]
+                    if ch == "\n":
+                        break
+                    if ch == "(":
+                        depth += 1
+                    elif ch == ")":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    j += 1
+                if depth == 0 and j > close_bracket + 2:
+                    url = text[close_bracket + 2 : j]
+                    out.append(render_fn(label, url))
+                    i = j + 1
+                    continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def sanitize_html(raw_html: str) -> str:
+    """Stdlib-only allowlist HTML sanitizer for rendered welcome email HTML (#401)."""
+    from html.parser import HTMLParser
+
+    if not raw_html or not isinstance(raw_html, str):
+        return ""
+
+    class _Sanitizer(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=False)
+            self._out: list[str] = []
+            self._drop_depth: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            tl = tag.lower()
+            if self._drop_depth:
+                if tl in _DROP_CONTENT_HTML_TAGS:
+                    self._drop_depth.append(tl)
+                return
+            if tl in _DROP_CONTENT_HTML_TAGS:
+                if tl not in _VOID_HTML_TAGS:
+                    self._drop_depth.append(tl)
+                return
+            if tl not in _SAFE_EMAIL_HTML_TAGS:
+                return
+            self._out.append(f"<{tl}{self._filter_attrs(tl, attrs)}>")
+
+        def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            tl = tag.lower()
+            if self._drop_depth or tl in _DROP_CONTENT_HTML_TAGS or tl not in _SAFE_EMAIL_HTML_TAGS:
+                return
+            self._out.append(f"<{tl}{self._filter_attrs(tl, attrs)}>")
+
+        def handle_endtag(self, tag: str) -> None:
+            tl = tag.lower()
+            if self._drop_depth:
+                if tl == self._drop_depth[-1]:
+                    self._drop_depth.pop()
+                elif tl in self._drop_depth:
+                    while self._drop_depth and self._drop_depth[-1] != tl:
+                        self._drop_depth.pop()
+                    if self._drop_depth and self._drop_depth[-1] == tl:
+                        self._drop_depth.pop()
+                return
+            if tl in _SAFE_EMAIL_HTML_TAGS and tl not in _VOID_HTML_TAGS:
+                self._out.append(f"</{tl}>")
+
+        def handle_data(self, data: str) -> None:
+            if not self._drop_depth:
+                self._out.append(html.escape(data, quote=False))
+
+        def handle_entityref(self, name: str) -> None:
+            if not self._drop_depth:
+                self._out.append(f"&{name};")
+
+        def handle_charref(self, name: str) -> None:
+            if not self._drop_depth:
+                self._out.append(f"&#{name};")
+
+        def _filter_attrs(self, tag_lower: str, attrs: list[tuple[str, str | None]]) -> str:
+            allowed_for_tag = _SAFE_HTML_GLOBAL_ATTRS | _SAFE_HTML_TAG_ATTRS.get(tag_lower, set())
+            parts: list[str] = []
+            has_target = False
+            for name, val in attrs:
+                if not name:
+                    continue
+                nl = name.lower().strip()
+                if nl.startswith("on") or nl not in allowed_for_tag:
+                    continue
+                v = html.unescape("" if val is None else str(val))
+                if nl == "href":
+                    if not _is_safe_url(v, allow_cid=False):
+                        continue
+                elif nl == "src":
+                    if not _is_safe_url(v, allow_cid=True):
+                        continue
+                elif nl == "style":
+                    v = _sanitize_style(v)
+                    if not v:
+                        continue
+                elif nl == "target":
+                    has_target = True
+                    if v.lower() not in ("_blank", "_self"):
+                        continue
+                parts.append(f'{nl}="{html.escape(v, quote=True)}"')
+            if tag_lower == "a" and has_target:
+                parts.append('rel="noopener noreferrer"')
+            return (" " + " ".join(parts)) if parts else ""
+
+        def get_html(self) -> str:
+            return "".join(self._out)
+
+    parser = _Sanitizer()
+    parser.feed(raw_html)
+    parser.close()
+    return parser.get_html()
+
+
 def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> str:
     """Render inline Markdown (`code`, [link](url), **bold**, *italic*) safely to HTML."""
     tokens: list[str] = []
@@ -299,14 +550,15 @@ def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> st
 
     text = re.sub(r"`([^`]+)`", _repl_code, text)
 
-    # 2. Links: [label](url)
-    def _repl_link(m: re.Match[str]) -> str:
-        label_raw = m.group(1)
-        url_clean = m.group(2).strip()
+    # 2. Links: [label](url) with strict http/https/mailto scheme allowlisting
+    def _render_link(label_raw: str, raw_url: str) -> str:
+        url_clean = html.unescape(raw_url).strip()
         if url_clean.lower().startswith("mailto:"):
             url_clean = url_clean.replace(" ", "%20")
-        url_raw = html.escape(url_clean, quote=True)
         label_html = _render_inline_markdown_html(label_raw, accent_color=accent_color)
+        if not _is_safe_url(url_clean, allow_cid=False):
+            return _stash(label_html)
+        url_raw = html.escape(url_clean, quote=True)
         if url_clean.lower().startswith("mailto:") and (
             "click here" in label_raw.lower() or "✉️" in label_raw or "→" in label_raw
         ):
@@ -319,7 +571,7 @@ def _render_inline_markdown_html(text: str, accent_color: str = "#38bdf8") -> st
             f'<a href="{url_raw}" style="color: #38bdf8; font-weight: 600; text-decoration: none;">{label_html}</a>'
         )
 
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _repl_link, text)
+    text = _replace_markdown_links(text, _render_link)
 
     # 3. Escape remaining HTML characters
     escaped = html.escape(text)
@@ -603,7 +855,7 @@ def render_markdown_to_html(
         )
         blocks.append(f'<p style="color: #e2e8f0; margin: 0 0 14px 0;">{para_html}</p>')
 
-    return hero_title, "\n".join(blocks)
+    return sanitize_html(hero_title), sanitize_html("\n".join(blocks))
 
 
 def render_markdown_to_text(md_body: str) -> str:
@@ -683,10 +935,11 @@ def render_markdown_to_text(md_body: str) -> str:
             for r in [headers] + rows:
                 for c_idx, cell in enumerate(r):
                     widths[c_idx] = max(widths[c_idx], len(cell))
-            fmt_row = lambda r: "  | ".join(
-                (r[c_idx] if c_idx < len(r) else "").ljust(widths[c_idx])
-                for c_idx in range(col_count)
-            ).rstrip()
+            def fmt_row(r: list[str]) -> str:
+                return "  | ".join(
+                    (r[c_idx] if c_idx < len(r) else "").ljust(widths[c_idx])
+                    for c_idx in range(col_count)
+                ).rstrip()
             table_lines = [
                 fmt_row(headers),
                 "-+-".join("-" * w for w in widths),

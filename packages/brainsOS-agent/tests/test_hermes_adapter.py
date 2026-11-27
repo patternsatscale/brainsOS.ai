@@ -301,6 +301,105 @@ class TestHermesRunsAdapter(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(WorkspaceBoundaryViolation):
             adapter.validate_workspace_path("/etc/passwd", profile)
 
+    def test_headers_prefer_runner_auth_token_and_never_use_litellm_master_key(self) -> None:
+        import os
+        from unittest.mock import patch
+
+        adapter = HermesMailAdapter(runner_url="http://hermes:8642/v1")
+        profile = self.profiles["bawtford"]
+
+        with patch.dict(
+            os.environ,
+            {"LITELLM_MASTER_KEY": "sk-master-forbidden"},
+            clear=True,
+        ):
+            hdrs = adapter._headers(profile)
+            self.assertNotIn("sk-master-forbidden", hdrs["Authorization"])
+            self.assertEqual(hdrs["Authorization"], "Bearer ")
+
+        with patch.dict(
+            os.environ,
+            {
+                "RUNNER_AUTH_TOKEN": "runner-tok",
+                "API_SERVER_KEY": "api-tok",
+                "HERMES_API_KEY": "hermes-tok",
+                "LITELLM_MASTER_KEY": "sk-master-forbidden",
+            },
+            clear=True,
+        ):
+            self.assertEqual(adapter._headers(profile)["Authorization"], "Bearer runner-tok")
+
+    def test_agent_profile_extracts_virtual_key_and_github_allowed_repos(self) -> None:
+        prof = AgentProfile.from_agent_dict(
+            {
+                "id": "bawtford",
+                "name": "Bawtford",
+                "email": "bawtford@brainsos.local",
+                "routing": {"virtual_key": "BAWTFORD_LITELLM_KEY"},
+                "workspace": {"repo_url": "https://github.com/patternsatscale/CindyPawford-Online.git"},
+            },
+            base_path=self.tmpdir.name,
+        )
+        self.assertEqual(prof.virtual_key_env, "BAWTFORD_LITELLM_KEY")
+        self.assertEqual(prof.github_allowed_repos, ["patternsatscale/CindyPawford-Online"])
+
+    async def test_ephemeral_hermes_and_runner_adapters_delegate_to_docker_client(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from brainsos_agent.adapters import get_runtime_adapter
+        from brainsos_runner.models import AgentTurnResponse
+
+        mock_resp = AgentTurnResponse(
+            run_id="r1",
+            status="completed",
+            output_text="Ephemeral done.",
+        )
+
+        with patch(
+            "brainsos_runner.clients.docker.EphemeralDockerRunnerClient.execute_turn",
+            new_callable=AsyncMock,
+            return_value=mock_resp,
+        ) as mock_exec:
+            adapter = get_runtime_adapter("hermes-ephemeral")
+            out = await adapter.process_message(self._email(), self.profiles["bawtford"])
+            self.assertIn("Ephemeral done.", out.body)
+            mock_exec.assert_called_once()
+            turn_req = mock_exec.call_args[0][0]
+            self.assertEqual(turn_req.agent_id, "bawtford")
+            self.assertEqual(turn_req.memory_dir, str(self.profiles["bawtford"].memory_root))
+
+        with patch(
+            "brainsos_runner.clients.docker.EphemeralDockerRunnerClient.execute_turn",
+            new_callable=AsyncMock,
+            return_value=mock_resp,
+        ) as mock_exec_openai:
+            oa_adapter = get_runtime_adapter("openai-ephemeral")
+            out2 = await oa_adapter.process_message(self._email(), self.profiles["bawtford"])
+            self.assertIn("Ephemeral done.", out2.body)
+            mock_exec_openai.assert_called_once()
+
+    async def test_ephemeral_adapters_pass_empty_github_allowed_repos_explicitly(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from brainsos_agent.adapters import get_runtime_adapter
+        from brainsos_runner.models import AgentTurnResponse
+
+        mock_resp = AgentTurnResponse(run_id="r2", status="completed", output_text="ok")
+        marvin_prof = self.profiles["marvin"]
+        self.assertEqual(marvin_prof.github_allowed_repos, [])
+
+        for adapter_name in ("hermes-ephemeral", "openai-ephemeral"):
+            with patch(
+                "brainsos_runner.clients.docker.EphemeralDockerRunnerClient.execute_turn",
+                new_callable=AsyncMock,
+                return_value=mock_resp,
+            ) as mock_exec:
+                adapter = get_runtime_adapter(adapter_name)
+                await adapter.process_message(self._email(), marvin_prof)
+                turn_req = mock_exec.call_args[0][0]
+                self.assertIn("github_allowed_repos", turn_req.extra_params)
+                self.assertEqual(turn_req.extra_params["github_allowed_repos"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

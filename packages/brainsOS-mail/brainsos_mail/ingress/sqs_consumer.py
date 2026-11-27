@@ -11,7 +11,11 @@ from typing import Any, Dict, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from brainsos_mail.ingress.claim_check import ClaimCheckMessage, fetch_and_build_email
+from brainsos_mail.ingress.claim_check import (
+    ClaimCheckMessage,
+    fetch_and_build_email,
+    validate_approved_s3_key,
+)
 from brainsos_mail.ingress.config import IngressConfig
 from brainsos_mail.ingress.local_injector import LocalMailInjector
 
@@ -57,9 +61,10 @@ class SqsIngressConsumer:
         """Processes a single SQS message:
 
         1. Parses claim-check JSON from message Body.
-        2. Fetches approved payload from S3 and builds RFC 822 EmailMessage.
-        3. Delivers via local SMTP injector.
-        4. On success: deletes SQS message and deletes approved S3 object.
+        2. Validates S3 bucket & approved/ key containment (fail-closed).
+        3. Fetches approved payload from S3 and builds RFC 822 EmailMessage.
+        4. Delivers via local SMTP injector.
+        5. On success: deletes SQS message and deletes approved S3 object.
         """
         receipt_handle = message.get("ReceiptHandle")
         body_raw = message.get("Body", "")
@@ -75,18 +80,50 @@ class SqsIngressConsumer:
             )
             return False
 
+        expected_bucket = (self.config.s3_bucket or "").strip()
+        if not expected_bucket:
+            logger.error(
+                "Rejecting claim-check for messageId=%s: configured s3_bucket is empty",
+                claim_check.message_id,
+            )
+            return False
+
+        if claim_check.s3_bucket != expected_bucket:
+            logger.error(
+                "Rejecting claim-check for messageId=%s: s3Bucket %r != expected %r",
+                claim_check.message_id,
+                claim_check.s3_bucket,
+                expected_bucket,
+            )
+            return False
+
+        try:
+            validated_key = validate_approved_s3_key(claim_check.s3_key)
+        except ValueError as exc:
+            logger.error(
+                "Rejecting claim-check for messageId=%s: invalid s3Key %r (%s)",
+                claim_check.message_id,
+                claim_check.s3_key,
+                exc,
+            )
+            return False
+
         logger.info(
             "Processing claim-check for messageId=%s from=%s to=%s (s3://%s/%s)",
             claim_check.message_id,
             claim_check.from_address,
             claim_check.to_address,
-            claim_check.s3_bucket,
-            claim_check.s3_key,
+            expected_bucket,
+            validated_key,
         )
 
         try:
             # 1. Fetch from S3 and construct RFC 822 MIME
-            email_msg = fetch_and_build_email(self.s3_client, claim_check)
+            email_msg = fetch_and_build_email(
+                self.s3_client,
+                claim_check,
+                expected_bucket=expected_bucket,
+            )
 
             # 2. Inject to local SMTP
             injected = self.injector.inject(email_msg)
@@ -112,13 +149,13 @@ class SqsIngressConsumer:
             if self.config.delete_s3_on_success:
                 try:
                     self.s3_client.delete_object(
-                        Bucket=claim_check.s3_bucket,
-                        Key=claim_check.s3_key,
+                        Bucket=expected_bucket,
+                        Key=validated_key,
                     )
                     logger.info(
                         "Cleaned up approved S3 payload: s3://%s/%s",
-                        claim_check.s3_bucket,
-                        claim_check.s3_key,
+                        expected_bucket,
+                        validated_key,
                     )
                 except Exception as s3_err:
                     logger.warning("Failed to delete approved S3 payload (non-fatal): %s", s3_err)

@@ -157,14 +157,14 @@ if [ "${RUN_LIVE_E2E}" = "true" ]; then
 fi
 
 # Execute scenario matrix via dedicated Python validation runner
-"${PYTHON_BIN}" - << EOF
+SMTP_PORT="${SMTP_PORT}" "${PYTHON_BIN}" - << 'EOF'
 import sys
 import time
 import os
 import smtplib
 from email.message import EmailMessage
 
-smtp_port = int("${SMTP_PORT}")
+smtp_port = int(os.environ["SMTP_PORT"])
 test_ts = int(time.time())
 test_id = f"ingress-verify-{test_ts}"
 

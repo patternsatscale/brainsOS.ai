@@ -19,6 +19,7 @@ import hashlib
 import importlib.util
 import logging
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any
@@ -31,11 +32,7 @@ logger = logging.getLogger("brainsos.hermes.litellm_session")
 # LiteLLM per-request flag (litellm_params["no-log"]): skips logging callbacks except proxy spend tracking.
 NO_LOG_FIELD = "no-log"
 
-_AGENT_KEY_ENV_MAP = {
-    "bawtford": "BAWTFORD_LITELLM_KEY",
-    "terrastella": "TERRASTELLA_LITELLM_KEY",
-    "marvin": "MARVIN_LITELLM_KEY",
-}
+_MAIL_SESSION_RE = re.compile(r"^mail-([a-z0-9_-]+)-")
 
 
 def _resolve_session_id(session_id: str | None) -> str:
@@ -58,15 +55,40 @@ def _deterministic_trace_id(session_id: str | None) -> str:
 
 
 def _resolve_agent_virtual_key(session_id: str | None) -> str | None:
-    """Resolve the tenant virtual key for a Hermes session_id (e.g. 'mail-bawtford-...')."""
+    """Resolve the tenant virtual key for a pinned BRAINSOS_AGENT_ID or anchored 'mail-<agent>-...' session."""
+    pinned_agent = (os.environ.get("BRAINSOS_AGENT_ID") or "").strip().lower()
+    if pinned_agent:
+        direct_key = (os.environ.get("LITELLM_API_KEY") or "").strip()
+        if direct_key:
+            return direct_key
+        pinned_env = f"{pinned_agent.upper().replace('-', '_')}_LITELLM_KEY"
+        pinned_val = (os.environ.get(pinned_env) or "").strip()
+        return pinned_val or None
+
     sid = _resolve_session_id(session_id).lower()
-    for agent_id, env_var in _AGENT_KEY_ENV_MAP.items():
-        if sid.startswith(f"mail-{agent_id}-") or f"-{agent_id}-" in sid or sid == agent_id:
-            val = (os.environ.get(env_var) or "").strip()
-            if val:
-                return val
-    default_vkey = (os.environ.get("BAWTFORD_LITELLM_KEY") or "").strip()
-    return default_vkey or None
+    if not _MAIL_SESSION_RE.match(sid):
+        direct_key = (os.environ.get("LITELLM_API_KEY") or "").strip()
+        return direct_key or None
+
+    # Match registered *_LITELLM_KEY environment entries strictly against anchored ^mail-<agent>- prefix (longest-first).
+    candidates: list[tuple[str, str, str]] = []
+    for env_name, env_val in os.environ.items():
+        if not env_name.endswith("_LITELLM_KEY") or env_name in ("LITELLM_MASTER_KEY", "LITELLM_API_KEY"):
+            continue
+        raw_prefix = env_name[: -len("_LITELLM_KEY")].lower()
+        if not raw_prefix:
+            continue
+        slug = raw_prefix.replace("_", "-")
+        val = (env_val or "").strip()
+        if val:
+            candidates.append((slug, raw_prefix, val))
+
+    candidates.sort(key=lambda item: len(item[0]), reverse=True)
+    for slug, raw_prefix, val in candidates:
+        if sid.startswith(f"mail-{slug}-") or sid.startswith(f"mail-{raw_prefix}-"):
+            return val
+
+    return None
 
 
 def _ensure_bundled_custom_provider() -> Any:

@@ -310,6 +310,56 @@ class TestBrainsOSMailClientThreadingAndSync(unittest.TestCase):
             self.assertIn("@jsm.cloud.aws.brainsos.ai>", msg_id)
             mock_smtp.send_message.assert_called_once()
 
+    @patch("imaplib.IMAP4")
+    def test_search_messages_escapes_quotes_backslashes_and_crlf(self, mock_imap_cls):
+        """Verify search_messages strips CR/LF/NUL and escapes backslash then double-quote (#401)."""
+        mock_imap = MagicMock()
+        mock_imap.select.return_value = ("OK", [b"1"])
+        mock_imap.search.return_value = ("OK", [b""])
+        mock_imap_cls.return_value.__enter__.return_value = mock_imap
+
+        self.client.search_messages(
+            query='hello "world" \\ test\r\nLOGOUT\x00',
+            subject='subj\\"inject\n',
+            from_addr='evil" OR ALL\r',
+            since_date='01-Jan-2026"\r\n',
+            before_date='02-Jan-2026\\"',
+        )
+
+        mock_imap.search.assert_called_once()
+        _, criteria = mock_imap.search.call_args[0]
+        self.assertNotIn("\r", criteria)
+        self.assertNotIn("\n", criteria)
+        self.assertNotIn("\x00", criteria)
+        self.assertEqual(
+            criteria,
+            'TEXT "hello \\"world\\" \\\\ testLOGOUT" '
+            'SUBJECT "subj\\\\\\"inject" '
+            'FROM "evil\\" OR ALL" '
+            'SINCE "01-Jan-2026\\"" '
+            'BEFORE "02-Jan-2026\\\\\\""',
+        )
+
+    @patch("imaplib.IMAP4")
+    def test_read_message_escapes_message_id_in_header_search(self, mock_imap_cls):
+        """Verify read_message escapes quotes, backslashes, and CR/LF in HEADER Message-ID SEARCH (#401)."""
+        mock_imap = MagicMock()
+        mock_imap.select.return_value = ("OK", [b"1"])
+        mock_imap.search.return_value = ("OK", [b""])
+        mock_imap_cls.return_value.__enter__.return_value = mock_imap
+
+        result = self.client.read_message(message_id='<abc\\"123\r\nLOGOUT@evil.com>')
+        self.assertIsNone(result)
+
+        # First search is HEADER Message-ID, second is fallback TEXT search
+        self.assertEqual(mock_imap.search.call_count, 2)
+        header_criteria = mock_imap.search.call_args_list[0][0][1]
+        fallback_criteria = mock_imap.search.call_args_list[1][0][1]
+        self.assertNotIn("\r", header_criteria)
+        self.assertNotIn("\n", header_criteria)
+        self.assertEqual(header_criteria, 'HEADER Message-ID "abc\\\\\\"123LOGOUT@evil.com"')
+        self.assertEqual(fallback_criteria, 'TEXT "<abc\\\\\\"123LOGOUT@evil.com>"')
+
 
 if __name__ == "__main__":
     unittest.main()

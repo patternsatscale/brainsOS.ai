@@ -97,3 +97,35 @@ def test_release_user_volume_scrubs_host_state_without_touching_ebs(tmp_path: Pa
     assert list((host_repo / "data" / "system_jobs").iterdir()) == []
     assert not sudoers_file.exists()
     assert ebs_secret.read_text(encoding="utf-8") == "USER_EBS_ENV=keep\n"
+
+
+def test_m4_mail_sogo_and_webhook_hardening() -> None:
+    setup_mail = (REPO_ROOT / "scripts/setup/setup-mail.sh").read_text(encoding="utf-8")
+    assert "{PLAIN}" not in setup_mail
+    assert "{SHA512-CRYPT}" in setup_mail
+    assert "777" not in setup_mail
+    assert "5000:5000" in setup_mail
+
+    setup_sogo = (REPO_ROOT / "scripts/setup/setup-sogo.sh").read_text(encoding="utf-8")
+    assert "777" not in setup_sogo
+    assert "5000:5000" in setup_sogo
+
+    reload_env = (REPO_ROOT / "scripts/control/reload-env.sh").read_text(encoding="utf-8")
+    assert "{SHA512-CRYPT}" in reload_env
+    assert "SELECT c_uid, c_name, c_password" not in reload_env
+
+    sogo_ep = (REPO_ROOT / "docker/sogo/entrypoint.sh").read_text(encoding="utf-8")
+    assert "SELECT c_uid, c_name, c_password" not in sogo_ep
+
+    postfix_cf = (REPO_ROOT / "docker/mail/postfix/main.cf").read_text(encoding="utf-8")
+    assert "smtpd_sender_login_maps" in postfix_cf
+    assert "reject_sender_login_mismatch" in postfix_cf
+
+    mail_ep = (REPO_ROOT / "docker/mail/entrypoint.sh").read_text(encoding="utf-8")
+    assert "> /etc/environment" not in mail_ep
+    assert "chmod 644 /etc/environment" not in mail_ep
+    assert "0600" in mail_ep and "vmail:vmail" in mail_ep
+
+    webhook_sh = (REPO_ROOT / "docker/mail/agent-webhook.sh").read_text(encoding="utf-8")
+    assert "/etc/environment" not in webhook_sh
+    assert "/etc/dovecot/mail-webhook-secret" in webhook_sh

@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
+
+_MAIL_SESSION_RE = re.compile(r"^mail-([a-z0-9_-]+)-")
+_SAFE_TENANT_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+_OKF_CATEGORIES = frozenset({"knowledge", "logs", "rules", "research", "notes", "people", "threads"})
 
 
 def get_memory_root() -> str:
@@ -49,7 +54,7 @@ def _get_known_agents(base_root: str) -> list[str]:
         return []
     agents: list[str] = []
     for entry in os.listdir(base_root):
-        if entry.startswith(".") or entry in ("knowledge", "logs", "rules", "research", "notes", "people", "threads"):
+        if entry.startswith(".") or entry in _OKF_CATEGORIES:
             continue
         p = os.path.join(base_root, entry)
         if os.path.isdir(p) and (
@@ -77,9 +82,12 @@ def _detect_active_hermes_agent(base_root: str, known_agents: list[str]) -> str:
         con.close()
         if not row or not row[0]:
             return ""
-        session_id = str(row[0]).lower()
-        for agent in known_agents:
-            if agent.lower() in session_id:
+        session_id = str(row[0]).strip().lower()
+        if not _MAIL_SESSION_RE.match(session_id):
+            return ""
+        for agent in sorted(known_agents, key=len, reverse=True):
+            clean_agent = agent.strip().lower()
+            if clean_agent and session_id.startswith(f"mail-{clean_agent}-"):
                 return agent
     except Exception:
         pass
@@ -93,11 +101,16 @@ def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str
     the environment, strictly rejects cross-tenant path prefixes or agent_id overrides.
     """
     base_root = get_memory_root()
-    norm_path = rel_path.strip().lstrip("/").replace("\\", "/")
+    norm_path = rel_path.strip().replace("\\", "/").lstrip("/")
 
-    # Strip leading 'agents/' if present (e.g. agents/<agent>/research/note.md)
+    # Strip leading 'agents/' and 'memories/' before cross-tenant prefix evaluation
     if norm_path.startswith("agents/"):
         norm_path = norm_path[len("agents/") :].lstrip("/")
+    if norm_path.startswith("memories/"):
+        norm_path = norm_path[len("memories/") :].lstrip("/")
+
+    if ".." in [seg for seg in norm_path.split("/") if seg]:
+        raise PermissionError(f"Path traversal denied in memory path '{rel_path}'.")
 
     pinned_agent = (
         os.environ.get("BRAINSOS_AGENT_ID")
@@ -110,6 +123,12 @@ def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str
     known_agents = _get_known_agents(base_root)
     explicit_agent = (agent_id or "").strip()
 
+    if pinned_agent and not _SAFE_TENANT_ID_RE.match(pinned_agent):
+        raise PermissionError(f"Invalid tenant agent identifier: '{pinned_agent}'.")
+
+    if explicit_agent and not _SAFE_TENANT_ID_RE.match(explicit_agent):
+        raise PermissionError(f"Invalid tenant agent identifier: '{explicit_agent}'.")
+
     if pinned_agent:
         if explicit_agent and explicit_agent != pinned_agent:
             raise PermissionError(
@@ -118,9 +137,9 @@ def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str
         if "/" in norm_path:
             first_seg, rest = norm_path.split("/", 1)
             if first_seg == pinned_agent:
-                norm_path = rest
+                norm_path = rest.lstrip("/")
             elif first_seg in known_agents or (
-                first_seg not in ("knowledge", "logs", "rules", "research", "notes", "people", "threads")
+                first_seg not in _OKF_CATEGORIES
                 and os.path.isdir(os.path.join(base_root, first_seg))
             ):
                 raise PermissionError(
@@ -139,7 +158,7 @@ def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str
             first_segment, rest = norm_path.split("/", 1)
             if first_segment in known_agents:
                 target_agent = first_segment
-                norm_path = rest
+                norm_path = rest.lstrip("/")
         elif not target_agent and norm_path in known_agents:
             target_agent = norm_path
             norm_path = ""
@@ -156,17 +175,38 @@ def resolve_tenant_memory_target(rel_path: str, agent_id: str = "") -> tuple[str
         if not target_agent:
             target_agent = os.environ.get("DEFAULT_AGENT_ID", "").strip()
 
+    if target_agent and not _SAFE_TENANT_ID_RE.match(target_agent):
+        raise PermissionError(f"Invalid tenant agent identifier: '{target_agent}'.")
+
+    # Strip redundant 'memories/' prefix after agent prefix stripping (e.g. agents/<agent>/memories/...)
+    if norm_path.startswith("memories/"):
+        norm_path = norm_path[len("memories/") :].lstrip("/")
+
     # If target_agent is resolved:
     if target_agent:
-        # Strip redundant 'memories/' prefix if passed (e.g. memories/research/...)
-        if norm_path.startswith("memories/"):
-            norm_path = norm_path[len("memories/") :]
+        # Ephemeral single-tenant mount (e.g. /data/agents/<tenant>/memories:/memories:rw)
+        if os.path.basename(os.path.normpath(base_root)) == "memories" and not known_agents:
+            target_dir = os.path.realpath(base_root)
+            os.makedirs(target_dir, exist_ok=True)
+            return target_dir, norm_path
 
-        agent_dir = os.path.realpath(os.path.join(base_root, target_agent))
         real_base = os.path.realpath(base_root)
-        if os.path.commonpath([real_base, agent_dir]) != real_base:
+        raw_agent_dir = os.path.join(real_base, target_agent)
+        if os.path.islink(raw_agent_dir):
+            raise PermissionError(f"Symlinked tenant agent directory rejected: '{target_agent}'.")
+
+        agent_dir = os.path.realpath(raw_agent_dir)
+        if os.path.commonpath([real_base, agent_dir]) != real_base or agent_dir == real_base:
             raise PermissionError(f"Invalid tenant agent directory traversal: '{target_agent}'")
-        target_dir = os.path.join(agent_dir, "memories")
+
+        raw_target_dir = os.path.join(agent_dir, "memories")
+        if os.path.islink(raw_target_dir):
+            raise PermissionError(f"Symlinked tenant memories directory rejected: '{target_agent}'.")
+
+        target_dir = os.path.realpath(raw_target_dir)
+        if os.path.commonpath([agent_dir, target_dir]) != agent_dir or target_dir == agent_dir:
+            raise PermissionError(f"Invalid tenant memories directory traversal: '{target_agent}'")
+
         os.makedirs(target_dir, exist_ok=True)
         return target_dir, norm_path
 

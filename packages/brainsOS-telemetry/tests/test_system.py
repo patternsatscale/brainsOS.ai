@@ -595,9 +595,20 @@ def test_runners_status_and_hermes_firecrawl_config(tmp_path):
         body = r2.json()
         assert body["status"] == "updated"
         assert body["runners"]["hermes"]["firecrawl_configured"] is True
-        masked = body["runners"]["tool_keys"]["FIRECRAWL_API_KEY"]["masked"]
-        assert masked.startswith("fc-9")
+        assert body["runners"]["tool_keys"]["FIRECRAWL_API_KEY"] == {"configured": True}
+        assert "masked" not in body["runners"]["tool_keys"]["FIRECRAWL_API_KEY"]
+        assert "fc-9" not in r2.text
         assert raw_key not in r2.text
+
+        r3 = client.get("/api/v1/system/runners", headers=headers)
+        assert r3.status_code == 200
+        assert r3.json()["tool_keys"]["FIRECRAWL_API_KEY"] == {"configured": True}
+        assert "masked" not in r3.text
+
+        st = client.get("/api/v1/system/status", headers=headers)
+        assert st.status_code == 200
+        assert st.json()["runners"]["tool_keys"]["FIRECRAWL_API_KEY"] == {"configured": True}
+        assert "fc-9" not in st.text
 
 
 def test_os_telemetry_upgrade_and_reboot_endpoints(tmp_path, monkeypatch):
@@ -695,6 +706,155 @@ def test_terminal_exec_and_websocket_pty(tmp_path):
                     found_pong = True
                     break
             assert found_pong is True
+
+
+@pytest.mark.asyncio
+async def test_job_status_and_stream_reattach_require_system_auth_for_latest_and_active(tmp_path):
+    """Verify /jobs/{latest,active} and /jobs/{latest,active}/stream require admin auth post-wizard."""
+    from brainsos_telemetry.system import JobManager
+
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_WIZARD_COMPLETED=true\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-wizard-completed").write_text("2026-11-26T00:00:00Z\n", encoding="utf-8")
+
+    # Seed a completed job record and log file
+    jm = JobManager(str(tmp_path))
+    job = await jm.start_job("update", ["echo", "reattach-ok"])
+    await job["task"]
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+
+        internal_headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
+        viewer_headers = {
+            **internal_headers,
+            "X-Authentik-Username": "viewer",
+            "X-Authentik-Groups": "brainsos-viewers",
+        }
+        admin_headers = {
+            **internal_headers,
+            "X-Authentik-Username": "su",
+            "X-Authentik-Groups": "authentik Admins",
+        }
+
+        for endpoint in (
+            "/api/v1/system/jobs/latest",
+            "/api/v1/system/jobs/active",
+            "/api/v1/system/jobs/latest/stream",
+            "/api/v1/system/jobs/active/stream",
+        ):
+            assert client.get(endpoint, headers=internal_headers).status_code == 403
+            assert client.get(endpoint, headers=viewer_headers).status_code == 403
+
+        # Admin can access /jobs/latest and stream /jobs/latest/stream
+        latest_res = client.get("/api/v1/system/jobs/latest", headers=admin_headers)
+        assert latest_res.status_code == 200
+        assert latest_res.json()["id"] == job["id"]
+
+        stream_res = client.get("/api/v1/system/jobs/latest/stream", headers=admin_headers)
+        assert stream_res.status_code == 200
+        assert "reattach-ok" in stream_res.text
+
+        # Pre-wizard mode allows unauthenticated access for First-Boot Wizard
+        (tmp_path / ".brainsos-wizard-completed").unlink()
+        (tmp_path / ".env").write_text(
+            "BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_WIZARD_COMPLETED=false\n",
+            encoding="utf-8",
+        )
+        pre_res = client.get("/api/v1/system/jobs/latest", headers=internal_headers)
+        assert pre_res.status_code == 200
+        pre_stream = client.get("/api/v1/system/jobs/latest/stream", headers=internal_headers)
+        assert pre_stream.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_system_status_120s_ttl_cache_and_bounds(tmp_path):
+    """Verify 120s TTL cache on update.sh --check --json, fresh identity overlay, non-caching of errors, and max entries."""
+    import json
+    import subprocess
+    from unittest.mock import MagicMock
+
+    from brainsos_telemetry import system as sys_mod
+
+    sys_mod.clear_update_check_cache()
+    (tmp_path / ".env").write_text("BRAINSOS_UNIT_NAME=Box One\n", encoding="utf-8")
+    script_dir = tmp_path / "scripts" / "control"
+    script_dir.mkdir(parents=True)
+    update_sh = script_dir / "update.sh"
+    update_sh.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    update_sh.chmod(0o755)
+
+    calls = []
+    now_clock = [1000.0]
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        payload = {
+            "platform": "brainsOS",
+            "git": {"branch": "main", "update_available": False},
+            "services": {},
+            "disk": {"total_gb": 100.0, "used_gb": 20.0, "free_gb": 80.0, "free_pct": 80.0, "warning": False},
+            "overall_update_available": False,
+        }
+        m = MagicMock(spec=subprocess.CompletedProcess)
+        m.returncode = 0
+        m.stdout = json.dumps(payload)
+        m.stderr = ""
+        return m
+
+    with (
+        patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)),
+        patch("brainsos_telemetry.system.time.monotonic", side_effect=lambda: now_clock[0]),
+        patch("brainsos_telemetry.system.subprocess.run", side_effect=fake_run),
+    ):
+        # 1. First async call invokes update.sh once
+        s1 = await sys_mod.get_system_status_async()
+        assert s1["unit_name"] == "Box One"
+        assert len(calls) == 1
+
+        # 2. Mutate unit_name and call again within 120s -> cache hit for update.sh, fresh identity!
+        (tmp_path / ".env").write_text("BRAINSOS_UNIT_NAME=Box Two\n", encoding="utf-8")
+        now_clock[0] = 1050.0
+        s2 = await sys_mod.get_system_status_async()
+        assert s2["unit_name"] == "Box Two"
+        assert len(calls) == 1
+
+        # 3. Advance past 120s -> cache expires and re-runs update.sh
+        now_clock[0] = 1125.0
+        s3 = sys_mod.get_system_status()
+        assert s3["unit_name"] == "Box Two"
+        assert len(calls) == 2
+
+    # 4. Non-zero exit code is NOT cached
+    sys_mod.clear_update_check_cache()
+    fail_calls = []
+
+    def fake_fail(cmd, **kwargs):
+        fail_calls.append(cmd)
+        m = MagicMock(spec=subprocess.CompletedProcess)
+        m.returncode = 1
+        m.stdout = ""
+        m.stderr = "boom"
+        return m
+
+    with (
+        patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)),
+        patch("brainsos_telemetry.system.subprocess.run", side_effect=fake_fail),
+    ):
+        _ = await sys_mod.get_system_status_async()
+        _ = await sys_mod.get_system_status_async()
+        assert len(fail_calls) == 2
+
+    # 5. Bounded eviction at UPDATE_CHECK_CACHE_MAX_ENTRIES
+    sys_mod.clear_update_check_cache()
+    for i in range(sys_mod.UPDATE_CHECK_CACHE_MAX_ENTRIES + 5):
+        sys_mod._write_cached_update_check(f"/repo/{i}", {"disk": {}}, float(100 + i))
+    assert len(sys_mod._UPDATE_CHECK_CACHE) == sys_mod.UPDATE_CHECK_CACHE_MAX_ENTRIES
+    sys_mod.clear_update_check_cache()
+
 
 
 

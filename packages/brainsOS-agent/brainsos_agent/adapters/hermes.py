@@ -29,6 +29,7 @@ from typing import Any
 
 import httpx
 from brainsos_mail.models import ParsedInboundEmail
+from brainsos_runner import AgentTurnRequest, ChatMessage, EphemeralDockerRunnerClient
 
 from brainsos_agent.context import ContextAssembler
 from brainsos_agent.mail_runs import (
@@ -132,7 +133,7 @@ def resolve_runner_endpoint(
 
 
 class HermesMailAdapter(AgentRuntime):
-    """Asynchronous run-based adapter routing inbound email through the shared warm Hermes runner."""
+    """Asynchronous run-based adapter routing inbound email through Hermes (ephemeral Docker or warm runner)."""
 
     def __init__(
         self,
@@ -146,6 +147,8 @@ class HermesMailAdapter(AgentRuntime):
         sleep: Callable[[float], Awaitable[Any]] | None = None,
         clock: Callable[[], float] | None = None,
         use_envelope: bool | None = None,
+        ephemeral: bool | None = None,
+        docker_image: str | None = None,
     ) -> None:
         self.runner_url = resolve_runner_endpoint(
             runner_url,
@@ -165,6 +168,15 @@ class HermesMailAdapter(AgentRuntime):
         self._clock = clock or time.time
         self._client = http_client
         self.use_envelope = use_envelope if use_envelope is not None else True
+        if ephemeral is not None:
+            self.ephemeral = bool(ephemeral)
+        elif http_client is not None or runner_url is not None:
+            self.ephemeral = False
+        else:
+            self.ephemeral = os.getenv("BRAINSOS_EPHEMERAL_RUNNERS", "").strip().lower() in ("1", "true", "yes")
+        self.docker_image: str = (
+            docker_image or os.getenv("HERMES_EPHEMERAL_IMAGE") or "brainsos-runner-hermes:latest"
+        )
 
     # ------------------------------------------------------------------ helpers
 
@@ -205,7 +217,12 @@ class HermesMailAdapter(AgentRuntime):
         return history
 
     def _headers(self, profile: AgentProfile, idempotency_key: str | None = None) -> dict[str, str]:
-        api_key = os.getenv("API_SERVER_KEY") or os.getenv("HERMES_API_KEY") or os.getenv("LITELLM_MASTER_KEY", "")
+        api_key = (
+            os.getenv("RUNNER_AUTH_TOKEN")
+            or os.getenv("API_SERVER_KEY")
+            or os.getenv("HERMES_API_KEY")
+            or ""
+        ).strip()
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
@@ -355,29 +372,69 @@ class HermesMailAdapter(AgentRuntime):
             profile, idempotency_key_for(email.message_id, fallback=f"{agent_id}:{email.thread_id}:{user_text}")
         )
 
-        client = self._client or httpx.AsyncClient()
-        try:
-            if ctx.run_id:
-                logger.info("Resuming Hermes run %s for session %s", ctx.run_id, session_id)
-                started_at = ctx.submitted_at or self._clock()
-                result = await self._poll_run(client, ctx.run_id, headers, started_at + self.max_run_sec)
-            else:
-                started_at = self._clock()
-                run_id, rejected = await self._submit_run(client, body, headers, started_at + self.max_run_sec)
-                if rejected is not None:
-                    result = rejected
+        if self.ephemeral and self._client is None and not ctx.run_id:
+            started_at = self._clock()
+            ephemeral_conv = [
+                ChatMessage(role=t["role"], content=t["content"])  # type: ignore[arg-type]
+                for t in body["conversation_history"]
+                if t.get("role") in ("system", "user", "assistant", "tool")
+            ]
+            ephemeral_conv.append(ChatMessage(role="user", content=user_text))
+            extra_params: dict[str, Any] = {"session_id": session_id}
+            if profile.virtual_key_env:
+                extra_params["virtual_key_env"] = profile.virtual_key_env
+            extra_params["github_allowed_repos"] = list(profile.github_allowed_repos)
+
+            docker_client = EphemeralDockerRunnerClient(
+                image=self.docker_image,
+                default_timeout_sec=int(self.max_run_sec),
+                command=["python3", "/app/server.py"],
+            )
+            turn_resp = await docker_client.execute_turn(
+                AgentTurnRequest(
+                    run_id=session_id,
+                    agent_id=agent_id,
+                    model=profile.model,
+                    system_prompt=body["instructions"],
+                    conversation=ephemeral_conv,
+                    workspace_dir=str(profile.workspace_root),
+                    memory_dir=str(profile.memory_root),
+                    timeout_sec=int(self.max_run_sec),
+                    extra_params=extra_params,
+                )
+            )
+            status_map = {"completed": RUN_COMPLETED, "timed_out": RUN_TIMEOUT, "failed": RUN_INTERRUPTED}
+            result = RunResult(
+                status=status_map.get(turn_resp.status, RUN_INTERRUPTED),
+                output=(turn_resp.output_text or "").strip(),
+                error=turn_resp.error_message,
+                usage=turn_resp.metrics.model_dump() if turn_resp.metrics else {},
+                run_id=turn_resp.run_id,
+            )
+        else:
+            client = self._client or httpx.AsyncClient()
+            try:
+                if ctx.run_id:
+                    logger.info("Resuming Hermes run %s for session %s", ctx.run_id, session_id)
+                    started_at = ctx.submitted_at or self._clock()
+                    result = await self._poll_run(client, ctx.run_id, headers, started_at + self.max_run_sec)
                 else:
-                    assert run_id is not None
-                    logger.info("Submitted Hermes run %s for session %s (%s)", run_id, session_id, agent_id)
-                    ctx.run_id, ctx.submitted_at = run_id, started_at
-                    if ctx.on_run_submitted:
-                        await ctx.on_run_submitted(run_id, started_at)
-                    result = await self._poll_run(client, run_id, headers, started_at + self.max_run_sec)
-                    # Clean up ephemeral runner session from Hermes to guarantee stateless execution
-                    await self._purge_session(client, session_id, headers)
-        finally:
-            if self._client is None:
-                await client.aclose()
+                    started_at = self._clock()
+                    run_id, rejected = await self._submit_run(client, body, headers, started_at + self.max_run_sec)
+                    if rejected is not None:
+                        result = rejected
+                    else:
+                        assert run_id is not None
+                        logger.info("Submitted Hermes run %s for session %s (%s)", run_id, session_id, agent_id)
+                        ctx.run_id, ctx.submitted_at = run_id, started_at
+                        if ctx.on_run_submitted:
+                            await ctx.on_run_submitted(run_id, started_at)
+                        result = await self._poll_run(client, run_id, headers, started_at + self.max_run_sec)
+                        # Clean up ephemeral runner session from Hermes to guarantee stateless execution
+                        await self._purge_session(client, session_id, headers)
+            finally:
+                if self._client is None:
+                    await client.aclose()
 
         if result.status == RUN_COMPLETED and not result.output:
             result.status, result.error = RUN_EMPTY, result.error or "Run completed with empty output"

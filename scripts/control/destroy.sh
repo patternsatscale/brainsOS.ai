@@ -250,12 +250,11 @@ if [ -f "${REPO_ROOT}/config/caddy/tls_policy.caddy" ]; then
   git -C "${REPO_ROOT}" checkout -- config/caddy/tls_policy.caddy 2>/dev/null || true
 fi
 
-# Remove .env if requested
+# Remove .env and any stale .env.bak secret residue if requested
 if [ "${KEEP_ENV}" != true ]; then
-  if [ -f "${REPO_ROOT}/.env" ]; then
-    cp -f "${REPO_ROOT}/.env" "${REPO_ROOT}/.env.bak" 2>/dev/null || true
-    rm -f "${REPO_ROOT}/.env"
-    log_success "Removed .env configuration file (backed up to .env.bak)."
+  if [ -f "${REPO_ROOT}/.env" ] || [ -f "${REPO_ROOT}/.env.bak" ]; then
+    rm -f "${REPO_ROOT}/.env" "${REPO_ROOT}/.env.bak"
+    log_success "Removed .env configuration file and any .env.bak residue."
   fi
 else
   log_info "Preserving .env configuration file (--keep-env)."

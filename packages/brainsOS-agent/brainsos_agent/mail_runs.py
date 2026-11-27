@@ -119,28 +119,100 @@ def failure_email_body(
     return "\n".join(lines)
 
 
+def _replace_markdown_links(text: str, render_fn: Any) -> str:
+    """Replace Markdown [label](url) links with balanced parenthesis support in url."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == "[":
+            close_bracket = text.find("]", i + 1)
+            if (
+                close_bracket != -1
+                and close_bracket > i + 1
+                and close_bracket + 1 < n
+                and text[close_bracket + 1] == "("
+                and "\n" not in text[i + 1 : close_bracket]
+            ):
+                label = text[i + 1 : close_bracket]
+                j = close_bracket + 2
+                depth = 1
+                while j < n and depth > 0:
+                    ch = text[j]
+                    if ch == "\n":
+                        break
+                    if ch == "(":
+                        depth += 1
+                    elif ch == ")":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    j += 1
+                if depth == 0 and j > close_bracket + 2:
+                    url = text[close_bracket + 2 : j]
+                    out.append(render_fn(label, url))
+                    i = j + 1
+                    continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+_INLINE_RAW_HTML_TAG_RE = re.compile(r"<(/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>")
+_INLINE_DROP_BLOCK_RE = re.compile(
+    r"<(script|style|iframe|object|embed|applet|svg|math|form|textarea|select|template|noscript)\b[^>]*>.*?</\1>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
 def _format_inline_markdown(text: str) -> str:
     """Formats inline Markdown (bold, italic, code, links) to safe HTML."""
-    safe = html.escape(text)
+    code_tokens: list[str] = []
 
-    # Inline code: `code`
-    safe = re.sub(
-        r"`([^`]+)`",
-        r'<code style="background-color: #f3f4f6; padding: 2px 4px; border-radius: 4px; font-family: monospace; font-size: 13px;">\1</code>',
-        safe,
-    )
+    def _stash_code(m: re.Match[str]) -> str:
+        idx = len(code_tokens)
+        code_html = (
+            '<code style="background-color: #f3f4f6; padding: 2px 4px; border-radius: 4px; '
+            f'font-family: monospace; font-size: 13px;">{html.escape(m.group(1))}</code>'
+        )
+        code_tokens.append(code_html)
+        return f"@@BRAINSOS_CODE_{idx}@@"
+
+    stashed = re.sub(r"`([^`]+)`", _stash_code, text)
+
+    # Scrub any raw HTML tags / event-handler attributes outside inline code spans
+    stashed = _INLINE_DROP_BLOCK_RE.sub("", stashed)
+
+    def _scrub_tag(m: re.Match[str]) -> str:
+        tag_name = m.group(2).lower()
+        if tag_name not in _STANDARD_HTML_TAGS:
+            return m.group(0)
+        return sanitize_html(m.group(0))
+
+    stashed = _INLINE_RAW_HTML_TAG_RE.sub(_scrub_tag, stashed)
+
+    safe = html.escape(stashed)
+
     # Bold: **text** or __text__
     safe = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", safe)
     safe = re.sub(r"__([^_]+)__", r"<strong>\1</strong>", safe)
     # Italic: *text* or _text_
     safe = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", safe)
     safe = re.sub(r"(?<!\w)_([^_]+)_(?!\w)", r"<em>\1</em>", safe)
-    # Links: [text](url)
-    safe = re.sub(
-        r"\[([^\]]+)\]\(([^)]+)\)",
-        r'<a href="\2" style="color: #2563eb; text-decoration: underline;">\1</a>',
-        safe,
-    )
+
+    # Links: [text](url) with strict http/https/mailto scheme allowlisting
+    def _render_link(label: str, raw_url: str) -> str:
+        decoded_url = html.unescape(raw_url).strip()
+        if not _is_safe_url(decoded_url, allow_cid=False):
+            return label
+        safe_href = html.escape(decoded_url, quote=True)
+        return f'<a href="{safe_href}" style="color: #2563eb; text-decoration: underline;">{label}</a>'
+
+    safe = _replace_markdown_links(safe, _render_link)
+
+    for idx, code_html in enumerate(code_tokens):
+        safe = safe.replace(f"@@BRAINSOS_CODE_{idx}@@", code_html)
+
     return safe
 
 
@@ -304,30 +376,80 @@ _SAFE_HTML_TAG_ATTRS = {
 }
 
 _UNSAFE_STYLE_RE = re.compile(
-    r"(?:expression\s*\(|javascript:|vbscript:|-moz-binding|behavior\s*:|@import|url\s*\()",
+    r"(?:expression\s*\(|javascript\s*:|vbscript\s*:|data\s*:|-moz-binding|behavior\s*:|@import|url\s*\(|(?:-\w+-)?image-set\s*\(|progid\s*:)",
     re.IGNORECASE,
 )
+_CSS_COMMENT_RE = re.compile(r"/\*[\s\S]*?(?:\*/|$)")
+_CSS_ESCAPE_HEX_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\r\n\f]?")
+_CSS_ESCAPE_LINE_CONT_RE = re.compile(r"\\(?:\r\n|[\r\n\f])")
+_CSS_ESCAPE_CHAR_RE = re.compile(r"\\(.)", re.DOTALL)
+_STYLE_CTRL_WHITESPACE_RE = re.compile(r"[\x00-\x20\x7f]+")
+_STYLE_FORBIDDEN_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _decode_css_escapes(text: str) -> str:
+    """Decode CSS backslash escapes (CSS Syntax Level 3) for fail-closed inspection."""
+    text = _CSS_ESCAPE_LINE_CONT_RE.sub("", text)
+
+    def _repl_hex(m: re.Match[str]) -> str:
+        code = int(m.group(1), 16)
+        if code == 0 or code > 0x10FFFF or 0xD800 <= code <= 0xDFFF:
+            return ""
+        return chr(code)
+
+    text = _CSS_ESCAPE_HEX_RE.sub(_repl_hex, text)
+    return _CSS_ESCAPE_CHAR_RE.sub(r"\1", text)
 
 
 def _is_safe_url(raw_url: str, *, allow_cid: bool = False) -> bool:
-    """Validate URLs against explicit safe URI schemes."""
-    candidate = re.sub(r"[\x00-\x20]+", "", (raw_url or "").strip())
-    if not candidate:
+    """Validate URLs against explicit safe URI schemes after iterative entity decoding."""
+    decoded = raw_url or ""
+    for _ in range(5):
+        next_decoded = html.unescape(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    candidate = re.sub(r"[\x00-\x20\x7f]+", "", decoded.strip())
+    if not candidate or candidate.startswith("//"):
         return False
-    if candidate.startswith(("#", "/")) and not candidate.startswith("//"):
-        return True
     parsed = urlparse(candidate)
-    if not parsed.scheme:
-        return True
+    scheme = (parsed.scheme or "").lower()
     allowed = {"http", "https", "mailto"}
     if allow_cid:
         allowed.add("cid")
-    return parsed.scheme.lower() in allowed
+    if scheme not in allowed:
+        return False
+    if scheme in ("http", "https") and not parsed.netloc:
+        return False
+    if scheme == "mailto" and not parsed.path.strip():
+        return False
+    return True
 
 
 def _sanitize_style(raw_style: str) -> str:
-    """Strip unsafe CSS directives (expression, javascript:, url(), @import)."""
-    if not raw_style or _UNSAFE_STYLE_RE.search(raw_style):
+    """Strip unsafe CSS directives, comments, backslash escapes, and control characters."""
+    if not raw_style or not isinstance(raw_style, str):
+        return ""
+
+    decoded = raw_style
+    for _ in range(5):
+        next_decoded = html.unescape(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+
+    if "\\" in raw_style or "\\" in decoded:
+        return ""
+    if "/*" in raw_style or "*/" in raw_style or "/*" in decoded or "*/" in decoded:
+        return ""
+    if _STYLE_FORBIDDEN_CTRL_RE.search(raw_style) or _STYLE_FORBIDDEN_CTRL_RE.search(decoded):
+        return ""
+
+    normalized = _CSS_COMMENT_RE.sub("", decoded)
+    normalized = _decode_css_escapes(normalized)
+    if _UNSAFE_STYLE_RE.search(normalized):
+        return ""
+    if _UNSAFE_STYLE_RE.search(_STYLE_CTRL_WHITESPACE_RE.sub("", normalized)):
         return ""
     return raw_style.strip()
 
@@ -403,7 +525,7 @@ class _AllowlistHtmlSanitizer(HTMLParser):
             nl = name.lower().strip()
             if nl.startswith("on") or nl not in allowed_for_tag:
                 continue
-            v = "" if val is None else str(val)
+            v = html.unescape("" if val is None else str(val))
             if nl == "href":
                 if not _is_safe_url(v, allow_cid=False):
                     continue
@@ -590,10 +712,11 @@ def markdown_to_clean_html(text: str) -> str:
         html_pieces.append(f'<pre style="background-color: #f3f4f6; padding: 10px;"><code>{code_content}</code></pre>')
 
     inner_html = "\n".join(html_pieces)
-    return (
+    rendered = (
         f'<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; '
         f'font-size: 14px; line-height: 1.6; color: #111827;">\n{inner_html}\n</div>'
     )
+    return sanitize_html(rendered)
 
 
 def html_to_plain_text(html_text: str) -> str:

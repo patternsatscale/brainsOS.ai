@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from urllib.parse import urlparse
 
 import jwt
 
@@ -48,6 +49,20 @@ def is_truthy(value: Optional[str], default: bool = False) -> bool:
     if raw in ("0", "false", "no", "off"):
         return False
     return default
+
+
+def is_valid_https_issuer(url: str) -> bool:
+    """Return True if `url` is a non-empty https:// URL with a valid hostname and port."""
+    clean = (url or "").strip()
+    if not clean.startswith("https://") or any(ch.isspace() for ch in clean):
+        return False
+    try:
+        parsed = urlparse(clean)
+        host = parsed.hostname
+        _ = parsed.port
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and bool(parsed.netloc) and bool(host)
 
 
 def clear_key_cache() -> None:
@@ -126,6 +141,16 @@ def verify_alb_oidc_jwt(
     if not is_truthy(env.get("AUTH_ALB_OIDC_ENABLED"), default=False):
         raise AlbAuthError(401, "AWS ALB OIDC pass-through is disabled")
 
+    allowed_signers_raw = str(env.get("AUTH_ALB_SIGNER_ARN") or "").strip()
+    allowed_signers = [s.strip() for s in allowed_signers_raw.split(",") if s.strip()]
+    if not allowed_signers or not all(SIGNER_ARN_RE.match(s) for s in allowed_signers):
+        raise AlbAuthError(403, "ALB OIDC signer ARN allowlist (AUTH_ALB_SIGNER_ARN) is not configured")
+
+    required_issuers_raw = str(env.get("AUTH_ALB_ISSUER") or "").strip()
+    expected_issuers = [s.strip() for s in required_issuers_raw.split(",") if s.strip()]
+    if not expected_issuers or not all(is_valid_https_issuer(iss) for iss in expected_issuers):
+        raise AlbAuthError(403, "ALB OIDC issuer allowlist (AUTH_ALB_ISSUER) is not configured")
+
     clean_token = (token or "").strip()
     if not clean_token:
         raise AlbAuthError(401, "Missing x-amzn-oidc-data header")
@@ -157,11 +182,8 @@ def verify_alb_oidc_jwt(
     if allowed_account and not secrets.compare_digest(account_id, allowed_account):
         raise AlbAuthError(403, "ALB OIDC AWS account ID rejected by policy")
 
-    allowed_signers_raw = str(env.get("AUTH_ALB_SIGNER_ARN") or "").strip()
-    if allowed_signers_raw:
-        allowed_signers = [s.strip() for s in allowed_signers_raw.split(",") if s.strip()]
-        if not any(secrets.compare_digest(signer, allowed) for allowed in allowed_signers):
-            raise AlbAuthError(403, "ALB OIDC signer ARN is not allowlisted")
+    if not any(secrets.compare_digest(signer, allowed) for allowed in allowed_signers):
+        raise AlbAuthError(403, "ALB OIDC signer ARN is not allowlisted")
 
     fetcher = key_fetcher or fetch_alb_public_key
     public_pem = fetcher(region, kid)
@@ -184,11 +206,9 @@ def verify_alb_oidc_jwt(
     except jwt.PyJWTError as exc:
         raise AlbAuthError(401, f"Invalid ALB OIDC token signature or claims: {exc}") from exc
 
-    required_issuer = str(env.get("AUTH_ALB_ISSUER") or "").strip()
-    if required_issuer:
-        actual_iss = str(claims.get("iss") or "").strip()
-        if not actual_iss or not secrets.compare_digest(actual_iss, required_issuer):
-            raise AlbAuthError(403, "ALB OIDC issuer mismatch")
+    actual_iss = str(claims.get("iss") or "").strip()
+    if not actual_iss or not any(secrets.compare_digest(actual_iss, expected) for expected in expected_issuers):
+        raise AlbAuthError(403, "ALB OIDC issuer mismatch")
 
     return dict(claims)
 

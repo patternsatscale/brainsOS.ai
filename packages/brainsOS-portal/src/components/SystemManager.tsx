@@ -122,6 +122,7 @@ export interface ApplianceIdentity {
   cognito_client_secret_configured?: boolean;
   alb_oidc_enabled?: boolean;
   alb_signer_arn?: string;
+  alb_issuer?: string;
   user_sub?: string;
   owner_only?: boolean;
   tls_mode?: string;
@@ -161,6 +162,7 @@ interface SystemStatus {
   cognito_client_secret_configured?: boolean;
   alb_oidc_enabled?: boolean;
   alb_signer_arn?: string;
+  alb_issuer?: string;
   user_sub?: string;
   owner_only?: boolean;
   tls_mode?: string;
@@ -267,6 +269,7 @@ const DEFAULT_STATUS: SystemStatus = {
   cognito_enabled: false,
   cognito_admin_group: 'brainsos-admins',
   alb_oidc_enabled: false,
+  alb_issuer: '',
   owner_only: true,
   identity: {
     unit_name: 'Enterprise Agent Box',
@@ -287,6 +290,7 @@ const DEFAULT_STATUS: SystemStatus = {
     cognito_enabled: false,
     cognito_admin_group: 'brainsos-admins',
     alb_oidc_enabled: false,
+    alb_issuer: '',
     owner_only: true,
     tls_mode: 'internal',
     acme_email: '',
@@ -689,6 +693,7 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
   );
   const albOidcEnabled = Boolean(nestedIdentity.alb_oidc_enabled ?? data.alb_oidc_enabled ?? false);
   const albSignerArn = String(nestedIdentity.alb_signer_arn ?? data.alb_signer_arn ?? '').trim();
+  const albIssuer = String(nestedIdentity.alb_issuer ?? data.alb_issuer ?? '').trim();
   const userSub = String(nestedIdentity.user_sub ?? data.user_sub ?? '').trim();
   const ownerOnly =
     typeof nestedIdentity.owner_only === 'boolean'
@@ -730,6 +735,7 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     cognito_client_secret_configured: cognitoSecretConfigured,
     alb_oidc_enabled: albOidcEnabled,
     alb_signer_arn: albSignerArn,
+    alb_issuer: albIssuer,
     user_sub: userSub,
     owner_only: ownerOnly,
     tls_mode: tlsMode,
@@ -814,6 +820,7 @@ function normalizeStatusPayload(raw: unknown): SystemStatus {
     cognito_client_secret_configured: cognitoSecretConfigured,
     alb_oidc_enabled: albOidcEnabled,
     alb_signer_arn: albSignerArn,
+    alb_issuer: albIssuer,
     user_sub: userSub,
     owner_only: ownerOnly,
     tls_mode: tlsMode,
@@ -1031,6 +1038,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   const [revealedInstanceId, setRevealedInstanceId] = useState<string>('');
   const [revealInstanceLoading, setRevealInstanceLoading] = useState<boolean>(false);
   const [wizardBreakglassEnabled, setWizardBreakglassEnabled] = useState<boolean>(true);
+  const [wizardBreakglassTouched, setWizardBreakglassTouched] = useState<boolean>(false);
+  const wizardBreakglassTouchedRef = useRef<boolean>(false);
   const [breakglassToggling, setBreakglassToggling] = useState<boolean>(false);
   const [breakglassBanner, setBreakglassBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -1051,6 +1060,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   );
   const [albOidcEnabled, setAlbOidcEnabled] = useState<boolean>(Boolean(initialDevStatus?.alb_oidc_enabled));
   const [albSignerArn, setAlbSignerArn] = useState<string>(initialDevStatus?.alb_signer_arn || '');
+  const [albIssuer, setAlbIssuer] = useState<string>(initialDevStatus?.alb_issuer || '');
   const [userSub, setUserSub] = useState<string>(initialDevStatus?.user_sub || '');
   const [ownerOnly, setOwnerOnly] = useState<boolean>(initialDevStatus?.owner_only !== false);
   const [savingCognito, setSavingCognito] = useState<boolean>(false);
@@ -1175,7 +1185,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         if (data?.acme_email) {
           setSetupAcmeEmail((prev) => prev || data.acme_email!);
         }
-        if (typeof data?.breakglass_enabled === 'boolean') {
+        if (isFirstBootIncomplete && !wizardBreakglassTouchedRef.current) {
+          setWizardBreakglassEnabled(false);
+        } else if (typeof data?.breakglass_enabled === 'boolean') {
           setWizardBreakglassEnabled(data.breakglass_enabled);
         }
         if (typeof data?.cognito_enabled === 'boolean') {
@@ -1204,6 +1216,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         }
         if (data?.alb_signer_arn) {
           setAlbSignerArn((prev) => prev || data.alb_signer_arn!);
+        }
+        if (data?.alb_issuer) {
+          setAlbIssuer((prev) => prev || data.alb_issuer!);
         }
         if (data?.user_sub) {
           setUserSub((prev) => prev || data.user_sub!);
@@ -2221,6 +2236,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       admin_group: cognitoAdminGroup.trim() || 'brainsos-admins',
       alb_oidc_enabled: albOidcEnabled,
       alb_signer_arn: albSignerArn.trim(),
+      alb_issuer: albIssuer.trim(),
       user_sub: userSub.trim(),
       owner_only: ownerOnly,
       reload_sso: true,
@@ -2363,6 +2379,13 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     }
     const isFirstBootIncomplete =
       status?.firstboot_wizard_completed === false || status?.identity?.firstboot_wizard_completed === false;
+    wizardBreakglassTouchedRef.current = false;
+    setWizardBreakglassTouched(false);
+    if (isFirstBootIncomplete) {
+      setWizardBreakglassEnabled(false);
+    } else if (typeof status?.breakglass_enabled === 'boolean') {
+      setWizardBreakglassEnabled(status.breakglass_enabled);
+    }
     const rawCandidate = (
       status?.identity?.superuser_username ||
       status?.superuser_username ||
@@ -2619,7 +2642,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           acme_email: setupAcmeEmail.trim() || undefined,
           mark_wizard_completed: true,
           force: true,
-          breakglass_enabled: wizardBreakglassEnabled,
+          breakglass_enabled: wizardBreakglassTouched ? wizardBreakglassEnabled : undefined,
           cognito_enabled: wizardCognitoExpanded ? cognitoEnabled : undefined,
           cognito_region: wizardCognitoExpanded && cognitoEnabled ? cognitoRegion.trim() : undefined,
           cognito_user_pool_id: wizardCognitoExpanded && cognitoEnabled ? cognitoPoolId.trim() : undefined,
@@ -2629,6 +2652,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           cognito_admin_group: wizardCognitoExpanded && cognitoAdminGroup.trim() ? cognitoAdminGroup.trim() : undefined,
           alb_oidc_enabled: wizardCognitoExpanded ? albOidcEnabled : undefined,
           alb_signer_arn: wizardCognitoExpanded && albSignerArn.trim() ? albSignerArn.trim() : undefined,
+          alb_issuer: wizardCognitoExpanded && albIssuer.trim() ? albIssuer.trim() : undefined,
           user_sub: wizardCognitoExpanded && userSub.trim() ? userSub.trim() : undefined,
           owner_only: wizardCognitoExpanded ? ownerOnly : undefined,
         }),
@@ -3075,6 +3099,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                       setSetupError('Provision a personal Superuser username or Cognito owner sub before disabling Break-Glass.');
                       return;
                     }
+                    wizardBreakglassTouchedRef.current = true;
+                    setWizardBreakglassTouched(true);
                     setWizardBreakglassEnabled(nextVal);
                   }}
                   className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all ${
@@ -3189,6 +3215,20 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                           onChange={(e) => setUserSub(e.target.value)}
                           placeholder="EBS Owner Cognito Sub UUID (BRAINSOS_USER_SUB)"
                           className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs sm:col-span-2"
+                        />
+                        <input
+                          type="text"
+                          value={albSignerArn}
+                          onChange={(e) => setAlbSignerArn(e.target.value)}
+                          placeholder="ALB Signer ARN (arn:aws:elasticloadbalancing:...)"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                        />
+                        <input
+                          type="text"
+                          value={albIssuer}
+                          onChange={(e) => setAlbIssuer(e.target.value)}
+                          placeholder="ALB OIDC Issuer URL (https://cognito-idp....)"
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
                         />
                       </div>
                     </div>
@@ -4417,6 +4457,16 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                             value={albSignerArn}
                             onChange={(e) => setAlbSignerArn(e.target.value)}
                             placeholder="arn:aws:elasticloadbalancing:..."
+                            className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+                          <label className="block text-[11px] text-slate-400">ALB OIDC Issuer URL</label>
+                          <input
+                            type="text"
+                            value={albIssuer}
+                            onChange={(e) => setAlbIssuer(e.target.value)}
+                            placeholder="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_..."
                             className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-white/15 focus:border-[#00f2fe] focus:outline-none text-white text-xs"
                           />
                         </div>

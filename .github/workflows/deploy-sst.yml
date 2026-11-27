@@ -10,7 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: "SST deployment stage (production / staging)"
+        description: "SST deployment stage"
+        type: choice
+        options:
+          - production
+          - staging
         required: true
         default: "production"
   repository_dispatch:
@@ -33,26 +37,35 @@ jobs:
       STAGE: ${{ github.event.inputs.stage || 'production' }}
     steps:
       - name: Checkout brainsOS
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Checkout CindyPawford-Online Canvas
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: patternsatscale/CindyPawford-Online
           path: agent_apps/cindypawford/site
 
+      - name: Reject Symlinks in External Static Assets
+        run: |
+          echo "Auditing agent_apps/cindypawford/site for symlinks..."
+          SYMLINKS=$(find agent_apps/cindypawford/site -type l || true)
+          if [ -n "${SYMLINKS}" ]; then
+            echo "::error::Symlinks detected in checked-out external assets: ${SYMLINKS}"
+            exit 1
+          fi
+          echo "✓ Zero symlinks in checked-out site assets."
+
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: agent_apps/cindypawford/pipeline/package-lock.json
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
       - name: Stage Platform Shell & Runtime Config

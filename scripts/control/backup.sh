@@ -6,6 +6,7 @@
 # ==============================================================================
 
 set -euo pipefail
+umask 077
 
 # Visual styling
 GREEN='\033[0;32m'
@@ -296,7 +297,7 @@ restore_backup() {
   log_info "Unpacking archive into target data planes..."
   local extract_dir
   extract_dir=$(mktemp -d "${TMPDIR:-/tmp}/brainsos_restore_XXXXXX")
-  tar -xzf "${archive_file}" -C "${extract_dir}"
+  tar --no-same-owner -xzf "${archive_file}" -C "${extract_dir}"
 
   if [ -d "${extract_dir}/agents" ]; then
     mkdir -p "${AGENTS_DIR}"

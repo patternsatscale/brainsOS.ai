@@ -398,8 +398,13 @@ def _normalize_payload(value: Any, *, tool_name: str = "", args: Any = None) -> 
         normalized.update({key: args[key] for key in ("offset", "limit") if isinstance(args.get(key), int)})
 
     content = value.get("content", "")
-    matches = [_READ_FILE_LINE_RE.match(raw) for raw in content.splitlines()] if isinstance(content, str) and content else []
-    lines = [{"line": int(m.group(1)), "text": m.group(2)} for m in matches] if matches and all(matches) else []
+    raw_matches = [_READ_FILE_LINE_RE.match(raw) for raw in content.splitlines()] if isinstance(content, str) and content else []
+    non_null_matches = [m for m in raw_matches if m is not None]
+    lines = (
+        [{"line": int(m.group(1)), "text": m.group(2)} for m in non_null_matches]
+        if raw_matches and len(non_null_matches) == len(raw_matches)
+        else []
+    )
     if lines:
         normalized["returned_lines"] = {"start": lines[0]["line"], "end": lines[-1]["line"], "count": len(lines)}
         head, tail = _READ_FILE_HEAD_LINES, _READ_FILE_TAIL_LINES
@@ -642,7 +647,8 @@ def _start_root_trace(task_key: str, *, task_id: str, session_id: str, platform:
         root_ctx, root_span = open_root()
 
     with _failsafe("update_trace(input)"):  # SDK v3 uses update_trace()
-        root_span.update_trace(input=trace_input)
+        if root_span is not None:
+            root_span.update_trace(input=trace_input)
 
     _debug(f"started trace {trace_id} for {task_key}")
     return TraceState(trace_id=trace_id, root_ctx=root_ctx, root_span=root_span)

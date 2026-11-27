@@ -70,7 +70,7 @@ is_placeholder_or_short() {
 
 gen_hex() {
   local bytes="${1:-32}"
-  python3 -c "import secrets; print(secrets.token_hex(${bytes}))"
+  python3 -c 'import secrets, sys; print(secrets.token_hex(int(sys.argv[1])))' "${bytes}"
 }
 
 ensure_lens_env_secrets() {

@@ -79,7 +79,7 @@ elif [ -f "${REPO_ROOT}/config/agents.override.yaml" ]; then
 else
   MANIFEST_FILE="${REPO_ROOT}/config/agents.yaml"
 fi
-PRIMARY_AGENT_ID=$(python3 -c "import yaml; m = yaml.safe_load(open('${MANIFEST_FILE}')); print(m.get('agents', [{}])[0].get('id', 'primary'))" 2>/dev/null || echo "primary")
+PRIMARY_AGENT_ID=$(python3 -c 'import sys, yaml; m = yaml.safe_load(open(sys.argv[1])); print(m.get("agents", [{}])[0].get("id", "primary"))' "${MANIFEST_FILE}" 2>/dev/null || echo "primary")
 
 # Multi-tenant directory alignment (checks tenant partition if present)
 if [ -d "${HOST_WORKSPACE}/${PRIMARY_AGENT_ID}" ]; then

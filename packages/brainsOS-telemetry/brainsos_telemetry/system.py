@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import fcntl
 import getpass
 import json
@@ -15,8 +16,10 @@ import socket
 import struct
 import subprocess
 import termios
+import threading
 import time
 import urllib.request
+import weakref
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 from urllib.parse import urlparse
@@ -33,6 +36,7 @@ from brainsos_telemetry.alb_auth import (
     compute_cognito_redirect_uri,
     current_env_for_repo,
     is_truthy,
+    is_valid_https_issuer,
     sanitize_env_value,
     validate_breakglass_toggle,
 )
@@ -694,15 +698,46 @@ def get_host_os_status(repo_root: str) -> Dict[str, Any]:
 
 
 def _mask_api_key(val: str) -> Dict[str, Any]:
-    """Return boolean configured status and masked prefix without exposing the raw secret."""
+    """Return boolean configured status without exposing any secret characters."""
     clean = (val or "").strip()
-    if not clean:
-        return {"configured": False, "masked": ""}
-    if len(clean) >= 8:
-        masked = f"{clean[:4]}...{clean[-3:]}"
-    else:
-        masked = "****"
-    return {"configured": True, "masked": masked}
+    return {"configured": bool(clean)}
+
+
+def _validate_alb_oidc_config(
+    signer_arns_raw: str,
+    issuers_raw: str,
+    *,
+    required: bool,
+) -> None:
+    signers = [s.strip() for s in (signer_arns_raw or "").split(",") if s.strip()]
+    issuers = [s.strip() for s in (issuers_raw or "").split(",") if s.strip()]
+
+    if (signer_arns_raw or "").strip() and not signers:
+        raise HTTPException(status_code=400, detail="Invalid AWS ALB signer ARN")
+    for item in signers:
+        if not SIGNER_ARN_RE.match(item):
+            raise HTTPException(status_code=400, detail=f"Invalid AWS ALB signer ARN: {item}")
+
+    if (issuers_raw or "").strip() and not issuers:
+        raise HTTPException(status_code=400, detail="Invalid AWS ALB OIDC issuer URL (must start with https://)")
+    for iss in issuers:
+        if not is_valid_https_issuer(iss):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid AWS ALB OIDC issuer URL (must start with https://): {iss}",
+            )
+
+    if required:
+        if not signers:
+            raise HTTPException(
+                status_code=400,
+                detail="AUTH_ALB_OIDC_ENABLED=true requires a valid AUTH_ALB_SIGNER_ARN (arn:aws:elasticloadbalancing:...)",
+            )
+        if not issuers:
+            raise HTTPException(
+                status_code=400,
+                detail="AUTH_ALB_OIDC_ENABLED=true requires a valid https:// AUTH_ALB_ISSUER URL",
+            )
 
 
 def get_runners_status(repo_root: str) -> Dict[str, Any]:
@@ -1011,6 +1046,7 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "breakglass_enabled": breakglass_enabled,
         "admin_bound_to_instance_id": breakglass_enabled,
         "cognito_enabled": cognito_enabled,
+        "auth_cognito_enabled": cognito_enabled,
         "cognito_region": (merged_env.get("AUTH_COGNITO_REGION") or "").strip(),
         "cognito_user_pool_id": (merged_env.get("AUTH_COGNITO_USER_POOL_ID") or "").strip(),
         "cognito_domain": (merged_env.get("AUTH_COGNITO_DOMAIN") or "").strip(),
@@ -1020,6 +1056,7 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
         "cognito_client_secret_configured": bool((merged_env.get("AUTH_COGNITO_CLIENT_SECRET") or "").strip()),
         "alb_oidc_enabled": alb_oidc_enabled,
         "alb_signer_arn": (merged_env.get("AUTH_ALB_SIGNER_ARN") or "").strip(),
+        "alb_issuer": (merged_env.get("AUTH_ALB_ISSUER") or "").strip(),
         "user_sub": user_sub,
         "owner_only": owner_only,
         "tls_mode": tls_mode,
@@ -1038,10 +1075,72 @@ def get_appliance_identity(repo_root: str) -> Dict[str, Any]:
     }
 
 
-def get_system_status() -> Dict[str, Any]:
-    """Query current platform status and available updates via scripts/control/update.sh."""
-    repo_root = get_repo_root()
-    update_script = os.path.join(repo_root, "scripts/control/update.sh")
+UPDATE_CHECK_CACHE_TTL_SECONDS = 120.0
+UPDATE_CHECK_CACHE_MAX_ENTRIES = 16
+_UPDATE_CHECK_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_UPDATE_CHECK_SYNC_LOCK = threading.Lock()
+_UPDATE_CHECK_ASYNC_LOCKS: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def clear_update_check_cache() -> None:
+    """Clear cached `update.sh --check --json` status payloads (for tests / post-update)."""
+    with _UPDATE_CHECK_SYNC_LOCK:
+        _UPDATE_CHECK_CACHE.clear()
+
+
+def _get_async_update_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _UPDATE_CHECK_ASYNC_LOCKS.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _UPDATE_CHECK_ASYNC_LOCKS[loop] = lock
+    return lock
+
+
+def _read_cached_update_check(cache_key: str, now: float) -> Optional[Dict[str, Any]]:
+    with _UPDATE_CHECK_SYNC_LOCK:
+        entry = _UPDATE_CHECK_CACHE.get(cache_key)
+        if entry is None:
+            return None
+        expires_at, payload = entry
+        if expires_at > now:
+            return copy.deepcopy(payload)
+        _UPDATE_CHECK_CACHE.pop(cache_key, None)
+        return None
+
+
+def _write_cached_update_check(cache_key: str, payload: Dict[str, Any], now: float) -> None:
+    with _UPDATE_CHECK_SYNC_LOCK:
+        expired = [k for k, (exp, _) in _UPDATE_CHECK_CACHE.items() if exp <= now]
+        for k in expired:
+            _UPDATE_CHECK_CACHE.pop(k, None)
+        while len(_UPDATE_CHECK_CACHE) >= UPDATE_CHECK_CACHE_MAX_ENTRIES and cache_key not in _UPDATE_CHECK_CACHE:
+            oldest_key = min(_UPDATE_CHECK_CACHE.items(), key=lambda item: item[1][0])[0]
+            _UPDATE_CHECK_CACHE.pop(oldest_key, None)
+        _UPDATE_CHECK_CACHE[cache_key] = (now + UPDATE_CHECK_CACHE_TTL_SECONDS, copy.deepcopy(payload))
+
+
+def _run_update_check_subprocess(repo_root: str, update_script: str) -> Optional[Dict[str, Any]]:
+    try:
+        res = subprocess.run(
+            [update_script, "--check", "--json"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            timeout=15,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            parsed = json.loads(res.stdout)
+            if isinstance(parsed, dict) and "disk" in parsed:
+                return parsed
+    except Exception as e:
+        logger.warning(f"Error querying update.sh: {e}")
+    return None
+
+
+def _assemble_system_status(repo_root: str, cached_update: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     identity = get_appliance_identity(repo_root)
     runners_info = get_runners_status(repo_root)
     os_info = get_host_os_status(repo_root)
@@ -1054,31 +1153,19 @@ def get_system_status() -> Dict[str, Any]:
         "langfuse_enabled": langfuse_enabled,
     }
 
-    if os.path.isfile(update_script) and os.access(update_script, os.X_OK):
-        try:
-            res = subprocess.run(
-                [update_script, "--check", "--json"],
-                capture_output=True,
-                text=True,
-                cwd=repo_root,
-                timeout=15,
-            )
-            if res.returncode == 0 and res.stdout.strip():
-                status = json.loads(res.stdout)
-                if "disk" in status:
-                    if "platform_name" not in status:
-                        pname, pdetail = detect_appliance_platform(repo_root)
-                        status["platform_name"] = pname
-                        status["platform_detail"] = pdetail
-                    if "os" not in status:
-                        status["os"] = os_info
-                    status["runners"] = runners_info
-                    status.update(identity)
-                    status["identity"] = identity
-                    status.update(telemetry_fields)
-                    return status
-        except Exception as e:
-            logger.warning(f"Error querying update.sh: {e}")
+    if cached_update is not None:
+        status = copy.deepcopy(cached_update)
+        if "platform_name" not in status:
+            pname, pdetail = detect_appliance_platform(repo_root)
+            status["platform_name"] = pname
+            status["platform_detail"] = pdetail
+        if "os" not in status:
+            status["os"] = os_info
+        status["runners"] = runners_info
+        status.update(identity)
+        status["identity"] = identity
+        status.update(telemetry_fields)
+        return status
 
     try:
         total, used, free = shutil.disk_usage(repo_root)
@@ -1121,6 +1208,64 @@ def get_system_status() -> Dict[str, Any]:
     base_status.update(identity)
     base_status.update(telemetry_fields)
     return base_status
+
+
+def get_system_status() -> Dict[str, Any]:
+    """Query current platform status and available updates via scripts/control/update.sh."""
+    repo_root = get_repo_root()
+    update_script = os.path.join(repo_root, "scripts/control/update.sh")
+    cached_update: Optional[Dict[str, Any]] = None
+
+    if os.path.isfile(update_script) and os.access(update_script, os.X_OK):
+        now = time.monotonic()
+        cached_update = _read_cached_update_check(repo_root, now)
+        if cached_update is None:
+            with _UPDATE_CHECK_SYNC_LOCK:
+                now = time.monotonic()
+                entry = _UPDATE_CHECK_CACHE.get(repo_root)
+                if entry is not None and entry[0] > now:
+                    cached_update = copy.deepcopy(entry[1])
+                else:
+                    if entry is not None:
+                        _UPDATE_CHECK_CACHE.pop(repo_root, None)
+                    parsed = _run_update_check_subprocess(repo_root, update_script)
+                    if parsed is not None:
+                        expired = [k for k, (exp, _) in _UPDATE_CHECK_CACHE.items() if exp <= now]
+                        for k in expired:
+                            _UPDATE_CHECK_CACHE.pop(k, None)
+                        while (
+                            len(_UPDATE_CHECK_CACHE) >= UPDATE_CHECK_CACHE_MAX_ENTRIES
+                            and repo_root not in _UPDATE_CHECK_CACHE
+                        ):
+                            oldest_key = min(_UPDATE_CHECK_CACHE.items(), key=lambda item: item[1][0])[0]
+                            _UPDATE_CHECK_CACHE.pop(oldest_key, None)
+                        _UPDATE_CHECK_CACHE[repo_root] = (
+                            now + UPDATE_CHECK_CACHE_TTL_SECONDS,
+                            copy.deepcopy(parsed),
+                        )
+                        cached_update = parsed
+
+    return _assemble_system_status(repo_root, cached_update)
+
+
+async def get_system_status_async() -> Dict[str, Any]:
+    """Async non-blocking variant of `get_system_status()` with bounded 120s TTL cache."""
+    repo_root = get_repo_root()
+    update_script = os.path.join(repo_root, "scripts/control/update.sh")
+    cached_update: Optional[Dict[str, Any]] = None
+
+    if os.path.isfile(update_script) and os.access(update_script, os.X_OK):
+        cached_update = _read_cached_update_check(repo_root, time.monotonic())
+        if cached_update is None:
+            async with _get_async_update_lock():
+                cached_update = _read_cached_update_check(repo_root, time.monotonic())
+                if cached_update is None:
+                    parsed = await asyncio.to_thread(_run_update_check_subprocess, repo_root, update_script)
+                    if parsed is not None:
+                        _write_cached_update_check(repo_root, parsed, time.monotonic())
+                        cached_update = parsed
+
+    return _assemble_system_status(repo_root, cached_update)
 
 
 def verify_internal_auth(request: Request):
@@ -1241,6 +1386,29 @@ def verify_admin_read_security(request: Request):
             status_code=403,
             detail="Forbidden: administrator group ('authentik Admins') required",
         )
+
+
+def _require_system_auth(request: Request, repo_root: str) -> Optional[str]:
+    """Require authenticated admin identity once firstboot_wizard_completed is True."""
+    ident = get_appliance_identity(repo_root)
+    username = _resolve_authenticated_identity(request)
+    if ident.get("firstboot_wizard_completed", True):
+        if not username:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: authentication required",
+            )
+        if not _is_authorized_admin(request.headers, username, repo_root):
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: administrator group ('authentik Admins') required",
+            )
+    elif username and not _is_authorized_admin(request.headers, username, repo_root):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: administrator group ('authentik Admins') required",
+        )
+    return username
 
 
 def verify_state_change_security(request: Request):
@@ -1373,6 +1541,7 @@ def create_system_api_app():
         cognito_admin_group: Optional[str] = Field(None, description="Cognito admin group name (default: brainsos-admins)")
         alb_oidc_enabled: Optional[bool] = Field(None, description="Enable AWS ALB OIDC pass-through")
         alb_signer_arn: Optional[str] = Field(None, description="Allowlisted AWS ALB signer ARN")
+        alb_issuer: Optional[str] = Field(None, description="Expected OIDC issuer URL (https://...) for ALB JWTs")
         user_sub: Optional[str] = Field(None, description="Bound EBS owner Cognito sub UUID")
         owner_only: Optional[bool] = Field(None, description="Reject non-owner Cognito subjects")
 
@@ -1415,6 +1584,7 @@ def create_system_api_app():
         alb_issuer: Optional[str] = Field(None, description="Optional expected OIDC issuer claim for ALB JWTs")
         user_sub: Optional[str] = Field(None, description="Bound EBS owner Cognito sub UUID (receives local admin on this VM)")
         owner_only: Optional[bool] = Field(None, description="Reject non-owner Cognito subjects with 403 (default: true)")
+        breakglass_enabled: Optional[bool] = Field(None, description="Optional explicit break-glass override")
         reload_sso: bool = Field(True, description="Trigger reload-env.sh asynchronously to apply Cognito & Caddy config")
 
     @app.get("/health")
@@ -1437,11 +1607,22 @@ def create_system_api_app():
 
     @app.get("/api/v1/system/status", dependencies=[Depends(verify_internal_auth)])
     async def status():
-        return JSONResponse(content=get_system_status())
+        return JSONResponse(content=await get_system_status_async())
 
     @app.get("/api/v1/system/identity", dependencies=[Depends(verify_internal_auth)])
-    async def identity():
-        return JSONResponse(content=get_appliance_identity(repo_root))
+    async def identity(request: Request):
+        ident = get_appliance_identity(repo_root)
+        if ident.get("firstboot_wizard_completed", True):
+            username = _resolve_authenticated_identity(request)
+            if not username or not _is_authorized_admin(request.headers, username, repo_root):
+                return JSONResponse(
+                    content={
+                        "firstboot_wizard_completed": True,
+                        "unit_name": ident["unit_name"],
+                        "auth_cognito_enabled": bool(ident.get("cognito_enabled", False)),
+                    }
+                )
+        return JSONResponse(content=ident)
 
     @app.get(
         "/api/v1/system/identity/instance-id",
@@ -1505,6 +1686,12 @@ def create_system_api_app():
     async def verify_alb_forward_auth(request: Request):
         file_env = parse_env_file_only(repo_root)
         merged_env = current_env_for_repo(file_env, os.environ)
+        if is_truthy(merged_env.get("AUTH_ALB_OIDC_ENABLED"), default=False):
+            _validate_alb_oidc_config(
+                merged_env.get("AUTH_ALB_SIGNER_ARN") or "",
+                merged_env.get("AUTH_ALB_ISSUER") or "",
+                required=True,
+            )
         try:
             auth_result = authenticate_alb_headers(request.headers, merged_env)
         except AlbAuthError as exc:
@@ -1560,7 +1747,14 @@ def create_system_api_app():
 
         env_file = os.path.join(repo_root, ".env")
         val_str = "true" if req.enabled else "false"
-        _upsert_env_keys(repo_root, env_file, {"BRAINSOS_BREAKGLASS_ENABLED": val_str})
+        _upsert_env_keys(
+            repo_root,
+            env_file,
+            {
+                "BRAINSOS_BREAKGLASS_ENABLED": val_str,
+                "BRAINSOS_BREAKGLASS_EXPLICIT": "true" if req.enabled else "false",
+            },
+        )
 
         if req.apply_now and os.environ.get("BRAINSOS_STAGE") != "test":
             set_domain_script = os.path.join(repo_root, "scripts/control/set-domain.sh")
@@ -1640,17 +1834,19 @@ def create_system_api_app():
         if req.owner_only is not None:
             updates["BRAINSOS_OWNER_ONLY"] = "true" if req.owner_only else "false"
 
-        if not updates:
+        if not updates and req.breakglass_enabled is None:
             raise HTTPException(status_code=400, detail="No Cognito or ALB OIDC fields supplied")
 
         next_env = {**merged_env, **updates}
-        signer_arns_raw = (next_env.get("AUTH_ALB_SIGNER_ARN") or "").strip()
-        if signer_arns_raw:
-            for item in [s.strip() for s in signer_arns_raw.split(",") if s.strip()]:
-                if not SIGNER_ARN_RE.match(item):
-                    raise HTTPException(status_code=400, detail=f"Invalid AWS ALB signer ARN: {item}")
+        alb_enabled_next = is_truthy(next_env.get("AUTH_ALB_OIDC_ENABLED"), default=False)
+        _validate_alb_oidc_config(
+            next_env.get("AUTH_ALB_SIGNER_ARN") or "",
+            next_env.get("AUTH_ALB_ISSUER") or "",
+            required=alb_enabled_next,
+        )
 
-        if is_truthy(next_env.get("AUTH_COGNITO_ENABLED"), default=False):
+        cognito_active = is_truthy(next_env.get("AUTH_COGNITO_ENABLED"), default=False)
+        if cognito_active:
             reg = (next_env.get("AUTH_COGNITO_REGION") or "").strip()
             pool = (next_env.get("AUTH_COGNITO_USER_POOL_ID") or "").strip()
             cid = (next_env.get("AUTH_COGNITO_CLIENT_ID") or "").strip()
@@ -1663,6 +1859,22 @@ def create_system_api_app():
                 build_cognito_well_known_url(reg, pool)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
+
+        if req.breakglass_enabled is True:
+            updates["BRAINSOS_BREAKGLASS_ENABLED"] = "true"
+            updates["BRAINSOS_BREAKGLASS_EXPLICIT"] = "true"
+        elif req.breakglass_enabled is False:
+            err = validate_breakglass_toggle(False, next_env)
+            if err:
+                raise HTTPException(status_code=400, detail=err)
+            updates["BRAINSOS_BREAKGLASS_ENABLED"] = "false"
+            updates["BRAINSOS_BREAKGLASS_EXPLICIT"] = "false"
+        elif (cognito_active or alb_enabled_next) and not is_truthy(
+            merged_env.get("BRAINSOS_BREAKGLASS_EXPLICIT"), default=False
+        ):
+            if validate_breakglass_toggle(False, next_env) is None:
+                updates["BRAINSOS_BREAKGLASS_ENABLED"] = "false"
+                updates["BRAINSOS_BREAKGLASS_EXPLICIT"] = "false"
 
         env_file = os.path.join(repo_root, ".env")
         _upsert_env_keys(repo_root, env_file, updates)
@@ -1825,6 +2037,11 @@ def create_system_api_app():
             and not (req.admin_username and req.admin_username.strip())
             and not (req.admin_password and req.admin_password.strip())
             and not (req.acme_email and req.acme_email.strip())
+            and req.cognito_enabled is None
+            and req.alb_oidc_enabled is None
+            and not (req.alb_signer_arn and req.alb_signer_arn.strip())
+            and not (req.alb_issuer and req.alb_issuer.strip())
+            and req.breakglass_enabled is None
         )
         if is_unit_name_only and unit_name is not None:
             env_file = os.path.join(repo_root, ".env")
@@ -1936,10 +2153,73 @@ def create_system_api_app():
 
         if req.mark_wizard_completed:
             cmd.append("--mark-wizard-completed")
+
+        try:
+            eff_alb_enabled = (
+                req.alb_oidc_enabled
+                if req.alb_oidc_enabled is not None
+                else is_truthy(env.get("AUTH_ALB_OIDC_ENABLED"), default=False)
+            )
+            eff_signer = (
+                sanitize_env_value(req.alb_signer_arn)
+                if req.alb_signer_arn is not None
+                else (env.get("AUTH_ALB_SIGNER_ARN") or "").strip()
+            )
+            eff_issuer = (
+                sanitize_env_value(req.alb_issuer)
+                if req.alb_issuer is not None
+                else (env.get("AUTH_ALB_ISSUER") or "").strip()
+            )
+            eff_su = admin_username or (env.get("BRAINSOS_SUPERUSER_USERNAME") or "").strip()
+            eff_sub = (
+                sanitize_env_value(req.user_sub)
+                if req.user_sub is not None
+                else (env.get("BRAINSOS_USER_SUB") or "").strip()
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        if eff_alb_enabled or req.alb_signer_arn is not None or req.alb_issuer is not None:
+            _validate_alb_oidc_config(eff_signer, eff_issuer, required=bool(eff_alb_enabled))
+
+        eff_cog = (
+            req.cognito_enabled
+            if req.cognito_enabled is not None
+            else is_truthy(env.get("AUTH_COGNITO_ENABLED"), default=False)
+        )
+        next_setup_env = {
+            **env,
+            "BRAINSOS_SUPERUSER_USERNAME": eff_su,
+            "BRAINSOS_USER_SUB": eff_sub,
+            "AUTH_COGNITO_ENABLED": "true" if eff_cog else "false",
+            "AUTH_ALB_OIDC_ENABLED": "true" if eff_alb_enabled else "false",
+        }
+        credential_setup_done = bool(
+            (admin_username and admin_username.lower() not in ("admin", "akadmin") and raw_password)
+            or (eff_sub and (eff_cog or eff_alb_enabled))
+        )
+        env_file_path = os.path.join(repo_root, ".env")
         if req.breakglass_enabled is True:
             cmd.append("--breakglass")
+            if not req.dry_run and os.path.isfile(env_file_path):
+                _upsert_env_keys(repo_root, env_file_path, {"BRAINSOS_BREAKGLASS_EXPLICIT": "true"})
         elif req.breakglass_enabled is False:
+            err = validate_breakglass_toggle(False, next_setup_env)
+            if err:
+                raise HTTPException(status_code=400, detail=err)
             cmd.append("--no-breakglass")
+            if not req.dry_run and os.path.isfile(env_file_path):
+                _upsert_env_keys(repo_root, env_file_path, {"BRAINSOS_BREAKGLASS_EXPLICIT": "false"})
+        elif credential_setup_done and not is_truthy(env.get("BRAINSOS_BREAKGLASS_EXPLICIT"), default=False):
+            if validate_breakglass_toggle(False, next_setup_env) is None:
+                cmd.append("--no-breakglass")
+                if not req.dry_run and os.path.isfile(env_file_path):
+                    _upsert_env_keys(
+                        repo_root,
+                        env_file_path,
+                        {"BRAINSOS_BREAKGLASS_ENABLED": "false", "BRAINSOS_BREAKGLASS_EXPLICIT": "false"},
+                    )
+
         if req.cognito_enabled is True:
             cmd.append("--cognito-enabled")
             if not (req.cognito_region and req.cognito_user_pool_id and req.cognito_client_id):
@@ -1965,13 +2245,11 @@ def create_system_api_app():
         elif req.alb_oidc_enabled is False:
             cmd.append("--no-alb-oidc")
         if req.alb_signer_arn and req.alb_signer_arn.strip():
-            signer_clean = sanitize_env_value(req.alb_signer_arn)
-            for item in [s.strip() for s in signer_clean.split(",") if s.strip()]:
-                if not SIGNER_ARN_RE.match(item):
-                    raise HTTPException(status_code=400, detail=f"Invalid AWS ALB signer ARN: {item}")
-            cmd.extend(["--alb-signer-arn", signer_clean])
+            cmd.extend(["--alb-signer-arn", eff_signer])
+        if req.alb_issuer and req.alb_issuer.strip():
+            cmd.extend(["--alb-issuer", eff_issuer])
         if req.user_sub and req.user_sub.strip():
-            cmd.extend(["--user-sub", sanitize_env_value(req.user_sub)])
+            cmd.extend(["--user-sub", eff_sub])
         if req.owner_only is True:
             cmd.append("--owner-only")
         elif req.owner_only is False:
@@ -2017,23 +2295,24 @@ def create_system_api_app():
     @app.get("/api/v1/system/jobs/{job_id}", dependencies=[Depends(verify_internal_auth)])
     async def get_job_status(job_id: str, request: Request):
         if job_id in ("latest", "active"):
-            ident = get_appliance_identity(repo_root)
-            if ident.get("firstboot_wizard_completed", True) and not _resolve_authenticated_identity(request):
-                raise HTTPException(status_code=403, detail="Forbidden: authentication required to enumerate latest jobs")
+            _require_system_auth(request, repo_root)
         job = job_manager.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
         return JSONResponse(content=job)
 
     @app.get("/api/v1/system/jobs/{job_id}/stream", dependencies=[Depends(verify_internal_auth)])
-    async def stream_job_reattach(job_id: str):
+    async def stream_job_reattach(job_id: str, request: Request):
+        if job_id in ("latest", "active"):
+            _require_system_auth(request, repo_root)
         job = job_manager.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
+        resolved_id = job["id"]
         job_record = {
-            "id": job["id"],
-            "log_file": os.path.join(job_manager.jobs_dir, f"{job_id}.log"),
+            "id": resolved_id,
+            "log_file": os.path.join(job_manager.jobs_dir, f"{resolved_id}.log"),
             "cmd": job.get("cmd", []),
             "status": job.get("status", "running"),
             "exit_code": job.get("exit_code"),

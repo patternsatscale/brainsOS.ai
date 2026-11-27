@@ -64,6 +64,7 @@ COGNITO_CLIENT_SECRET=""
 COGNITO_ADMIN_GROUP=""
 ALB_OIDC_MODE=""
 ALB_SIGNER_ARN=""
+ALB_ISSUER=""
 
 normalize_url_host() {
   local raw="$1"
@@ -112,6 +113,7 @@ Options:
   --alb-oidc                 Enable zero-double-login AWS ALB x-amzn-oidc-data ES256 verification
   --no-alb-oidc              Disable AWS ALB OIDC pass-through
   --alb-signer-arn ARN       Allowlisted AWS ALB signer ARN
+  --alb-issuer URL           Expected HTTPS OIDC issuer URL (AUTH_ALB_ISSUER)
   --skip-dns-check           Skip DNS resolution pre-flight check
   --force                    Proceed even if DNS does not resolve to this instance
   --dry-run                  Simulate configuration changes without writing .env
@@ -242,6 +244,10 @@ while [ $# -gt 0 ]; do
       ALB_SIGNER_ARN="${2:-}"
       shift 2
       ;;
+    --alb-issuer)
+      ALB_ISSUER="${2:-}"
+      shift 2
+      ;;
     --skip-dns-check)
       SKIP_DNS_CHECK=true
       shift
@@ -287,7 +293,7 @@ if [ -n "${URL_INPUT}" ] && [ -z "${DOMAIN}" ]; then
 fi
 
 if [ -z "${DOMAIN}" ]; then
-  if [ "${INTERNAL_MODE}" = true ] || [ -n "${UNIT_NAME}" ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ] || [ -n "${BREAKGLASS_MODE}" ] || [ -n "${USER_SUB}" ] || [ -n "${OWNER_ONLY_MODE}" ] || [ -n "${COGNITO_ENABLED_MODE}" ] || [ -n "${ALB_OIDC_MODE}" ]; then
+  if [ "${INTERNAL_MODE}" = true ] || [ -n "${UNIT_NAME}" ] || [ -n "${LOCAL_DOMAIN}" ] || [ -n "${SUPERUSER_NAME}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${ADMIN_PASSWORD}" ] || [ -n "${BREAKGLASS_MODE}" ] || [ -n "${USER_SUB}" ] || [ -n "${OWNER_ONLY_MODE}" ] || [ -n "${COGNITO_ENABLED_MODE}" ] || [ -n "${ALB_OIDC_MODE}" ] || [ -n "${ALB_SIGNER_ARN}" ] || [ -n "${ALB_ISSUER}" ]; then
     if [ -f "${ENV_FILE}" ]; then
       CURRENT_URL="$(grep -E '^BRAINSOS_URL=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
       CURRENT_DOMAIN="$(grep -E '^BRAINSOS_DOMAIN=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
@@ -570,6 +576,7 @@ fi
 [ -n "${COGNITO_ADMIN_GROUP}" ] && ENV_CHANGES+=("AUTH_COGNITO_ADMIN_GROUP=${COGNITO_ADMIN_GROUP}")
 [ -n "${ALB_OIDC_MODE}" ] && ENV_CHANGES+=("AUTH_ALB_OIDC_ENABLED=${ALB_OIDC_MODE}")
 [ -n "${ALB_SIGNER_ARN}" ] && ENV_CHANGES+=("AUTH_ALB_SIGNER_ARN=${ALB_SIGNER_ARN}")
+[ -n "${ALB_ISSUER}" ] && ENV_CHANGES+=("AUTH_ALB_ISSUER=${ALB_ISSUER}")
 
 CLOUD_CFG_DIR="${BRAINSOS_CLOUD_CFG_DIR:-/etc/cloud/cloud.cfg.d}"
 HOSTS_FILE="${BRAINSOS_HOSTS_FILE:-/etc/hosts}"

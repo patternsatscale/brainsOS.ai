@@ -21,41 +21,97 @@ networks:
   brainsos-ingress-net:
     name: brainsos-ingress-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_INGRESS_BRIDGE:-br-ingress}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_INGRESS_SUBNET:-172.28.0.0/24}
+          gateway: ${BRAINSOS_INGRESS_GATEWAY:-172.28.0.1}
+          ip_range: ${BRAINSOS_INGRESS_IP_RANGE:-172.28.0.128/25}
 
   # 2. Agent internal network: allows agent WAN egress (web browsing, Signal, egress proxy)
   brainsos-internal-net:
     name: brainsos-internal-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_INTERNAL_BRIDGE:-br-internal}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_INTERNAL_SUBNET:-172.28.1.0/24}
+          gateway: ${BRAINSOS_INTERNAL_GATEWAY:-172.28.1.1}
+          ip_range: ${BRAINSOS_INTERNAL_IP_RANGE:-172.28.1.128/25}
 
   # 3. Control plane database & secrets network: isolated from agent plane (Rule 6)
   brainsos-control-net:
     name: brainsos-control-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_CONTROL_BRIDGE:-br-control}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_CONTROL_SUBNET:-172.28.2.0/24}
+          gateway: ${BRAINSOS_CONTROL_GATEWAY:-172.28.2.1}
+          ip_range: ${BRAINSOS_CONTROL_IP_RANGE:-172.28.2.128/25}
 
   # 3b. Dedicated Authentik identity plane network (DB, Redis, Server, Worker)
   brainsos-auth-net:
     name: brainsos-auth-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_AUTH_BRIDGE:-br-auth}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_AUTH_SUBNET:-172.28.3.0/24}
+          gateway: ${BRAINSOS_AUTH_GATEWAY:-172.28.3.1}
+          ip_range: ${BRAINSOS_AUTH_IP_RANGE:-172.28.3.128/25}
 
   # 3c. Dedicated OpenBao <-> tool-egress-proxy AppRole secret network
   brainsos-secrets-net:
     name: brainsos-secrets-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_SECRETS_BRIDGE:-br-secrets}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_SECRETS_SUBNET:-172.28.4.0/24}
+          gateway: ${BRAINSOS_SECRETS_GATEWAY:-172.28.4.1}
+          ip_range: ${BRAINSOS_SECRETS_IP_RANGE:-172.28.4.128/25}
 
   # 3d. Isolated mail & groupware backend network (SOGo <-> sogo-db <-> mail-server)
   brainsos-mail-net:
     name: brainsos-mail-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_MAIL_BRIDGE:-br-mail}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_MAIL_SUBNET:-172.28.5.0/24}
+          gateway: ${BRAINSOS_MAIL_GATEWAY:-172.28.5.1}
+          ip_range: ${BRAINSOS_MAIL_IP_RANGE:-172.28.5.128/25}
 
   # 4. Operator IDE network: isolated from agent plane; connects Caddy to code-server
   brainsos-ide-net:
     name: brainsos-ide-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_IDE_BRIDGE:-br-ide}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_IDE_SUBNET:-172.28.6.0/24}
+          gateway: ${BRAINSOS_IDE_GATEWAY:-172.28.6.1}
+          ip_range: ${BRAINSOS_IDE_IP_RANGE:-172.28.6.128/25}
 
   # 5. Telemetry & distributed observability network
   brainsos-telemetry-net:
     name: brainsos-telemetry-net
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_TELEMETRY_BRIDGE:-br-telemetry}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_TELEMETRY_SUBNET:-172.28.7.0/24}
+          gateway: ${BRAINSOS_TELEMETRY_GATEWAY:-172.28.7.1}
+          ip_range: ${BRAINSOS_TELEMETRY_IP_RANGE:-172.28.7.128/25}
 
 # ==============================================================================
 # Ephemeral Per-VM Named Volumes (All persistent user/tenant state lives under ${BRAINSOS_DATA_DIR})

@@ -5,9 +5,57 @@ Protocol 1984.7 — Retro Phosphor Terminal & Historic Archival Ledger Aesthetic
 Compiles apps/cindypawford/archive/index.html deterministically from logbook.json and eras.json.
 """
 
-import os
-import json
 import html
+import json
+import os
+import re
+import urllib.parse
+
+_SAFE_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_SAFE_COLOR_RE = re.compile(r"^(?:#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,20})$")
+
+
+def esc(val):
+    return html.escape("" if val is None else str(val), quote=True)
+
+
+def sanitize_url(raw_url, *, allow_relative=True, fallback="#"):
+    if not raw_url or not isinstance(raw_url, str):
+        return fallback
+    cleaned = raw_url.strip()
+    if not cleaned or any(ord(c) < 32 or ord(c) == 127 for c in cleaned):
+        return fallback
+    if any(ch in cleaned for ch in ('"', "'", "<", ">", " ", "\t", "\r", "\n")):
+        return fallback
+    parsed = urllib.parse.urlsplit(cleaned)
+    if parsed.scheme:
+        if parsed.scheme.lower() in ("http", "https") and parsed.netloc:
+            return cleaned
+        return fallback
+    if (
+        not allow_relative
+        or cleaned.startswith(("//", "\\", "/\\"))
+        or cleaned.replace("\\", "/").startswith("//")
+        or parsed.netloc
+    ):
+        return fallback
+    if ".." in cleaned.replace("\\", "/").split("/"):
+        return fallback
+    return cleaned
+
+
+def _safe_slug(raw_slug, fallback="2024-genesis"):
+    if isinstance(raw_slug, str) and _SAFE_SLUG_RE.match(raw_slug) and ".." not in raw_slug:
+        return raw_slug
+    return fallback
+
+
+def _safe_int(val, fallback=1):
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return fallback
+
 
 def find_repo_root():
     d = os.path.abspath(os.path.dirname(__file__))
@@ -17,8 +65,10 @@ def find_repo_root():
         d = os.path.dirname(d)
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+
 REPO_ROOT = find_repo_root()
 DATA_DIR = os.environ.get("BRAINSOS_DATA_DIR", os.path.join(REPO_ROOT, "data"))
+
 
 def resolve_archive_dir():
     candidates = [
@@ -33,10 +83,12 @@ def resolve_archive_dir():
             return c
     return candidates[0]
 
+
 ARCHIVE_DIR = resolve_archive_dir()
 LOGBOOK_JSON_PATH = os.path.join(ARCHIVE_DIR, "logbook.json")
 ERAS_JSON_PATH = os.path.join(ARCHIVE_DIR, "eras.json")
 OUTPUT_HTML_PATH = os.path.join(ARCHIVE_DIR, "index.html")
+
 
 def load_json_file(path, default=None):
     if not os.path.exists(path):
@@ -48,15 +100,16 @@ def load_json_file(path, default=None):
         print(f"[WARN] Error reading {path}: {e}")
         return default or {}
 
+
 def render_timeline_entry(entry):
-    cat = html.escape(entry.get("category", "new-era"))
-    date_disp = html.escape(entry.get("date_display", "UNDATED"))
-    time_disp = html.escape(entry.get("time_display", "00:00:00 UTC"))
-    badge = html.escape(entry.get("badge", "[LOG ENTRY]"))
-    subbadge = html.escape(entry.get("subbadge", ""))
-    block = html.escape(entry.get("block", ""))
-    title = html.escape(entry.get("title", "Untitled Chronicle"))
-    desc = html.escape(entry.get("description", ""))
+    cat = esc(entry.get("category", "new-era"))
+    date_disp = esc(entry.get("date_display", "UNDATED"))
+    time_disp = esc(entry.get("time_display", "00:00:00 UTC"))
+    badge = esc(entry.get("badge", "[LOG ENTRY]"))
+    subbadge = esc(entry.get("subbadge", ""))
+    block = esc(entry.get("block", ""))
+    title = esc(entry.get("title", "Untitled Chronicle"))
+    desc = esc(entry.get("description", ""))
     badge_type = entry.get("badge_type", "primary")
 
     # Date badge styling based on badge type
@@ -89,14 +142,14 @@ def render_timeline_entry(entry):
 
     # 1. Telemetry / Hex Dump Entry
     if "telemetry" in entry:
-        telem = entry["telemetry"]
-        sig = html.escape(telem.get("sig", "SIG: MERKLE_ROOT"))
-        system_tag = html.escape(telem.get("system_tag", "SYSTEM_TELEMETRY // VERIFIED"))
-        hex_raw = telem.get("hex_dump", "")
-        hash_val = html.escape(telem.get("hash", "0x0000"))
-        status = html.escape(telem.get("status", "ACTIVE"))
+        telem = entry["telemetry"] or {}
+        sig = esc(telem.get("sig", "SIG: MERKLE_ROOT"))
+        system_tag = esc(telem.get("system_tag", "SYSTEM_TELEMETRY // VERIFIED"))
+        hex_raw = str(telem.get("hex_dump", "") or "")
+        hash_val = esc(telem.get("hash", "0x0000"))
+        status = esc(telem.get("status", "ACTIVE"))
 
-        hex_lines = "<br/>".join([html.escape(line) for line in hex_raw.splitlines()]) if hex_raw else ""
+        hex_lines = "<br/>".join([esc(line) for line in hex_raw.splitlines()]) if hex_raw else ""
         hex_box = ""
         if hex_lines:
             hex_box = f"""
@@ -122,13 +175,13 @@ def render_timeline_entry(entry):
 
     # 2. Incident Metrics Grid Entry
     elif "incident_metrics" in entry:
-        m = entry["incident_metrics"]
-        peak = html.escape(str(m.get("peak_players", "0")))
-        jitter = html.escape(str(m.get("packet_jitter", "0 ms")))
-        failover = html.escape(str(m.get("failover_time", "0 s")))
-        footer = entry.get("footer", {})
-        snapshot = html.escape(footer.get("snapshot", "SYS_DUMP.TAR"))
-        status = html.escape(footer.get("status", "STATUS: RESOLVED"))
+        m = entry["incident_metrics"] or {}
+        peak = esc(m.get("peak_players", "0"))
+        jitter = esc(m.get("packet_jitter", "0 ms"))
+        failover = esc(m.get("failover_time", "0 s"))
+        footer = entry.get("footer", {}) or {}
+        snapshot = esc(footer.get("snapshot", "SYS_DUMP.TAR"))
+        status = esc(footer.get("status", "STATUS: RESOLVED"))
 
         body_extra = f"""
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-space-xs bg-surface-container-lowest border border-outline-variant/30 p-space-sm rounded-lg text-center">
@@ -156,17 +209,27 @@ def render_timeline_entry(entry):
 
     # 3. Governance Proposal Entry
     elif "proposal" in entry:
-        prop = entry["proposal"]
-        lineage = html.escape(prop.get("weights_lineage", "RETRO_AVANT_GARDE"))
-        consensus = html.escape(prop.get("consensus", "RATIFIED"))
-        bars = prop.get("bars", [])
-        bars_html = "".join([
-            f'<div class="h-full" style="width:{b.get("pct", 0)}%;background-color:{b.get("color", "#00ff66")};"></div>'
-            for b in bars
-        ])
-        footer = entry.get("footer", {})
-        contract = html.escape(footer.get("contract", "0x0000"))
-        status = html.escape(footer.get("status", "[SYSTEM_TELEMETRY] LOCKED"))
+        prop = entry["proposal"] or {}
+        lineage = esc(prop.get("weights_lineage", "RETRO_AVANT_GARDE"))
+        consensus = esc(prop.get("consensus", "RATIFIED"))
+        bars = prop.get("bars", []) or []
+        bar_divs = []
+        for b in bars:
+            if not isinstance(b, dict):
+                continue
+            try:
+                pct_val = max(0.0, min(100.0, float(b.get("pct", 0))))
+            except (TypeError, ValueError):
+                pct_val = 0.0
+            raw_color = str(b.get("color", "#00ff66") or "#00ff66").strip()
+            safe_color = raw_color if _SAFE_COLOR_RE.match(raw_color) else "#00ff66"
+            bar_divs.append(
+                f'<div class="h-full" style="width:{pct_val:g}%;background-color:{esc(safe_color)};"></div>'
+            )
+        bars_html = "".join(bar_divs)
+        footer = entry.get("footer", {}) or {}
+        contract = esc(footer.get("contract", "0x0000"))
+        status = esc(footer.get("status", "[SYSTEM_TELEMETRY] LOCKED"))
 
         body_extra = f"""
         <div class="p-space-sm bg-surface-container-lowest border border-outline-variant/30 rounded-lg flex flex-col gap-2">
@@ -189,11 +252,11 @@ def render_timeline_entry(entry):
 
     # 4. Audio Soundboard Entry
     elif "audio_preview" in entry:
-        audio = entry["audio_preview"]
-        stem = html.escape(audio.get("chip_stem", "TELEPHONE_RING_84.WAV"))
-        footer = entry.get("footer", {})
-        commit = html.escape(footer.get("commit", "cindy-audio-v0.8.2"))
-        status = html.escape(footer.get("status", "CHIP STACK ONLINE"))
+        audio = entry["audio_preview"] or {}
+        stem = esc(audio.get("chip_stem", "TELEPHONE_RING_84.WAV"))
+        footer = entry.get("footer", {}) or {}
+        commit = esc(footer.get("commit", "cindy-audio-v0.8.2"))
+        status = esc(footer.get("status", "CHIP STACK ONLINE"))
 
         body_extra = f"""
         <div class="bg-surface-container-lowest border border-outline-variant/30 p-space-sm rounded-lg flex flex-col gap-2">
@@ -217,42 +280,45 @@ def render_timeline_entry(entry):
         </div>
         """
 
-    pr_meta = entry.get("pr_metadata", {})
-    pr_num = pr_meta.get("pr_number")
-    pr_url = f"https://github.com/patternsatscale/CindyPawford-Online/pull/{pr_num}" if pr_num else None
-    is_pr = "true" if pr_num is not None else "false"
+    pr_meta = entry.get("pr_metadata", {}) or {}
+    raw_pr_num = pr_meta.get("pr_number") if pr_meta.get("pr_number") is not None else entry.get("pr_number")
+    pr_num_str = str(raw_pr_num).strip() if raw_pr_num is not None else ""
+    valid_pr_num = int(pr_num_str) if pr_num_str.isascii() and pr_num_str.isdigit() else None
+    pr_url = f"https://github.com/patternsatscale/CindyPawford-Online/pull/{valid_pr_num}" if valid_pr_num is not None else None
+    safe_pr_url = esc(sanitize_url(pr_url, allow_relative=False, fallback="#")) if pr_url else None
+    is_pr = "true" if valid_pr_num is not None else "false"
 
     type_indicator = ""
-    if cat == "new-era":
+    if entry.get("category", "new-era") == "new-era":
         type_indicator = '<span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-primary-container/20 text-primary border border-primary/40 uppercase tracking-wider font-bold">★ CANONICAL ERA</span>'
-    elif pr_num is not None:
+    elif valid_pr_num is not None:
         type_indicator = '<span class="font-label-sm text-[9px] px-1.5 py-0.5 rounded bg-surface-container-high text-secondary border border-outline-variant/30 uppercase tracking-wider font-bold">📦 PULL REQUEST</span>'
 
     if block:
-        if pr_url:
-            block_html = f'<a href="{pr_url}" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>{block}</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>'
+        if safe_pr_url:
+            block_html = f'<a href="{safe_pr_url}" target="_blank" rel="noopener noreferrer" class="font-label-sm text-label-sm text-secondary hover:text-primary font-mono flex items-center gap-1 transition-colors"><span>{block}</span><span class="material-symbols-outlined text-[12px]">open_in_new</span></a>'
         else:
             block_html = f'<span class="font-label-sm text-label-sm text-secondary font-mono">{block}</span>'
     else:
         block_html = ""
 
     pr_footer = ""
-    if pr_url:
-        pr_author = html.escape(str(pr_meta.get("author", "bawtford")))
-        sha = html.escape(str(pr_meta.get("commit_sha", "HEAD"))[:8])
+    if safe_pr_url and valid_pr_num is not None:
+        pr_author = esc(pr_meta.get("author", "bawtford"))
+        sha = esc(str(pr_meta.get("commit_sha", "HEAD"))[:8])
         pr_footer = f"""
         <div class="flex items-center justify-between pt-space-xs mt-1 border-t border-outline-variant/20 flex-wrap gap-2 font-label-sm text-label-sm">
           <div class="flex items-center gap-2 text-outline">
             <span class="text-on-surface-variant font-bold">SOURCE:</span>
-            <a href="{pr_url}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline font-bold flex items-center gap-1">
-              <span>PR #{pr_num}</span>
+            <a href="{safe_pr_url}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline font-bold flex items-center gap-1">
+              <span>PR #{esc(valid_pr_num)}</span>
               <span class="material-symbols-outlined text-[12px]">open_in_new</span>
             </a>
             <span>•</span>
             <span>@{pr_author}</span>
             {f'<span>•</span><span>COMMIT: <span class="text-tertiary font-mono">{sha}</span></span>' if sha else ''}
           </div>
-          <a href="{pr_url}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-0.5 bg-primary-container/20 hover:bg-primary-container text-primary hover:text-on-primary-container border border-primary/40 rounded-DEFAULT font-bold flex items-center gap-1 transition-all">
+          <a href="{safe_pr_url}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-0.5 bg-primary-container/20 hover:bg-primary-container text-primary hover:text-on-primary-container border border-primary/40 rounded-DEFAULT font-bold flex items-center gap-1 transition-all">
             <span>VIEW ON GITHUB</span>
             <span class="material-symbols-outlined text-[12px]">open_in_new</span>
           </a>
@@ -293,17 +359,21 @@ def render_timeline_entry(entry):
     </div>
     """
 
+
 def render_era_tile(era):
-    num = era.get("era", 1)
-    tag = html.escape(era.get("era_tag", f"ERA-{num:02d}"))
-    title = html.escape(era.get("theme_name", f"Era {num}"))
-    range_str = html.escape(era.get("date_range", "Historical Archive Period"))
-    blocks = html.escape(era.get("blocks", "#00000001 - #00000094"))
-    hash_str = html.escape(era.get("hash", "0x0000...0000"))
-    status_tag = html.escape(era.get("status_tag", "100% MERKLE VERIFIED"))
+    num = _safe_int(era.get("era", 1), fallback=1)
+    tag = esc(era.get("era_tag", f"ERA-{num:02d}"))
+    title = esc(era.get("theme_name", f"Era {num}"))
+    range_str = esc(era.get("date_range", "Historical Archive Period"))
+    blocks = esc(era.get("blocks", "#00000001 - #00000094"))
+    hash_str = esc(era.get("hash", "0x0000...0000"))
+    raw_status = str(era.get("status_tag", "100% MERKLE VERIFIED") or "100% MERKLE VERIFIED")
+    status_tag = esc(raw_status)
     color_theme = era.get("color_theme", "primary")
-    slug = era.get("slug", "2024-genesis")
-    emblem_src = era.get("emblem", "")
+    slug = _safe_slug(era.get("slug", "2024-genesis"))
+    emblem_src = sanitize_url(era.get("emblem", ""), allow_relative=True, fallback="")
+    default_era_url = "https://cindypawford.com" if "ACTIVE" in raw_status.upper() else f"./{slug}/index.html"
+    era_url = sanitize_url(era.get("era_url") or default_era_url, allow_relative=True, fallback="#")
 
     theme_border = "hover:border-primary-container/60"
     tag_bg = "bg-primary-container text-on-primary-container"
@@ -326,7 +396,7 @@ def render_era_tile(era):
     if emblem_src:
         badge_visual = f"""
         <div class="w-14 h-14 rounded-lg bg-surface-container-lowest border border-primary/40 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
-          <img alt="{title} Emblem" class="w-full h-full object-cover rounded" src="{emblem_src}" onerror="this.src='/assets/cindy_desk_support.jpg'"/>
+          <img alt="{title} Emblem" class="w-full h-full object-cover rounded" src="{esc(emblem_src)}" onerror="this.src='/assets/cindy_desk_support.jpg'"/>
         </div>
         """
     else:
@@ -359,28 +429,32 @@ def render_era_tile(era):
       </div>
       <div class="flex items-center gap-space-md justify-between md:justify-end flex-shrink-0">
         <span class="font-label-sm text-label-sm px-2 py-1 bg-surface-container-high {status_text} rounded border border-outline-variant/30">{status_tag}</span>
-        <a href="{"https://cindypawford.com" if "ACTIVE" in status_tag.upper() else f"./{slug}/index.html"}" class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright text-on-surface hover:text-primary font-bold text-label-sm rounded-DEFAULT border border-outline-variant/40 transition-colors flex items-center gap-1 cursor-pointer">
-          <span>{"LIVE CANVAS ➔" if "ACTIVE" in status_tag.upper() else "EXPLORE ERA ➔"}</span>
+        <a href="{esc(era_url)}" class="px-4 py-2 bg-surface-container-high hover:bg-surface-bright text-on-surface hover:text-primary font-bold text-label-sm rounded-DEFAULT border border-outline-variant/40 transition-colors flex items-center gap-1 cursor-pointer">
+          <span>{"LIVE CANVAS ➔" if "ACTIVE" in raw_status.upper() else "EXPLORE ERA ➔"}</span>
         </a>
       </div>
     </div>
     """
 
+
 def render_scoreboard(eras, entries):
     era_rows = []
     for era in eras:
-        num = era.get("era", 1)
-        tag = html.escape(era.get("era_tag", f"ERA-{num:02d}"))
-        name = html.escape(era.get("theme_name", f"Era {num}"))
-        dates = html.escape(era.get("date_range", ""))
-        status = html.escape(era.get("status_tag", "RECORDED"))
+        num = _safe_int(era.get("era", 1), fallback=1)
+        tag = esc(era.get("era_tag", f"ERA-{num:02d}"))
+        name = esc(era.get("theme_name", f"Era {num}"))
+        dates = esc(era.get("date_range", ""))
+        raw_status = str(era.get("status_tag", "RECORDED") or "RECORDED")
+        status = esc(raw_status)
         color = era.get("color_theme", "primary")
         dot_color = "bg-primary-container" if color == "primary" else ("bg-secondary" if color == "secondary" else "bg-tertiary")
         pill_bg = "bg-primary-container/20 text-primary border border-primary/40" if color == "primary" else "bg-secondary/20 text-secondary border border-secondary/40"
-        era_url = "https://cindypawford.com" if "ACTIVE" in status.upper() else f"./{era.get('slug', '2024-genesis')}/index.html"
+        slug = _safe_slug(era.get("slug", "2024-genesis"))
+        default_era_url = "https://cindypawford.com" if "ACTIVE" in raw_status.upper() else f"./{slug}/index.html"
+        era_url = sanitize_url(era.get("era_url") or default_era_url, allow_relative=True, fallback="#")
 
         era_rows.append(f"""
-        <a href="{era_url}" class="group flex items-center justify-between p-2.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-primary hover:bg-surface-container transition-all cursor-pointer">
+        <a href="{esc(era_url)}" class="group flex items-center justify-between p-2.5 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-primary hover:bg-surface-container transition-all cursor-pointer">
           <div class="flex items-center gap-2 min-w-0">
             <span class="font-mono text-xs text-primary font-bold w-5">{num:02d}</span>
             <div class="flex flex-col truncate">
@@ -392,23 +466,30 @@ def render_scoreboard(eras, entries):
           </div>
           <div class="flex items-center gap-2 flex-shrink-0">
             <span class="font-label-sm text-[10px] px-1.5 py-0.5 rounded {pill_bg}">{status}</span>
-            <span class="w-1.5 h-1.5 rounded-full {dot_color} {'animate-pulse' if 'ACTIVE' in status else ''}"></span>
+            <span class="w-1.5 h-1.5 rounded-full {dot_color} {'animate-pulse' if 'ACTIVE' in raw_status.upper() else ''}"></span>
           </div>
         </a>
         """)
 
     # Strictly isolate recent PRs to CindyPawford-Online pull requests
-    pr_entries = [e for e in entries if e.get("pr_metadata", {}).get("pr_number") is not None]
+    pr_entries = []
+    for e in entries:
+        pm = e.get("pr_metadata", {}) or {}
+        pn = pm.get("pr_number") if pm.get("pr_number") is not None else e.get("pr_number")
+        if pn is not None:
+            pr_entries.append((e, pm, pn))
+
     pr_rows = []
-    for idx, e in enumerate(pr_entries):
+    for idx, (e, pr_meta, raw_pr_num) in enumerate(pr_entries):
         rank_str = f"{idx + 1:02d}"
-        title = html.escape(e.get("title", "Pull Request"))
-        date = html.escape(e.get("date_display", ""))
+        title = esc(e.get("title", "Pull Request"))
+        date = esc(e.get("date_display", ""))
         b_type = e.get("badge_type", "primary")
-        pr_meta = e.get("pr_metadata", {})
-        pr_num = pr_meta.get("pr_number")
-        pr_url = f"https://github.com/patternsatscale/CindyPawford-Online/pull/{pr_num}" if pr_num else "https://github.com/patternsatscale/CindyPawford-Online/pulls"
-        tag_str = f"PR #{pr_num} • {date}" if pr_num else date
+        pr_num_str = str(raw_pr_num).strip() if raw_pr_num is not None else ""
+        valid_pr_num = int(pr_num_str) if pr_num_str.isascii() and pr_num_str.isdigit() else None
+        pr_url = f"https://github.com/patternsatscale/CindyPawford-Online/pull/{valid_pr_num}" if valid_pr_num is not None else "https://github.com/patternsatscale/CindyPawford-Online/pulls"
+        safe_pr_url = esc(sanitize_url(pr_url, allow_relative=False, fallback="https://github.com/patternsatscale/CindyPawford-Online/pulls"))
+        tag_str = f"PR #{esc(valid_pr_num)} • {date}" if valid_pr_num is not None else date
 
         dot_class = "bg-primary-container"
         text_rank = "text-primary"
@@ -423,7 +504,7 @@ def render_scoreboard(eras, entries):
             text_rank = "text-tertiary"
 
         pr_rows.append(f"""
-        <a href="{pr_url}" target="_blank" rel="noopener noreferrer" class="group flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-primary hover:bg-surface-container transition-all cursor-pointer">
+        <a href="{safe_pr_url}" target="_blank" rel="noopener noreferrer" class="group flex items-center justify-between p-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg hover:border-primary hover:bg-surface-container transition-all cursor-pointer">
           <div class="flex items-center gap-2 min-w-0">
             <span class="font-mono text-xs {text_rank} font-bold w-5">{rank_str}</span>
             <div class="flex flex-col truncate">
@@ -433,7 +514,7 @@ def render_scoreboard(eras, entries):
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0">
             <span class="font-mono text-[11px] font-bold text-primary px-1.5 py-0.5 rounded bg-surface-container-high border border-outline-variant/30 group-hover:border-primary group-hover:bg-primary/10 transition-colors flex items-center gap-1">
-              <span>#{pr_num if pr_num else 'PR'}</span>
+              <span>#{esc(valid_pr_num) if valid_pr_num is not None else 'PR'}</span>
               <span class="material-symbols-outlined text-[12px]">open_in_new</span>
             </span>
             <span class="w-1.5 h-1.5 rounded-full {dot_class}"></span>

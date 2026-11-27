@@ -67,50 +67,72 @@ log_success "Docker compose config successfully merged base and appliance overla
 
 log_info "Checking published ports in merged compose configuration..."
 # Extract published ports from the resolved compose config using python
-PYTHON_CHECK_PORTS="
-import sys, yaml
+COMPOSE_CONFIG="${COMPOSE_CONFIG}" python3 - << 'EOF'
+import os
+import sys
+import yaml
 
-config = yaml.safe_load('''${COMPOSE_CONFIG}''')
-services = config.get('services', {})
+config = yaml.safe_load(os.environ["COMPOSE_CONFIG"])
+services = config.get("services", {})
 
 violations = []
 caddy_ports = []
 
 for svc_name, svc_conf in services.items():
-    ports = svc_conf.get('ports', [])
+    ports = svc_conf.get("ports", [])
     if ports:
-        published_info = [str(p.get('published', p)) if isinstance(p, dict) else str(p) for p in ports]
-        if svc_name == 'caddy':
+        published_info = [str(p.get("published", p)) if isinstance(p, dict) else str(p) for p in ports]
+        if svc_name == "caddy":
             caddy_ports.extend(published_info)
         else:
-            violations.append(f'{svc_name}: {published_info}')
+            violations.append(f"{svc_name}: {published_info}")
 
 if violations:
-    print('ERROR: Internal services with published ports detected:', file=sys.stderr)
+    print("ERROR: Internal services with published ports detected:", file=sys.stderr)
     for v in violations:
-        print(f'  - {v}', file=sys.stderr)
+        print(f"  - {v}", file=sys.stderr)
     sys.exit(1)
 
-print(f'Only caddy published ports found: {caddy_ports}')
-"
-
-python3 -c "${PYTHON_CHECK_PORTS}"
+print(f"Only caddy published ports found: {caddy_ports}")
+EOF
 log_success "Port lockdown verified: Zero internal services expose host ports in compose.appliance.yml."
 
 # ------------------------------------------------------------------------------
-# Test 4: Caddyfile.appliance Syntax Validation
+# Test 4: Caddyfile & Caddyfile.appliance Syntax Validation
 # ------------------------------------------------------------------------------
-log_info "4. Validating Caddyfile.appliance syntax..."
-if docker compose ps --services --filter "status=running" | grep -qw caddy; then
+OPENBAO_CA_HOST="${BRAINSOS_OPENBAO_TLS_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}/openbao_tls}/ca.crt"
+TMP_OPENBAO_CA=""
+cleanup_tmp_ca() {
+  if [ -n "${TMP_OPENBAO_CA}" ] && [ -f "${TMP_OPENBAO_CA}" ]; then
+    rm -f "${TMP_OPENBAO_CA}"
+  fi
+}
+trap cleanup_tmp_ca EXIT
+
+if [ ! -s "${OPENBAO_CA_HOST}" ]; then
+  TMP_OPENBAO_CA="$(mktemp /tmp/brainsos-openbao-ca.XXXXXX.crt)"
+  openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out "${TMP_OPENBAO_CA}" \
+    -days 1 -subj "/CN=brainsos-openbao-validate" >/dev/null 2>&1
+  OPENBAO_CA_HOST="${TMP_OPENBAO_CA}"
+fi
+
+log_info "4. Validating Caddyfile and Caddyfile.appliance syntax..."
+if docker compose ps --services --filter "status=running" | grep -qw caddy && docker compose exec -T caddy test -f /etc/ssl/openbao/ca.crt 2>/dev/null; then
   # Validate using running caddy container
+  docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
   docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile.appliance --adapter caddyfile
-  log_success "Caddyfile.appliance validated successfully inside running caddy container."
+  log_success "Caddyfile & Caddyfile.appliance validated successfully inside running caddy container."
 else
-  # Validate using standalone caddy container
+  # Validate using standalone caddy container with OpenBao CA mounted
   docker run --rm \
-    -v "${REPO_ROOT}/config/caddy/Caddyfile.appliance:/etc/caddy/Caddyfile:ro" \
-    caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
-  log_success "Caddyfile.appliance validated successfully inside standalone caddy container."
+    -v "${REPO_ROOT}/config/caddy:/etc/caddy:ro" \
+    -v "${OPENBAO_CA_HOST}:/etc/ssl/openbao/ca.crt:ro" \
+    --entrypoint caddy brainsos-caddy:latest validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  docker run --rm \
+    -v "${REPO_ROOT}/config/caddy:/etc/caddy:ro" \
+    -v "${OPENBAO_CA_HOST}:/etc/ssl/openbao/ca.crt:ro" \
+    --entrypoint caddy brainsos-caddy:latest validate --config /etc/caddy/Caddyfile.appliance --adapter caddyfile
+  log_success "Caddyfile & Caddyfile.appliance validated successfully inside standalone caddy container."
 fi
 
 # ------------------------------------------------------------------------------
@@ -144,19 +166,21 @@ fi
 log_success "No bare :443 block found; explicit hostname listeners verified."
 
 # 6B. Ensure all defined (tls_*) snippets are imported or dynamically selected
-python3 -c "
-with open('config/caddy/Caddyfile.appliance') as f:
+python3 - << 'EOF'
+import re
+
+with open("config/caddy/Caddyfile.appliance") as f:
     content = f.read()
 
-import re
-defined_snippets = re.findall(r'^\((tls_[a-zA-Z0-9_]+)\)\s*\{', content, re.MULTILINE)
-assert defined_snippets, 'No tls_* snippets found in Caddyfile.appliance'
+defined_snippets = re.findall(r"^\((tls_[a-zA-Z0-9_]+)\)\s*\{", content, re.MULTILINE)
+assert defined_snippets, "No tls_* snippets found in Caddyfile.appliance"
 
-# Check that import tls_{\$BRAINSOS_TLS_MODE...} or direct imports exist
-assert 'import tls_{\$BRAINSOS_TLS_MODE' in content or all(f'import {s}' in content for s in defined_snippets), \
-    f'Defined tls snippets {defined_snippets} not imported or dynamically selected!'
-print(f'Verified TLS snippets: {defined_snippets}')
-"
+# Check that import tls_{$BRAINSOS_TLS_MODE...} or direct imports exist
+assert "import tls_{$BRAINSOS_TLS_MODE" in content or all(f"import {s}" in content for s in defined_snippets), (
+    f"Defined tls snippets {defined_snippets} not imported or dynamically selected!"
+)
+print(f"Verified TLS snippets: {defined_snippets}")
+EOF
 log_success "All TLS snippets in Caddyfile.appliance are dynamically imported."
 
 # 6C. Verify /system/ca.crt endpoint exists for operator trust
@@ -175,6 +199,7 @@ for mode in internal acme route53; do
     -e BRAINSOS_DOMAIN="test.brainsos.ai" \
     -e BRAINSOS_IP_SITES="127.0.0.1" \
     -v "${REPO_ROOT}/config/caddy:/etc/caddy:ro" \
+    -v "${OPENBAO_CA_HOST}:/etc/ssl/openbao/ca.crt:ro" \
     --entrypoint caddy brainsos-caddy:latest validate --config /etc/caddy/Caddyfile.appliance --adapter caddyfile >/dev/null 2>&1
 done
 log_success "Caddyfile.appliance successfully validated for all TLS modes (internal, acme, route53)."

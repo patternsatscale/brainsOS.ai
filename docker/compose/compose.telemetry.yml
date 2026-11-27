@@ -39,7 +39,7 @@ services:
       - AUTH_CUSTOM_CLIENT_SECRET=${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
       - AUTH_CUSTOM_ISSUER=${AUTH_LANGFUSE_ISSUER:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/application/o/langfuse}
       - AUTH_CUSTOM_NAME=brainsOS SSO
-      - AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=true
+      - AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING=false
       - AUTH_CUSTOM_FETCH_USERINFO=true
       - AUTH_DISABLE_USERNAME_PASSWORD=true
       # ClickHouse OLAP Analytics Store
@@ -92,11 +92,13 @@ services:
       - "api.cindypawford.brainsos.local:host-gateway"
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${LANGFUSE_TELEMETRY_IP:-172.28.7.10}
         aliases:
           - langfuse-web
           - brainsos-langfuse-web
           - brainsos-telemetry-langfuse-web
       brainsos-ingress-net:
+        ipv4_address: ${LANGFUSE_INGRESS_IP:-172.28.0.16}
         aliases:
           - langfuse-web
           - brainsos-telemetry-langfuse-web
@@ -174,6 +176,7 @@ services:
       - "api.cindypawford.brainsos.local:host-gateway"
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${LANGFUSE_WORKER_TELEMETRY_IP:-172.28.7.12}
         aliases:
           - langfuse-worker
           - brainsos-langfuse-worker
@@ -198,6 +201,7 @@ services:
       - "127.0.0.1:9000:9000"
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${CLICKHOUSE_TELEMETRY_IP:-172.28.7.20}
         aliases:
           - clickhouse
           - brainsos-langfuse-clickhouse
@@ -248,16 +252,19 @@ services:
       - AGENT_TRACING_RETENTION_DAYS=${AGENT_TRACING_RETENTION_DAYS:-14}
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${LENS_TELEMETRY_IP:-172.28.7.11}
         aliases:
           - lens
           - brainsos-lens
           - brainsos-telemetry-lens
       brainsos-internal-net:
+        ipv4_address: ${LENS_INTERNAL_IP:-172.28.1.13}
         aliases:
           - lens
           - brainsos-lens
           - brainsos-telemetry-lens
       brainsos-ingress-net:
+        ipv4_address: ${LENS_INGRESS_IP:-172.28.0.17}
         aliases:
           - lens
           - brainsos-telemetry-lens
@@ -280,6 +287,7 @@ services:
       - "127.0.0.1:6379:6379"
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${REDIS_TELEMETRY_IP:-172.28.7.21}
         aliases:
           - redis
           - brainsos-langfuse-redis
@@ -307,6 +315,7 @@ services:
       - "127.0.0.1:9091:9001"
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${MINIO_TELEMETRY_IP:-172.28.7.22}
         aliases:
           - minio
           - brainsos-langfuse-minio
@@ -333,6 +342,7 @@ services:
       - "127.0.0.1:${LANGFUSE_DB_PORT:-5433}:5432"
     networks:
       brainsos-telemetry-net:
+        ipv4_address: ${LANGFUSE_DB_TELEMETRY_IP:-172.28.7.23}
         aliases:
           - langfuse-db
           - brainsos-langfuse-db

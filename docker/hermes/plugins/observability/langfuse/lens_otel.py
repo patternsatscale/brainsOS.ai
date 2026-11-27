@@ -117,9 +117,18 @@ def _local_domain() -> str:
     )
 
 
+_MAIL_SESSION_RE = re.compile(r"^mail-([a-z0-9_-]+)-")
+
+
 def _resolve_agent_name(session_id: str) -> str:
+    pinned = os.environ.get("BRAINSOS_AGENT_ID", "").strip().lower()
+    if pinned:
+        return pinned
     sid = (session_id or "").strip().lower()
-    if sid.startswith("mail-"):
+    if _MAIL_SESSION_RE.match(sid):
+        for agent in sorted(_KNOWN_AGENTS, key=len, reverse=True):
+            if sid.startswith(f"mail-{agent}-"):
+                return agent
         parts = sid.split("-", 2)
         if len(parts) >= 2 and parts[1]:
             return parts[1]
@@ -129,9 +138,6 @@ def _resolve_agent_name(session_id: str) -> str:
         prefix = sid.split("-", 1)[0]
         if prefix in _KNOWN_AGENTS:
             return prefix
-    for agent in _KNOWN_AGENTS:
-        if f"-{agent}-" in sid:
-            return agent
     return os.environ.get("HERMES_AGENT_NAME", "").strip() or _SERVICE_NAME
 
 
@@ -205,7 +211,8 @@ def _format_assistant_output_message(output: Any) -> list[dict[str, Any]]:
         for tc in raw_tcs:
             if not isinstance(tc, dict):
                 continue
-            fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+            raw_fn = tc.get("function")
+            fn: dict[str, Any] = raw_fn if isinstance(raw_fn, dict) else {}
             name = tc.get("name") or fn.get("name") or ""
             args = tc.get("arguments") if tc.get("arguments") is not None else fn.get("arguments")
             args_str = args if isinstance(args, str) else (_json_str(args) or "{}")

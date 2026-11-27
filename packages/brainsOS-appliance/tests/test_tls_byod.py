@@ -345,6 +345,8 @@ def test_set_domain_breakglass_toggle_lockout_and_cognito_dry_run(tmp_path: Path
             "--cognito-client-secret",
             "MySecretValue999!",
             "--alb-oidc",
+            "--alb-issuer",
+            "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Pool123",
             "--dry-run",
         ],
         capture_output=True,
@@ -357,5 +359,17 @@ def test_set_domain_breakglass_toggle_lockout_and_cognito_dry_run(tmp_path: Path
     assert "BRAINSOS_USER_SUB=user-sub-12345" in allowed.stdout
     assert "AUTH_COGNITO_ENABLED=true" in allowed.stdout
     assert "AUTH_ALB_OIDC_ENABLED=true" in allowed.stdout
+    assert "AUTH_ALB_ISSUER=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Pool123" in allowed.stdout
     assert "AUTH_COGNITO_CLIENT_SECRET=[REDACTED]" in allowed.stdout
     assert "MySecretValue999!" not in allowed.stdout
+
+    # 3. --breakglass explicitly sets BRAINSOS_BREAKGLASS_ENABLED=true
+    bg_on = subprocess.run(
+        [str(SET_DOMAIN), "--breakglass", "--dry-run"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert bg_on.returncode == 0
+    assert "BRAINSOS_BREAKGLASS_ENABLED=true" in bg_on.stdout

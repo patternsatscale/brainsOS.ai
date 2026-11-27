@@ -27,9 +27,18 @@ SOGO_SPOOL_DIR="$SOGO_DIR/spool"
 echo "[INFO] Target SOGo storage root: $SOGO_DIR"
 mkdir -p "$SOGO_DB_DIR" "$SOGO_SPOOL_DIR"
 
-# Ensure permissive access for unprivileged container users
+# Enforce 5000:5000 ownership and 0750/0640 permissions (preserving initialized Postgres PG_VERSION)
 if [ -d "$SOGO_DIR" ]; then
-    chmod -R 777 "$SOGO_DIR" 2>/dev/null || true
+    chown 5000:5000 "$SOGO_DIR" 2>/dev/null || true
+    chmod 0750 "$SOGO_DIR" 2>/dev/null || true
+    if [ ! -f "$SOGO_DB_DIR/PG_VERSION" ]; then
+        chown -R 5000:5000 "$SOGO_DB_DIR" 2>/dev/null || true
+        find "$SOGO_DB_DIR" -type d -exec chmod 0750 {} + 2>/dev/null || true
+        find "$SOGO_DB_DIR" -type f -exec chmod 0640 {} + 2>/dev/null || true
+    fi
+    chown -R 5000:5000 "$SOGO_SPOOL_DIR" 2>/dev/null || true
+    find "$SOGO_SPOOL_DIR" -type d -exec chmod 0750 {} + 2>/dev/null || true
+    find "$SOGO_SPOOL_DIR" -type f -exec chmod 0640 {} + 2>/dev/null || true
 fi
 
 # 1. Build SOGo Image natively on ARM64 / Host

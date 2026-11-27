@@ -60,6 +60,23 @@ def _format_msg_id(val: str) -> str:
     return v
 
 
+def _escape_imap_search_term(val: str) -> str:
+    """Strip CR/LF/NUL and escape backslashes then double quotes for IMAP SEARCH."""
+    cleaned = re.sub(r"[\r\n\x00]", "", str(val))
+    return cleaned.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _sanitize_imap_mailbox(folder: str) -> str:
+    """Strip CR/LF/NUL from IMAP mailbox name and quote if it contains spaces."""
+    cleaned = re.sub(r"[\r\n\x00]", "", str(folder)).strip()
+    if not cleaned:
+        raise ValueError("IMAP folder name must not be empty")
+    if " " in cleaned and not (cleaned.startswith('"') and cleaned.endswith('"')):
+        escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return cleaned
+
+
 class BrainsOSMailClient:
     """Lightweight mail client for brainsOS agents."""
 
@@ -159,7 +176,7 @@ class BrainsOSMailClient:
 
             with imaplib.IMAP4(self.imap_host, self.imap_port) as imap:
                 imap.login(self.username, self.password)
-                mailbox = f'"{sent_folder}"' if " " in sent_folder and not sent_folder.startswith('"') else sent_folder
+                mailbox = _sanitize_imap_mailbox(sent_folder)
                 internal_date = imaplib.Time2Internaldate(time.time())
 
                 status, response = imap.append(mailbox, flags, internal_date, raw_bytes)
@@ -349,8 +366,7 @@ class BrainsOSMailClient:
         with imaplib.IMAP4(self.imap_host, self.imap_port) as imap:
             imap.login(self.username, self.password)
 
-            # Quote folder name if it contains spaces (e.g. "Agent Fleet/terrastella")
-            mailbox = f'"{folder}"' if " " in folder and not folder.startswith('"') else folder
+            mailbox = _sanitize_imap_mailbox(folder)
             status, _ = imap.select(mailbox)
             if status != "OK":
                 return results
@@ -432,15 +448,15 @@ class BrainsOSMailClient:
         if unread_only:
             tokens.append("UNSEEN")
         if query:
-            tokens.append(f'TEXT "{query}"')
+            tokens.append(f'TEXT "{_escape_imap_search_term(query)}"')
         if subject:
-            tokens.append(f'SUBJECT "{subject}"')
+            tokens.append(f'SUBJECT "{_escape_imap_search_term(subject)}"')
         if from_addr:
-            tokens.append(f'FROM "{from_addr}"')
+            tokens.append(f'FROM "{_escape_imap_search_term(from_addr)}"')
         if since_date:
-            tokens.append(f'SINCE "{since_date}"')
+            tokens.append(f'SINCE "{_escape_imap_search_term(since_date)}"')
         if before_date:
-            tokens.append(f'BEFORE "{before_date}"')
+            tokens.append(f'BEFORE "{_escape_imap_search_term(before_date)}"')
 
         criteria = " ".join(tokens) if tokens else "ALL"
         return self.fetch_messages(folder=folder, criteria=criteria, limit=limit)
@@ -479,7 +495,7 @@ class BrainsOSMailClient:
             header_query = clean_id
             if header_query.startswith("<") and header_query.endswith(">"):
                 header_query = header_query[1:-1]
-            criteria = f'HEADER Message-ID "{header_query}"'
+            criteria = f'HEADER Message-ID "{_escape_imap_search_term(header_query)}"'
             msgs = self.fetch_messages(folder=folder, criteria=criteria, limit=1)
             if msgs:
                 return msgs[0]
@@ -490,7 +506,7 @@ class BrainsOSMailClient:
         if seq_num:
             with imaplib.IMAP4(self.imap_host, self.imap_port) as imap:
                 imap.login(self.username, self.password)
-                mailbox = f'"{folder}"' if " " in folder and not folder.startswith('"') else folder
+                mailbox = _sanitize_imap_mailbox(folder)
                 status, _ = imap.select(mailbox)
                 if status != "OK":
                     return None

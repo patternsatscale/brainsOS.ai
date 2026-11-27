@@ -19,7 +19,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
 # Environment defaults
 ENV PYTHONUNBUFFERED=1 \
-    UV_SYSTEM_PYTHON=1
+    UV_SYSTEM_PYTHON=1 \
+    HOME=/tmp \
+    TMPDIR=/tmp
 
 # Create dedicated unprivileged runner user (uid 10001 / gid 10001 - #387)
 RUN groupadd -g 10001 runner && \

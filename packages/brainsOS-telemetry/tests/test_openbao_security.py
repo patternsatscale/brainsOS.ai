@@ -124,18 +124,30 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     addon._allowed_ips = {"172.22.0.10"}
     addon._last_dns_check = 9999999999.0
 
-    def make_flow(host: str, *, scheme: str = "https", sni: str = "", client_ip: str = "172.22.0.10"):
+    def make_flow(
+        host: str,
+        *,
+        pretty_host: str | None = None,
+        scheme: str = "https",
+        sni: str | None = None,
+        client_ip: str = "172.22.0.10",
+        peername: tuple[str, int] | None = ("1.1.1.1", 443),
+        content: bytes = b"",
+    ):
+        eff_pretty = pretty_host if pretty_host is not None else host
         req = SimpleNamespace(
-            pretty_host=host,
+            host=host,
+            pretty_host=eff_pretty,
             scheme=scheme,
-            url=f"{scheme}://{host}/v1/scrape",
+            url=f"{scheme}://{eff_pretty}/v1/scrape",
             headers={},
-            content=b"",
+            content=content,
         )
+        req.set_text = lambda text: setattr(req, "content", text.encode("utf-8"))
         return SimpleNamespace(
             request=req,
             client_conn=SimpleNamespace(peername=(client_ip, 50000)),
-            server_conn=SimpleNamespace(sni=sni or host),
+            server_conn=SimpleNamespace(sni=host if sni is None else sni, peername=peername),
             response=None,
         )
 
@@ -144,10 +156,40 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     addon.request(bad_sni)
     assert bad_sni.response.status_code == 403
 
+    # Empty SNI denied
+    empty_sni = make_flow("api.firecrawl.dev", sni="")
+    addon.request(empty_sni)
+    assert empty_sni.response.status_code == 403
+
+    # host vs pretty_host mismatch denied
+    mismatch_host = make_flow("api.firecrawl.dev", pretty_host="evil.example.com")
+    addon.request(mismatch_host)
+    assert mismatch_host.response.status_code == 403
+
     # HTTP downgrade denied
     http_flow = make_flow("api.firecrawl.dev", scheme="http", sni="")
     addon.request(http_flow)
     assert http_flow.response.status_code == 403
+
+    # http_connect, server_connect, and post-connect peername SSRF blocks
+    assert mod.is_blocked_destination("100.64.0.1") is not None
+    assert mod.is_blocked_destination("::ffff:169.254.169.254") is not None
+    assert mod.is_blocked_destination("fd12::1") is not None
+    assert mod.is_blocked_destination("172.17.0.1") is not None
+
+    connect_ssrf = make_flow("169.254.169.254")
+    addon.http_connect(connect_ssrf)
+    assert connect_ssrf.response.status_code == 403
+
+    killed = []
+    srv_obj = SimpleNamespace(peername=("172.17.0.1", 443), address=("172.17.0.1", 443), sni="api.firecrawl.dev", error=None)
+    hook_data = SimpleNamespace(server=srv_obj, kill=lambda: killed.append(True))
+    addon.server_connect(hook_data)
+    assert srv_obj.error is not None and killed == [True]
+
+    peer_ssrf = make_flow("api.firecrawl.dev", peername=("127.0.0.1", 443))
+    addon.request(peer_ssrf)
+    assert peer_ssrf.response.status_code == 403
 
     # Valid caller + TLS + SNI -> injected in transit and redacted on response
     ok_flow = make_flow("api.firecrawl.dev")
@@ -156,6 +198,68 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     assert ok_flow.request.headers["Authorization"] == "Bearer fc-vault-secret"
     addon.response(ok_flow)
     assert ok_flow.request.headers["Authorization"] == mod.REDACTED_MARKER
+
+    # Tavily uses Authorization: Bearer and scrubs api_key from JSON body
+    addon._secrets_cache["TAVILY_API_KEY"] = "tvly-vault-secret"
+    tavily_flow = make_flow(
+        "api.tavily.com",
+        content=json.dumps({"query": "test", "api_key": mod.DUMMY_PLACEHOLDER}).encode("utf-8"),
+    )
+    addon.request(tavily_flow)
+    assert tavily_flow.response is None
+    assert tavily_flow.request.headers["Authorization"] == "Bearer tvly-vault-secret"
+    assert "api_key" not in json.loads(tavily_flow.request.content.decode("utf-8"))
+    addon.response(tavily_flow)
+    assert tavily_flow.request.headers["Authorization"] == mod.REDACTED_MARKER
+    assert "tvly-vault-secret" not in tavily_flow.request.content.decode("utf-8")
+
+
+def test_openbao_client_rejects_data_dir_seal_and_uses_external_writer_token(tmp_path, monkeypatch):
+    """Verify F10 openbao_client ignores .seal.json inside data_dir and reads externalized writer token."""
+    data_dir = tmp_path / "data"
+    bad_seal_dir = data_dir / "control_plane" / "openbao"
+    bad_seal_dir.mkdir(parents=True)
+    (bad_seal_dir / ".seal.json").write_text('{"root_token": "hvs.bad-data-dir-token"}', encoding="utf-8")
+
+    monkeypatch.delenv("OPENBAO_TOKEN", raising=False)
+    monkeypatch.setenv("BRAINSOS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("BRAINSOS_OPENBAO_WRITER_TOKEN_FILE", str(bad_seal_dir / "token.txt"))
+    monkeypatch.setenv("BRAINSOS_OPENBAO_SEAL_FILE", str(bad_seal_dir / ".seal.json"))
+    monkeypatch.setenv("OPENBAO_ADDR", "https://openbao:8200")
+    monkeypatch.setenv("BRAINSOS_STAGE", "test")
+
+    assert put_tool_secrets(str(tmp_path), {"TAVILY_API_KEY": "tvly-test"}) is False
+
+    ext_tok = tmp_path / "external_secrets" / "openbao-system-api.token"
+    ext_tok.parent.mkdir(parents=True)
+    ext_tok.write_text("hvs.writer-token-ok\n", encoding="utf-8")
+    monkeypatch.setenv("BRAINSOS_OPENBAO_WRITER_TOKEN_FILE", str(ext_tok))
+
+    seen_tokens = []
+
+    class FakeResp:
+        def __init__(self, status: int, body: dict):
+            self.status = status
+            self._raw = json.dumps(body).encode("utf-8")
+
+        def read(self):
+            return self._raw
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_open(req, timeout=3.0, **kwargs):
+        seen_tokens.append(req.headers.get("X-vault-token"))
+        if req.get_method() == "GET":
+            return FakeResp(200, {"data": {"data": {}}})
+        return FakeResp(200, {"data": {"version": 1}})
+
+    with patch("brainsos_telemetry.openbao_client.urllib.request.urlopen", side_effect=fake_open):
+        assert put_tool_secrets(str(tmp_path), {"TAVILY_API_KEY": "tvly-test"}) is True
+    assert seen_tokens == ["hvs.writer-token-ok", "hvs.writer-token-ok"]
 
 
 def test_mcp_memory_single_tenant_pin_and_okf_purity(tmp_path, monkeypatch):
@@ -285,10 +389,299 @@ def test_openbao_web_ui_oidc_and_caddy_isolation() -> None:
     for caddy_name in ("config/caddy/Caddyfile", "config/caddy/Caddyfile.appliance"):
         caddy_txt = (REPO_ROOT / caddy_name).read_text(encoding="utf-8")
         assert "handle @openbao_paths {" in caddy_txt
-        assert caddy_txt.index("handle @openbao_paths {") < caddy_txt.index("handle /ui/*")
+        assert caddy_txt.index("handle @openbao_paths {") < caddy_txt.index("handle @litellm_ui {")
         assert caddy_txt.index("handle @openbao_paths {") < caddy_txt.index("handle @litellm_api {")
         assert "/ui/vault/" in caddy_txt
 
     subsystems = (REPO_ROOT / "packages/brainsOS-portal/src/data/subsystems.ts").read_text(encoding="utf-8")
     assert 'id: "secrets"' in subsystems
     assert 'route: "/secrets/"' in subsystems
+
+
+def _extract_caddy_brace_block(text: str, header_prefix: str) -> str:
+    """Return the brace-balanced Caddy block starting at `header_prefix`."""
+    idx = text.find(header_prefix)
+    assert idx != -1, f"Missing block {header_prefix!r}"
+    brace_start = text.find("{", idx)
+    assert brace_start != -1, f"Missing opening brace for {header_prefix!r}"
+    depth = 0
+    for pos in range(brace_start, len(text)):
+        ch = text[pos]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[idx : pos + 1]
+    raise AssertionError(f"Unclosed brace block for {header_prefix!r}")
+
+
+def _run_caddy_adapt(cfg_name: str, *, alb_oidc: str = "true", wizard_completed: str = "true") -> dict | None:
+    """Run `caddy adapt` via local binary or `brainsos-caddy:latest` if available."""
+    import shutil
+
+    caddy_bin = shutil.which("caddy")
+    if caddy_bin:
+        env = os.environ.copy()
+        env["AUTH_ALB_OIDC_ENABLED"] = alb_oidc
+        env["BRAINSOS_WIZARD_COMPLETED"] = wizard_completed
+        proc = subprocess.run(
+            [caddy_bin, "adapt", "--config", str(REPO_ROOT / "config/caddy" / cfg_name), "--adapter", "caddyfile"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        assert proc.returncode == 0, f"caddy adapt failed for {cfg_name}: {proc.stderr}"
+        return json.loads(proc.stdout)
+
+    docker_bin = shutil.which("docker")
+    if docker_bin:
+        inspect = subprocess.run(
+            [docker_bin, "image", "inspect", "brainsos-caddy:latest"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if inspect.returncode == 0:
+            proc = subprocess.run(
+                [
+                    docker_bin,
+                    "run",
+                    "--rm",
+                    "-e",
+                    f"AUTH_ALB_OIDC_ENABLED={alb_oidc}",
+                    "-e",
+                    f"BRAINSOS_WIZARD_COMPLETED={wizard_completed}",
+                    "-v",
+                    f"{REPO_ROOT / 'config/caddy'}:/etc/caddy:ro",
+                    "--entrypoint",
+                    "caddy",
+                    "brainsos-caddy:latest",
+                    "adapt",
+                    "--config",
+                    f"/etc/caddy/{cfg_name}",
+                    "--adapter",
+                    "caddyfile",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert proc.returncode == 0, f"docker caddy adapt failed for {cfg_name}: {proc.stderr}"
+            return json.loads(proc.stdout)
+
+    return None
+
+
+def test_caddy_openbao_v1_and_system_public_routes_not_shadowed() -> None:
+    """Verify LiteLLM catch-alls exclude OpenBao /v1/* & /ui/* prefixes and @system_public_status precedes auth."""
+    openbao_v1_prefixes = (
+        "/v1/sys/*",
+        "/v1/auth/*",
+        "/v1/secret/*",
+        "/v1/identity/*",
+        "/v1/cubbyhole/*",
+    )
+    openbao_ui_prefixes = (
+        "/ui/vault",
+        "/ui/vault/*",
+        "/ui/assets/*",
+        "/ui/engines-dist/*",
+        "/ui/sw*",
+        "/ui/favicon.svg",
+        "/ui/opensearch.xml",
+    )
+
+    for cfg_name in ("Caddyfile", "Caddyfile.appliance"):
+        caddy_txt = (REPO_ROOT / "config/caddy" / cfg_name).read_text(encoding="utf-8")
+
+        for matcher_name in ("@proxy_api_path {", "@litellm_api {", "@litellm_ui_referer {"):
+            block = _extract_caddy_brace_block(caddy_txt, matcher_name)
+            assert "not path" in block, f"{cfg_name} {matcher_name} missing `not path` exclusion"
+            for prefix in openbao_v1_prefixes:
+                assert prefix in block, f"{cfg_name} {matcher_name} missing OpenBao exclusion {prefix}"
+
+        ui_block = _extract_caddy_brace_block(caddy_txt, "@litellm_ui {")
+        assert "not path" in ui_block, f"{cfg_name} @litellm_ui missing `not path` exclusion"
+        for prefix in openbao_ui_prefixes:
+            assert prefix in ui_block, f"{cfg_name} @litellm_ui missing OpenBao exclusion {prefix}"
+
+        sys_block = _extract_caddy_brace_block(caddy_txt, "handle /api/v1/system/* {")
+        assert "@system_public_status {" in sys_block
+        assert "handle @system_public_status {" in sys_block
+        assert sys_block.index("handle @system_public_status {") < sys_block.index(
+            "import system_api_auth_{$BRAINSOS_WIZARD_COMPLETED:true}"
+        )
+
+        adapted = _run_caddy_adapt(cfg_name, alb_oidc="true", wizard_completed="true")
+        if adapted is None:
+            continue
+
+        servers = adapted.get("apps", {}).get("http", {}).get("servers", {})
+        assert servers, f"No HTTP servers in adapted {cfg_name}"
+
+        def _inspect_route_list(routes: list[dict], *, site_label: str) -> None:
+            openbao_idx: int | None = None
+            ui_idx: int | None = None
+            ui_excluded_openbao = False
+            for idx, r in enumerate(routes):
+                matches = r.get("match", [])
+                for m in matches:
+                    paths = m.get("path", [])
+                    if "/v1/*" in paths:
+                        not_blocks = m.get("not", [])
+                        excluded: set[str] = set()
+                        for nb in not_blocks:
+                            excluded.update(nb.get("path", []))
+                        assert set(openbao_v1_prefixes).issubset(excluded), (
+                            f"{cfg_name} {site_label} route[{idx}] matches /v1/* without excluding OpenBao prefixes: {m}"
+                        )
+                    if "/ui/vault/*" in paths:
+                        openbao_idx = idx
+                    if "/ui/*" in paths:
+                        ui_idx = idx
+                        not_blocks = m.get("not", [])
+                        excluded_ui: set[str] = set()
+                        for nb in not_blocks:
+                            excluded_ui.update(nb.get("path", []))
+                        ui_excluded_openbao = set(openbao_ui_prefixes).issubset(excluded_ui)
+                        assert ui_excluded_openbao, (
+                            f"{cfg_name} {site_label} route[{idx}] matches /ui/* without excluding OpenBao UI prefixes: {m}"
+                        )
+                    if paths == ["/api/v1/system/*"]:
+                        handlers = r.get("handle", [])
+                        subroutes = [h for h in handlers if h.get("handler") == "subroute"]
+                        assert subroutes, f"{cfg_name} {site_label} /api/v1/system/* missing subroute"
+                        nested = subroutes[0].get("routes", [])
+                        assert len(nested) >= 2, f"{cfg_name} {site_label} /api/v1/system/* expected >=2 nested routes"
+                        first_match = nested[0].get("match", [])
+                        assert first_match, f"{cfg_name} {site_label} nested[0] must be @system_public_status"
+                        assert first_match[0].get("method") == ["GET"]
+                        assert "/api/v1/system/health" in first_match[0].get("path", [])
+                        assert "match" not in nested[1], (
+                            f"{cfg_name} {site_label} nested[1] must be default auth-gated fallback"
+                        )
+
+                for h in r.get("handle", []):
+                    if h.get("handler") == "subroute" and isinstance(h.get("routes"), list):
+                        # Do not conflate nested /api/v1/system/* subroutes with outer site routes
+                        if not any(m.get("path") == ["/api/v1/system/*"] for m in matches):
+                            _inspect_route_list(h["routes"], site_label=site_label)
+
+            if openbao_idx is not None and ui_idx is not None and not ui_excluded_openbao:
+                assert openbao_idx < ui_idx, (
+                    f"{cfg_name} {site_label}: @openbao_paths ({openbao_idx}) must precede /ui/* ({ui_idx})"
+                )
+
+        for srv_name, srv in servers.items():
+            for r_idx, top_route in enumerate(srv.get("routes", [])):
+                for h in top_route.get("handle", []):
+                    if h.get("handler") == "subroute":
+                        _inspect_route_list(h.get("routes", []), site_label=f"{srv_name}.routes[{r_idx}]")
+
+
+def test_egress_addon_v2_signed_token_repo_allowlist_and_explicit_empty_tenant_env(monkeypatch) -> None:
+    """Verify signed v2 proxy token binds repos claim, blocks repos: [] fail-closed, and prevents empty tenant env fallback."""
+    import base64
+    import hashlib
+    import hmac
+    import sys
+    import time
+    from types import ModuleType
+
+    class FakeResponse:
+        @staticmethod
+        def make(status_code: int, content: bytes = b"", headers: dict | None = None):
+            return SimpleNamespace(status_code=status_code, content=content, headers=headers or {})
+
+    fake_http = ModuleType("mitmproxy.http")
+    fake_http.HTTPFlow = object  # type: ignore[attr-defined]
+    fake_http.Response = FakeResponse  # type: ignore[attr-defined]
+    fake_mitm = ModuleType("mitmproxy")
+    fake_mitm.http = fake_http  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "mitmproxy", fake_mitm)
+    monkeypatch.setitem(sys.modules, "mitmproxy.http", fake_http)
+
+    addon_path = REPO_ROOT / "config/egress/addons/github_auth.py"
+    spec = importlib.util.spec_from_file_location("egress_addon_v2_test", addon_path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    secret = "egress-hmac-secret-test"
+    monkeypatch.setenv("TOOL_EGRESS_PROXY_SECRET", secret)
+    monkeypatch.delenv("TOOL_EGRESS_PROXY_TOKENS", raising=False)
+    monkeypatch.setenv("GITHUB_ALLOWED_REPOS", "org/bawtford-repo")
+
+    def _mint_v2(tenant: str, repos: list[str]) -> str:
+        payload = {"t": tenant, "exp": int(time.time()) + 300, "repos": repos}
+        b64 = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
+        sig = hmac.new(secret.encode(), f"v2.{b64}".encode(), hashlib.sha256).hexdigest()
+        return f"v2.{b64}.{sig}"
+
+    def _make_gh_flow(host: str, path: str, auth_hdr: str | None = None, client_conn=None):
+        hdrs = {}
+        if auth_hdr is not None:
+            hdrs["Proxy-Authorization"] = auth_hdr
+        req = SimpleNamespace(
+            host=host,
+            pretty_host=host,
+            scheme="https",
+            path=path,
+            url=f"https://{host}{path}",
+            headers=hdrs,
+            content=b"",
+        )
+        return SimpleNamespace(
+            request=req,
+            client_conn=client_conn or SimpleNamespace(peername=("172.28.1.50", 40000)),
+            server_conn=SimpleNamespace(sni=host, peername=("140.82.113.4", 443)),
+            response=None,
+        )
+
+    addon = mod.OpenBaoEgressAddon()
+    addon._secrets_cache = {"GITHUB_TOKEN": "ghp_real_secret_token"}
+    addon._secrets_expires_at = 9999999999.0
+
+    # 1. marvin with signed repos=[] is denied 403 even though global GITHUB_ALLOWED_REPOS is set
+    marvin_conn = SimpleNamespace(peername=("172.28.1.51", 40001))
+    marvin_tok = _mint_v2("marvin", [])
+    c_flow = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", f"Bearer {marvin_tok}", marvin_conn)
+    addon.http_connect(c_flow)
+    assert c_flow.response is None
+    r_flow = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", None, marvin_conn)
+    addon.request(r_flow)
+    assert r_flow.response is not None and r_flow.response.status_code == 403
+
+    # 2. bawtford with signed repos=["org/bawtford-repo"] allowed on that repo, denied on other repo
+    bawt_conn = SimpleNamespace(peername=("172.28.1.52", 40002))
+    bawt_tok = _mint_v2("bawtford", ["org/bawtford-repo"])
+    addon.http_connect(_make_gh_flow("api.github.com", "/", f"Bearer {bawt_tok}", bawt_conn))
+    ok_req = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", None, bawt_conn)
+    addon.request(ok_req)
+    assert ok_req.response is None
+    assert ok_req.request.headers["Authorization"] == "Bearer ghp_real_secret_token"
+
+    bad_req = _make_gh_flow("api.github.com", "/repos/org/other-repo/issues", None, bawt_conn)
+    addon.request(bad_req)
+    assert bad_req.response is not None and bad_req.response.status_code == 403
+
+    # 3. Tampered v2 payload rejected with 407 on CONNECT
+    tamper_payload = base64.urlsafe_b64encode(
+        json.dumps({"t": "marvin", "exp": int(time.time()) + 300, "repos": ["org/bawtford-repo"]}).encode()
+    ).decode().rstrip("=")
+    tampered_tok = f"v2.{tamper_payload}.{marvin_tok.split('.')[2]}"
+    tamper_flow = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", f"Bearer {tampered_tok}")
+    addon.http_connect(tamper_flow)
+    assert tamper_flow.response is not None and tamper_flow.response.status_code == 407
+
+    # 4. Explicitly empty GITHUB_ALLOWED_REPOS_ALICE="" blocks alice without falling back to global GITHUB_ALLOWED_REPOS
+    monkeypatch.setenv("GITHUB_ALLOWED_REPOS_ALICE", "")
+    alice_tok = _mint_v2("alice", ["org/bawtford-repo"])
+    alice_conn = SimpleNamespace(peername=("172.28.1.53", 40003))
+    addon.http_connect(_make_gh_flow("api.github.com", "/", f"Bearer {alice_tok}", alice_conn))
+    alice_req = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", None, alice_conn)
+    addon.request(alice_req)
+    assert alice_req.response is not None and alice_req.response.status_code == 403
+

@@ -119,20 +119,25 @@ log_info "Step 3: Testing end-to-end inbound email delivery via Dovecot Sieve pu
 TEST_ID="test_$(date +%s)"
 SUBJECT="Directive: Memory Optimization [${TEST_ID}]"
 
-python3 - <<EOF
+SMTP_PORT="${SMTP_PORT}" OPERATOR_PASS="${OPERATOR_PASS}" SUBJECT="${SUBJECT}" python3 - << 'EOF'
+import os
 import smtplib
 from email.message import EmailMessage
 
+smtp_port = int(os.environ["SMTP_PORT"])
+operator_pass = os.environ["OPERATOR_PASS"]
+subject = os.environ["SUBJECT"]
+
 msg = EmailMessage()
 msg.set_content("Autonomous task directive: analyze knowledge graphs and optimize index.")
-msg["Subject"] = "${SUBJECT}"
+msg["Subject"] = subject
 msg["From"] = "operator@brainsos.local"
 msg["To"] = "terrastella@brainsos.local"
 
-with smtplib.SMTP("127.0.0.1", ${SMTP_PORT}) as s:
-    s.login("operator@brainsos.local", "${OPERATOR_PASS}")
+with smtplib.SMTP("127.0.0.1", smtp_port) as s:
+    s.login("operator@brainsos.local", operator_pass)
     s.send_message(msg)
-print("[INFO] Test email successfully submitted to SMTP port ${SMTP_PORT}")
+print(f"[INFO] Test email successfully submitted to SMTP port {smtp_port}")
 EOF
 
 sleep 2

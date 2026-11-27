@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import re
 from pathlib import Path
 
@@ -36,7 +37,7 @@ class ContextAssembler:
 
     @classmethod
     def load_thread_turns(cls, memory_root: Path, thread_id: str) -> list[dict[str, str]]:
-        """Parses stored dialog turns from the thread's OKF markdown file."""
+        """Parses structured JSONL dialog turns from the thread's OKF markdown file."""
         file_path = cls.get_thread_file_path(memory_root, thread_id)
         if not file_path.exists():
             return []
@@ -46,24 +47,28 @@ class ContextAssembler:
         except Exception:
             return []
 
-        # Strip frontmatter if present
-        if content.startswith("---"):
-            parts = content.split("---", 2)
-            body = parts[2] if len(parts) >= 3 else content
-        else:
-            body = content
+        lines = content.split("\n")
+        start_idx = 0
+        if lines and lines[0].strip() == "---":
+            for i in range(1, len(lines)):
+                if lines[i].strip() == "---":
+                    start_idx = i + 1
+                    break
 
         turns: list[dict[str, str]] = []
-        # Pattern matching: "## Turn <N>: <role> (<author>) - <timestamp>" or "## <role>:"
-        turn_pattern = re.compile(
-            r"##\s+(?:Turn\s+\d+:\s+)?(user|assistant|system)(?:\s*\([^)]*\))?(?:\s*-\s*[^\n]+)?\n(.*?)(?=(?:\n##\s+)|$)",
-            re.DOTALL | re.IGNORECASE,
-        )
-
-        for match in turn_pattern.finditer(body):
-            role = match.group(1).lower()
-            text = match.group(2).strip()
-            if text:
+        for raw_line in lines[start_idx:]:
+            line = raw_line.strip()
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                record = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(record, dict):
+                continue
+            role = str(record.get("role", "")).strip().lower()
+            text = record.get("content")
+            if role in {"user", "assistant", "system", "tool"} and isinstance(text, str) and text.strip():
                 turns.append({"role": role, "content": text})
 
         return turns
@@ -78,29 +83,35 @@ class ContextAssembler:
         author: str,
         content: str,
     ) -> Path:
-        """Appends a dialogue turn to the thread's human-auditable OKF markdown file."""
+        """Appends a structured JSONL dialogue turn to the thread's OKF .md file."""
         file_path = cls.get_thread_file_path(memory_root, thread_id)
         timestamp_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
         clean_text = content.strip()
         if not file_path.exists():
-            # Initialize with OKF YAML frontmatter
+            # Initialize with OKF YAML frontmatter (JSON-escaped metadata prevents newline/YAML injection)
             frontmatter = (
-                f"---\n"
-                f'thread_id: "{thread_id}"\n'
-                f'subject: "{subject}"\n'
+                "---\n"
+                f"thread_id: {json.dumps(thread_id, ensure_ascii=True)}\n"
+                f"subject: {json.dumps(subject, ensure_ascii=True)}\n"
                 f'created_at: "{timestamp_str}"\n'
-                f'type: "thread-dialogue"\n'
-                f"---\n\n"
-                f"# Thread: {subject}\n\n"
+                'type: "thread-dialogue"\n'
+                'format: "okf-jsonl-v1"\n'
+                "---\n\n"
             )
             file_path.write_text(frontmatter, encoding="utf-8")
 
-        # Determine turn count
         existing = cls.load_thread_turns(memory_root, thread_id)
         turn_number = len(existing) + 1
 
-        entry = f"\n## Turn {turn_number}: {role} ({author}) - {timestamp_str}\n\n{clean_text}\n"
+        record = {
+            "turn": turn_number,
+            "role": role,
+            "author": author,
+            "timestamp": timestamp_str,
+            "content": clean_text,
+        }
+        entry = json.dumps(record, ensure_ascii=True) + "\n"
         with open(file_path, "a", encoding="utf-8") as f:
             f.write(entry)
 
