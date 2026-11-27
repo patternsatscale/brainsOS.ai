@@ -13,6 +13,8 @@ attached IAM role strictly permits `route53:ChangeResourceRecordSets` without
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -22,6 +24,15 @@ from typing import Any, Optional, Tuple
 
 FQDN_RE = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 ZONE_ID_RE = re.compile(r"^Z[A-Z0-9]{4,32}$")
+
+
+def compute_owner_claim(fqdn: str, zone_id: str, instance_id: str) -> str:
+    """Compute a domain-separated HMAC-SHA256 ownership claim so raw EC2 instance IDs never leak in public DNS."""
+    clean_inst = (instance_id or "").strip()
+    if not clean_inst:
+        return ""
+    domain_key = f"brainsos-ddns-v1:{normalize_zone_id(zone_id)}:{normalize_fqdn(fqdn)}".encode("utf-8")
+    return hmac.new(domain_key, clean_inst.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
 
 
 def normalize_fqdn(raw: str) -> str:
@@ -78,12 +89,13 @@ def inspect_existing_records(
     route53_client: Any,
     zone_id: str,
     fqdn: str,
-) -> Tuple[Optional[str], Optional[str], bool]:
-    """Return (existing_ip, existing_owner_instance_id, list_succeeded)."""
+) -> Tuple[Optional[str], Optional[str], Optional[str], bool]:
+    """Return (existing_ip, existing_owner_claim, legacy_instance_id, list_succeeded)."""
     a_name = f"{fqdn}."
     txt_name = f"_brainsos-owner.{fqdn}."
     existing_ip: Optional[str] = None
-    existing_owner: Optional[str] = None
+    existing_claim: Optional[str] = None
+    legacy_instance_id: Optional[str] = None
 
     try:
         resp_a = route53_client.list_resource_record_sets(
@@ -109,18 +121,21 @@ def inspect_existing_records(
             if (rr.get("Name") or "").lower() == txt_name and rr.get("Type") == "TXT":
                 for rec in rr.get("ResourceRecords") or []:
                     raw_val = (rec.get("Value") or "").strip().strip('"')
-                    for token in raw_val.split():
+                    for token in raw_val.replace(";", " ").split():
+                        if token.startswith("owner-sha256="):
+                            existing_claim = token.split("=", 1)[1].strip()
+                            break
                         if token.startswith("instance-id="):
-                            existing_owner = token.split("=", 1)[1].strip()
+                            legacy_instance_id = token.split("=", 1)[1].strip()
                             break
                 break
-        return existing_ip, existing_owner, True
+        return existing_ip, existing_claim, legacy_instance_id, True
     except Exception as exc:
         err_code = ""
         if hasattr(exc, "response") and isinstance(getattr(exc, "response"), dict):
             err_code = str(exc.response.get("Error", {}).get("Code", ""))
         if "AccessDenied" in err_code or "AccessDenied" in str(exc):
-            return None, None, False
+            return None, None, None, False
         raise
 
 
@@ -134,7 +149,7 @@ def sync_route53_record(
     force: bool = False,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Synchronize A (+ TXT ownership) record in Route 53."""
+    """Synchronize A (+ hashed TXT ownership) record in Route 53."""
     fqdn, clean_ip, clean_zone = validate_inputs(domain, ip, zone_id)
     clean_instance = (instance_id or "").strip()
 
@@ -152,21 +167,24 @@ def sync_route53_record(
     if not clean_zone:
         clean_zone = discover_zone_id(route53_client, fqdn)
 
-    existing_ip, existing_owner, list_ok = inspect_existing_records(route53_client, clean_zone, fqdn)
+    expected_claim = compute_owner_claim(fqdn, clean_zone, clean_instance)
+    existing_ip, existing_claim, legacy_owner, list_ok = inspect_existing_records(
+        route53_client, clean_zone, fqdn
+    )
 
-    if (
-        list_ok
-        and existing_owner
-        and clean_instance
-        and existing_owner != clean_instance
-        and not force
-    ):
-        raise PermissionError(
-            f"DNS record {fqdn!r} is already owned by EC2 instance {existing_owner!r} "
-            f"(current instance: {clean_instance!r}). Refusing to overwrite without --force / BRAINSOS_ROUTE53_FORCE=true."
-        )
+    if list_ok and clean_instance and not force:
+        if existing_claim and existing_claim != expected_claim:
+            raise PermissionError(
+                f"DNS record {fqdn!r} is already owned by EC2 instance claim {existing_claim!r}. "
+                "Refusing to overwrite without --force / BRAINSOS_ROUTE53_FORCE=true."
+            )
+        if not existing_claim and legacy_owner and legacy_owner != clean_instance:
+            raise PermissionError(
+                f"DNS record {fqdn!r} is already owned by EC2 instance (legacy TXT lock). "
+                "Refusing to overwrite without --force / BRAINSOS_ROUTE53_FORCE=true."
+            )
 
-    if list_ok and existing_ip == clean_ip and (not clean_instance or existing_owner == clean_instance):
+    if list_ok and existing_ip == clean_ip and (not clean_instance or existing_claim == expected_claim):
         return {
             "status": "unchanged",
             "changed": False,
@@ -174,6 +192,7 @@ def sync_route53_record(
             "ip": clean_ip,
             "zone_id": clean_zone,
             "instance_id": clean_instance,
+            "owner_claim": expected_claim,
             "ttl": ttl,
         }
 
@@ -188,7 +207,7 @@ def sync_route53_record(
             },
         }
     ]
-    if clean_instance:
+    if expected_claim:
         changes.append(
             {
                 "Action": "UPSERT",
@@ -196,7 +215,7 @@ def sync_route53_record(
                     "Name": f"_brainsos-owner.{fqdn}",
                     "Type": "TXT",
                     "TTL": int(ttl),
-                    "ResourceRecords": [{"Value": f'"instance-id={clean_instance}"'}],
+                    "ResourceRecords": [{"Value": f'"owner-sha256={expected_claim}"'}],
                 },
             }
         )
@@ -204,7 +223,7 @@ def sync_route53_record(
     resp = route53_client.change_resource_record_sets(
         HostedZoneId=clean_zone,
         ChangeBatch={
-            "Comment": f"brainsOS dynamic DNS sync ({clean_instance or 'appliance'})",
+            "Comment": f"brainsOS dynamic DNS sync ({expected_claim[:12] if expected_claim else 'appliance'})",
             "Changes": changes,
         },
     )
@@ -217,6 +236,7 @@ def sync_route53_record(
         "previous_ip": existing_ip,
         "zone_id": clean_zone,
         "instance_id": clean_instance,
+        "owner_claim": expected_claim,
         "ttl": ttl,
         "change_id": change_id,
     }

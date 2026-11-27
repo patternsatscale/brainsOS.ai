@@ -103,8 +103,8 @@ def test_upsert_leaves_safe_values_unquoted(tmp_path: Path):
     assert "URL=https://x.example/a" in lines
 
 
-def test_upsert_keeps_prequoted_values(tmp_path: Path):
-    """Values already wrapped in matching quotes by the caller are kept verbatim."""
+def test_upsert_normalizes_prequoted_values_to_single_quotes(tmp_path: Path):
+    """Caller-quoted values have outer quotes stripped and are POSIX single-quoted (#384)."""
     env_file = tmp_path / ".env"
     env_file.write_text("A=1\n", encoding="utf-8")
 
@@ -116,7 +116,33 @@ def test_upsert_keeps_prequoted_values(tmp_path: Path):
     )
     assert proc.returncode == 0, proc.stderr
     lines = env_file.read_text(encoding="utf-8").splitlines()
-    assert 'X="a b"' in lines
+    assert "X='a b'" in lines
+
+
+def test_upsert_neutralizes_double_quoted_command_substitution(tmp_path: Path):
+    """Double-quoted $(...) or backtick payloads are single-quoted so sourcing .env never executes commands (#384)."""
+    env_file = tmp_path / ".env"
+    marker = tmp_path / "pwned_marker"
+    env_file.write_text("A=1\n", encoding="utf-8")
+
+    payload = f'BRAINSOS_UNIT_NAME="Unit $({{ touch {marker}; }} 2>/dev/null)"'
+    proc = subprocess.run(
+        [str(ENV_UPSERT), "--file", str(env_file), payload],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+    source_proc = subprocess.run(
+        ["bash", "-c", 'set -euo pipefail; set -a; . "$1"; printf %s "$BRAINSOS_UNIT_NAME"', "_", str(env_file)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert source_proc.returncode == 0, source_proc.stderr
+    assert not marker.exists(), "Command substitution executed when sourcing .env!"
+    assert "$(" in source_proc.stdout
 
 
 def test_upsert_rejects_single_quote(tmp_path: Path):

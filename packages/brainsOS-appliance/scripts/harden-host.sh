@@ -119,10 +119,10 @@ if [ "${CHECK_MODE}" = true ]; then
         log_warn "UFW is active but ports 80 and/or 443 are not explicitly allowed."
         AUDIT_FAILED=1
       fi
-      if echo "${UFW_STATUS}" | grep -qE "(8000|8010)/tcp.*ALLOW.*172\."; then
-        log_success "UFW ports 8000/tcp and 8010/tcp are allowed from Docker bridge subnet only."
+      if echo "${UFW_STATUS}" | grep -qE "(8000|8010)/tcp.*ALLOW.*172\." && echo "${UFW_STATUS}" | grep -qE "(8000|8010)/tcp.*(DENY IN|on docker0)"; then
+        log_success "UFW ports 8000/tcp and 8010/tcp are restricted to Docker bridge interfaces and denied on external NICs."
       else
-        log_warn "UFW is active but ports 8000/8010/tcp are not restricted to Docker bridge subnet."
+        log_warn "UFW is active but ports 8000/8010/tcp lack external NIC deny / Docker interface scoping."
         AUDIT_FAILED=1
       fi
     else
@@ -215,13 +215,43 @@ if ! command -v ufw >/dev/null 2>&1; then
   exit 1
 fi
 
+# Discover external/physical network interfaces so AWS Default VPC traffic (172.31.0.0/16 ⊂ 172.16.0.0/12)
+# can never reach Docker-bridge-only ports 8000/8010 (#384).
+WAN_IFACES=()
+if command -v ip >/dev/null 2>&1; then
+  while IFS= read -r ifname; do
+    [ -n "${ifname}" ] && WAN_IFACES+=("${ifname}")
+  done < <(
+    {
+      ip route show default 2>/dev/null | awk '/default/ {print $5}'
+      ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1 | grep -E '^(ens|eth|enp|ena|wl)[a-zA-Z0-9._-]*$' || true
+    } | awk 'NF && !seen[$0]++'
+  )
+fi
+if [ "${#WAN_IFACES[@]}" -eq 0 ]; then
+  WAN_IFACES=("ens5")
+fi
+
+DOCKER_BRIDGE_IFACES=("docker0")
+if command -v ip >/dev/null 2>&1; then
+  while IFS= read -r brname; do
+    [ -n "${brname}" ] && DOCKER_BRIDGE_IFACES+=("${brname}")
+  done < <(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1 | grep -E '^br-[a-zA-Z0-9]+$' || true)
+fi
+
 if [ "${DRY_RUN}" = true ]; then
   log_info "[DRY-RUN] Would execute: ufw default deny incoming"
   log_info "[DRY-RUN] Would execute: ufw default allow outgoing"
   log_info "[DRY-RUN] Would execute: ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'"
   log_info "[DRY-RUN] Would execute: ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'"
-  log_info "[DRY-RUN] Would execute: ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress from Docker bridge subnet'"
-  log_info "[DRY-RUN] Would execute: ufw allow from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API from Docker bridge subnet'"
+  for wan_if in "${WAN_IFACES[@]}"; do
+    log_info "[DRY-RUN] Would execute: ufw deny in on ${wan_if} to any port 8000 proto tcp comment 'Block external VPC access to Mail Ingress'"
+    log_info "[DRY-RUN] Would execute: ufw deny in on ${wan_if} to any port 8010 proto tcp comment 'Block external VPC access to System API'"
+  done
+  for br_if in "${DOCKER_BRIDGE_IFACES[@]}"; do
+    log_info "[DRY-RUN] Would execute: ufw allow in on ${br_if} from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress on ${br_if}'"
+    log_info "[DRY-RUN] Would execute: ufw allow in on ${br_if} from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API on ${br_if}'"
+  done
   if [ "${ALLOW_SSH}" = true ]; then
     log_info "[DRY-RUN] Would execute: ufw allow ${SSH_PORT}/tcp comment 'brainsOS SSH Operator Ingress'"
   else
@@ -233,8 +263,23 @@ else
   ufw default allow outgoing
   ufw allow 80/tcp comment 'brainsOS Ingress HTTP (Redirect)'
   ufw allow 443/tcp comment 'brainsOS Ingress HTTPS (Single-Origin)'
+  for br_if in "${DOCKER_BRIDGE_IFACES[@]}"; do
+    if ip link show "${br_if}" >/dev/null 2>&1; then
+      ufw allow in on "${br_if}" from 172.16.0.0/12 to any port 8000 proto tcp comment "brainsOS Mail Ingress on ${br_if}"
+      ufw allow in on "${br_if}" from 172.16.0.0/12 to any port 8010 proto tcp comment "brainsOS System API on ${br_if}"
+    fi
+  done
+  # Fallback rule for dynamically created br-* compose bridges, protected by priority-1 WAN DENY rules below:
   ufw allow from 172.16.0.0/12 to any port 8000 proto tcp comment 'brainsOS Mail Ingress from Docker bridge subnet'
   ufw allow from 172.16.0.0/12 to any port 8010 proto tcp comment 'brainsOS System API from Docker bridge subnet'
+  for wan_if in "${WAN_IFACES[@]}"; do
+    if ip link show "${wan_if}" >/dev/null 2>&1; then
+      ufw insert 1 deny in on "${wan_if}" to any port 8010 proto tcp comment "Block external VPC access to System API (${wan_if})" || \
+        ufw deny in on "${wan_if}" to any port 8010 proto tcp comment "Block external VPC access to System API (${wan_if})"
+      ufw insert 1 deny in on "${wan_if}" to any port 8000 proto tcp comment "Block external VPC access to Mail Ingress (${wan_if})" || \
+        ufw deny in on "${wan_if}" to any port 8000 proto tcp comment "Block external VPC access to Mail Ingress (${wan_if})"
+    fi
+  done
 
   if [ "${ALLOW_SSH}" = true ]; then
     ufw allow "${SSH_PORT}/tcp" comment 'brainsOS SSH Operator Ingress'

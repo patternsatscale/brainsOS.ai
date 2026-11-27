@@ -98,7 +98,7 @@ You must also enable access to the models you plan to use in the Bedrock console
      ```
    - **Launch-Time EC2 User-Data & Dynamic Fleet DNS (`v0.5.1` / #373)**:
      Supply cloud-config or `KEY=VALUE` pairs in EC2 User Data at launch. When `BRAINSOS_ROUTE53_ZONE_ID` (or `HOSTED_ZONE_ID`) is supplied alongside `BRAINSOS_DOMAIN` (or `BRAINSOS_BASE_DOMAIN` + EC2 `Name` tag), the appliance automatically:
-     1. Registers/updates its Route 53 `A` record (`TTL=60`) and `_brainsos-owner.<fqdn>` `TXT` ownership lock on cold boot, reboot, stop/start, and hibernation wake-up (`scripts/control/sync-route53-ddns.py`), eliminating Elastic IP limits across 30+ instances.
+     1. Registers/updates its Route 53 `A` record (`TTL=60`) and HMAC-SHA256 hashed `_brainsos-owner.<fqdn>` `TXT` ownership lock (`owner-sha256=...`, never exposing the raw EC2 Instance ID in public DNS) on cold boot, reboot, stop/start, and hibernation wake-up (`scripts/control/sync-route53-ddns.py`), eliminating Elastic IP limits across 30+ instances.
      2. Provisions Let's Encrypt public ACME TLS (`BRAINSOS_TLS_MODE=acme`) automatically.
      3. Streamlines the First-Boot Setup Wizard into a **2-step flow** where end users create their personal Superuser account and Unit Name while keeping User-Data DNS + SSL locked in.
      ```yaml
