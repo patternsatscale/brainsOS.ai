@@ -49,6 +49,8 @@ class SqsIngressConsumer:
         self.injector = injector or LocalMailInjector(
             host=self.config.local_smtp_host,
             port=self.config.local_smtp_port,
+            username=self.config.local_smtp_username,
+            password=self.config.local_smtp_password,
         )
 
     def process_message(self, message: Dict[str, Any]) -> bool:

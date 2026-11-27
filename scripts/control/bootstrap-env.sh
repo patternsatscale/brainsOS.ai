@@ -226,7 +226,6 @@ DATA_DIRS=(
   "${DATA_ROOT}/comms/sogo/spool"
   "${DATA_ROOT}/comms/email/vmail"
   "${DATA_ROOT}/comms/email/config"
-  "${DATA_ROOT}/comms/signal"
   "${DATA_ROOT}/queue"
   "${DATA_ROOT}/runners"
   "${DATA_ROOT}/runners/hermes/state"
@@ -382,7 +381,7 @@ fi
 
 # When bootstrap-env.sh runs as root (e.g. brainsos-firstboot.service on EC2),
 # ensure non-database directories mounted by UID 1000 containers (code-server,
-# authentik-server, signal-cli, runner-hermes) are owned by PUID:PGID (1000:1000).
+# authentik-server, runner-hermes) are owned by PUID:PGID (1000:1000).
 if [ "$(id -u)" -eq 0 ]; then
   TARGET_UID="${PUID:-1000}"
   TARGET_GID="${PGID:-1000}"
@@ -394,7 +393,7 @@ if [ "$(id -u)" -eq 0 ]; then
     "${REPO_ROOT}/packages/brainsOS-portal/dist" 2>/dev/null || true
   for rel_dir in \
     agents agent_memories agent_workspaces agent_apps souls \
-    comms/spool comms/maildir comms/sogo/spool comms/email comms/signal \
+    comms/spool comms/maildir comms/sogo/spool comms/email \
     queue runners runners/hermes/state settings \
     control_plane/authentik_media control_plane/vscode_config control_plane/vscode_data \
     skills backups .vscode; do

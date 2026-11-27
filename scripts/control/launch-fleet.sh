@@ -505,6 +505,12 @@ ensure_iam_ddns_policy() {
   role_name="$(aws iam get-instance-profile --instance-profile-name "${profile_name}" \
     --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || true)"
   if [ -n "${role_name}" ] && [ "${role_name}" != "None" ]; then
+    local base_dom="${BASE_DOMAIN:-}"
+    local record_names_json='"*"'
+    if [ -n "${base_dom}" ]; then
+      base_dom="${base_dom%.}"
+      record_names_json="\"*.${base_dom}\", \"_acme-challenge.${base_dom}\", \"_acme-challenge.*.${base_dom}\", \"_brainsos-owner.*.${base_dom}\""
+    fi
     local policy_doc
     policy_doc="$(cat <<POL
 {
@@ -513,7 +519,19 @@ ensure_iam_ddns_policy() {
     {
       "Sid": "BrainsOSDynamicFleetDNS",
       "Effect": "Allow",
-      "Action": ["route53:ChangeResourceRecordSets", "route53:ListResourceRecordSets"],
+      "Action": "route53:ChangeResourceRecordSets",
+      "Resource": "arn:aws:route53:::hostedzone/${zone_id}",
+      "Condition": {
+        "ForAllValues:StringLike": {
+          "route53:ChangeResourceRecordSetsNormalizedRecordNames": [${record_names_json}],
+          "route53:ChangeResourceRecordSetsRecordTypes": ["A", "TXT"]
+        }
+      }
+    },
+    {
+      "Sid": "BrainsOSListFleetDNS",
+      "Effect": "Allow",
+      "Action": "route53:ListResourceRecordSets",
       "Resource": "arn:aws:route53:::hostedzone/${zone_id}"
     },
     {

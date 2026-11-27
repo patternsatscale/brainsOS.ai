@@ -118,13 +118,7 @@ log_info "Target Service:      ${HERMES_SERVICE} (${HERMES_CONTAINER})"
 # ------------------------------------------------------------------------------
 # 1. Container Running & Health Check
 # ------------------------------------------------------------------------------
-log_info "Step 1: Checking Hermes and Signal-CLI container statuses..."
-if ! docker compose ps --services --filter "status=running" | grep -q "^signal-cli$"; then
-  log_warn "Signal-CLI container is not running. Starting signal-cli..."
-  docker compose up -d signal-cli
-  sleep 2
-fi
-
+log_info "Step 1: Checking Hermes container status..."
 if ! docker compose ps --services --filter "status=running" | grep -q "^${HERMES_SERVICE}$"; then
   log_warn "${HERMES_SERVICE} container is not running. Starting ${HERMES_SERVICE}..."
   docker compose up -d "${HERMES_SERVICE}"
@@ -150,23 +144,7 @@ else
   exit 1
 fi
 
-log_info "Step 2B: Checking internal Signal-CLI daemon reachability from Hermes..."
-SIGNAL_ABOUT=$(docker compose exec -T "${HERMES_SERVICE}" curl -s http://signal-cli:8080/v1/about || echo "failed")
-if echo "${SIGNAL_ABOUT}" | grep -q "json-rpc"; then
-  log_success "Signal-CLI daemon reachable on brainsos-internal-net network (REST API)."
-else
-  log_error "Failed to reach Signal-CLI daemon from Hermes container: ${SIGNAL_ABOUT}"
-  exit 1
-fi
-SIGNAL_NATIVE=$(docker compose exec -T "${HERMES_SERVICE}" curl -s -o /dev/null -w "%{http_code}" http://signal-cli:8080/api/v1/check || echo "failed")
-if [ "${SIGNAL_NATIVE}" == "200" ]; then
-  log_success "Signal native HTTP endpoint reachable from Hermes (/api/v1/check -> HTTP 200)."
-else
-  log_error "Failed to reach Signal native HTTP endpoint from Hermes container: HTTP ${SIGNAL_NATIVE}"
-  exit 1
-fi
-
-log_info "Step 2C: Checking Hermes OpenAI-compatible API platform on port ${HERMES_PORT}..."
+log_info "Step 2B: Checking Hermes OpenAI-compatible API platform on port ${HERMES_PORT}..."
 # 1. Unauthenticated rejection (HTTP 401)
 UNAUTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${HERMES_PORT}/v1/models" || echo "failed")
 if [ "${UNAUTH_STATUS}" == "401" ]; then

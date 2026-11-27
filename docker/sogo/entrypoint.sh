@@ -30,6 +30,32 @@ PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
 CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
 GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
 
+# Hash SOGo mailbox credentials using SHA512-CRYPT instead of plaintext (#388)
+sogo_hash_pw() {
+    local raw_pw="$1"
+    local hashed=""
+    if command -v openssl >/dev/null 2>&1; then
+        hashed="{SHA512-CRYPT}$(printf '%s' "${raw_pw}" | openssl passwd -6 -stdin 2>/dev/null || true)"
+    elif command -v python3 >/dev/null 2>&1; then
+        hashed="$(RAW_PW="${raw_pw}" python3 -c "import os, crypt; print('{SHA512-CRYPT}' + crypt.crypt(os.environ['RAW_PW'], crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null || true)"
+    fi
+    if [ -z "${hashed}" ] || [ "${hashed}" = "{SHA512-CRYPT}" ]; then
+        echo "[BRAINSOS-SOGO] ERROR: unable to generate SHA512-CRYPT password hash" >&2
+        exit 1
+    fi
+    # Escape single quotes for SQL literal safety
+    printf '%s' "${hashed//\'/\'\'}"
+}
+
+ADMIN_PASS="$(sogo_hash_pw "${ADMIN_PASS}")"
+OPERATOR_PASS="$(sogo_hash_pw "${OPERATOR_PASS}")"
+TERRASTELLA_PASS="$(sogo_hash_pw "${TERRASTELLA_PASS}")"
+BAWTFORD_PASS="$(sogo_hash_pw "${BAWTFORD_PASS}")"
+MARVIN_PASS="$(sogo_hash_pw "${MARVIN_PASS}")"
+PING_PASS="$(sogo_hash_pw "${PING_PASS}")"
+CLAUDE_PASS="$(sogo_hash_pw "${CLAUDE_PASS}")"
+GPT_PASS="$(sogo_hash_pw "${GPT_PASS}")"
+
 # 1. Wait for isolated SOGo database host to become available and accept authentication
 echo "[BRAINSOS-SOGO] Waiting for database ${DB_HOST}:${DB_PORT} and validating credentials..."
 AUTH_READY=false

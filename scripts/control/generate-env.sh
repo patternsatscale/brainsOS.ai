@@ -305,6 +305,7 @@ secret_generators = {
     "AUTHENTIK_REDIS_PASSWORD": lambda: gen_hex(20),
     "AUTHENTIK_BOOTSTRAP_TOKEN": lambda: f"ak-tok-{gen_hex(16)}",
     "RUNNER_AUTH_TOKEN": lambda: gen_hex(24),
+    "MAIL_WEBHOOK_SECRET": lambda: gen_hex(24),
     "AUTH_LITELLM_CLIENT_SECRET": lambda: gen_hex(24),
     "AUTH_LANGFUSE_CLIENT_SECRET": lambda: gen_hex(24),
     "HERMES_API_TERRASTELLA_KEY": lambda: f"sk-api-terra-{gen_hex(16)}",

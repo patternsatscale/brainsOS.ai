@@ -13,6 +13,7 @@ RUN apt-get update -qq && \
         ca-certificates \
         curl \
         gosu \
+        openssl \
         procps \
         nginx-light && \
     rm -rf /var/lib/apt/lists/*

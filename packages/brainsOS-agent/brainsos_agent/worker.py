@@ -15,6 +15,7 @@ try:
     import fcntl
 except ImportError:  # pragma: no cover
     fcntl = None  # type: ignore
+import hmac
 import logging
 import os
 import signal
@@ -137,10 +138,12 @@ class AgentQueueWorkerDaemon:
         ingress_host: str = "0.0.0.0",
         ingress_port: int = 8000,
         spool_dir: str | Path | None = None,
+        mail_webhook_secret: str | None = None,
     ) -> None:
         from brainsos_agent.config import resolve_manifest_path
 
         self.manifest_path = resolve_manifest_path(manifest_path)
+        self.mail_webhook_secret = mail_webhook_secret
         self.queue_db_path = Path(queue_db_path) if queue_db_path else (get_data_dir() / "queue" / "tasks.db")
         self.concurrency = concurrency
         self.ingress_host = ingress_host
@@ -191,6 +194,15 @@ class AgentQueueWorkerDaemon:
     async def handle_inbound_http(self, request: web.Request) -> web.Response:
         """HTTP endpoint receiving streamed raw RFC 822 emails (POST /api/v1/mail/inbound)."""
         try:
+            expected_secret = (
+                self.mail_webhook_secret
+                if self.mail_webhook_secret is not None
+                else os.getenv("MAIL_WEBHOOK_SECRET", "")
+            ).strip()
+            provided_secret = request.headers.get("X-Mail-Webhook-Secret", "").strip()
+            if not expected_secret or not hmac.compare_digest(provided_secret, expected_secret):
+                return web.Response(status=401, text="Unauthorized: invalid or missing X-Mail-Webhook-Secret")
+
             raw_mime = await request.read()
             if not raw_mime:
                 return web.Response(status=400, text="Empty RFC 822 payload")
@@ -218,12 +230,17 @@ class AgentQueueWorkerDaemon:
                     }
                 )
 
-            # Check X-Spool-Filename header from agent-webhook.sh
-            spool_filename = request.headers.get("X-Spool-Filename")
-            if spool_filename:
+            # Check X-Spool-Filename header from agent-webhook.sh (strict basename containment, #388)
+            raw_spool_filename = request.headers.get("X-Spool-Filename")
+            spool_filename = os.path.basename(raw_spool_filename.replace("\\", "/")) if raw_spool_filename else ""
+            if spool_filename and spool_filename not in (".", ".."):
+                candidate_spool = (self.spool_dir / spool_filename).resolve()
+                spool_root = self.spool_dir.resolve()
+                if not candidate_spool.is_relative_to(spool_root):
+                    return web.Response(status=400, text="Invalid X-Spool-Filename")
                 self._processed_spool_files.add(spool_filename)
-                if (self.spool_dir / spool_filename).exists():
-                    spool_file = self.spool_dir / spool_filename
+                if candidate_spool.exists():
+                    spool_file = candidate_spool
                 else:
                     spool_file = self.spool_dir / f"{time.time_ns()}.eml"
                     spool_file.write_bytes(raw_mime)

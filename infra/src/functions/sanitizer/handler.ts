@@ -28,7 +28,7 @@ export interface S3Event {
 }
 
 export async function handler(event: S3Event) {
-  const allowedSenders = (process.env.ALLOWED_EXTERNAL_SENDERS || "patternsatscale@gmail.com")
+  const allowedSenders = (process.env.ALLOWED_EXTERNAL_SENDERS || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

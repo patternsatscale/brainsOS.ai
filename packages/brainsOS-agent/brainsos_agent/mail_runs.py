@@ -14,6 +14,7 @@ import html
 import re
 from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import urlparse
 
 # Terminal outcomes produced by the adapter / worker.
 RUN_COMPLETED = "completed"
@@ -274,11 +275,176 @@ def is_valid_html(text: str) -> bool:
     return True
 
 
+_SAFE_EMAIL_HTML_TAGS = {
+    "html", "head", "title", "body",
+    "div", "span", "p", "br", "hr",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "strong", "b", "em", "i", "u", "s", "del", "ins", "small", "sub", "sup",
+    "code", "pre", "blockquote", "q",
+    "ul", "ol", "li", "dl", "dt", "dd",
+    "a", "img",
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+}
+
+_DROP_CONTENT_HTML_TAGS = {
+    "script", "style", "iframe", "object", "embed", "applet",
+    "svg", "math", "form", "input", "button", "textarea", "select",
+    "meta", "link", "base", "template", "noscript",
+}
+
+_SAFE_HTML_GLOBAL_ATTRS = {"class", "title", "dir", "lang", "align", "valign", "style"}
+_SAFE_HTML_TAG_ATTRS = {
+    "a": {"href", "name", "target"},
+    "img": {"src", "alt", "width", "height"},
+    "table": {"border", "cellpadding", "cellspacing", "width"},
+    "td": {"colspan", "rowspan", "width", "height"},
+    "th": {"colspan", "rowspan", "width", "height", "scope"},
+    "col": {"span", "width"},
+    "colgroup": {"span", "width"},
+}
+
+_UNSAFE_STYLE_RE = re.compile(
+    r"(?:expression\s*\(|javascript:|vbscript:|-moz-binding|behavior\s*:|@import|url\s*\()",
+    re.IGNORECASE,
+)
+
+
+def _is_safe_url(raw_url: str, *, allow_cid: bool = False) -> bool:
+    """Validate URLs against explicit safe URI schemes."""
+    candidate = re.sub(r"[\x00-\x20]+", "", (raw_url or "").strip())
+    if not candidate:
+        return False
+    if candidate.startswith(("#", "/")) and not candidate.startswith("//"):
+        return True
+    parsed = urlparse(candidate)
+    if not parsed.scheme:
+        return True
+    allowed = {"http", "https", "mailto"}
+    if allow_cid:
+        allowed.add("cid")
+    return parsed.scheme.lower() in allowed
+
+
+def _sanitize_style(raw_style: str) -> str:
+    """Strip unsafe CSS directives (expression, javascript:, url(), @import)."""
+    if not raw_style or _UNSAFE_STYLE_RE.search(raw_style):
+        return ""
+    return raw_style.strip()
+
+
+class _AllowlistHtmlSanitizer(HTMLParser):
+    """Strict allowlist HTML sanitizer preventing stored XSS in email bodies & webmail."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self._out: list[str] = []
+        self._drop_depth: list[str] = []
+        self._doctype: str = ""
+
+    def handle_decl(self, decl: str) -> None:
+        if decl.strip().lower().startswith("doctype html"):
+            self._doctype = f"<!{decl}>"
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tl = tag.lower()
+        if self._drop_depth:
+            if tl in _DROP_CONTENT_HTML_TAGS:
+                self._drop_depth.append(tl)
+            return
+        if tl in _DROP_CONTENT_HTML_TAGS:
+            if tl not in _VOID_HTML_TAGS:
+                self._drop_depth.append(tl)
+            return
+        if tl not in _SAFE_EMAIL_HTML_TAGS:
+            return
+        attr_str = self._filter_attrs(tl, attrs)
+        self._out.append(f"<{tl}{attr_str}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tl = tag.lower()
+        if self._drop_depth or tl in _DROP_CONTENT_HTML_TAGS or tl not in _SAFE_EMAIL_HTML_TAGS:
+            return
+        attr_str = self._filter_attrs(tl, attrs)
+        self._out.append(f"<{tl}{attr_str}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        tl = tag.lower()
+        if self._drop_depth:
+            if tl == self._drop_depth[-1]:
+                self._drop_depth.pop()
+            elif tl in self._drop_depth:
+                while self._drop_depth and self._drop_depth[-1] != tl:
+                    self._drop_depth.pop()
+                if self._drop_depth and self._drop_depth[-1] == tl:
+                    self._drop_depth.pop()
+            return
+        if tl in _SAFE_EMAIL_HTML_TAGS and tl not in _VOID_HTML_TAGS:
+            self._out.append(f"</{tl}>")
+
+    def handle_data(self, data: str) -> None:
+        if not self._drop_depth:
+            self._out.append(html.escape(data, quote=False))
+
+    def handle_entityref(self, name: str) -> None:
+        if not self._drop_depth:
+            self._out.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        if not self._drop_depth:
+            self._out.append(f"&#{name};")
+
+    def _filter_attrs(self, tag_lower: str, attrs: list[tuple[str, str | None]]) -> str:
+        allowed_for_tag = _SAFE_HTML_GLOBAL_ATTRS | _SAFE_HTML_TAG_ATTRS.get(tag_lower, set())
+        parts: list[str] = []
+        has_target = False
+        for name, val in attrs:
+            if not name:
+                continue
+            nl = name.lower().strip()
+            if nl.startswith("on") or nl not in allowed_for_tag:
+                continue
+            v = "" if val is None else str(val)
+            if nl == "href":
+                if not _is_safe_url(v, allow_cid=False):
+                    continue
+            elif nl == "src":
+                if not _is_safe_url(v, allow_cid=True):
+                    continue
+            elif nl == "style":
+                v = _sanitize_style(v)
+                if not v:
+                    continue
+            elif nl == "target":
+                has_target = True
+                if v.lower() not in ("_blank", "_self"):
+                    continue
+            parts.append(f'{nl}="{html.escape(v, quote=True)}"')
+        if tag_lower == "a" and has_target:
+            parts.append('rel="noopener noreferrer"')
+        return (" " + " ".join(parts)) if parts else ""
+
+    def get_html(self) -> str:
+        body = "".join(self._out)
+        if self._doctype:
+            return f"{self._doctype}{body}"
+        return body
+
+
+def sanitize_html(raw_html: str) -> str:
+    """Sanitize untrusted or agent-generated HTML through an explicit tag/attribute allowlist (#388)."""
+    if not raw_html or not isinstance(raw_html, str):
+        return ""
+    sanitizer = _AllowlistHtmlSanitizer()
+    sanitizer.feed(raw_html)
+    sanitizer.close()
+    return sanitizer.get_html()
+
+
 def markdown_to_clean_html(text: str) -> str:
     """Converts Markdown or raw text into clean, modern email-safe HTML.
 
-    If the payload is already valid HTML, it is preserved directly without
-    Markdown conversion, only ensuring proper container styling if needed.
+    If the payload is already valid HTML, it is sanitized via ``sanitize_html``
+    and preserved without Markdown conversion.
     """
     raw = (text or "").strip()
     if not raw:
@@ -289,18 +455,19 @@ def markdown_to_clean_html(text: str) -> str:
     if fence_match:
         raw = fence_match.group(1).strip()
 
-    # Pre-check: If already valid HTML, preserve it directly!
+    # Pre-check: If already valid HTML, sanitize through allowlist and preserve structure
     if is_valid_html(raw):
-        lower_raw = raw.lower()
+        sanitized = sanitize_html(raw)
+        lower_raw = sanitized.lower()
         if "<!doctype" in lower_raw or "<html" in lower_raw or "<body" in lower_raw:
-            return raw
+            return sanitized
 
-        if raw.startswith("<div") and "font-family" in lower_raw:
-            return raw
+        if sanitized.startswith("<div") and "font-family" in lower_raw:
+            return sanitized
 
         return (
             f'<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; '
-            f'font-size: 14px; line-height: 1.6; color: #111827;">\n{raw}\n</div>'
+            f'font-size: 14px; line-height: 1.6; color: #111827;">\n{sanitized}\n</div>'
         )
 
     # Convert Markdown to HTML
@@ -535,8 +702,10 @@ def compose_reply_body(
     plain_chain = f"\n\n{header_line}\n" + "\n".join(quoted_lines)
     full_plain_text = f"{agent_text}{plain_chain}".strip()
 
-    # HTML quoted chain: blockquote
+    # HTML quoted chain: blockquote (strictly allowlist-sanitized against stored XSS, #388)
     inbound_html = getattr(inbound_email, "html_body", None)
+    if inbound_html:
+        inbound_html = sanitize_html(inbound_html)
     if not inbound_html and inbound_text:
         inbound_html = "<br>".join(html.escape(line) for line in inbound_text.split("\n"))
 

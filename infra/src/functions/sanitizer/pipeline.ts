@@ -6,9 +6,17 @@ import {
   QuarantinedEmailPayload,
 } from "./types.js";
 
+export interface SesReceiptVerdicts {
+  spfVerdict?: { status?: string } | string;
+  dkimVerdict?: { status?: string } | string;
+  dmarcVerdict?: { status?: string } | string;
+}
+
 export interface PipelineOptions {
   allowedSenders: string[];
   allowedRecipientDomains?: string[];
+  sesReceipt?: SesReceiptVerdicts;
+  trustedAuthServPattern?: RegExp;
 }
 
 export const PROMPT_INJECTION_SIGNATURES = [
@@ -39,44 +47,132 @@ export const TRACKING_PIXEL_REGEX =
 // Unsafe executable HTML elements
 export const UNSAFE_TAGS_REGEX = /<(?:script|style|iframe|object|embed|applet)[^>]*>.*?<\/(?:script|style|iframe|object|embed|applet)>/gis;
 
+const DEFAULT_SES_AUTHSERV_RE = /^(?:[a-z0-9-]+\.)*amazonses\.com$/i;
+const ENVELOPE_MARKER_REGEX = /<<<\s*\/?\s*EXTERNAL_UNTRUSTED_CONTENT\s*>>>/gi;
+
+function verdictStatus(v?: { status?: string } | string): string {
+  if (!v) return "";
+  return (typeof v === "string" ? v : v.status || "").trim().toUpperCase();
+}
+
+function extractDomain(addrOrDomain: string): string {
+  const cleaned = addrOrDomain.trim().toLowerCase().replace(/^.*@/, "");
+  return cleaned.replace(/\.+$/, "");
+}
+
+function domainsAligned(a: string, b: string): boolean {
+  const da = extractDomain(a);
+  const db = extractDomain(b);
+  if (!da || !db) return false;
+  return da === db || da.endsWith(`.${db}`) || db.endsWith(`.${da}`);
+}
+
+function collectAuthResultsHeaders(headers: Map<string, any> | Record<string, any>): string[] {
+  const raw =
+    headers instanceof Map
+      ? headers.get("authentication-results")
+      : headers["authentication-results"];
+  if (!raw) return [];
+  const items = Array.isArray(raw) ? raw : [raw];
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && "text" in item) return String((item as any).text || "");
+      if (item && typeof item === "object" && "value" in item) return String((item as any).value || "");
+      return String(item || "");
+    })
+    .filter(Boolean);
+}
+
 /**
  * Stage 1: Cryptographic Origin Verification
- * Inspects SES Authentication-Results header for dkim=pass and spf=pass
+ * Verifies trusted SES receipt verdicts (spfVerdict, dkimVerdict, dmarcVerdict === "PASS")
+ * or trusted AWS SES Authentication-Results headers with DMARC + strict From: domain alignment.
  */
-export function verifyCryptographicOrigin(headers: Map<string, any> | Record<string, any>): {
+export function verifyCryptographicOrigin(
+  headers: Map<string, any> | Record<string, any>,
+  fromAddress?: string,
+  sesReceipt?: SesReceiptVerdicts,
+  trustedAuthServPattern: RegExp = DEFAULT_SES_AUTHSERV_RE
+): {
   valid: boolean;
   details: string;
 } {
-  let authResults = "";
-
-  if (headers instanceof Map) {
-    authResults = String(headers.get("authentication-results") || "");
-  } else {
-    authResults = String(headers["authentication-results"] || "");
+  if (sesReceipt) {
+    const spf = verdictStatus(sesReceipt.spfVerdict);
+    const dkim = verdictStatus(sesReceipt.dkimVerdict);
+    const dmarc = verdictStatus(sesReceipt.dmarcVerdict);
+    if (spf === "PASS" && dkim === "PASS" && dmarc === "PASS") {
+      return { valid: true, details: "SES receipt SPF, DKIM, and DMARC verdicts passed" };
+    }
+    return {
+      valid: false,
+      details: `SES receipt verdict check failed: spf=${spf || "NONE"}, dkim=${dkim || "NONE"}, dmarc=${dmarc || "NONE"}`,
+    };
   }
 
-  if (!authResults) {
+  const headerEntries = collectAuthResultsHeaders(headers);
+  if (headerEntries.length === 0) {
     return {
       valid: false,
       details: "Missing Authentication-Results header in email",
     };
   }
 
-  const hasDkimPass = /\bdkim=pass\b/i.test(authResults);
-  const hasSpfPass = /\bspf=pass\b/i.test(authResults);
+  // Filter for trusted SES authserv-id headers and evaluate the latest SES entry first.
+  const trustedEntries = headerEntries.filter((entry) => {
+    const authServ = entry.split(";")[0]?.trim().split(/\s+/)[0] || "";
+    return trustedAuthServPattern.test(authServ);
+  });
 
-  if (!hasDkimPass || !hasSpfPass) {
+  if (trustedEntries.length === 0) {
     return {
       valid: false,
-      details: `Cryptographic check failed: dkim=${hasDkimPass ? "pass" : "fail"}, spf=${hasSpfPass ? "pass" : "fail"}`,
+      details: "No trusted AWS SES Authentication-Results header found (untrusted/spoofed authserv-id)",
     };
   }
 
-  return { valid: true, details: "DKIM and SPF verified pass" };
+  const authResults = trustedEntries[trustedEntries.length - 1]!;
+  const hasDkimPass = /\bdkim=pass\b/i.test(authResults);
+  const hasSpfPass = /\bspf=pass\b/i.test(authResults);
+  const hasDmarcPass = /\bdmarc=pass\b/i.test(authResults);
+
+  if (!hasDkimPass || !hasSpfPass || !hasDmarcPass) {
+    return {
+      valid: false,
+      details: `Cryptographic check failed: dkim=${hasDkimPass ? "pass" : "fail"}, spf=${hasSpfPass ? "pass" : "fail"}, dmarc=${hasDmarcPass ? "pass" : "fail"}`,
+    };
+  }
+
+  // Enforce strict From: domain alignment against header.from / header.d / header.i claims.
+  if (fromAddress) {
+    const fromDomain = extractDomain(fromAddress);
+    if (!fromDomain) {
+      return { valid: false, details: "Unable to extract From domain for alignment verification" };
+    }
+    const headerFromMatch = authResults.match(/\bheader\.from=([^\s;]+)/i);
+    const headerDMatch = authResults.match(/\bheader\.d=([^\s;]+)/i);
+    const headerIMatch = authResults.match(/\bheader\.i=([^\s;]+)/i);
+
+    const alignmentCandidates = [
+      headerFromMatch?.[1],
+      headerDMatch?.[1],
+      headerIMatch?.[1],
+    ].filter((v): v is string => Boolean(v));
+
+    if (alignmentCandidates.length > 0 && alignmentCandidates.some((c) => !domainsAligned(c, fromDomain))) {
+      return {
+        valid: false,
+        details: `Cryptographic From: domain alignment failed for '${fromDomain}' (${alignmentCandidates.join(", ")})`,
+      };
+    }
+  }
+
+  return { valid: true, details: "Trusted SES DKIM, SPF, DMARC, and From domain alignment passed" };
 }
 
 /**
- * Stage 2: Strict Sender Allowlist Validation
+ * Stage 2: Strict Sender Allowlist Validation (Fail-Closed + Dot-Bounded Domain Matching)
  */
 export function verifySenderAllowlist(
   fromAddress: string | undefined,
@@ -84,6 +180,10 @@ export function verifySenderAllowlist(
   allowedSenders: string[],
   allowedRecipientDomains?: string[]
 ): { valid: boolean; details: string } {
+  if (!allowedSenders || allowedSenders.length === 0) {
+    return { valid: false, details: "ALLOWED_EXTERNAL_SENDERS is empty (fail-closed)" };
+  }
+
   if (!fromAddress) {
     return { valid: false, details: "Missing From address in email" };
   }
@@ -100,18 +200,23 @@ export function verifySenderAllowlist(
     };
   }
 
-  if (allowedRecipientDomains && allowedRecipientDomains.length > 0 && toAddress) {
-    const toDomain = toAddress.split("@")[1]?.toLowerCase().trim();
-    if (toDomain) {
-      const isAllowedDomain = allowedRecipientDomains.some((d) =>
-        toDomain.endsWith(d.toLowerCase().trim())
-      );
-      if (!isAllowedDomain) {
-        return {
-          valid: false,
-          details: `Recipient domain '${toDomain}' is not in allowed domains: [${allowedRecipientDomains.join(", ")}]`,
-        };
-      }
+  if (allowedRecipientDomains && allowedRecipientDomains.length > 0) {
+    const toDomain = (toAddress || "").split("@")[1]?.toLowerCase().trim().replace(/\.+$/, "");
+    if (!toDomain) {
+      return {
+        valid: false,
+        details: "Missing valid To recipient domain while ALLOWED_RECIPIENT_DOMAINS is configured",
+      };
+    }
+    const isAllowedDomain = allowedRecipientDomains.some((d) => {
+      const dn = d.toLowerCase().trim().replace(/^\./, "").replace(/\.+$/, "");
+      return Boolean(dn) && (toDomain === dn || toDomain.endsWith(`.${dn}`));
+    });
+    if (!isAllowedDomain) {
+      return {
+        valid: false,
+        details: `Recipient domain '${toDomain}' is not in allowed domains: [${allowedRecipientDomains.join(", ")}]`,
+      };
     }
   }
 
@@ -177,9 +282,11 @@ export function scanPromptInjection(
 
 /**
  * Stage 5: Context Enveloping (Tainting)
+ * Strips any breakout marker sequences before applying untrusted boundary delimiters.
  */
 export function envelopeContent(sanitizedBody: string): string {
-  return `<<<EXTERNAL_UNTRUSTED_CONTENT>>>\n${sanitizedBody}\n<<</EXTERNAL_UNTRUSTED_CONTENT>>>`;
+  const safeBody = sanitizedBody.replace(ENVELOPE_MARKER_REGEX, "[STRIPPED_MARKER]");
+  return `<<<EXTERNAL_UNTRUSTED_CONTENT>>>\n${safeBody}\n<<</EXTERNAL_UNTRUSTED_CONTENT>>>`;
 }
 
 /**
@@ -199,7 +306,12 @@ export function processEmailThroughPipeline(
   const subject = parsedMail.subject || "(No Subject)";
 
   // Stage 1: Cryptographic Origin Verification
-  const cryptoResult = verifyCryptographicOrigin(parsedMail.headers);
+  const cryptoResult = verifyCryptographicOrigin(
+    parsedMail.headers,
+    fromAddress,
+    options.sesReceipt,
+    options.trustedAuthServPattern
+  );
   if (!cryptoResult.valid) {
     return {
       status: "QUARANTINED",

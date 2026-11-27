@@ -47,6 +47,14 @@ class IngressConfig(BaseModel):
         ),
         description="Local Postfix/SMTP server port (e.g. 25 or 10025)",
     )
+    local_smtp_username: Optional[str] = Field(
+        default_factory=lambda: os.getenv("LOCAL_SMTP_USERNAME") or None,
+        description="Optional SMTP SASL username for container mail authentication (#388)",
+    )
+    local_smtp_password: Optional[str] = Field(
+        default_factory=lambda: os.getenv("LOCAL_SMTP_PASSWORD") or None,
+        description="Optional SMTP SASL password for container mail authentication (#388)",
+    )
     poll_wait_seconds: int = Field(
         default_factory=lambda: int(os.getenv("INGRESS_POLL_WAIT_SECONDS") or 20),
         description="SQS long-polling wait time in seconds (max 20)",

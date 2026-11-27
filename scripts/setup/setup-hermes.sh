@@ -77,9 +77,8 @@ log_success "Docker daemon verified."
 # ------------------------------------------------------------------------------
 DATA_ROOT="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
 AGENTS_DIR="${BRAINSOS_AGENTS_DIR:-${DATA_ROOT}/agents}"
-COMMS_DIR="${BRAINSOS_COMMS_DIR:-${DATA_ROOT}/comms}"
-mkdir -p "${AGENTS_DIR}" "${COMMS_DIR}/signal"
-chmod -R 775 "${AGENTS_DIR}" "${COMMS_DIR}/signal" || true
+mkdir -p "${AGENTS_DIR}"
+chmod -R 775 "${AGENTS_DIR}" || true
 
 # Clean up any legacy hermes_okf.py skill copies to maintain zero technical debt
 WORKSPACE_DIR="${BRAINSOS_AGENT_WORKSPACES_DIR:-${REPO_ROOT}/data/agent_workspaces}"
@@ -89,11 +88,8 @@ if [ -f "${WORKSPACE_DIR}/skills/hermes_okf.py" ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Pull & Build Unprivileged Hermes Sandbox & Messaging Images
+# 3. Build Unprivileged Hermes Sandbox Image
 # ------------------------------------------------------------------------------
-log_info "Ensuring companion services are present (signal-cli)..."
-docker compose pull signal-cli
-
 log_info "Building unprivileged Hermes Agent image (brainsos-hermes:latest)..."
 docker compose build agent-primary
 log_success "Hermes Agent container image built successfully."
