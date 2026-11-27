@@ -383,9 +383,6 @@ export const HelpView: React.FC = () => {
     const port = window.location.port ? `:${window.location.port}` : '';
 
     if (tool.id === 'telemetry' || tool.id === 'trace') {
-      if (!host.startsWith('langfuse.')) {
-        return `${proto}//langfuse.${host}${port}/project/brainsos/sessions`;
-      }
       return `${proto}//${host}${port}/project/brainsos/sessions`;
     }
     return `${proto}//${host}${port}${tool.path}`;

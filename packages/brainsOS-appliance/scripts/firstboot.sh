@@ -33,6 +33,11 @@ DRY_RUN=false
 CHECK_MODE=false
 SKIP_IMDS="${BRAINSOS_FIRSTBOOT_SKIP_IMDS:-false}"
 SKIP_PORTAL="${BRAINSOS_FIRSTBOOT_SKIP_PORTAL:-false}"
+MOUNT_ROOT="${BRAINSOS_MOUNT_ROOT:-}"
+CLAIM_ACTIVE="${BRAINSOS_CLAIM_ACTIVE:-false}"
+CLAIM_DOMAIN="${BRAINSOS_CLAIM_DOMAIN:-}"
+USER_SUB_VAL="${BRAINSOS_USER_SUB:-}"
+ORIGINAL_ARGS=("$@")
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -52,22 +57,47 @@ while [ $# -gt 0 ]; do
       SKIP_PORTAL=true
       shift
       ;;
+    --mount-root)
+      MOUNT_ROOT="${2:?--mount-root requires a path}"
+      shift 2
+      ;;
+    --claim)
+      CLAIM_ACTIVE=true
+      shift
+      ;;
+    --domain)
+      CLAIM_DOMAIN="${2:?--domain requires an FQDN}"
+      shift 2
+      ;;
+    --user-sub)
+      USER_SUB_VAL="${2:?--user-sub requires a value}"
+      shift 2
+      ;;
     -h|--help)
       cat <<EOF
-brainsOS Appliance First-Boot Provisioner (Tickets #313 / #322)
+brainsOS Appliance First-Boot Provisioner (Tickets #313 / #322 / #382)
 
 Usage:
   ./packages/brainsOS-appliance/scripts/firstboot.sh [OPTIONS]
 
 Options:
-  --dry-run       Simulate first-boot execution without writing .env or disabling service
-  --check         Verify if first-boot initialization has been performed
-  --skip-imds     Do not query EC2 instance metadata (baremetal / tests)
-  --skip-portal   Do not rebuild the portal bundle
-  -h, --help      Show this help message
+  --dry-run             Simulate first-boot execution without writing .env or disabling service
+  --check               Verify if first-boot initialization has been performed
+  --skip-imds           Do not query EC2 instance metadata (baremetal / tests)
+  --skip-portal         Do not rebuild the portal bundle
+  --mount-root <path>   Mount root for persistent user EBS volume (e.g. /mnt/brainsos-data)
+  --claim               Claim mode (invoked by claim-user-volume.sh; overrides warm-standby marker)
+  --domain <fqdn>       Explicit domain override (takes precedence over IMDS/user-data)
+  --user-sub <sub>      External user/tenant subject identifier (stored as BRAINSOS_USER_SUB)
+  -h, --help            Show this help message
 
 Environment:
   BRAINSOS_REPO_ROOT                 Override repository root (tests)
+  BRAINSOS_MOUNT_ROOT                Same as --mount-root
+  BRAINSOS_WARM_STANDBY              Exit 0 before generating .env or starting services
+  BRAINSOS_CLAIM_ACTIVE              Same as --claim
+  BRAINSOS_CLAIM_DOMAIN              Same as --domain
+  BRAINSOS_USER_SUB                  Same as --user-sub
   BRAINSOS_FIRSTBOOT_SKIP_IMDS       Same as --skip-imds
   BRAINSOS_FIRSTBOOT_SKIP_PORTAL     Same as --skip-portal
   BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP  Skip data/ + .venv seeding (tests only)
@@ -89,12 +119,20 @@ if [ -z "${REPO_ROOT}" ]; then
   REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 fi
 
-INIT_FLAG="${REPO_ROOT}/.brainsos-initialized"
-TARGET_ENV="${REPO_ROOT}/.env"
+MOUNT_ROOT="${MOUNT_ROOT%/}"
+if [ -n "${MOUNT_ROOT}" ]; then
+  TARGET_ENV="${MOUNT_ROOT}/.env"
+  INIT_FLAG="${MOUNT_ROOT}/.brainsos-initialized"
+  TARGET_DATA_DIR="${BRAINSOS_DATA_DIR:-${MOUNT_ROOT}/data}"
+else
+  TARGET_ENV="${REPO_ROOT}/.env"
+  INIT_FLAG="${REPO_ROOT}/.brainsos-initialized"
+  TARGET_DATA_DIR="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}"
+fi
 GENERATE_ENV="${REPO_ROOT}/scripts/control/generate-env.sh"
 
 if [ "${CHECK_MODE}" = true ]; then
-  if [ -f "${INIT_FLAG}" ]; then
+  if [ -f "${INIT_FLAG}" ] || [ -f "${REPO_ROOT}/.brainsos-initialized" ]; then
     log_success "Appliance is initialized (${INIT_FLAG} present)."
     exit 0
   else
@@ -104,6 +142,10 @@ if [ "${CHECK_MODE}" = true ]; then
 fi
 
 if [ -f "${INIT_FLAG}" ] && [ "${DRY_RUN}" = false ]; then
+  if [ -n "${MOUNT_ROOT}" ]; then
+    [ -f "${TARGET_ENV}" ] && ln -sfn "${TARGET_ENV}" "${REPO_ROOT}/.env"
+    ln -sfn "${INIT_FLAG}" "${REPO_ROOT}/.brainsos-initialized"
+  fi
   log_info "Appliance already initialized at $(cat "${INIT_FLAG}"). Exiting."
   exit 0
 fi
@@ -190,10 +232,19 @@ UD_ACME_EMAIL=""
 UD_TLS_MODE=""
 UD_AUTO_PULL=""
 UD_GIT_BRANCH=""
+UD_WARM_STANDBY="$(printf '%s' "${BRAINSOS_WARM_STANDBY:-}" | tr '[:upper:]' '[:lower:]')"
 if [ -n "${USER_DATA}" ]; then
   while IFS= read -r ud_line; do
     ud_trimmed="${ud_line#"${ud_line%%[![:space:]]*}"}"
     case "${ud_trimmed}" in
+      BRAINSOS_WARM_STANDBY=*|BRAINSOS_WARM_STANDBY:*)
+        val="${ud_trimmed#BRAINSOS_WARM_STANDBY[=:]}"
+        UD_WARM_STANDBY="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
+      warm_standby:*)
+        val="${ud_trimmed#warm_standby:}"
+        UD_WARM_STANDBY="$(strip_value "${val}" | tr '[:upper:]' '[:lower:]')"
+        ;;
       BRAINSOS_URL=*|BRAINSOS_URL:*)
         val="${ud_trimmed#BRAINSOS_URL[=:]}"
         UD_URL="$(normalize_url_host "$(strip_value "${val}")")"
@@ -297,6 +348,23 @@ if [ -n "${USER_DATA}" ]; then
   done <<< "${USER_DATA}"
 fi
 
+# Warm-standby mode (#382): park the VM with Docker warm, zero .env, zero data/,
+# and brainsos-firstboot.service still enabled until claim-user-volume.sh runs.
+CLAIM_ACTIVE_LC="$(printf '%s' "${CLAIM_ACTIVE}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${UD_WARM_STANDBY}" =~ ^(true|1|yes)$ ]] && [[ ! "${CLAIM_ACTIVE_LC}" =~ ^(true|1|yes)$ ]]; then
+  log_info "Warm standby mode (BRAINSOS_WARM_STANDBY=true) detected — skipping .env generation, data seeding, and service initialization."
+  exit 0
+fi
+
+# Explicit --domain override (used by claim-user-volume.sh) takes precedence over IMDS/user-data
+if [ -n "${CLAIM_DOMAIN}" ]; then
+  NORM_CLAIM_DOMAIN="$(normalize_url_host "$(strip_value "${CLAIM_DOMAIN}")")"
+  if [ -n "${NORM_CLAIM_DOMAIN}" ]; then
+    UD_DOMAIN="${NORM_CLAIM_DOMAIN}"
+    UD_URL="${NORM_CLAIM_DOMAIN}"
+  fi
+fi
+
 # ------------------------------------------------------------------------------
 # 1c. Offline-First Golden AMI Boot (Opt-In GitHub Auto-Pull)
 #     Disabled by default on Golden AMIs so launched instances boot 100%
@@ -337,7 +405,7 @@ if [ "${AUTO_PULL}" = "true" ] && [ "${DRY_RUN}" = false ] && { [ "${SKIP_IMDS}"
         if [ "${BRAINSOS_FIRSTBOOT_REEXEC:-false}" != "true" ]; then
           log_info "Re-executing updated firstboot.sh from ${REMOTE_SHA:0:12}..."
           export BRAINSOS_FIRSTBOOT_REEXEC=true
-          exec "${REPO_ROOT}/packages/brainsOS-appliance/scripts/firstboot.sh" "$@"
+          exec "${REPO_ROOT}/packages/brainsOS-appliance/scripts/firstboot.sh" "${ORIGINAL_ARGS[@]}"
         fi
       else
         log_success "Appliance source tree is already up to date (${TARGET_GIT_BRANCH}@${BEFORE_SHA:0:12})."
@@ -530,9 +598,16 @@ case "${APPLIANCE_REGION}" in
 esac
 
 if [ "${DRY_RUN}" = true ]; then
-  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --mail-domain ${APPLIANCE_LOCAL_DOMAIN} --data-dir ${REPO_ROOT}/data --force-passwords --no-rebuild"
+  log_info "[DRY-RUN] Would run: ${GENERATE_ENV} --non-interactive --domain ${APPLIANCE_DOMAIN} --mail-domain ${APPLIANCE_LOCAL_DOMAIN} --data-dir ${TARGET_DATA_DIR} --force-passwords --no-rebuild"
   log_info "[DRY-RUN] Would write appliance overrides to ${TARGET_ENV}:"
   log_info "[DRY-RUN] BRAINSOS_INSTANCE_ID=${INSTANCE_ID}"
+  log_info "[DRY-RUN] BRAINSOS_DATA_DIR=${TARGET_DATA_DIR}"
+  if [ -n "${MOUNT_ROOT}" ]; then
+    log_info "[DRY-RUN] BRAINSOS_MOUNT_ROOT=${MOUNT_ROOT}"
+  fi
+  if [ -n "${USER_SUB_VAL}" ]; then
+    log_info "[DRY-RUN] BRAINSOS_USER_SUB=${USER_SUB_VAL}"
+  fi
   log_info "[DRY-RUN] BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
   log_info "[DRY-RUN] BRAINSOS_ADMIN_PASSWORD=${INSTANCE_ID}"
   log_info "[DRY-RUN] AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_ID}"
@@ -552,7 +627,7 @@ if [ "${DRY_RUN}" = true ]; then
   fi
   log_info "[DRY-RUN] COMPOSE_FILE=${REPO_ROOT}/docker-compose.yml:${REPO_ROOT}/docker/compose/compose.appliance.yml"
   log_info "[DRY-RUN] LITELLM_CONFIG=${REPO_ROOT}/config/litellm/config.bedrock.yaml"
-  log_info "[DRY-RUN] Would run: ${REPO_ROOT}/scripts/control/bootstrap-env.sh --skip-images --skip-portal --skip-models"
+  log_info "[DRY-RUN] Would run: ${REPO_ROOT}/scripts/control/bootstrap-env.sh --data-dir ${TARGET_DATA_DIR} --skip-images --skip-portal --skip-models"
   log_info "[DRY-RUN] Would touch ${INIT_FLAG}"
   exit 0
 fi
@@ -560,18 +635,25 @@ fi
 # ------------------------------------------------------------------------------
 # 2. Canonical Secret Generation (generate-env.sh is the single source of truth)
 # ------------------------------------------------------------------------------
+if [ -n "${MOUNT_ROOT}" ]; then
+  mkdir -p "${MOUNT_ROOT}" "${TARGET_DATA_DIR}"
+fi
+
 if [ -f "${TARGET_ENV}" ]; then
-  log_info "Existing .env detected; preserving configuration (no secret regeneration)."
+  log_info "Existing .env detected at ${TARGET_ENV}; preserving configuration (no secret regeneration)."
+  if [ -n "${MOUNT_ROOT}" ]; then
+    ln -sfn "${TARGET_ENV}" "${REPO_ROOT}/.env"
+  fi
 else
   if [ ! -x "${GENERATE_ENV}" ]; then
     log_error "Canonical environment generator not found or not executable: ${GENERATE_ENV}"
     exit 1
   fi
   log_info "Generating unique per-instance secrets via scripts/control/generate-env.sh..."
-  "${GENERATE_ENV}" --non-interactive \
+  BRAINSOS_REPO_ROOT="${REPO_ROOT}" BRAINSOS_ENV_FILE="${TARGET_ENV}" "${GENERATE_ENV}" --non-interactive \
     --domain "${APPLIANCE_DOMAIN}" \
     --mail-domain "${APPLIANCE_LOCAL_DOMAIN}" \
-    --data-dir "${REPO_ROOT}/data" \
+    --data-dir "${TARGET_DATA_DIR}" \
     --force-passwords \
     --no-rebuild </dev/null
 
@@ -589,6 +671,7 @@ else
     "BRAINSOS_APPLIANCE=true"
     "BRAINSOS_STAGE=aws"
     "BRAINSOS_INSTANCE_ID=${INSTANCE_ID}"
+    "BRAINSOS_DATA_DIR=${TARGET_DATA_DIR}"
     # Operator login (Authentik admin/akadmin) - permanently bound to EC2 instance-id
     "BRAINSOS_ADMIN_USERNAME=${APPLIANCE_ADMIN_USERNAME}"
     "BRAINSOS_ADMIN_EMAIL=${ADMIN_EMAIL_DEFAULT}"
@@ -634,6 +717,12 @@ else
     "BRAINSOS_AUTO_PULL_ON_BOOT=${AUTO_PULL}"
     "BRAINSOS_GIT_BRANCH=${TARGET_GIT_BRANCH}"
   )
+  if [ -n "${MOUNT_ROOT}" ]; then
+    APPLIANCE_OVERRIDES+=("BRAINSOS_MOUNT_ROOT=${MOUNT_ROOT}")
+  fi
+  if [ -n "${USER_SUB_VAL}" ]; then
+    APPLIANCE_OVERRIDES+=("BRAINSOS_USER_SUB=${USER_SUB_VAL}")
+  fi
   if [ -n "${ACME_EMAIL_VALUE}" ]; then
     APPLIANCE_OVERRIDES+=("ACME_EMAIL=${ACME_EMAIL_VALUE}")
   fi
@@ -642,6 +731,9 @@ else
     --section "Appliance Overrides (written by packages/brainsOS-appliance/scripts/firstboot.sh)" \
     "${APPLIANCE_OVERRIDES[@]}"
   chmod 600 "${TARGET_ENV}"
+  if [ -n "${MOUNT_ROOT}" ]; then
+    ln -sfn "${TARGET_ENV}" "${REPO_ROOT}/.env"
+  fi
   log_success "Wrote appliance .env with unique secrets and strict 0600 permissions."
 fi
 
@@ -713,7 +805,11 @@ if [ "${BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP:-false}" != true ]; then
     exit 1
   fi
   log_info "Seeding per-instance data tree via scripts/control/bootstrap-env.sh..."
-  "${BOOTSTRAP_ENV}" --skip-images --skip-portal --skip-models </dev/null
+  BOOTSTRAP_ARGS=(--data-dir "${TARGET_DATA_DIR}" --skip-images --skip-portal --skip-models)
+  if [ -n "${MOUNT_ROOT}" ]; then
+    BOOTSTRAP_ARGS+=(--mount-root "${MOUNT_ROOT}")
+  fi
+  BRAINSOS_REPO_ROOT="${REPO_ROOT}" "${BOOTSTRAP_ENV}" "${BOOTSTRAP_ARGS[@]}" </dev/null
 fi
 
 # ------------------------------------------------------------------------------
@@ -731,7 +827,7 @@ fi
 # ------------------------------------------------------------------------------
 if [ "${BRAINSOS_FIRSTBOOT_SKIP_BOOTSTRAP:-false}" != true ] && [ -x "${REPO_ROOT}/scripts/setup/setup-git.sh" ]; then
   log_info "Seeding Gitea source control & /data repository..."
-  "${REPO_ROOT}/scripts/setup/setup-git.sh" || log_warn "Initial Gitea seeding deferred"
+  BRAINSOS_DATA_DIR="${TARGET_DATA_DIR}" "${REPO_ROOT}/scripts/setup/setup-git.sh" || log_warn "Initial Gitea seeding deferred"
 fi
 
 # ------------------------------------------------------------------------------
@@ -739,6 +835,9 @@ fi
 # ------------------------------------------------------------------------------
 date -u +"%Y-%m-%dT%H:%M:%SZ" > "${INIT_FLAG}"
 chmod 644 "${INIT_FLAG}"
+if [ -n "${MOUNT_ROOT}" ]; then
+  ln -sfn "${INIT_FLAG}" "${REPO_ROOT}/.brainsos-initialized"
+fi
 log_success "Appliance initialized successfully."
 
 # Disable firstboot service so it never runs again (ConditionPathExists also guards it)

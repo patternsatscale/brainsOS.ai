@@ -15,3 +15,6 @@ f8f33c2e8873b8e7b35b3c72055c5464e160f82e:docs/2026-10-07-ticket275.md:curl-auth-
 07109c1eea8740caf478d38897db84ed7726a6a8:packages/brainsOS-telemetry/tests/test_system.py:generic-api-key:473
 07109c1eea8740caf478d38897db84ed7726a6a8:packages/brainsOS-telemetry/tests/test_system.py:generic-api-key:503
 07109c1eea8740caf478d38897db84ed7726a6a8:packages/brainsOS-telemetry/tests/test_system.py:generic-api-key:586
+55a315fc83137e8359b59bc00c0c889bdeb33a15:packages/brainsOS-agent/tests/test_lens_trace.py:generic-api-key:92
+55a315fc83137e8359b59bc00c0c889bdeb33a15:packages/brainsOS-agent/tests/test_lens_trace.py:generic-api-key:167
+55a315fc83137e8359b59bc00c0c889bdeb33a15:packages/brainsOS-agent/tests/test_lens_trace.py:generic-api-key:302

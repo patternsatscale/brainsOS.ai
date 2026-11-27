@@ -611,6 +611,8 @@ run_day2_action() {
     return 1
   fi
 
+  require_aws
+
   local state_filter="running"
   [ "${action}" = "start" ] && state_filter="stopped"
   [ "${action}" = "terminate" ] && state_filter="pending,running,stopping,stopped"
@@ -1195,7 +1197,7 @@ fi
 
 case "${MODE}" in
   list|stop|hibernate|start|terminate)
-    require_aws
+    [ "${MODE}" = "list" ] && require_aws
     run_day2_action "${MODE}" "${FLEET_ID}" "${CONFIRM_YES}"
     exit $?
     ;;

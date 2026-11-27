@@ -43,7 +43,7 @@ services:
   # Rule 2: Routes completions to host Ollama (http://host.docker.internal:11434)
   # Rule 6: Strictly isolated database access over brainsos-control-net
   litellm:
-    image: ghcr.io/berriai/litellm-database:${LITELLM_IMAGE_TAG:-v1.105.0}
+    image: ghcr.io/berriai/litellm-database:${LITELLM_IMAGE_TAG:-v1.109.1}
     container_name: brainsos-control-litellm
     restart: unless-stopped
     security_opt:
@@ -78,12 +78,19 @@ services:
       - GENERIC_ROLE_MAPPINGS_GROUP_CLAIM=groups
       - GENERIC_ROLE_MAPPINGS_DEFAULT_ROLE=proxy_admin
       - "GENERIC_ROLE_MAPPINGS_ROLES={'proxy_admin': ['authentik Admins', 'admins', 'admin', 'appliance-admins']}"
-      # Langfuse Observability Tracing (#299: native OTel v4 header for real-time ingestion)
+      # Vendor-neutral OpenTelemetry & Langfuse Observability Tracing (#299 / #375 / #382)
+      - BRAINSOS_TELEMETRY_BACKEND=${BRAINSOS_TELEMETRY_BACKEND:-dual}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-true}
       - LANGFUSE_HOST=${LITELLM_LANGFUSE_HOST:-http://host.docker.internal:3001}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - OTEL_EXPORTER_OTLP_HEADERS=x-langfuse-ingestion-version=4
       - OTEL_EXPORTER_OTLP_TRACES_HEADERS=x-langfuse-ingestion-version=4
+      # First-Class LiteLLM Lens Observability Integration (#375)
+      - LITELLM_LENS_URL=${LITELLM_LENS_URL:-http://lens:4318}
+      - LITELLM_LENS_PUBLIC_URL=${LITELLM_LENS_PUBLIC_URL:-https://${BRAINSOS_DOMAIN:-brainsos.local}/lens-ingest}
+      - LITELLM_LENS_SERVICE_TOKEN=${LITELLM_LENS_SERVICE_TOKEN:-brainsos_lens_service_token_must_be_32_chars_min}
+      - LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:-brainsos_lens_gateway_secret_must_be_32_chars_min}
     networks:
       brainsos-control-net:
       brainsos-internal-net:

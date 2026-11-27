@@ -49,9 +49,14 @@ services:
       - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web
-      - no_proxy=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web
-      # Langfuse observability plugin config (in-network via brainsos-ingress-net)
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web,lens,brainsos-lens,brainsos-telemetry-lens
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,mail-server,brainsos-net-mail-server,brainsos-langfuse-web,brainsos-telemetry-langfuse-web,langfuse,langfuse-web,lens,brainsos-lens,brainsos-telemetry-lens
+      # Vendor-neutral OpenTelemetry GenAI observability config (BRAINSOS_TELEMETRY_BACKEND=dual|lens|langfuse|none)
+      - BRAINSOS_TELEMETRY_BACKEND=${BRAINSOS_TELEMETRY_BACKEND:-dual}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-true}
+      - LENS_ENABLED=${LENS_ENABLED:-true}
+      - LENS_OTLP_ENDPOINT=${LENS_OTLP_ENDPOINT:-http://lens:4318/v1/traces}
+      - LITELLM_TRACING_KEY=${LITELLM_TRACING_KEY:-}
       - HERMES_LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - HERMES_LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - HERMES_LANGFUSE_BASE_URL=${HERMES_LANGFUSE_BASE_URL:-http://langfuse-web:3000}
@@ -77,7 +82,7 @@ services:
     volumes:
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/data/agents
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/memories
-      - hermes_runner_data:/opt/data
+      - ${BRAINSOS_HERMES_STATE_DIR:-${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/state}:/opt/data
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/config.yaml:/opt/data/config.yaml:rw
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/config.json:/opt/data/config.json:ro
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}/hermes/model_pool.json:/opt/data/model_pool.json:ro
@@ -120,9 +125,18 @@ services:
       - TERRASTELLA_LITELLM_KEY=${TERRASTELLA_LITELLM_KEY:-}
       - MARVIN_LITELLM_KEY=${MARVIN_LITELLM_KEY:-}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000/v1}
+      - BRAINSOS_TELEMETRY_BACKEND=${BRAINSOS_TELEMETRY_BACKEND:-dual}
+      - LENS_ENABLED=${LENS_ENABLED:-true}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-true}
+      - LENS_OTLP_ENDPOINT=${LENS_OTLP_ENDPOINT:-http://lens:4318/v1/traces}
+      - LITELLM_TRACING_KEY=${LITELLM_TRACING_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - BRAINSOS_LANGFUSE_URL=${HERMES_LANGFUSE_BASE_URL:-http://langfuse-web:3000}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,lens,brainsos-lens,brainsos-telemetry-lens,langfuse,langfuse-web,brainsos-langfuse-web,brainsos-telemetry-langfuse-web
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,lens,brainsos-lens,brainsos-telemetry-lens,langfuse,langfuse-web,brainsos-langfuse-web,brainsos-telemetry-langfuse-web
     volumes:
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}:/data/runners:ro
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/data/agents:rw
@@ -152,12 +166,21 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master-key}}
       - LITELLM_URL=${LITELLM_URL:-http://litellm:4000}
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
+      - BRAINSOS_TELEMETRY_BACKEND=${BRAINSOS_TELEMETRY_BACKEND:-dual}
+      - LENS_ENABLED=${LENS_ENABLED:-true}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-true}
+      - LENS_OTLP_ENDPOINT=${LENS_OTLP_ENDPOINT:-http://lens:4318/v1/traces}
+      - LITELLM_TRACING_KEY=${LITELLM_TRACING_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - BRAINSOS_LANGFUSE_URL=${HERMES_LANGFUSE_BASE_URL:-http://langfuse-web:3000}
       - AWS_ACCESS_KEY_ID=${BRAINSOS_INFRA_AWS_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}
       - AWS_SECRET_ACCESS_KEY=${BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
       - AWS_REGION=${BRAINSOS_INFRA_AWS_REGION:-${AWS_REGION:-us-east-1}}
       - HTTP_PROXY=http://brainsos-net-egress-proxy:8082
       - HTTPS_PROXY=http://brainsos-net-egress-proxy:8082
-      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server
+      - NO_PROXY=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,lens,brainsos-lens,brainsos-telemetry-lens,langfuse,langfuse-web,brainsos-langfuse-web,brainsos-telemetry-langfuse-web
+      - no_proxy=localhost,127.0.0.1,host.docker.internal,litellm,mail-server,lens,brainsos-lens,brainsos-telemetry-lens,langfuse,langfuse-web,brainsos-langfuse-web,brainsos-telemetry-langfuse-web
     volumes:
       - ${BRAINSOS_RUNNERS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/runners}:/data/runners:ro
       - ${BRAINSOS_AGENTS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/agents}:/data/agents:rw
@@ -248,6 +271,4 @@ services:
 volumes:
   tool_egress_proxy_data:
     name: brainsos_tool_egress_proxy_data
-  hermes_runner_data:
-    name: brainsos_hermes_runner_data
 

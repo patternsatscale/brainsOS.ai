@@ -43,14 +43,10 @@ networks:
     driver: bridge
 
 # ==============================================================================
-# Persistent Named Volumes
+# Ephemeral Per-VM Named Volumes (All persistent user/tenant state lives under ${BRAINSOS_DATA_DIR})
 # ==============================================================================
 volumes:
-  caddy_data:
-    name: brainsos_caddy_data
   caddy_config:
     name: brainsos_caddy_config
   tool_egress_proxy_data:
     name: brainsos_tool_egress_proxy_data
-  hermes_runner_data:
-    name: brainsos_hermes_runner_data

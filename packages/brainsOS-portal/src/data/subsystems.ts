@@ -213,9 +213,9 @@ export const SUBSYSTEMS: Record<string, Subsystem> = {
   },
   telemetry: {
     id: "telemetry",
-    title: "Langfuse",
-    desc: "Telemetry Data — Trace decisions and benchmark performance",
-    route: "/langfuse/project/brainsos/sessions",
+    title: "Telemetry",
+    desc: "Observability — OpenTelemetry GenAI traces, tool waterfalls & spend matching",
+    route: "/project/brainsos/sessions",
     hotkey: "Alt+4",
     color: "#3b82f6",
     icon: "Activity",

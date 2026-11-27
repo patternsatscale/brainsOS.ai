@@ -33,7 +33,7 @@ const getInitialKey = (): string => {
   if (path === '/mail' || path.startsWith('/mail/') || path === '/kurrier') return 'mail';
   if (path === '/proxy' || path.startsWith('/proxy/ui')) return 'gateway';
   if (path === '/efw') return 'egress';
-  if (path === '/langfuse') return 'telemetry';
+  if (path === '/langfuse' || path === '/lens') return 'telemetry';
   if (path === '/auth' || path.startsWith('/auth/if')) return 'auth';
   return 'mail';
 };
@@ -104,6 +104,9 @@ export function App() {
             if (data && typeof data.overall_update_available === 'boolean') {
               setHasUpdateAvailable(data.overall_update_available);
             }
+            if (data && (data.telemetry_backend === 'lens' || data.langfuse_enabled === false)) {
+              setCustomUrls((prev) => ({ ...prev, telemetry: '/proxy/ui/?page=lens' }));
+            }
             if (data && data.firstboot_wizard_completed === false) {
               setWizardGate('required');
             } else {
@@ -135,6 +138,9 @@ export function App() {
       .then((data) => {
         if (data && typeof data.overall_update_available === 'boolean') {
           setHasUpdateAvailable(data.overall_update_available);
+        }
+        if (data && (data.telemetry_backend === 'lens' || data.langfuse_enabled === false)) {
+          setCustomUrls((prev) => ({ ...prev, telemetry: '/proxy/ui/?page=lens' }));
         }
       })
       .catch(() => {});

@@ -25,6 +25,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSock
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from brainsos_telemetry.tracing import resolve_active_backends
+
 logger = logging.getLogger("brainsos_telemetry.system")
 
 # Active CSRF tokens store (token -> creation_timestamp)
@@ -32,6 +34,9 @@ CSRF_TOKENS: Dict[str, float] = {}
 
 ALLOWED_SERVICES = {
     "litellm",
+    "lens",
+    "telemetry-lens",
+    "clickhouse",
     "langfuse",
     "langfuse-web",
     "caddy",
@@ -945,6 +950,14 @@ def get_system_status() -> Dict[str, Any]:
     identity = get_appliance_identity(repo_root)
     runners_info = get_runners_status(repo_root)
     os_info = get_host_os_status(repo_root)
+    effective_env = {**parse_env_file_only(repo_root), **os.environ}
+    telemetry_backend = (effective_env.get("BRAINSOS_TELEMETRY_BACKEND") or "dual").strip().lower() or "dual"
+    lens_enabled, langfuse_enabled = resolve_active_backends(effective_env)
+    telemetry_fields: Dict[str, Any] = {
+        "telemetry_backend": telemetry_backend,
+        "lens_enabled": lens_enabled,
+        "langfuse_enabled": langfuse_enabled,
+    }
 
     if os.path.isfile(update_script) and os.access(update_script, os.X_OK):
         try:
@@ -967,6 +980,7 @@ def get_system_status() -> Dict[str, Any]:
                     status["runners"] = runners_info
                     status.update(identity)
                     status["identity"] = identity
+                    status.update(telemetry_fields)
                     return status
         except Exception as e:
             logger.warning(f"Error querying update.sh: {e}")
@@ -1010,6 +1024,7 @@ def get_system_status() -> Dict[str, Any]:
         "identity": identity,
     }
     base_status.update(identity)
+    base_status.update(telemetry_fields)
     return base_status
 
 

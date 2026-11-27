@@ -25,9 +25,10 @@ ENV PYTHONUNBUFFERED=1 \
 RUN groupadd -g 1000 runner && \
     useradd -u 1000 -g runner -m -s /bin/bash runner
 
-# Install brainsOS-runner package and uvicorn into system python
+# Install brainsOS-telemetry, brainsOS-runner, and uvicorn into system python
 WORKDIR /opt/brainsos
+COPY packages/brainsOS-telemetry /opt/brainsos/packages/brainsOS-telemetry
 COPY packages/brainsOS-runner /opt/brainsos/packages/brainsOS-runner
-RUN uv pip install --system "/opt/brainsos/packages/brainsOS-runner" uvicorn
+RUN uv pip install --system "/opt/brainsos/packages/brainsOS-telemetry" "/opt/brainsos/packages/brainsOS-runner" uvicorn
 
 WORKDIR /workspace

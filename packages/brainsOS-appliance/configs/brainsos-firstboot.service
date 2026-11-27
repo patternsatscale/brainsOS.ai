@@ -4,6 +4,9 @@ Documentation=https://brainsos.ai
 Before=brainsos.service
 After=network-online.target docker.service
 Wants=network-online.target
+# Skipped once initialized (file or symlink to /mnt/brainsos-data/.brainsos-initialized).
+# In warm-standby mode (BRAINSOS_WARM_STANDBY=true), firstboot.sh exits 0 cleanly
+# without writing .env or .brainsos-initialized until claim-user-volume.sh runs.
 ConditionPathExists=!/opt/brainsos/.brainsos-initialized
 
 [Service]

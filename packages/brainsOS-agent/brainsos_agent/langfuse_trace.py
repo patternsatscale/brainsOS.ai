@@ -22,7 +22,6 @@ Spans are exported as OTLP/HTTP JSON to ``/api/public/otel/v1/traces`` with
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import logging
 import os
@@ -31,6 +30,7 @@ import time
 from typing import Any
 
 import httpx
+from brainsos_telemetry.tracing import deterministic_trace_id, resolve_active_backends
 
 logger = logging.getLogger("brainsos_agent.langfuse")
 
@@ -57,8 +57,16 @@ def _to_unix_nano(ts: float | None) -> str:
     return str(int(ts * 1_000_000_000))
 
 
+def is_langfuse_enabled() -> bool:
+    """Returns True when Langfuse is active via ``BRAINSOS_TELEMETRY_BACKEND`` and ``LANGFUSE_ENABLED``."""
+    _, langfuse_active = resolve_active_backends()
+    return langfuse_active
+
+
 def langfuse_settings() -> tuple[str, str, str] | None:
-    """Returns (base_url, public_key, secret_key) or None when Langfuse is not configured."""
+    """Returns (base_url, public_key, secret_key) or None when Langfuse is disabled or not configured."""
+    if not is_langfuse_enabled():
+        return None
     public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
     secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
     if not public_key or not secret_key or os.getenv("BRAINSOS_MAIL_TRACE_ENABLED", "true").lower() == "false":
@@ -75,14 +83,7 @@ def langfuse_settings() -> tuple[str, str, str] | None:
     return base_url, public_key, secret_key
 
 
-def thread_trace_id(session_id: str) -> str:
-    """The Langfuse trace id Hermes uses for a ``/v1/runs`` session (one trace per email thread).
-
-    Mirrors ``Langfuse.create_trace_id(seed=...)`` (sha256 of the seed, first 16 bytes, hex) with the
-    Hermes plugin seed ``f"{session_id}::{task_id}"`` where ``task_id == session_id`` for runs.
-    """
-    seed = f"{session_id or 'sessionless'}::{session_id or 'sessionless'}"
-    return hashlib.sha256(seed.encode("utf-8")).digest()[:16].hex()
+thread_trace_id = deterministic_trace_id
 
 
 def _attr(key: str, value: Any) -> dict[str, Any] | None:
@@ -207,4 +208,13 @@ async def record_mail_run_trace(http_client: httpx.AsyncClient | None = None, **
     return False
 
 
-__all__ = ["build_email_run_otlp", "langfuse_settings", "record_mail_run_trace", "thread_trace_id"]
+build_mail_run_otlp_payload = build_email_run_otlp
+
+__all__ = [
+    "build_email_run_otlp",
+    "build_mail_run_otlp_payload",
+    "is_langfuse_enabled",
+    "langfuse_settings",
+    "record_mail_run_trace",
+    "thread_trace_id",
+]

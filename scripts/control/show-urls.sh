@@ -161,6 +161,31 @@ langfuse_port = env.get("LANGFUSE_PORT", "3001")
 langfuse_user = env.get("LANGFUSE_INIT_USER_EMAIL") or env.get("BRAINSOS_ADMIN_EMAIL") or f"admin@{domain}"
 langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD") or admin_pass or "brainsos_admin_secret"
 
+def _resolve_telemetry_backends(file_env):
+    disabled = {"false", "0", "no", "off", "disabled"}
+    raw_lens = os.environ.get("LENS_ENABLED") if "LENS_ENABLED" in os.environ else file_env.get("LENS_ENABLED", "true")
+    raw_lf = os.environ.get("LANGFUSE_ENABLED") if "LANGFUSE_ENABLED" in os.environ else file_env.get("LANGFUSE_ENABLED", "true")
+    raw_be = os.environ.get("BRAINSOS_TELEMETRY_BACKEND") if "BRAINSOS_TELEMETRY_BACKEND" in os.environ else file_env.get("BRAINSOS_TELEMETRY_BACKEND", "dual")
+    lens_flag = (raw_lens or "true").strip().lower() not in disabled
+    lf_flag = (raw_lf or "true").strip().lower() not in disabled
+    backend = (raw_be or "").strip().lower()
+    if backend in {"none", "off", "disabled", "false", "0"}:
+        return False, False
+    if backend == "lens":
+        return lens_flag, False
+    if backend == "langfuse":
+        return False, lf_flag
+    if "," in backend:
+        toks = {t.strip() for t in backend.split(",") if t.strip()}
+        if not toks:
+            return lens_flag, lf_flag
+        if toks <= {"none", "off", "disabled"}:
+            return False, False
+        return (bool(toks & {"lens", "dual", "both", "all"}) and lens_flag), (bool(toks & {"langfuse", "dual", "both", "all"}) and lf_flag)
+    return lens_flag, lf_flag
+
+lens_active, langfuse_active = _resolve_telemetry_backends(env)
+
 egress_port = env.get("TOOL_EGRESS_WEB_PORT", "8081")
 egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "brainsos_tool_egress_secret"
 
@@ -247,7 +272,10 @@ if portal_only:
     print(f"{DIM}  - Operator IDE (VS Code)       https://{domain}/editor/{NC}")
     print(f"{DIM}  - Webmail (SOGo Groupware)     https://{domain}/mail/{NC}")
     print(f"{DIM}  - LiteLLM Admin UI             https://{domain}/proxy/ui{NC}")
-    print(f"{DIM}  - Langfuse Distributed Traces  https://langfuse.{domain}/{NC}")
+    if lens_active:
+        print(f"{DIM}  - LiteLLM Lens (Telemetry)     https://{domain}/proxy/ui/?page=lens{NC}")
+    if langfuse_active:
+        print(f"{DIM}  - Langfuse Distributed Traces  https://langfuse.{domain}/{NC}")
     print(sep_line)
     print("")
 
@@ -270,7 +298,10 @@ else:
     print_row("Operator IDE (VS Code)", f"https://{domain}/editor/", f"http://localhost:{code_port}", "SSO Authentik (AUTH: none)")
     print_row("Webmail & SOGo Groupware", f"https://{domain}/mail/", f"http://localhost:{sogo_port}", f"SSO Authentik (Trusted Proxy)")
     print_row("LiteLLM Proxy Admin UI", f"https://{domain}/proxy/ui", f"http://localhost:{litellm_port}/ui", f"SSO Authentik (Injected Key)")
-    print_row("Langfuse Observability", f"https://langfuse.{domain}/", f"http://localhost:{langfuse_port}", "SSO Authentik (forward-auth)")
+    if lens_active:
+        print_row("LiteLLM Lens (Telemetry)", f"https://{domain}/proxy/ui/?page=lens", f"http://localhost:{litellm_port}/ui/?page=lens", "SSO Authentik (Injected Key)")
+    if langfuse_active:
+        print_row("Langfuse Observability", f"https://langfuse.{domain}/", f"http://localhost:{langfuse_port}", "SSO Authentik (forward-auth)")
     print_row("Tool Egress Proxy (mitm)", f"https://{domain}/efw/", f"http://localhost:{egress_port}", "SSO Authentik (forward-auth)")
     print_row("Hermes Runner WebUI", f"https://{domain}/runner/", "http://localhost:8787", "SSO Authentik (forward-auth)")
     print_row("NVIDIA DGX Telemetry", f"https://{domain}/dgx/", "http://localhost:11001", "(system metrics)")
@@ -309,7 +340,7 @@ else:
         f"mail.{domain}",
         f"proxy.{domain}",
         f"dgx.{domain}",
-        f"langfuse.{domain}",
+        *([f"langfuse.{domain}"] if langfuse_active else []),
         f"efw.{domain}",
         f"firewall.{domain}"
     ]

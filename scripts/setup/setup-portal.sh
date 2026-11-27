@@ -92,9 +92,14 @@ else
     fi
   fi
 
-  log_info "Compiling production static bundle via Vite (Host: ${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}, Version: ${BRAINSOS_VERSION:-v0.1.0-arm64})..."
-  VITE_APPLIANCE_HOST="${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}" \
-  VITE_BRAINSOS_VERSION="${BRAINSOS_VERSION:-v0.1.0-arm64}" \
+  EFFECTIVE_PORTAL_HOST="${BRAINSOS_HOST_NAME:-${BRAINSOS_DOMAIN:-}}"
+  if [ "${EFFECTIVE_PORTAL_HOST}" = "localhost" ] || [ "${EFFECTIVE_PORTAL_HOST}" = "127.0.0.1" ]; then
+    # Never bake 'localhost' into Golden AMI dist/ so runtime window.location.hostname always wins (#382)
+    EFFECTIVE_PORTAL_HOST=""
+  fi
+  log_info "Compiling production static bundle via Vite (Host: ${EFFECTIVE_PORTAL_HOST:-<dynamic runtime host>}, Version: ${BRAINSOS_VERSION:-v0.5.2-arm64})..."
+  VITE_APPLIANCE_HOST="${EFFECTIVE_PORTAL_HOST}" \
+  VITE_BRAINSOS_VERSION="${BRAINSOS_VERSION:-v0.5.2-arm64}" \
   npm run build
 fi
 

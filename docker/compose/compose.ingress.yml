@@ -19,7 +19,7 @@ services:
     volumes:
       - ../../config/caddy:/etc/caddy:ro
       - ../../packages/brainsOS-portal/dist:/srv/portal:ro
-      - caddy_data:/data
+      - ${BRAINSOS_CADDY_DATA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/caddy_data}:/data
       - caddy_config:/config
       - ${HOME}/.aws:/root/.aws:ro
     networks:
@@ -75,7 +75,5 @@ services:
       exec caddy run --config "/etc/caddy/$${CADDYFILE}" --adapter caddyfile'
 
 volumes:
-  caddy_data:
-    name: brainsos_caddy_data
   caddy_config:
     name: brainsos_caddy_config

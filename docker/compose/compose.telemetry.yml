@@ -179,9 +179,9 @@ services:
           - brainsos-langfuse-worker
           - brainsos-telemetry-langfuse-worker
 
-  # ClickHouse OLAP Columnar Store
+  # ClickHouse OLAP Columnar Store (Shared by Langfuse default DB & isolated Lens DB + KeeperMap)
   clickhouse:
-    image: clickhouse/clickhouse-server:25.12
+    image: clickhouse/clickhouse-server:26.2
     container_name: brainsos-telemetry-clickhouse
     restart: unless-stopped
     user: "101:101"
@@ -189,8 +189,10 @@ services:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-clickhouse}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
     volumes:
       - ${LANGFUSE_CLICKHOUSE_DATA_DIR:-${BRAINSOS_TELEMETRY_DIR:-${BRAINSOS_DATA_DIR:-../../data}/telemetry}/clickhouse}:/var/lib/clickhouse
+      - ../../config/clickhouse/lens-keeper.xml:/etc/clickhouse-server/config.d/lens-keeper.xml:ro
     ports:
       - "127.0.0.1:8123:8123"
       - "127.0.0.1:9000:9000"
@@ -206,6 +208,65 @@ services:
       timeout: 5s
       retries: 15
       start_period: 60s
+
+  # LiteLLM Lens Observability Service (Embedded Gateway UI, OTLP Ingestion & Spend Matching)
+  # Rootless (65532:65532), read-only rootfs, isolated ClickHouse database (`lens`) + KeeperMap
+  lens:
+    build:
+      context: ../..
+      dockerfile: docker/lens/Dockerfile
+    image: brainsos-lens:latest
+    container_name: brainsos-telemetry-lens
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=${LENS_TMP_SIZE:-1g}
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${LENS_PORT:-4318}:4318"
+    environment:
+      - LENS_MODE=standalone
+      - LENS_ADMIN_TOKEN=${LENS_ADMIN_TOKEN:-brainsos_lens_admin_token_must_be_at_least_32_chars}
+      - LENS_GATEWAY_URL=${LENS_GATEWAY_URL:-http://litellm:4000}
+      - LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:-brainsos_lens_gateway_secret_must_be_32_chars_min}
+      - LENS_GATEWAY_API_BASE=${LENS_GATEWAY_API_BASE:-http://litellm:4000}
+      - LENS_GATEWAY_API_KEY=${LENS_GATEWAY_API_KEY:-${LITELLM_MASTER_KEY:-sk-brainsos-master}}
+      - LITELLM_LENS_SERVICE_TOKEN=${LITELLM_LENS_SERVICE_TOKEN:-brainsos_lens_service_token_must_be_32_chars_min}
+      - LENS_PUBLIC_URL=https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
+      - LITELLM_LENS_PUBLIC_URL=${LITELLM_LENS_PUBLIC_URL:-https://${BRAINSOS_DOMAIN:-local.brainsos.ai}/lens-ingest}
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_USER=${LENS_CLICKHOUSE_USER:-lens}
+      - CLICKHOUSE_PASSWORD=${LENS_CLICKHOUSE_PASSWORD:-${CLICKHOUSE_PASSWORD:-clickhouse}}
+      - CLICKHOUSE_DATABASE=${LENS_CLICKHOUSE_DB:-lens}
+      - AGENT_TRACING_RETENTION_DAYS=${AGENT_TRACING_RETENTION_DAYS:-14}
+    networks:
+      brainsos-telemetry-net:
+        aliases:
+          - lens
+          - brainsos-lens
+          - brainsos-telemetry-lens
+      brainsos-internal-net:
+        aliases:
+          - lens
+          - brainsos-lens
+          - brainsos-telemetry-lens
+      brainsos-ingress-net:
+        aliases:
+          - lens
+          - brainsos-telemetry-lens
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4318/health/ready" ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
 
   # Redis Queue & Cache
   redis:

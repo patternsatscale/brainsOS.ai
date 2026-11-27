@@ -4,12 +4,9 @@ import importlib.util
 import inspect
 import logging
 import os
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import httpx
-from openai import AsyncOpenAI
 
 from brainsos_runner import (
     AgentTurnRequest,
@@ -18,6 +15,23 @@ from brainsos_runner import (
     ToolCallRecord,
     create_runner_app,
 )
+from openai import AsyncOpenAI
+
+try:
+    from brainsos_telemetry.tracing import OTelTraceDispatcher, mint_traceparent
+except ImportError:  # pragma: no cover - defensive fallback if base image lacks brainsOS-telemetry
+    OTelTraceDispatcher = None  # type: ignore[assignment,misc]
+
+    def mint_traceparent(session_id: str, task_id: str = "", span_id: str | None = None) -> tuple[str, str, str]:
+        import hashlib
+        import secrets
+
+        sid = (session_id or "").strip() or "sessionless"
+        tid = (task_id or session_id or "").strip() or "sessionless"
+        tid_hex = hashlib.sha256(f"{sid}::{tid}".encode("utf-8")).digest()[:16].hex()
+        sp_hex = span_id or secrets.token_hex(8)
+        return f"00-{tid_hex}-{sp_hex}-01", tid_hex, sp_hex
+
 
 logger = logging.getLogger("brainsos.runners.openai")
 logging.basicConfig(level=logging.INFO)
@@ -47,9 +61,52 @@ def _load_dynamic_script(script_path_str: str) -> Any:
     return module
 
 
+def _extract_input_text(request: AgentTurnRequest) -> str:
+    for msg in reversed(request.conversation):
+        if msg.role == "user" and msg.content:
+            return msg.content
+    if request.conversation:
+        return request.conversation[-1].content or ""
+    return ""
+
+
 async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
     """Execute turn using OpenAI SDK against LiteLLM or hot-reloaded script."""
     start_time = time.perf_counter()
+    started_wall = time.time()
+    session_id = str(request.extra_params.get("session_id") or request.run_id)
+    traceparent, trace_id, transport_span_id = mint_traceparent(session_id, request.run_id)
+    input_text = _extract_input_text(request)
+
+    async def _emit_trace(
+        output_txt: str,
+        *,
+        p_tokens: int = 0,
+        c_tokens: int = 0,
+        tools: Optional[List[ToolCallRecord]] = None,
+        err: Optional[str] = None,
+    ) -> None:
+        if OTelTraceDispatcher is None:
+            return
+        try:
+            await OTelTraceDispatcher.from_env().record_runner_turn(
+                agent_id=request.agent_id,
+                session_id=session_id,
+                run_id=request.run_id,
+                model=request.model,
+                input_text=input_text,
+                output_text=output_txt,
+                started_at=started_wall,
+                ended_at=time.time(),
+                prompt_tokens=p_tokens,
+                completion_tokens=c_tokens,
+                trace_id=trace_id,
+                transport_span_id=transport_span_id,
+                tool_calls=[tc.model_dump() for tc in (tools or [])],
+                error=err,
+            )
+        except Exception:
+            pass
 
     client = AsyncOpenAI(
         base_url=LITELLM_BASE_URL,
@@ -58,6 +115,7 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
         default_headers={
             "X-BrainsOS-Agent": request.agent_id,
             "X-BrainsOS-Run-ID": request.run_id,
+            "traceparent": traceparent,
         },
     )
 
@@ -81,9 +139,17 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
                 result = handler_func(request=request, client=client)
 
             if isinstance(result, AgentTurnResponse):
+                await _emit_trace(
+                    result.output_text,
+                    p_tokens=result.metrics.prompt_tokens if result.metrics else 0,
+                    c_tokens=result.metrics.completion_tokens if result.metrics else 0,
+                    tools=list(result.tool_calls or []),
+                    err=result.error_message,
+                )
                 return result
             elif isinstance(result, str):
                 duration_ms = int((time.perf_counter() - start_time) * 1000)
+                await _emit_trace(result)
                 return AgentTurnResponse(
                     run_id=request.run_id,
                     status="completed",
@@ -94,11 +160,13 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
                 raise TypeError(f"Custom script returned unexpected type: {type(result)}")
         except Exception as exc:
             logger.exception("Error executing dynamic script %s: %s", script_path, exc)
+            err_msg = f"Dynamic script execution error: {exc}"
+            await _emit_trace("", err=err_msg)
             return AgentTurnResponse(
                 run_id=request.run_id,
                 status="failed",
                 output_text="",
-                error_message=f"Dynamic script execution error: {exc}",
+                error_message=err_msg,
             )
 
     # 2. Standard OpenAI Function Calling / Completion Loop
@@ -147,14 +215,22 @@ async def handle_openai_turn(request: AgentTurnRequest) -> AgentTurnResponse:
         if os.getenv("RUNNER_MOCK_FALLBACK", "false").lower() == "true":
             output_text = f"Mock OpenAI response for {request.model}"
         else:
+            err_msg = f"OpenAI SDK execution failed: {exc}"
+            await _emit_trace("", err=err_msg)
             return AgentTurnResponse(
                 run_id=request.run_id,
                 status="failed",
                 output_text="",
-                error_message=f"OpenAI SDK execution failed: {exc}",
+                error_message=err_msg,
             )
 
     duration_ms = int((time.perf_counter() - start_time) * 1000)
+    await _emit_trace(
+        output_text,
+        p_tokens=prompt_tokens,
+        c_tokens=completion_tokens,
+        tools=tool_records,
+    )
 
     return AgentTurnResponse(
         run_id=request.run_id,

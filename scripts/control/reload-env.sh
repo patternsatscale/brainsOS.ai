@@ -469,6 +469,14 @@ if [ -z "${BRAINSOS_UNIT_NAME:-}" ]; then
   export BRAINSOS_UNIT_NAME
 fi
 
+# Provision LiteLLM Lens secrets & shared ClickHouse KeeperMap / isolated `lens` DB before compose up (#375)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-lens.sh" ]; then
+  "${REPO_ROOT}/scripts/setup/setup-lens.sh" --pre-up || log_warn "Lens pre-up ClickHouse check encountered a warning."
+  set -a
+  . "${ENV_FILE}"
+  set +a
+fi
+
 # ------------------------------------------------------------------------------
 # 4. Recreate / Update Docker Compose Services
 # ------------------------------------------------------------------------------
@@ -483,7 +491,27 @@ EFFECTIVE_DATA_DIR="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/../data}"
 if [[ "${EFFECTIVE_DATA_DIR}" != /* ]]; then
   EFFECTIVE_DATA_DIR="${REPO_ROOT}/${EFFECTIVE_DATA_DIR#./}"
 fi
-mkdir -p "${EFFECTIVE_DATA_DIR}/control_plane" "${EFFECTIVE_DATA_DIR}/runners/hermes" "${EFFECTIVE_DATA_DIR}/settings"
+mkdir -p \
+  "${EFFECTIVE_DATA_DIR}/control_plane" \
+  "${EFFECTIVE_DATA_DIR}/control_plane/caddy_data" \
+  "${EFFECTIVE_DATA_DIR}/runners/hermes" \
+  "${EFFECTIVE_DATA_DIR}/runners/hermes/state" \
+  "${EFFECTIVE_DATA_DIR}/settings"
+
+# One-time seamless migration of legacy Docker named volumes into ${EFFECTIVE_DATA_DIR} bind mounts (#382)
+if [ -z "$(ls -A "${EFFECTIVE_DATA_DIR}/runners/hermes/state" 2>/dev/null)" ] && docker volume inspect brainsos_hermes_runner_data >/dev/null 2>&1; then
+  log_info "Migrating legacy brainsos_hermes_runner_data volume into ${EFFECTIVE_DATA_DIR}/runners/hermes/state..."
+  docker run --rm -v brainsos_hermes_runner_data:/src:ro -v "${EFFECTIVE_DATA_DIR}/runners/hermes/state:/dst" \
+    --entrypoint sh brainsos-runner-base:latest -c 'cp -a /src/. /dst/ 2>/dev/null || true' || true
+fi
+if [ -z "$(ls -A "${EFFECTIVE_DATA_DIR}/control_plane/caddy_data" 2>/dev/null)" ] && docker volume inspect brainsos_caddy_data >/dev/null 2>&1; then
+  log_info "Migrating legacy brainsos_caddy_data volume into ${EFFECTIVE_DATA_DIR}/control_plane/caddy_data..."
+  docker run --rm -v brainsos_caddy_data:/src:ro -v "${EFFECTIVE_DATA_DIR}/control_plane/caddy_data:/dst" \
+    --entrypoint sh brainsos-runner-base:latest -c 'cp -a /src/. /dst/ 2>/dev/null || true' || true
+fi
+if [ "$(id -u)" -eq 0 ]; then
+  chown 1000:1000 "${EFFECTIVE_DATA_DIR}/runners/hermes/state" 2>/dev/null || true
+fi
 if [ -d "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt" ]; then
   rm -rf "${EFFECTIVE_DATA_DIR}/control_plane/caddy_root.crt"
 fi
@@ -757,6 +785,18 @@ log_info "Step 5/6: Restarting control plane (LiteLLM, Ollama, Langfuse, Queue).
 
 if [ -x "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" ]; then
   "${REPO_ROOT}/scripts/setup/setup-litellm-sso.sh" || true
+fi
+
+# Synchronize LiteLLM Lens tenant-matched tracing key after LiteLLM SSO owner resolution (#375)
+if [ -x "${REPO_ROOT}/scripts/setup/setup-lens.sh" ]; then
+  _PREV_LENS_TRACE_KEY="${LITELLM_TRACING_KEY:-}"
+  "${REPO_ROOT}/scripts/setup/setup-lens.sh" sync || log_warn "LiteLLM Lens tracing key sync encountered a warning."
+  set -a
+  . "${ENV_FILE}"
+  set +a
+  if [ "${_PREV_LENS_TRACE_KEY}" != "${LITELLM_TRACING_KEY:-}" ]; then
+    "${SCRIPT_DIR}/start-control-plane.sh" restart >/dev/null 2>&1 || true
+  fi
 fi
 
 # Synchronize Operator IDE (code-server) with active LiteLLM virtual key

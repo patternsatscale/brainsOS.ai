@@ -9,7 +9,7 @@ PYTEST ?= $(if $(wildcard $(VENV_DIR)/bin/pytest),$(VENV_DIR)/bin/pytest,pytest)
 RUFF ?= $(if $(wildcard $(VENV_DIR)/bin/ruff),$(VENV_DIR)/bin/ruff,ruff)
 MYPY ?= $(if $(wildcard $(VENV_DIR)/bin/mypy),$(VENV_DIR)/bin/mypy,mypy)
 
-.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync update update-check prune-logs build-ami set-domain
+.PHONY: help install setup env urls reload_env reload-env up down stop-all nuke destroy test lint emergency-stop runner-base runners runner-hermes runner-openai runner-claude backup restore email-ingress email-test skills skills-sync build images trust-ca ssl-wildcard deploy-infra models-pull models-check langfuse langfuse-setup langfuse-status langfuse-stop langfuse-sync lens-setup lens-status update update-check prune-logs build-ami set-domain
 
 STAGE ?= $(if $(BRAINSOS_STAGE),$(BRAINSOS_STAGE),osx)
 
@@ -112,6 +112,12 @@ langfuse-stop:
 
 langfuse-sync:
 	@scripts/setup/setup-langfuse.sh sync
+
+lens-setup:
+	@scripts/setup/setup-lens.sh setup
+
+lens-status:
+	@scripts/setup/setup-lens.sh status
 
 install:
 	@scripts/control/install.sh $(ARGS)
