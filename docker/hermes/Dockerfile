@@ -55,7 +55,8 @@ RUN apt-get update -qq && \
     git config --system --add safe.directory /opt/data && \
     git config --system core.askPass "" && \
     usermod -u 10001 hermes && groupmod -g 10001 hermes && \
-    chown -R hermes:hermes /home/hermes
+    mkdir -p /home/hermes && \
+    chown -R hermes:hermes /home/hermes /opt/data
 
 # Install Tool Egress Proxy CA trust & Dashboard reverse-proxy boot hook
 COPY docker/hermes/01-tool-egress-ca /etc/cont-init.d/01-tool-egress-ca
