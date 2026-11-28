@@ -306,6 +306,7 @@ else:
     print_row("Operator IDE (VS Code)", f"https://{domain}/editor/", f"http://localhost:{code_port}", "SSO Authentik (AUTH: none)")
     print_row("Webmail & SOGo Groupware", f"https://{domain}/mail/", f"http://localhost:{sogo_port}", f"SSO Authentik (Trusted Proxy)")
     print_row("LiteLLM Proxy Admin UI", f"https://{domain}/proxy/ui", f"http://localhost:{litellm_port}/ui", f"SSO Authentik (Injected Key)")
+    print_row("External AI Gateway (API)", f"https://api.{domain}/v1", f"http://localhost:{litellm_port}/v1", "Bearer sk-... (virtual key only)")
     if lens_active:
         print_row("LiteLLM Lens (Telemetry)", f"https://{domain}/proxy/ui/?page=lens", f"http://localhost:{litellm_port}/ui/?page=lens", "SSO Authentik (Injected Key)")
     if langfuse_active:
@@ -343,6 +344,7 @@ else:
     # ------------------------------------------------------------------------------
     required_hosts = [
         domain,
+        f"api.{domain}",
         f"editor.{domain}",
         f"code.{domain}",
         f"mail.{domain}",

@@ -236,9 +236,108 @@ import tls_policy.caddy
 }
 
 # ==============================================================================
+# External Programmatic AI Gateway Snippet (Ticket #410)
+# Strictly allowlists OpenAI/Anthropic data-plane inference routes, requires
+# LiteLLM virtual keys (`sk-...`), and blocks LITELLM_MASTER_KEY & admin routes.
+# ==============================================================================
+(litellm_external_virtual_key_gateway) {
+	route {
+		import strip_auth_identity_headers
+		request_header -Cookie
+		request_body {
+			max_size 10MB
+		}
+
+		@ext_allowed_route {
+			method POST
+			path /v1/chat/completions /v1/completions /v1/responses /v1/embeddings /v1/moderations /v1/rerank /v1/messages /v1/audio/* /v1/images/*
+		}
+		@ext_allowed_models {
+			method GET
+			path /v1/models /v1/models/*
+		}
+
+		handle @ext_allowed_route {
+			@m_b1 header Authorization "Bearer {$LITELLM_MASTER_KEY:__unset_master_key__}"
+			@m_x1 header x-api-key "{$LITELLM_MASTER_KEY:__unset_master_key__}"
+			@m_pb1 header_regexp Authorization "^(?i)Bearer\s+sk-master-"
+			@m_px1 header_regexp x-api-key "^sk-master-"
+			@m_novk1 {
+				not header_regexp Authorization "^(?i)Bearer\s+sk-[A-Za-z0-9_.-]{8,}$"
+				not header_regexp x-api-key "^sk-[A-Za-z0-9_.-]{8,}$"
+			}
+			handle @m_b1 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_x1 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_pb1 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_px1 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_novk1 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Missing or invalid LiteLLM virtual key.","type":"auth_error"}}` 401
+			}
+			handle {
+				reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+					flush_interval -1
+				}
+			}
+		}
+
+		handle @ext_allowed_models {
+			@m_b2 header Authorization "Bearer {$LITELLM_MASTER_KEY:__unset_master_key__}"
+			@m_x2 header x-api-key "{$LITELLM_MASTER_KEY:__unset_master_key__}"
+			@m_pb2 header_regexp Authorization "^(?i)Bearer\s+sk-master-"
+			@m_px2 header_regexp x-api-key "^sk-master-"
+			@m_novk2 {
+				not header_regexp Authorization "^(?i)Bearer\s+sk-[A-Za-z0-9_.-]{8,}$"
+				not header_regexp x-api-key "^sk-[A-Za-z0-9_.-]{8,}$"
+			}
+			handle @m_b2 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_x2 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_pb2 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_px2 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Master key prohibited on external API; use a virtual key.","type":"auth_error"}}` 403
+			}
+			handle @m_novk2 {
+				header Content-Type "application/json"
+				respond `{"error":{"message":"Missing or invalid LiteLLM virtual key.","type":"auth_error"}}` 401
+			}
+			handle {
+				reverse_proxy {$LITELLM_UPSTREAM:litellm:4000}
+			}
+		}
+
+		handle {
+			header Content-Type "application/json"
+			respond `{"error":{"message":"Endpoint not exposed on external AI gateway.","type":"forbidden"}}` 403
+		}
+	}
+}
+
+# ==============================================================================
 # Core Ingress Routing Engine
 # Handles:
-#   1. Programmatic API mapping (Host: proxy.* or path /proxy/v1/*)
+#   1. Programmatic AI Gateway (Host: api.*, proxy.*, or path /v1/* — virtual keys only)
 #   2. Mail & Groupware Sync (Host: mail.* or path /mail*)
 #   3. Authentik SSO Gateway & Outposts
 #   4. Authenticated Subsystems (/editor, /efw, /langfuse, /runner, /dgx, /proxy/ui)
@@ -259,17 +358,51 @@ import tls_policy.caddy
 	request_header -X-Real-IP
 
 	# --------------------------------------------------------------------------
-	# PLANE 2: Programmatic LiteLLM API Gateway (Direct Token Auth, No SSO)
-	# Matches any host starting with proxy. (e.g. proxy.local.brainsos.ai) OR direct API paths (/v1/*, /proxy/v1/*).
-	# Preserves caller's Authorization header (Rule 9 tenant virtual keys).
+	# PLANE 2: External Programmatic AI Gateway (api.{host} & /v1/* — Virtual Keys Only)
+	# Strictly allowlists inference endpoints, requires sk-* virtual keys, and
+	# blocks LITELLM_MASTER_KEY + all LiteLLM control-plane/UI/key/config routes.
 	# --------------------------------------------------------------------------
+	@api_host header_regexp Host (?i)^api\.
+	handle @api_host {
+		import litellm_external_virtual_key_gateway
+	}
+
 	@proxy_host header_regexp Host (?i)^proxy\.
 	handle @proxy_host {
-		uri strip_prefix /proxy
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		@proxy_host_outpost path /outpost.goauthentik.io/*
+		handle @proxy_host_outpost {
+			reverse_proxy authentik-server:9000 {
+				header_down Location "^https?://0\.0\.0\.0(:[0-9]+)?(/.*)$" "https://{host}$2"
+			}
+		}
+		@proxy_host_oidc path /sso/* /proxy/sso/* /.well-known/litellm-ui-config /litellm/.well-known/litellm-ui-config /litellm-asset-prefix/*
+		handle @proxy_host_oidc {
+			uri strip_prefix /proxy
+			uri path_regexp ^(/sso/.+?)(?:\.(?:txt|rsc)|/)$ $1
+			reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
+		}
+		@proxy_host_v1 {
+			path /v1/* /proxy/v1/*
+			not path /v1/sys/* /v1/auth/* /v1/secret/* /v1/identity/* /v1/cubbyhole/*
+		}
+		handle @proxy_host_v1 {
+			uri strip_prefix /proxy
+			import litellm_external_virtual_key_gateway
+		}
+		handle {
+			route {
+				import authentik_admin_forward_auth
+				uri strip_prefix /proxy
+				reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+					header_down -x-frame-options
+					header_down -content-security-policy
+					flush_interval -1
+				}
+			}
 		}
 	}
 
@@ -279,8 +412,33 @@ import tls_policy.caddy
 	}
 	handle @proxy_api_path {
 		uri strip_prefix /proxy
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			flush_interval -1
+		@single_origin_vkey_or_master {
+			header_regexp Authorization "^(?i)Bearer\s+sk-"
+		}
+		@single_origin_xapikey {
+			header_regexp x-api-key "^sk-"
+		}
+		@single_origin_master_exact_b header Authorization "Bearer {$LITELLM_MASTER_KEY:__unset_master_key__}"
+		@single_origin_master_exact_x header x-api-key "{$LITELLM_MASTER_KEY:__unset_master_key__}"
+		handle @single_origin_vkey_or_master {
+			import litellm_external_virtual_key_gateway
+		}
+		handle @single_origin_xapikey {
+			import litellm_external_virtual_key_gateway
+		}
+		handle @single_origin_master_exact_b {
+			import litellm_external_virtual_key_gateway
+		}
+		handle @single_origin_master_exact_x {
+			import litellm_external_virtual_key_gateway
+		}
+		handle {
+			route {
+				import authentik_admin_forward_auth
+				reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+					flush_interval -1
+				}
+			}
 		}
 	}
 
@@ -571,13 +729,21 @@ import tls_policy.caddy
 
 	# D. Subsystem 3: Control Plane Admin UI (LiteLLM Admin Console)
 	@proxy_ui_defaults path /proxy /proxy/ /proxy/ui /proxy/ui/ /ui
-	redir @proxy_ui_defaults /sso/key/generate 302
+	handle @proxy_ui_defaults {
+		route {
+			import authentik_admin_forward_auth
+			redir * /sso/key/generate 302
+		}
+	}
 	handle /proxy/ui/* {
-		uri strip_prefix /proxy
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		route {
+			import authentik_admin_forward_auth
+			uri strip_prefix /proxy
+			reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
 		}
 	}
 	@litellm_ui {
@@ -585,18 +751,21 @@ import tls_policy.caddy
 		not path /ui/vault /ui/vault/* /ui/assets/* /ui/engines-dist/* /ui/sw* /ui/favicon.svg /ui/opensearch.xml
 	}
 	handle @litellm_ui {
-		@ui_entry_needs_sso {
-			method GET
-			path /ui/
-			not query login=success
-			not query page=*
-			not header_regexp Referer /ui/
-		}
-		redir @ui_entry_needs_sso /sso/key/generate 302
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		route {
+			import authentik_admin_forward_auth
+			@ui_entry_needs_sso {
+				method GET
+				path /ui/
+				not query login=success
+				not query page=*
+				not header_regexp Referer /ui/
+			}
+			redir @ui_entry_needs_sso /sso/key/generate 302
+			reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
 		}
 	}
 	handle /sso/* {
@@ -758,10 +927,13 @@ import tls_policy.caddy
 		not path /v1/sys/* /v1/auth/* /v1/secret/* /v1/identity/* /v1/cubbyhole/*
 	}
 	handle @litellm_api {
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		route {
+			import authentik_admin_forward_auth
+			reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
 		}
 	}
 	@litellm_proxy_fallback {
@@ -769,11 +941,14 @@ import tls_policy.caddy
 		not path /proxy/ /proxy/v1/* /proxy/ui /proxy/ui/* /proxy/sso/* /proxy/.well-known/litellm-ui-config /proxy/litellm/.well-known/litellm-ui-config
 	}
 	handle @litellm_proxy_fallback {
-		uri strip_prefix /proxy
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		route {
+			import authentik_admin_forward_auth
+			uri strip_prefix /proxy
+			reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
 		}
 	}
 

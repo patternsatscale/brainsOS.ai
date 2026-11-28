@@ -169,13 +169,22 @@ def sync_route53_record(
     force: bool = False,
     dry_run: bool = False,
     owner_secret: Optional[str] = None,
+    sync_api_subdomain: Optional[bool] = None,
 ) -> dict[str, Any]:
-    """Synchronize A (+ keyed HMAC TXT ownership) record in Route 53."""
+    """Synchronize A (+ keyed HMAC TXT ownership) records for <fqdn> and api.<fqdn> in Route 53."""
     fqdn, clean_ip, clean_zone = validate_inputs(domain, ip, zone_id)
     clean_instance = (instance_id or "").strip()
+    if sync_api_subdomain is None:
+        sync_api_subdomain = os.environ.get("BRAINSOS_ROUTE53_SYNC_API", "true").strip().lower() not in (
+            "false",
+            "0",
+            "no",
+            "off",
+        )
+    api_fqdn = f"api.{fqdn}" if (sync_api_subdomain and not fqdn.startswith("api.")) else ""
 
     if dry_run:
-        return {
+        res_dry: dict[str, Any] = {
             "status": "dry_run",
             "changed": False,
             "domain": fqdn,
@@ -184,6 +193,9 @@ def sync_route53_record(
             "instance_id": clean_instance,
             "ttl": ttl,
         }
+        if api_fqdn:
+            res_dry["api_domain"] = api_fqdn
+        return res_dry
 
     if not clean_zone:
         clean_zone = discover_zone_id(route53_client, fqdn)
@@ -202,8 +214,47 @@ def sync_route53_record(
                 "Refusing to overwrite without --force / BRAINSOS_ROUTE53_FORCE=true."
             )
 
-    if list_ok and existing_ip == clean_ip and existing_claim and hmac.compare_digest(existing_claim, expected_claim):
-        return {
+    api_expected_claim = ""
+    api_existing_ip: Optional[str] = None
+    api_existing_claim: Optional[str] = None
+    api_list_ok = False
+    if api_fqdn:
+        api_expected_claim = compute_owner_claim(
+            api_fqdn, clean_zone, clean_instance, owner_secret=owner_secret
+        )
+        api_existing_ip, api_existing_claim, api_list_ok = inspect_existing_records(
+            route53_client, clean_zone, api_fqdn
+        )
+        if api_list_ok and not force and api_existing_claim:
+            if not (
+                hmac.compare_digest(api_existing_claim, api_expected_claim)
+                or hmac.compare_digest(api_existing_claim, expected_claim)
+            ):
+                raise PermissionError(
+                    f"DNS record {api_fqdn!r} is already owned by EC2 instance claim {api_existing_claim!r}. "
+                    "Refusing to overwrite without --force / BRAINSOS_ROUTE53_FORCE=true."
+                )
+
+    primary_unchanged = bool(
+        list_ok
+        and existing_ip == clean_ip
+        and existing_claim
+        and hmac.compare_digest(existing_claim, expected_claim)
+    )
+    api_unchanged = (
+        not api_fqdn
+        or (
+            api_list_ok
+            and api_existing_ip == clean_ip
+            and api_existing_claim is not None
+            and (
+                hmac.compare_digest(api_existing_claim, api_expected_claim)
+                or hmac.compare_digest(api_existing_claim, expected_claim)
+            )
+        )
+    )
+    if primary_unchanged and api_unchanged:
+        res_unchanged: dict[str, Any] = {
             "status": "unchanged",
             "changed": False,
             "domain": fqdn,
@@ -213,6 +264,9 @@ def sync_route53_record(
             "owner_claim": expected_claim,
             "ttl": ttl,
         }
+        if api_fqdn:
+            res_unchanged["api_domain"] = api_fqdn
+        return res_unchanged
 
     changes: list[dict[str, Any]] = [
         {
@@ -234,6 +288,29 @@ def sync_route53_record(
             },
         },
     ]
+    if api_fqdn:
+        changes.extend(
+            [
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": api_fqdn,
+                        "Type": "A",
+                        "TTL": int(ttl),
+                        "ResourceRecords": [{"Value": clean_ip}],
+                    },
+                },
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": f"_brainsos-owner.{api_fqdn}",
+                        "Type": "TXT",
+                        "TTL": int(ttl),
+                        "ResourceRecords": [{"Value": f'"owner-sha256={api_expected_claim}"'}],
+                    },
+                },
+            ]
+        )
 
     resp = route53_client.change_resource_record_sets(
         HostedZoneId=clean_zone,
@@ -243,7 +320,7 @@ def sync_route53_record(
         },
     )
     change_id = (resp.get("ChangeInfo") or {}).get("Id", "")
-    return {
+    res_updated: dict[str, Any] = {
         "status": "updated",
         "changed": True,
         "domain": fqdn,
@@ -255,6 +332,9 @@ def sync_route53_record(
         "ttl": ttl,
         "change_id": change_id,
     }
+    if api_fqdn:
+        res_updated["api_domain"] = api_fqdn
+    return res_updated
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -271,6 +351,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Override TXT ownership lock if owned by a different BRAINSOS_DDNS_OWNER_SECRET",
     )
     parser.add_argument("--dry-run", action="store_true", help="Validate inputs without calling Route 53")
+    parser.add_argument(
+        "--no-api-subdomain",
+        action="store_true",
+        help="Skip synchronizing the companion api.<fqdn> record",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON result")
     args = parser.parse_args(argv)
 
@@ -290,6 +375,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             ttl=args.ttl,
             force=args.force,
             dry_run=args.dry_run,
+            sync_api_subdomain=(False if args.no_api_subdomain else None),
         )
         if args.json:
             print(json.dumps(result))

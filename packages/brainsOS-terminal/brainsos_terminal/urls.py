@@ -43,11 +43,10 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
     code_pass = env.get("CODE_SERVER_PASSWORD") or admin_pass or "(unset)"
 
     litellm_port = env.get("LITELLM_PORT", "4000")
-    litellm_key = (
+    litellm_vkey = (
         env.get("OPENAI_API_KEY")
         or env.get("OPERATOR_LITELLM_KEY")
-        or env.get("LITELLM_MASTER_KEY")
-        or "(unset)"
+        or "(virtual key sk-...)"
     )
 
     sogo_port = env.get("SOGO_PORT", "20000")
@@ -87,9 +86,9 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
         },
         {
             "name": "LiteLLM Proxy Admin UI",
-            "public_url": f"https://proxy.{domain}/ui",
+            "public_url": f"https://{domain}/proxy/ui",
             "local_url": f"http://localhost:{litellm_port}/ui",
-            "auth": f"key: {litellm_key}",
+            "auth": "SSO Authentik (authentik Admins)",
         },
     ]
 
@@ -99,7 +98,7 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
                 "name": "LiteLLM Lens (Telemetry)",
                 "public_url": f"https://{domain}/proxy/ui/?page=lens",
                 "local_url": f"http://localhost:{litellm_port}/ui/?page=lens",
-                "auth": f"key: {litellm_key}",
+                "auth": "SSO Authentik (authentik Admins)",
             }
         )
 
@@ -123,9 +122,9 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
             },
             {
                 "name": "LiteLLM OpenAI Gateway",
-                "public_url": "http://litellm:4000/v1",
+                "public_url": f"https://api.{domain}/v1",
                 "local_url": f"http://localhost:{litellm_port}/v1",
-                "auth": f"Bearer {litellm_key}",
+                "auth": f"Bearer {litellm_vkey}",
             },
             {
                 "name": "Hermes Dynamic Runner",
