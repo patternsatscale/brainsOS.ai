@@ -106,11 +106,11 @@ snapshot_scan() {
     done < <(find "${root}/data" -type f ! -name ".gitkeep" -print 2>/dev/null | head -n 20)
   fi
 
-  # 4. No generated master keys (sk-brainsos-<32 hex>) anywhere in the tree
+  # 4. No generated master keys (sk-brainsos-<32 hex> or sk-master-<32 hex>) anywhere in the tree
   while IFS= read -r f; do
     log_error "SCAN: generated LiteLLM master key material found in: ${f}"
     findings=$((findings + 1))
-  done < <(grep -rIlE "sk-brainsos-[0-9a-f]{32}" --exclude-dir=node_modules "${root}" 2>/dev/null || true)
+  done < <(grep -rIlE "sk-(brainsos|master)-[0-9a-f]{32}" --exclude-dir=node_modules "${root}" 2>/dev/null || true)
 
   # 5. No SSH keys, AWS credentials or shell/python histories in home directories
   if [ -n "${home_root}" ]; then

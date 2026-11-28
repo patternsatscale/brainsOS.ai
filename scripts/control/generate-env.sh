@@ -298,7 +298,7 @@ def is_placeholder(val):
         "authentik_bootstrap", "brainsos_authentik", "sogo_secret_pass",
         "sogo_db_password", "admin_mail_pass", "operator_mail_pass",
         "admin_pass", "litellm_password", "litellm_db_password",
-        "sk-brainsos-mock-key", "sk-brainsos-master-key",
+        "sk-brainsos-mock-key", "sk-master-brainsos-mock-key", "sk-brainsos-master-key",
         "brainsos_langfuse_secret", "brainsos_langfuse_salt",
         "brainsos_langfuse_nextauth", "miniosecret", "myredissecret",
         "brainsos_lens_", "lens_clickhouse_password"
@@ -342,7 +342,7 @@ def gen_alphanumeric(n=24):
 # Secret generation definitions
 secret_generators = {
     "BRAINSOS_ADMIN_PASSWORD": lambda: gen_alphanumeric(24),
-    "LITELLM_MASTER_KEY": lambda: f"sk-brainsos-{gen_hex(16)}",
+    "LITELLM_MASTER_KEY": lambda: f"sk-master-{gen_hex(16)}",
     "LITELLM_DB_PASSWORD": lambda: gen_hex(20),
     "SOGO_DB_PASSWORD": lambda: gen_hex(20),
     "AUTHENTIK_SECRET_KEY": lambda: gen_hex(32),

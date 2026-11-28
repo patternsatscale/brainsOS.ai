@@ -782,7 +782,7 @@ execute_fleet_launch() {
   local roster_md="${out_prefix}.md"
   local roster_csv="${out_prefix}.csv"
 
-  printf "participant,url,instance_id,fqdn,fleet_id\n" > "${roster_csv}"
+  printf "participant,url,instance_id,fqdn,fleet_id,api_url\n" > "${roster_csv}"
   {
     echo "### 🎉 brainsOS Participant Handoff Roster (\`${FLEET_ID}\`)"
     echo ""
@@ -853,10 +853,15 @@ print(json.dumps([{"ResourceType": "instance", "Tags": [{"Key": k, "Value": v} f
     )
 
     inst_id="$(aws ec2 run-instances "${run_args[@]}")"
-    log_success "Launched ${name} -> https://${fqdn} (${inst_id})"
+    log_success "Launched ${name} -> https://${fqdn} (API: https://api.${fqdn}/v1) (${inst_id})"
     echo "| ${name} | https://${fqdn} | \`${inst_id}\` |" >> "${roster_md}"
-    printf '"%s","https://%s","%s","%s","%s"\n' "${name}" "${fqdn}" "${inst_id}" "${fqdn}" "${FLEET_ID}" >> "${roster_csv}"
+    printf '"%s","https://%s","%s","%s","%s","https://api.%s/v1"\n' "${name}" "${fqdn}" "${inst_id}" "${fqdn}" "${FLEET_ID}" "${fqdn}" >> "${roster_csv}"
   done
+
+  {
+    echo ""
+    echo "> **External AI Gateway**: \`https://api.<participant>.${BASE_DOMAIN}/v1\` (LiteLLM virtual keys \`sk-...\` only)"
+  } >> "${roster_md}"
 
   echo ""
   cat "${roster_md}"
