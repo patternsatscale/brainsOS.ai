@@ -255,3 +255,50 @@ exit 0
     curl_calls = curl_log.read_text(encoding="utf-8")
     assert "/key/delete" in curl_calls and "sk-alice-test" in curl_calls
 
+
+def test_dockerfiles_pin_base_digests_packages_and_scoped_safe_directory() -> None:
+    """Verify Dockerfiles pin multi-arch base digests, exact Go/Python versions, and scoped Git safe.directory (#408)."""
+    import re
+
+    for rel in (
+        "docker/caddy/Dockerfile",
+        "docker/hermes/Dockerfile",
+        "docker/runners/base/Dockerfile",
+        "docker/mail/Dockerfile",
+        "docker/mail/Dockerfile.ingress",
+        "docker/sogo/Dockerfile",
+    ):
+        txt = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        from_lines = [ln.strip() for ln in txt.splitlines() if ln.strip().startswith("FROM ")]
+        assert from_lines, f"No FROM lines in {rel}"
+        for ln in from_lines:
+            assert re.search(r"@sha256:[0-9a-f]{64}\b", ln), f"Unpinned FROM in {rel}: {ln}"
+
+    caddy_df = (REPO_ROOT / "docker/caddy/Dockerfile").read_text(encoding="utf-8")
+    assert "github.com/caddy-dns/route53@v1.6.3" in caddy_df
+
+    hermes_df = (REPO_ROOT / "docker/hermes/Dockerfile").read_text(encoding="utf-8")
+    assert '"langfuse==5.1.0"' in hermes_df
+    assert "safe.directory '*'" not in hermes_df
+    for d in ("/workspace", "/data", "/opt/data"):
+        assert f"git config --system --add safe.directory {d}" in hermes_df
+
+    base_df = (REPO_ROOT / "docker/runners/base/Dockerfile").read_text(encoding="utf-8")
+    assert '"uvicorn==0.54.0"' in base_df
+    assert "safe.directory '*'" not in base_df
+    for d in ("/workspace", "/data", "/opt/data"):
+        assert f"git config --system --add safe.directory {d}" in base_df
+
+    claude_df = (REPO_ROOT / "docker/runners/claude-sdk/Dockerfile").read_text(encoding="utf-8")
+    for pkg in ('"anthropic==1.13.0"', '"boto3==1.43.112"', '"mcp==2.3.0"', '"httpx==0.28.1"'):
+        assert pkg in claude_df
+
+    openai_df = (REPO_ROOT / "docker/runners/openai-sdk/Dockerfile").read_text(encoding="utf-8")
+    for pkg in ('"openai==3.29.0"', '"mcp==2.3.0"', '"httpx==0.28.1"'):
+        assert pkg in openai_df
+
+    runner_hermes_df = (REPO_ROOT / "docker/runners/hermes/Dockerfile").read_text(encoding="utf-8")
+    for pkg in ('"openai==3.26.0"', '"httpx==0.28.1"', '"pyyaml==6.0.3"'):
+        assert pkg in runner_hermes_df
+
+

@@ -149,7 +149,7 @@ Agents must never violate the following zero-trust operational boundaries:
 
 ### Rule 2: Inference Boundary
 - Raw inference engines (`ollama:11434` or vLLM) run natively on the host system, bound strictly to loopback (`127.0.0.1:11434`), and are completely unreachable from external networks.
-- The agent plane (`hermes`) running inside Docker must **never** be routed directly to Ollama. All LLM completions must route strictly through the host LiteLLM control plane gateway (`http://host.docker.internal:4000/v1`).
+- `brainsos-control-litellm` (`litellm`) attaches strictly to `brainsos-control-net` and `brainsos-ingress-net` (detached from `brainsos-sandbox-net` and `brainsos-internal-net`). The agent plane (`hermes` and ephemeral sandboxes on `brainsos-sandbox-net`) must **never** be routed directly to Ollama or attach to `brainsos-control-net`; all agent LLM completions and write-only OTLP telemetry route strictly through the zero-secret, read-only L7 `sandbox-gateway` (`litellm:4000` OpenAI-compatible inference allowlist and `lens:4318` `POST /v1/traces` / `POST /v1/logs`, returning `403` on all admin/UI/SSO/key/model/config endpoints).
 
 ### Rule 3: Hardware Serialization
 - To protect the unified LPDDR5x memory bus on the GB10 chip and Apple Silicon from bandwidth thrashing, LiteLLM must enforce serialized request scheduling via `max_parallel_requests: 1` (or `2` max).
@@ -170,7 +170,7 @@ Agents must never violate the following zero-trust operational boundaries:
 ### Rule 7: Information Compartmentalization in Agent Context
 - Persona documents (`SOUL.md`), agent prompts, and runtime configurations provided to the agent plane (`hermes`) must observe strict need-to-know principles.
 - **NEVER** disclose host backend infrastructure names (e.g. `Ollama`, `brainsos-control-litellm-db`), host daemon internals, host socket paths, or internal database architectures in agent-facing prompts or identity files.
-- The agent must be instructed exclusively on its assigned interfaces (e.g. its OpenAI-compatible completions endpoint `http://litellm:4000/v1`), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
+- The agent must be instructed exclusively on its assigned L7 `sandbox-gateway` interfaces (`http://litellm:4000/v1` for OpenAI-compatible completions and `http://lens:4318/v1/{traces,logs}` for write-only OTLP telemetry, with zero admin/UI/key access), its sandbox storage root (`/workspace`), and its pure Markdown memory path (`/memories`).
 
 ### Rule 8: Script-Driven Discipline (Zero Ad-Hoc Container/Host Patching)
 - **Zero Ad-Hoc Fixes**: AI agents and developers must **never** "fix" system issues, container states, volumes, networks, or file permissions using direct, one-off ad-hoc terminal commands (e.g. manual `docker exec`, `docker cp`, ad-hoc container restarts, manual host `chown`/`chmod` overrides) that leave no reproducible trace in the repository.

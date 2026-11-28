@@ -491,16 +491,10 @@ if [ -n "${LOCAL_DOMAIN}" ] || [ -n "${ADMIN_USERNAME}" ] || [ -n "${SUPERUSER_N
   )
 fi
 
-# Preserve EC2 Instance ID for the hardcoded 'admin' / 'akadmin' bootstrap account (#332)
+# Detect EC2 Instance ID strictly to verify passwords NEVER reuse it (#405 HIGH-3)
 DETECTED_INSTANCE_ID=""
 if [ -f "${ENV_FILE}" ]; then
-  DETECTED_INSTANCE_ID="$(grep -E '^BRAINSOS_INSTANCE_ID=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
-  if [ -z "${DETECTED_INSTANCE_ID}" ]; then
-    DETECTED_INSTANCE_ID="$(grep -E '^BRAINSOS_INSTANCE_ADMIN_PASSWORD=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
-  fi
-  if [ -z "${DETECTED_INSTANCE_ID}" ]; then
-    DETECTED_INSTANCE_ID="$(grep -E '^AUTHENTIK_BOOTSTRAP_PASSWORD=' "${ENV_FILE}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
-  fi
+  DETECTED_INSTANCE_ID="$(grep -E '^BRAINSOS_INSTANCE_ID=' "${ENV_FILE}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
 fi
 if [ -z "${DETECTED_INSTANCE_ID}" ] && [ "${DRY_RUN}" != true ] && command -v curl >/dev/null 2>&1; then
   _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
@@ -509,17 +503,48 @@ if [ -z "${DETECTED_INSTANCE_ID}" ] && [ "${DRY_RUN}" != true ] && command -v cu
   fi
 fi
 
+_gen_rand_secret24() {
+  python3 -c 'import secrets; print(secrets.token_hex(24))' 2>/dev/null || openssl rand -hex 24
+}
+
+EXISTING_BG_PASS=""
+EXISTING_AK_PASS=""
+if [ -f "${ENV_FILE}" ]; then
+  EXISTING_BG_PASS="$(grep -E '^BRAINSOS_INSTANCE_ADMIN_PASSWORD=' "${ENV_FILE}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+  EXISTING_AK_PASS="$(grep -E '^AUTHENTIK_BOOTSTRAP_PASSWORD=' "${ENV_FILE}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+fi
+
+NEW_BG_SECRET="${BRAINSOS_NEW_BREAKGLASS_SECRET:-}"
+if [ -n "${NEW_BG_SECRET}" ] && [ "${NEW_BG_SECRET}" != "${DETECTED_INSTANCE_ID}" ]; then
+  ENV_CHANGES+=("BRAINSOS_INSTANCE_ADMIN_PASSWORD=${NEW_BG_SECRET}")
+fi
+
 if [ -n "${ADMIN_PASSWORD}" ]; then
-  INSTANCE_BOOTSTRAP_PASS="${DETECTED_INSTANCE_ID:-${ADMIN_PASSWORD}}"
+  if [ -n "${NEW_BG_SECRET}" ] && [ "${NEW_BG_SECRET}" != "${DETECTED_INSTANCE_ID}" ]; then
+    INSTANCE_BOOTSTRAP_PASS="${NEW_BG_SECRET}"
+  elif [ -n "${EXISTING_BG_PASS}" ] && [ "${#EXISTING_BG_PASS}" -ge 16 ] && [ "${EXISTING_BG_PASS}" != "${DETECTED_INSTANCE_ID}" ]; then
+    INSTANCE_BOOTSTRAP_PASS="${EXISTING_BG_PASS}"
+  else
+    INSTANCE_BOOTSTRAP_PASS="$(_gen_rand_secret24)"
+  fi
+
+  if [ -n "${EXISTING_AK_PASS}" ] && [ "${#EXISTING_AK_PASS}" -ge 16 ] && [ "${EXISTING_AK_PASS}" != "${DETECTED_INSTANCE_ID}" ]; then
+    AK_BOOTSTRAP_PASS="${EXISTING_AK_PASS}"
+  else
+    AK_BOOTSTRAP_PASS="$(_gen_rand_secret24)"
+  fi
+
   ENV_CHANGES+=(
     "BRAINSOS_SUPERUSER_PASSWORD=${ADMIN_PASSWORD}"
     "BRAINSOS_ADMIN_PASSWORD=${ADMIN_PASSWORD}"
     "BRAINSOS_INSTANCE_ADMIN_PASSWORD=${INSTANCE_BOOTSTRAP_PASS}"
-    "AUTHENTIK_BOOTSTRAP_PASSWORD=${INSTANCE_BOOTSTRAP_PASS}"
+    "AUTHENTIK_BOOTSTRAP_PASSWORD=${AK_BOOTSTRAP_PASS}"
     "ADMIN_MAIL_PASSWORD=${ADMIN_PASSWORD}"
     "OPERATOR_MAIL_PASSWORD=${ADMIN_PASSWORD}"
     "LANGFUSE_INIT_USER_PASSWORD=${ADMIN_PASSWORD}"
   )
+elif [ -n "${EXISTING_AK_PASS}" ] && [ -n "${DETECTED_INSTANCE_ID}" ] && [ "${EXISTING_AK_PASS}" = "${DETECTED_INSTANCE_ID}" ]; then
+  ENV_CHANGES+=("AUTHENTIK_BOOTSTRAP_PASSWORD=$(_gen_rand_secret24)")
 fi
 
 if [ "${TLS_MODE}" = "route53" ]; then
@@ -634,7 +659,6 @@ sync_linux_admin_accounts() {
     fi
   fi
 
-  local inst_pass="${DETECTED_INSTANCE_ID:-}"
   local su_user="${EFFECTIVE_ADMIN_USER:-}"
   local su_pass="${ADMIN_PASSWORD:-}"
 
@@ -642,17 +666,8 @@ sync_linux_admin_accounts() {
     ${sudo_prefix} useradd -m -s /bin/bash admin 2>/dev/null || true
   fi
   ${sudo_prefix} usermod -aG sudo,docker admin 2>/dev/null || ${sudo_prefix} usermod -aG sudo admin 2>/dev/null || true
-  if [ "${EFFECTIVE_BREAKGLASS:-true}" = "false" ]; then
-    if command -v passwd >/dev/null 2>&1; then
-      ${sudo_prefix} passwd -l admin 2>/dev/null || true
-    fi
-  else
-    if command -v passwd >/dev/null 2>&1; then
-      ${sudo_prefix} passwd -u admin 2>/dev/null || true
-    fi
-    if [ -n "${inst_pass}" ] && command -v chpasswd >/dev/null 2>&1; then
-      printf 'admin:%s\n' "${inst_pass}" | ${sudo_prefix} chpasswd 2>/dev/null || true
-    fi
+  if command -v passwd >/dev/null 2>&1; then
+    ${sudo_prefix} passwd -l admin 2>/dev/null || true
   fi
   if [ -d /home/admin ]; then
     grep -q "cd ${REPO_ROOT}" /home/admin/.bashrc 2>/dev/null || printf '\ncd %s 2>/dev/null || true\n' "${REPO_ROOT}" | ${sudo_prefix} tee -a /home/admin/.bashrc >/dev/null 2>&1 || true

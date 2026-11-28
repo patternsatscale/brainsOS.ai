@@ -62,7 +62,37 @@ fi
 # Test 3: Docker Compose appliance overlay configuration validation
 # ------------------------------------------------------------------------------
 log_info "3. Validating Docker Compose appliance overlay configuration..."
-COMPOSE_CONFIG="$(docker compose -f docker-compose.yml -f docker/compose/compose.appliance.yml config)"
+TMP_COMPOSE_ENV=""
+TMP_OPENBAO_CA=""
+cleanup_tmp_files() {
+  if [ -n "${TMP_COMPOSE_ENV}" ] && [ -f "${TMP_COMPOSE_ENV}" ]; then
+    rm -f "${TMP_COMPOSE_ENV}"
+  fi
+  if [ -n "${TMP_OPENBAO_CA}" ] && [ -f "${TMP_OPENBAO_CA}" ]; then
+    rm -f "${TMP_OPENBAO_CA}"
+  fi
+}
+trap cleanup_tmp_files EXIT
+
+COMPOSE_ENV_ARGS=()
+if [ ! -f "${REPO_ROOT}/.env" ] && [ -f "${REPO_ROOT}/.env.example" ]; then
+  TMP_COMPOSE_ENV="$(mktemp)"
+  while IFS= read -r _line || [ -n "${_line}" ]; do
+    case "${_line}" in
+      ""|\#*) continue ;;
+      *=*)
+        _k="${_line%%=*}"
+        _v="${_line#*=}"
+        _k="${_k#"${_k%%[![:space:]]*}"}"
+        _k="${_k%"${_k##*[![:space:]]}"}"
+        [ -z "${_v}" ] && _v="verify-dummy-${_k}"
+        printf '%s=%s\n' "${_k}" "${_v}" >> "${TMP_COMPOSE_ENV}"
+        ;;
+    esac
+  done < "${REPO_ROOT}/.env.example"
+  COMPOSE_ENV_ARGS=("--env-file" "${TMP_COMPOSE_ENV}")
+fi
+COMPOSE_CONFIG="$(docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f docker-compose.yml -f docker/compose/compose.appliance.yml config)"
 log_success "Docker compose config successfully merged base and appliance overlay."
 
 log_info "Checking published ports in merged compose configuration..."
@@ -101,26 +131,19 @@ log_success "Port lockdown verified: Zero internal services expose host ports in
 # Test 4: Caddyfile & Caddyfile.appliance Syntax Validation
 # ------------------------------------------------------------------------------
 OPENBAO_CA_HOST="${BRAINSOS_OPENBAO_TLS_DIR:-${BRAINSOS_CONTROL_PLANE_DIR:-${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/control_plane}/openbao_tls}/ca.crt"
-TMP_OPENBAO_CA=""
-cleanup_tmp_ca() {
-  if [ -n "${TMP_OPENBAO_CA}" ] && [ -f "${TMP_OPENBAO_CA}" ]; then
-    rm -f "${TMP_OPENBAO_CA}"
-  fi
-}
-trap cleanup_tmp_ca EXIT
 
 if [ ! -s "${OPENBAO_CA_HOST}" ]; then
-  TMP_OPENBAO_CA="$(mktemp /tmp/brainsos-openbao-ca.XXXXXX.crt)"
+  TMP_OPENBAO_CA="$(mktemp "${TMPDIR:-/tmp}/brainsos-openbao-ca.XXXXXX")"
   openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out "${TMP_OPENBAO_CA}" \
     -days 1 -subj "/CN=brainsos-openbao-validate" >/dev/null 2>&1
   OPENBAO_CA_HOST="${TMP_OPENBAO_CA}"
 fi
 
 log_info "4. Validating Caddyfile and Caddyfile.appliance syntax..."
-if docker compose ps --services --filter "status=running" | grep -qw caddy && docker compose exec -T caddy test -f /etc/ssl/openbao/ca.crt 2>/dev/null; then
+if docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" ps --services --filter "status=running" | grep -qw caddy && docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" exec -T caddy test -f /etc/ssl/openbao/ca.crt 2>/dev/null; then
   # Validate using running caddy container
-  docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-  docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile.appliance --adapter caddyfile
+  docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" exec -T caddy caddy validate --config /etc/caddy/Caddyfile.appliance --adapter caddyfile
   log_success "Caddyfile & Caddyfile.appliance validated successfully inside running caddy container."
 else
   # Validate using standalone caddy container with OpenBao CA mounted

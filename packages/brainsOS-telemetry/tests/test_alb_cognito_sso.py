@@ -739,10 +739,22 @@ def test_breakglass_auto_disabled_on_wizard_and_cognito_unless_explicitly_reenab
         assert cog_res.status_code == 200
         assert "BRAINSOS_BREAKGLASS_ENABLED=false" in (tmp_path / ".env").read_text(encoding="utf-8")
 
-        # 3. Admin explicitly re-enables breakglass -> subsequent Cognito update preserves breakglass=true
-        bg_on = client.post(
+        # 3. Admin explicitly re-enables breakglass with custom high-entropy secret -> subsequent Cognito update preserves breakglass=true
+        bg_bad = client.post(
             "/api/v1/system/security/breakglass",
             json={"enabled": True, "apply_now": False},
+            headers=admin_headers,
+        )
+        assert bg_bad.status_code == 400
+        bg_iid = client.post(
+            "/api/v1/system/security/breakglass",
+            json={"enabled": True, "admin_secret": "i-01112223334445556", "apply_now": False},
+            headers=admin_headers,
+        )
+        assert bg_iid.status_code == 400
+        bg_on = client.post(
+            "/api/v1/system/security/breakglass",
+            json={"enabled": True, "admin_secret": "CustomBreakGlassSecret99!@", "apply_now": False},
             headers=admin_headers,
         )
         assert bg_on.status_code == 200
@@ -891,10 +903,16 @@ def test_is_valid_https_issuer_and_endpoints_reject_malformed_urls_without_500(t
 
 
 def test_compose_ingress_forwards_auth_alb_trusted_cidrs():
-    """Verify docker/compose/compose.ingress.yml forwards AUTH_ALB_TRUSTED_CIDRS with RFC1918 defaults."""
+    """Verify docker/compose/compose.ingress.yml forwards AUTH_ALB_TRUSTED_CIDRS excluding Docker 172.28.0.0/16."""
+    import ipaddress
+
     compose_ingress = (REPO_ROOT / "docker/compose/compose.ingress.yml").read_text(encoding="utf-8")
-    assert "AUTH_ALB_TRUSTED_CIDRS=${AUTH_ALB_TRUSTED_CIDRS:-10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}" in (
-        compose_ingress
-    )
+    expected_cidrs = "10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16"
+    assert f"AUTH_ALB_TRUSTED_CIDRS=${{AUTH_ALB_TRUSTED_CIDRS:-{expected_cidrs}}}" in compose_ingress
+    nets = [ipaddress.ip_network(c) for c in expected_cidrs.split()]
+    assert not any(ipaddress.ip_address("172.28.0.10") in n for n in nets)
+    assert not any(ipaddress.ip_address("172.28.8.10") in n for n in nets)
+    assert any(ipaddress.ip_address("172.31.10.5") in n for n in nets)
+
 
 

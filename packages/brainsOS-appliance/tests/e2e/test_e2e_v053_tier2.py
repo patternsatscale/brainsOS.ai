@@ -313,7 +313,7 @@ def test_f4_b4_admin_can_explicitly_reenable_breakglass_post_wizard(isolated_rep
     )
     res = bundle["client"].post(
         "/api/v1/system/security/breakglass",
-        json={"enabled": True, "apply_now": False},
+        json={"enabled": True, "admin_secret": "Tier2BreakGlassSecret99!@", "apply_now": False},
         headers=bundle["admin_headers"],
     )
     assert res.status_code == 200
@@ -340,6 +340,7 @@ def test_f4_b5_setup_explicit_breakglass_true_preserved_when_admin_requests(isol
             "superuser_password": "StrongPassword!99",
             "tls_mode": "internal",
             "breakglass_enabled": True,
+            "breakglass_secret": "Tier2SetupBreakGlass99!@",
         },
         headers=bundle["admin_headers"],
     )

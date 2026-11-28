@@ -13,8 +13,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 def test_mail_and_sogo_configs_hash_passwords_and_lock_postfix_and_signal() -> None:
     dovecot_conf = (REPO_ROOT / "docker/mail/dovecot/dovecot.conf").read_text(encoding="utf-8")
+    dovecot_active = "\n".join(
+        ln for ln in dovecot_conf.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+    )
     assert "MAIL_WEBHOOK_SECRET" in dovecot_conf
-    assert "allow_nets=172.16.0.0/12" not in dovecot_conf
+    assert "allow_nets=172.16.0.0/12" not in dovecot_active
+    assert "172.16.0.0/12" not in dovecot_active
+    assert "disable_plaintext_auth = yes" in dovecot_active
+    assert "login_trusted_networks = 127.0.0.0/8 ::1/128 172.28.1.0/24 172.28.5.0/24" in dovecot_active
+    assert "mail_debug = no" in dovecot_active
+    assert "mail_debug = yes" not in dovecot_active
     assert "!include_try /etc/mail-brainsos/sogo-proxy-passdb.conf" in dovecot_conf
     assert "scheme=SHA512-CRYPT" in dovecot_conf
 

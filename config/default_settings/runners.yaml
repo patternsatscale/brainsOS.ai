@@ -38,6 +38,7 @@ runners:
     type: "ephemeral_docker"
     image: "brainsos-runner-hermes:latest"
     command: ["python3", "/app/server.py"]
+    network: "brainsos-sandbox-net"
     timeout_sec: 300
     concurrency_limit: 4
     memory_limit: "2g"
@@ -48,6 +49,7 @@ runners:
     type: "ephemeral_docker"
     image: "brainsos-runner-openai:latest"
     command: ["python3", "/app/server.py"]
+    network: "brainsos-sandbox-net"
     timeout_sec: 300
     concurrency_limit: 4
     memory_limit: "2g"
@@ -58,6 +60,7 @@ runners:
     type: "ephemeral_docker"
     image: "brainsos-runner-claude:latest"
     command: ["python3", "/app/server.py"]
+    network: "brainsos-sandbox-net"
     timeout_sec: 300
     concurrency_limit: 4
     memory_limit: "2g"
@@ -67,6 +70,7 @@ runners:
     name: "OpenHands Ephemeral Docker Sandbox"
     type: "ephemeral_docker"
     image: "brainsos-openhands-sandbox:latest"
+    network: "brainsos-sandbox-net"
     timeout_sec: 300
     concurrency_limit: 2
     memory_limit: "2g"

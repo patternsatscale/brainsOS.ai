@@ -61,7 +61,7 @@ PROXY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(agent-|
 AGENT_CONTAINER="brainsos-agent-terrastella"
 CADDY_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(ingress-|net-)?caddy$' | head -n 1 || echo 'brainsos-ingress-caddy')"
 WEB_PORT="${TOOL_EGRESS_WEB_PORT:-8081}"
-WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_tool_egress_secret}}"
+WEB_PASSWORD="${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:?TOOL_EGRESS_WEB_PASSWORD or BRAINSOS_ADMIN_PASSWORD must be set}}"
 BRAINSOS_DOMAIN="${BRAINSOS_DOMAIN:-brainsos.local}"
 
 log_info "================================================================="

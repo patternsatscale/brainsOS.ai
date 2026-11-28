@@ -15,14 +15,14 @@ adduser -D -u 5000 -G vmail -h /var/mail/vmail vmail 2>/dev/null || true
 addgroup dovecot vmail 2>/dev/null || true
 addgroup postfix vmail 2>/dev/null || true
 
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}"
-TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
-BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
-MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
-PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
-CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
-GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:?ADMIN_MAIL_PASSWORD must be set}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:?OPERATOR_MAIL_PASSWORD must be set}"
+TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:?TERRASTELLA_MAIL_PASSWORD must be set}"
+BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:?BAWTFORD_MAIL_PASSWORD must be set}"
+MARVIN_PASS="${MARVIN_MAIL_PASSWORD:?MARVIN_MAIL_PASSWORD must be set}"
+PING_PASS="${PING_MAIL_PASSWORD:?PING_MAIL_PASSWORD must be set}"
+CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:?CLAUDE_MAIL_PASSWORD must be set}"
+GPT_PASS="${GPT_MAIL_PASSWORD:?GPT_MAIL_PASSWORD must be set}"
 
 # Collect and deduplicate domains
 ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"

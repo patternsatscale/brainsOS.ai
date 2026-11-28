@@ -109,6 +109,19 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
+    import socket as _socket
+
+    monkeypatch.delenv("TOOL_EGRESS_REQUIRE_PROXY_AUTH", raising=False)
+    monkeypatch.delenv("TOOL_EGRESS_PROXY_SECRET", raising=False)
+    monkeypatch.delenv("TOOL_EGRESS_PROXY_TOKENS", raising=False)
+
+    def _fake_getaddrinfo(host, port, *args, **kwargs):
+        if host in ("api.firecrawl.dev", "api.tavily.com", "api.github.com", "github.com"):
+            return [(_socket.AF_INET, _socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
+        raise _socket.gaierror(f"offline test DNS blocked for {host}")
+
+    monkeypatch.setattr(_socket, "getaddrinfo", _fake_getaddrinfo)
+
     # SSRF checks
     assert mod.is_blocked_destination("169.254.169.254") is not None
     assert mod.is_blocked_destination("fd00:ec2::254") is not None
@@ -117,6 +130,8 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     assert mod.is_blocked_destination("172.18.0.4") is not None
     assert mod.is_blocked_destination("localhost") is not None
     assert mod.is_blocked_destination("1.1.1.1") is None
+    # DNS OSError fails closed (#406 INFO-2)
+    assert mod.is_blocked_destination("nxdomain.invalid.local") is not None
 
     addon = mod.OpenBaoEgressAddon()
     addon._secrets_cache = {"FIRECRAWL_API_KEY": "fc-vault-secret"}
@@ -171,7 +186,7 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     addon.request(http_flow)
     assert http_flow.response.status_code == 403
 
-    # http_connect, server_connect, and post-connect peername SSRF blocks
+    # http_connect, server_connect, server_connected, and post-connect peername SSRF blocks
     assert mod.is_blocked_destination("100.64.0.1") is not None
     assert mod.is_blocked_destination("::ffff:169.254.169.254") is not None
     assert mod.is_blocked_destination("fd12::1") is not None
@@ -186,6 +201,11 @@ def test_egress_addon_ssrf_sni_and_openbao_injection(monkeypatch):
     hook_data = SimpleNamespace(server=srv_obj, kill=lambda: killed.append(True))
     addon.server_connect(hook_data)
     assert srv_obj.error is not None and killed == [True]
+
+    killed_post = []
+    srv_post = SimpleNamespace(peername=("169.254.170.2", 443), address=("api.firecrawl.dev", 443), sni="api.firecrawl.dev", error=None)
+    addon.server_connected(SimpleNamespace(server=srv_post, kill=lambda: killed_post.append(True)))
+    assert srv_post.error is not None and killed_post == [True]
 
     peer_ssrf = make_flow("api.firecrawl.dev", peername=("127.0.0.1", 443))
     addon.request(peer_ssrf)
@@ -609,13 +629,24 @@ def test_egress_addon_v2_signed_token_repo_allowlist_and_explicit_empty_tenant_e
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
+    import socket as _socket
+
+    def _fake_gh_dns(host, port, *args, **kwargs):
+        if host in ("api.github.com", "github.com"):
+            return [(_socket.AF_INET, _socket.SOCK_STREAM, 6, "", ("140.82.113.4", 443))]
+        raise _socket.gaierror(f"offline test DNS blocked for {host}")
+
+    monkeypatch.setattr(_socket, "getaddrinfo", _fake_gh_dns)
+
     secret = "egress-hmac-secret-test"
     monkeypatch.setenv("TOOL_EGRESS_PROXY_SECRET", secret)
     monkeypatch.delenv("TOOL_EGRESS_PROXY_TOKENS", raising=False)
     monkeypatch.setenv("GITHUB_ALLOWED_REPOS", "org/bawtford-repo")
 
-    def _mint_v2(tenant: str, repos: list[str]) -> str:
-        payload = {"t": tenant, "exp": int(time.time()) + 300, "repos": repos}
+    def _mint_v2(tenant: str, repos: list[str] | None) -> str:
+        payload: dict[str, object] = {"t": tenant, "exp": int(time.time()) + 300}
+        if repos is not None:
+            payload["repos"] = repos
         b64 = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()).decode().rstrip("=")
         sig = hmac.new(secret.encode(), f"v2.{b64}".encode(), hashlib.sha256).hexdigest()
         return f"v2.{b64}.{sig}"
@@ -684,4 +715,23 @@ def test_egress_addon_v2_signed_token_repo_allowlist_and_explicit_empty_tenant_e
     alice_req = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", None, alice_conn)
     addon.request(alice_req)
     assert alice_req.response is not None and alice_req.response.status_code == 403
+
+    # 5. Unset GITHUB_ALLOWED_REPOS with repos omitted fails closed (403) (#406 HIGH-2)
+    monkeypatch.delenv("GITHUB_ALLOWED_REPOS", raising=False)
+    dave_tok = _mint_v2("dave", None)
+    dave_conn = SimpleNamespace(peername=("172.28.1.54", 40004))
+    addon.http_connect(_make_gh_flow("api.github.com", "/", f"Bearer {dave_tok}", dave_conn))
+    dave_req = _make_gh_flow("api.github.com", "/repos/org/bawtford-repo/issues", None, dave_conn)
+    addon.request(dave_req)
+    assert dave_req.response is not None and dave_req.response.status_code == 403
+
+    # 6. Explicit "*" wildcard allows GitHub access while still blocking traversal
+    monkeypatch.setenv("GITHUB_ALLOWED_REPOS", "*")
+    star_req = _make_gh_flow("api.github.com", "/repos/any/repo/issues", None, dave_conn)
+    addon.request(star_req)
+    assert star_req.response is None
+    trav_req = _make_gh_flow("api.github.com", "/repos/any/../../evil", None, dave_conn)
+    addon.request(trav_req)
+    assert trav_req.response is not None and trav_req.response.status_code == 403
+
 

@@ -175,20 +175,39 @@ def test_update_version_targeting_dry_run():
     assert "Would unset LITELLM_IMAGE_TAG in .env to restore default image tag" in proc.stdout
 
 
-def test_appliance_compose_overlay_port_lockdown_with_update():
+def test_appliance_compose_overlay_port_lockdown_with_update(tmp_path: Path):
     """Regression test (Audit #12): With appliance overlay, update.sh never exposes internal ports."""
+    if shutil.which("docker") is None:
+        pytest.skip("docker not on PATH")
     env = os.environ.copy()
     env["COMPOSE_FILE"] = f"{REPO_ROOT}/docker-compose.yml:{REPO_ROOT}/docker/compose/compose.appliance.yml"
+    cmd = ["docker", "compose"]
+    if not (REPO_ROOT / ".env").exists():
+        env_lines = []
+        for raw in (REPO_ROOT / ".env.example").read_text(encoding="utf-8").splitlines():
+            s = raw.strip()
+            if not s or s.startswith("#") or "=" not in raw:
+                continue
+            k, v = raw.split("=", 1)
+            k = k.strip()
+            v = v.strip()
+            if not v:
+                v = f"ci-dummy-{k.lower()}"
+            env_lines.append(f"{k}={v}")
+        tmp_env = tmp_path / "compose.env"
+        tmp_env.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+        cmd.extend(["--env-file", str(tmp_env)])
+    cmd.extend(["config", "--format", "json"])
 
     proc = subprocess.run(
-        ["docker", "compose", "config", "--format", "json"],
+        cmd,
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
         env=env,
     )
-    assert proc.returncode == 0
+    assert proc.returncode == 0, proc.stderr
     cfg = json.loads(proc.stdout)
     services = cfg.get("services", {})
 

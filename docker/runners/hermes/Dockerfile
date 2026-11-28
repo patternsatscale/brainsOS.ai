@@ -7,7 +7,7 @@
 FROM brainsos-runner-base:latest
 
 USER root
-RUN uv pip install --system "openai>=1.50.0" "httpx>=0.25.0" "pyyaml>=6.0.1"
+RUN uv pip install --system "openai==3.26.0" "httpx==0.28.1" "pyyaml==6.0.3"
 
 COPY --chown=10001:10001 docker/runners/hermes/server.py /app/server.py
 COPY --chown=10001:10001 docker/runners/hermes/webui.py /app/webui.py

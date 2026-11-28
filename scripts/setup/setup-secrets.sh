@@ -264,7 +264,7 @@ sync_openbao_oidc() {
   local eff_dom
   eff_dom="$(printf '%s' "${raw_url}" | sed -E 's|^https?://||; s|/.*$||; s|:[0-9]+$||')"
   [ -n "${eff_dom}" ] || eff_dom="local.brainsos.ai"
-  local oidc_client_secret="${AUTH_OPENBAO_CLIENT_SECRET:-brainsos_openbao_secret}"
+  local oidc_client_secret="${AUTH_OPENBAO_CLIENT_SECRET:?AUTH_OPENBAO_CLIENT_SECRET must be set}"
   local discovery_url="https://${eff_dom}/application/o/openbao-vault/"
   local redirect_uris="https://${eff_dom}/ui/vault/auth/oidc/oidc/callback,https://secrets.${eff_dom}/ui/vault/auth/oidc/oidc/callback,https://local.brainsos.ai/ui/vault/auth/oidc/oidc/callback,http://localhost:8200/ui/vault/auth/oidc/oidc/callback"
 

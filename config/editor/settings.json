@@ -42,7 +42,7 @@
     "gemma4-MOE": "toolCalling"
   },
   "security.workspace.trust.enabled": true,
-  "http.proxyStrictSSL": false,
+  "http.proxyStrictSSL": true,
   "telemetry.telemetryLevel": "off",
   "workbench.startupEditor": "none",
   "workbench.editor.restoreViewState": true,

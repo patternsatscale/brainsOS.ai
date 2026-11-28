@@ -196,13 +196,14 @@ services:
       - "127.0.0.1:${TOOL_EGRESS_WEB_PORT:-8081}:8081"
     environment:
       - PYTHONUNBUFFERED=1
-      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}
+      - TOOL_EGRESS_WEB_PASSWORD=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:?BRAINSOS_ADMIN_PASSWORD or TOOL_EGRESS_WEB_PASSWORD must be set}}
       - OPENBAO_ADDR=${OPENBAO_ADDR:-https://openbao:8200}
       - OPENBAO_CACERT=${OPENBAO_CACERT:-/etc/ssl/openbao/ca.crt}
       - OPENBAO_APPROLE_ENV=/run/secrets/openbao/egress-approle.env
       - OPENBAO_ROLE_ID=${OPENBAO_ROLE_ID:-}
       - OPENBAO_SECRET_ID=${OPENBAO_SECRET_ID:-}
       - TOOL_EGRESS_ALLOWED_CONTAINERS=${TOOL_EGRESS_ALLOWED_CONTAINERS:-runner-hermes,runner-openai,runner-claude}
+      - TOOL_EGRESS_REQUIRE_PROXY_AUTH=${TOOL_EGRESS_REQUIRE_PROXY_AUTH:-true}
       - TOOL_EGRESS_PROXY_TOKENS=${TOOL_EGRESS_PROXY_TOKENS:-}
       - TOOL_EGRESS_PROXY_SECRET=${TOOL_EGRESS_PROXY_SECRET:-}
       - GITHUB_ALLOWED_REPOS=${GITHUB_ALLOWED_REPOS:-}
@@ -212,7 +213,7 @@ services:
       - EXA_API_KEY=${EXA_API_KEY:-}
       - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
     command: >
-      mitmweb --web-host 0.0.0.0 --web-port 8081 --listen-port 8082 --set block_global=false --set web_password=${TOOL_EGRESS_WEB_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}} --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
+      mitmweb --web-host ${TOOL_EGRESS_WEB_HOST:-172.28.0.18} --web-port 8081 --listen-host 0.0.0.0 --listen-port 8082 --set block_global=false --no-web-open-browser -s /addons/theme_loader.py -s /addons/github_auth.py
     volumes:
       - tool_egress_proxy_data:/home/mitmproxy/.mitmproxy
       - ../../config/egress/addons:/addons:ro
@@ -224,7 +225,6 @@ services:
         ipv4_address: ${TOOL_EGRESS_SECRETS_IP:-172.28.4.10}
       brainsos-internal-net:
         ipv4_address: ${TOOL_EGRESS_INTERNAL_IP:-172.28.1.2}
-        gw_priority: 100
         aliases:
           - brainsos-net-egress-proxy
           - brainsos-tool-egress-proxy
@@ -232,6 +232,13 @@ services:
           - tool-egress-proxy
           - efw
           - firewall
+      brainsos-sandbox-net:
+        ipv4_address: ${TOOL_EGRESS_SANDBOX_IP:-172.28.8.2}
+        aliases:
+          - brainsos-net-egress-proxy
+          - brainsos-tool-egress-proxy
+          - brainsos-agent-egress-proxy
+          - tool-egress-proxy
 
   # Inbound Email Ingress Daemon (AWS SQS/S3 -> Postfix)
   mail-ingress:
@@ -272,7 +279,7 @@ services:
       - LOCAL_SMTP_HOST=mail
       - LOCAL_SMTP_PORT=25
       - LOCAL_SMTP_USERNAME=${LOCAL_SMTP_USERNAME:-admin@${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
-      - LOCAL_SMTP_PASSWORD=${LOCAL_SMTP_PASSWORD:-${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}}
+      - LOCAL_SMTP_PASSWORD=${LOCAL_SMTP_PASSWORD:-${ADMIN_MAIL_PASSWORD:?ADMIN_MAIL_PASSWORD or LOCAL_SMTP_PASSWORD must be set}}
       - INGRESS_POLL_WAIT_SECONDS=${INGRESS_POLL_WAIT_SECONDS:-20}
       - INGRESS_MAX_MESSAGES=${INGRESS_MAX_MESSAGES:-5}
     logging: *default-logging

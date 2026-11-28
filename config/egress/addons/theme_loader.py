@@ -12,9 +12,24 @@ logger = logging.getLogger("brainsos-egress-theme-loader")
 
 
 class ThemeLoaderAddon:
-    """Mitmproxy addon responsible for injecting the brainsOS theme into mitmweb."""
+    """Mitmproxy addon responsible for loading runtime config & injecting the brainsOS theme into mitmweb."""
 
     def load(self, loader) -> None:
+        cfg_path = "/run/mitmproxy/config.yaml"
+        if os.path.isfile(cfg_path):
+            try:
+                from mitmproxy import ctx, optmanager
+
+                if "web_password" in ctx.options:
+                    optmanager.load_paths(ctx.options, cfg_path)
+                    logger.info("[CONFIG-LOAD] Loaded mitmweb runtime configuration from %s", cfg_path)
+                else:
+                    logger.info(
+                        "[CONFIG-LOAD] mitmweb 'web_password' option unsupported in this mitmproxy build; relying on ingress-net/Caddy RBAC."
+                    )
+            except Exception as exc:
+                logger.warning("[CONFIG-WARN] Failed to load %s: %s", cfg_path, exc)
+
         try:
             import mitmproxy.tools.web
 

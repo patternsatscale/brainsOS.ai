@@ -63,8 +63,8 @@ def test_compose_control_bumps_litellm_1_109_1_and_wires_lens() -> None:
     assert "LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-true}" in env_joined
     assert "LITELLM_LENS_URL=${LITELLM_LENS_URL:-http://lens:4318}" in env_joined
     assert "LITELLM_LENS_PUBLIC_URL=" in env_joined
-    assert "LITELLM_LENS_SERVICE_TOKEN=${LITELLM_LENS_SERVICE_TOKEN:-" in env_joined
-    assert "LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:-" in env_joined
+    assert "LITELLM_LENS_SERVICE_TOKEN=${LITELLM_LENS_SERVICE_TOKEN:?" in env_joined
+    assert "LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:?" in env_joined
 
 
 def test_compose_appliance_resets_lens_ports() -> None:

@@ -113,6 +113,33 @@ networks:
           gateway: ${BRAINSOS_TELEMETRY_GATEWAY:-172.28.7.1}
           ip_range: ${BRAINSOS_TELEMETRY_IP_RANGE:-172.28.7.128/25}
 
+  # 6. Isolated ephemeral agent sandbox network (internal: true — zero direct WAN/LAN egress)
+  brainsos-sandbox-net:
+    name: brainsos-sandbox-net
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: ${BRAINSOS_SANDBOX_BRIDGE:-br-sandbox}
+    ipam:
+      config:
+        - subnet: ${BRAINSOS_SANDBOX_SUBNET:-172.28.8.0/24}
+          gateway: ${BRAINSOS_SANDBOX_GATEWAY:-172.28.8.1}
+          ip_range: ${BRAINSOS_SANDBOX_IP_RANGE:-172.28.8.128/25}
+
+# ==============================================================================
+# Ingress-Only Web Binding Override for tool-egress-proxy (mitmweb:8081)
+# Defined here so docker/compose/compose.agents.yml remains detached from brainsos-ingress-net
+# ==============================================================================
+services:
+  tool-egress-proxy:
+    networks:
+      brainsos-ingress-net:
+        ipv4_address: ${TOOL_EGRESS_INGRESS_IP:-172.28.0.18}
+        gw_priority: 100
+        aliases:
+          - tool-egress-web
+          - brainsos-tool-egress-web
+
 # ==============================================================================
 # Ephemeral Per-VM Named Volumes (All persistent user/tenant state lives under ${BRAINSOS_DATA_DIR})
 # ==============================================================================

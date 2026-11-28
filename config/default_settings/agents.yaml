@@ -53,6 +53,7 @@ agents:
       http_proxy: "http://brainsos-net-egress-proxy:8082"
       https_proxy: "http://brainsos-net-egress-proxy:8082"
       no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+      github_allowed_repos: []
 
     # Cross-Cutting: Observability & Evaluation
     observability:
@@ -104,6 +105,7 @@ agents:
       http_proxy: "http://brainsos-net-egress-proxy:8082"
       https_proxy: "http://brainsos-net-egress-proxy:8082"
       no_proxy: "localhost,127.0.0.1,host.docker.internal,proxy.local,litellm,brainsos-litellm-db,brainsos-infra-litellm-db,mail-server,brainsos-mail-server,brainsos-net-mail-server,.brainsos.local,*.brainsos.local,brainsos.local,.brainsos.internal,*.brainsos.internal,brainsos.internal"
+      github_allowed_repos: []
 
     # Cross-Cutting: Observability & Evaluation
     observability:

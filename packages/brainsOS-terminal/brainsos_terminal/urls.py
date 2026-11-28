@@ -40,16 +40,18 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
     caddy_http = env.get("CADDY_HTTP_PORT", "80")
     code_port = env.get("CODE_SERVER_PORT", "8443")
     code_user = env.get("OPERATOR_USER", "operator")
-    code_pass = env.get("CODE_SERVER_PASSWORD") or admin_pass or "brainsos_operator_secret"
+    code_pass = env.get("CODE_SERVER_PASSWORD") or admin_pass or "(unset)"
 
     litellm_port = env.get("LITELLM_PORT", "4000")
-    litellm_key = env.get(
-        "OPENAI_API_KEY",
-        env.get("OPERATOR_LITELLM_KEY", env.get("LITELLM_MASTER_KEY", "sk-brainsos-master-key")),
+    litellm_key = (
+        env.get("OPENAI_API_KEY")
+        or env.get("OPERATOR_LITELLM_KEY")
+        or env.get("LITELLM_MASTER_KEY")
+        or "(unset)"
     )
 
     sogo_port = env.get("SOGO_PORT", "20000")
-    admin_mail_pass = env.get("ADMIN_MAIL_PASSWORD") or admin_pass or "admin_mail_pass"
+    admin_mail_pass = env.get("ADMIN_MAIL_PASSWORD") or "(unset)"
 
     hermes_runner_port = env.get("HERMES_RUNNER_PORT", "8642")
     openai_runner_port = env.get("OPENAI_RUNNER_PORT", "8002")
@@ -57,10 +59,10 @@ def get_service_directory(env: Optional[Dict[str, str]] = None) -> List[Dict[str
 
     langfuse_port = env.get("LANGFUSE_PORT", "3001")
     langfuse_user = env.get("LANGFUSE_INIT_USER_EMAIL") or env.get("BRAINSOS_ADMIN_EMAIL") or f"admin@{domain}"
-    langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD") or admin_pass or "brainsos_admin_secret"
+    langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD") or admin_pass or "(unset)"
 
     egress_port = env.get("TOOL_EGRESS_WEB_PORT", "8081")
-    egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "brainsos_tool_egress_secret"
+    egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "(unset)"
 
     lens_active, langfuse_active = _resolve_telemetry_backends(env)
 

@@ -142,24 +142,24 @@ caddy_http = env.get("CADDY_HTTP_PORT", "80")
 caddy_https = env.get("CADDY_HTTPS_PORT", "443")
 code_port = env.get("CODE_SERVER_PORT", "8443")
 code_user = env.get("OPERATOR_USER", "operator")
-code_pass = env.get("CODE_SERVER_PASSWORD") or admin_pass or "brainsos_operator_secret"
+code_pass = env.get("CODE_SERVER_PASSWORD") or admin_pass or "(unset)"
 
 litellm_port = env.get("LITELLM_PORT", "4000")
-litellm_key = env.get("LITELLM_MASTER_KEY", "sk-brainsos-master-key")
+litellm_key = env.get("LITELLM_MASTER_KEY") or "(unset)"
 litellm_db_user = env.get("LITELLM_DB_USER", "litellm")
-litellm_db_pass = env.get("LITELLM_DB_PASSWORD", "litellm_password")
+litellm_db_pass = env.get("LITELLM_DB_PASSWORD") or "(unset)"
 litellm_db_port = env.get("LITELLM_DB_PORT", "5432")
 
 sogo_port = env.get("SOGO_PORT", "20000")
 mail_smtp_port = env.get("MAIL_SMTP_PORT", "10025")
 mail_imap_port = env.get("MAIL_IMAP_PORT", "10143")
 
-admin_mail_pass = env.get("ADMIN_MAIL_PASSWORD") or admin_pass or "admin_mail_pass"
-op_mail_pass = env.get("OPERATOR_MAIL_PASSWORD") or admin_pass or "operator_mail_pass"
-terra_mail_pass = env.get("TERRASTELLA_MAIL_PASSWORD", "terrastella_mail_pass")
-marvin_mail_pass = env.get("MARVIN_MAIL_PASSWORD", "marvin_mail_pass")
-bawt_mail_pass = env.get("BAWTFORD_MAIL_PASSWORD", "bawtford_mail_pass")
-ping_mail_pass = env.get("PING_MAIL_PASSWORD", "ping_mail_pass")
+admin_mail_pass = env.get("ADMIN_MAIL_PASSWORD") or "(unset)"
+op_mail_pass = env.get("OPERATOR_MAIL_PASSWORD") or "(unset)"
+terra_mail_pass = env.get("TERRASTELLA_MAIL_PASSWORD") or "(unset)"
+marvin_mail_pass = env.get("MARVIN_MAIL_PASSWORD") or "(unset)"
+bawt_mail_pass = env.get("BAWTFORD_MAIL_PASSWORD") or "(unset)"
+ping_mail_pass = env.get("PING_MAIL_PASSWORD") or "(unset)"
 
 hermes_runner_port = env.get("HERMES_RUNNER_PORT", "8642")
 openai_runner_port = env.get("OPENAI_RUNNER_PORT", "8002")
@@ -167,7 +167,7 @@ agent_queue_port = env.get("AGENT_QUEUE_PORT", "8000")
 
 langfuse_port = env.get("LANGFUSE_PORT", "3001")
 langfuse_user = env.get("LANGFUSE_INIT_USER_EMAIL") or env.get("BRAINSOS_ADMIN_EMAIL") or f"admin@{domain}"
-langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD") or admin_pass or "brainsos_admin_secret"
+langfuse_pass = env.get("LANGFUSE_INIT_USER_PASSWORD") or admin_pass or "(unset)"
 
 def _resolve_telemetry_backends(file_env):
     disabled = {"false", "0", "no", "off", "disabled"}
@@ -195,7 +195,7 @@ def _resolve_telemetry_backends(file_env):
 lens_active, langfuse_active = _resolve_telemetry_backends(env)
 
 egress_port = env.get("TOOL_EGRESS_WEB_PORT", "8081")
-egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "brainsos_tool_egress_secret"
+egress_pass = env.get("TOOL_EGRESS_WEB_PASSWORD") or admin_pass or "(unset)"
 
 def mask(val):
     if not val:

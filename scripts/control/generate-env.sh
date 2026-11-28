@@ -255,6 +255,7 @@ import base64
 import os
 import re
 import secrets
+import shlex
 import sys
 import tempfile
 
@@ -292,7 +293,7 @@ def is_placeholder(val):
         "change_me", "change-me", "changeme",
         "mock-key", "mock_key", "secret_pass",
         "brainsos_admin_secret", "brainsos_operator_secret",
-        "brainsos_tool_egress_secret", "authentik_db_secret",
+        "brainsos_tool_egress_secret", "tool_egress_proxy_secret", "authentik_db_secret",
         "authentik_db_password", "authentik_secret",
         "authentik_bootstrap", "brainsos_authentik", "sogo_secret_pass",
         "sogo_db_password", "admin_mail_pass", "operator_mail_pass",
@@ -304,9 +305,32 @@ def is_placeholder(val):
     ]
     if any(p in val_lower for p in placeholder_fragments):
         return True
+    if val_lower == "clickhouse":
+        return True
     if "change" in val_lower:
         return True
     return False
+
+SAFE_ENV_VAL_RE = re.compile(r"^[A-Za-z0-9_./:@,+=%-]*$")
+
+def unquote_env(val):
+    v = val.strip()
+    if len(v) >= 2 and v[0] in ("'", '"') and v[-1] in ("'", '"'):
+        try:
+            parts = shlex.split(v, posix=True)
+            if len(parts) == 1:
+                return parts[0]
+        except ValueError:
+            pass
+    while len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        v = v[1:-1]
+    return v
+
+def quote_env(val):
+    v = unquote_env(val)
+    if SAFE_ENV_VAL_RE.fullmatch(v):
+        return v
+    return "'" + v.replace("'", "'\"'\"'") + "'"
 
 def gen_hex(n=16):
     return secrets.token_hex(n)
@@ -337,6 +361,8 @@ secret_generators = {
     "MARVIN_LITELLM_KEY": lambda: f"sk-virt-marvin-{gen_hex(16)}",
     "BAWTFORD_LITELLM_KEY": lambda: f"sk-virt-bawt-{gen_hex(16)}",
     "OPERATOR_LITELLM_KEY": lambda: f"sk-virt-operator-{gen_hex(16)}",
+    "ADMIN_MAIL_PASSWORD": lambda: gen_hex(16),
+    "OPERATOR_MAIL_PASSWORD": lambda: gen_hex(16),
     "TERRASTELLA_MAIL_PASSWORD": lambda: gen_hex(16),
     "BAWTFORD_MAIL_PASSWORD": lambda: gen_hex(16),
     "MARVIN_MAIL_PASSWORD": lambda: gen_hex(16),
@@ -349,6 +375,7 @@ secret_generators = {
     "LANGFUSE_DB_PASSWORD": lambda: gen_hex(16),
     "REDIS_AUTH": lambda: gen_hex(16),
     "MINIO_ROOT_PASSWORD": lambda: gen_hex(16),
+    "CLICKHOUSE_PASSWORD": lambda: gen_hex(20),
     "LANGFUSE_PUBLIC_KEY": lambda: f"pk-lf-{gen_hex(16)}",
     "LANGFUSE_SECRET_KEY": lambda: f"sk-lf-{gen_hex(16)}",
     "LENS_CLICKHOUSE_PASSWORD": lambda: gen_hex(20),
@@ -360,14 +387,15 @@ secret_generators = {
     "GITEA_SECRET_KEY": lambda: gen_hex(32),
     "GITEA_INTERNAL_TOKEN": lambda: gen_hex(32),
     "BRAINSOS_DDNS_OWNER_SECRET": lambda: gen_hex(32),
+    "TOOL_EGRESS_PROXY_SECRET": lambda: gen_hex(32),
 }
 
 generated_secrets = {}
 for key, gen_fn in secret_generators.items():
-    current_val = current_vars.get(key, "")
+    current_val = unquote_env(current_vars.get(key, ""))
     invalid_ddns_secret = (
         key == "BRAINSOS_DDNS_OWNER_SECRET"
-        and not re.fullmatch(r"[0-9a-fA-F]{64}", current_val.strip().strip('"').strip("'"))
+        and not re.fullmatch(r"[0-9a-fA-F]{64}", current_val)
     )
     if force_passwords or is_placeholder(current_val) or invalid_ddns_secret:
         generated_secrets[key] = gen_fn()
@@ -375,9 +403,9 @@ for key, gen_fn in secret_generators.items():
         generated_secrets[key] = current_val
 
 # Sync dependent values
-db_user = current_vars.get("LITELLM_DB_USER", "litellm")
-db_port = current_vars.get("LITELLM_DB_PORT", "5432")
-db_name = current_vars.get("LITELLM_DB_NAME", "litellm")
+db_user = unquote_env(current_vars.get("LITELLM_DB_USER", "litellm")) or "litellm"
+db_port = unquote_env(current_vars.get("LITELLM_DB_PORT", "5432")) or "5432"
+db_name = unquote_env(current_vars.get("LITELLM_DB_NAME", "litellm")) or "litellm"
 db_pass = generated_secrets["LITELLM_DB_PASSWORD"]
 generated_secrets["DATABASE_URL"] = f"postgresql://{db_user}:{db_pass}@127.0.0.1:{db_port}/{db_name}"
 
@@ -398,7 +426,7 @@ with open(example_file, "r", encoding="utf-8") as f:
         if not line_s or line_s.startswith("#"):
             # Check for BRAINSOS_MAIL_DOMAIN comment in example
             if line_s.startswith("# BRAINSOS_MAIL_DOMAIN=") and target_mail_domain:
-                output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
+                output_lines.append(f"BRAINSOS_MAIL_DOMAIN={quote_env(target_mail_domain)}")
                 handled_keys.add("BRAINSOS_MAIL_DOMAIN")
             else:
                 output_lines.append(line_rstrip)
@@ -411,20 +439,20 @@ with open(example_file, "r", encoding="utf-8") as f:
 
             # Check special overrides
             if k == "BRAINSOS_DOMAIN":
-                output_lines.append(f"BRAINSOS_DOMAIN={target_domain}")
+                output_lines.append(f"BRAINSOS_DOMAIN={quote_env(target_domain)}")
             elif k == "BRAINSOS_ADMIN_EMAIL":
-                output_lines.append(f"BRAINSOS_ADMIN_EMAIL=admin@{target_domain}")
+                output_lines.append(f"BRAINSOS_ADMIN_EMAIL={quote_env(f'admin@{target_domain}')}")
             elif k == "BRAINSOS_MAIL_DOMAIN":
-                output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
+                output_lines.append(f"BRAINSOS_MAIL_DOMAIN={quote_env(target_mail_domain)}")
             elif k == "BRAINSOS_DATA_DIR":
-                output_lines.append(f"BRAINSOS_DATA_DIR={target_data_dir}")
+                output_lines.append(f"BRAINSOS_DATA_DIR={quote_env(target_data_dir)}")
             elif k == "BRAINSOS_STAGE":
-                stage_val = current_vars.get("BRAINSOS_STAGE", "osx" if sys.platform == "darwin" else "dgx")
-                output_lines.append(f"BRAINSOS_STAGE={stage_val}")
+                stage_val = unquote_env(current_vars.get("BRAINSOS_STAGE", "")) or ("osx" if sys.platform == "darwin" else "dgx")
+                output_lines.append(f"BRAINSOS_STAGE={quote_env(stage_val)}")
             elif k in generated_secrets:
-                output_lines.append(f"{k}={generated_secrets[k]}")
+                output_lines.append(f"{k}={quote_env(generated_secrets[k])}")
             elif k in current_vars:
-                output_lines.append(f"{k}={current_vars[k]}")
+                output_lines.append(f"{k}={quote_env(current_vars[k])}")
             else:
                 output_lines.append(f"{k}={default_v}")
         else:
@@ -432,7 +460,7 @@ with open(example_file, "r", encoding="utf-8") as f:
 
 # Ensure BRAINSOS_MAIL_DOMAIN, SYSTEM_API_TOKEN, CADDY_INGRESS_TOKEN, GITEA_*, BRAINSOS_DDNS_OWNER_SECRET, and BRAINSOS_UNIT_NAME are present
 if "BRAINSOS_MAIL_DOMAIN" not in handled_keys:
-    output_lines.append(f"BRAINSOS_MAIL_DOMAIN={target_mail_domain}")
+    output_lines.append(f"BRAINSOS_MAIL_DOMAIN={quote_env(target_mail_domain)}")
     handled_keys.add("BRAINSOS_MAIL_DOMAIN")
 
 for req_key in (
@@ -441,9 +469,13 @@ for req_key in (
     "GITEA_SECRET_KEY",
     "GITEA_INTERNAL_TOKEN",
     "BRAINSOS_DDNS_OWNER_SECRET",
+    "TOOL_EGRESS_PROXY_SECRET",
+    "CLICKHOUSE_PASSWORD",
+    "ADMIN_MAIL_PASSWORD",
+    "OPERATOR_MAIL_PASSWORD",
 ):
     if req_key not in handled_keys:
-        output_lines.append(f"{req_key}={generated_secrets[req_key]}")
+        output_lines.append(f"{req_key}={quote_env(generated_secrets[req_key])}")
         handled_keys.add(req_key)
 
 if sys.platform == "darwin" and "BRAINSOS_MAIL_CONTROL_PLANE_HOST" not in handled_keys and "BRAINSOS_MAIL_CONTROL_PLANE_HOST" not in current_vars:
@@ -451,8 +483,8 @@ if sys.platform == "darwin" and "BRAINSOS_MAIL_CONTROL_PLANE_HOST" not in handle
     handled_keys.add("BRAINSOS_MAIL_CONTROL_PLANE_HOST")
 
 if "BRAINSOS_UNIT_NAME" not in handled_keys:
-    unit_name_val = current_vars.get("BRAINSOS_UNIT_NAME", "").strip() or "Enterprise Agent Box"
-    output_lines.append(f'BRAINSOS_UNIT_NAME="{unit_name_val}"')
+    unit_name_val = unquote_env(current_vars.get("BRAINSOS_UNIT_NAME", "")) or "Enterprise Agent Box"
+    output_lines.append(f"BRAINSOS_UNIT_NAME={quote_env(unit_name_val)}")
     handled_keys.add("BRAINSOS_UNIT_NAME")
 
 # Filter out legacy redundant variables that inherit from BRAINSOS_ADMIN_PASSWORD
@@ -462,8 +494,6 @@ redundant_legacy_keys = {
     "CODE_SERVER_PASSWORD",
     "LANGFUSE_INIT_USER_PASSWORD",
     "LANGFUSE_INIT_USER_EMAIL",
-    "ADMIN_MAIL_PASSWORD",
-    "OPERATOR_MAIL_PASSWORD",
     "AUTHENTIK_BOOTSTRAP_PASSWORD",
     "AUTHENTIK_BOOTSTRAP_EMAIL",
     "TOOL_EGRESS_WEB_PASSWORD",
@@ -472,7 +502,7 @@ redundant_legacy_keys = {
 
 # Appliance installs (#322) intentionally decouple service passwords from the
 # instance-id operator password; never collapse them back into the admin password.
-if current_vars.get("BRAINSOS_APPLIANCE", "").strip().lower() == "true":
+if unquote_env(current_vars.get("BRAINSOS_APPLIANCE", "")).lower() == "true":
     redundant_legacy_keys = {"OPERATOR_PASSWORD_HASH"}
 
 # Append any custom unmapped keys from existing .env
@@ -488,7 +518,7 @@ if unmapped:
     output_lines.append("# Custom & Unmapped Overrides")
     output_lines.append("# ==============================================================================")
     for k in sorted(unmapped):
-        output_lines.append(f"{k}={current_vars[k]}")
+        output_lines.append(f"{k}={quote_env(current_vars[k])}")
 
 rendered = "\n".join(output_lines) + "\n"
 fd, temp_file = tempfile.mkstemp(prefix=".env.", dir=env_dir)

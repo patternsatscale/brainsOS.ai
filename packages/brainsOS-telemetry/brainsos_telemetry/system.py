@@ -2,8 +2,11 @@ import asyncio
 import copy
 import fcntl
 import getpass
+import hashlib
+import hmac
 import json
 import logging
+import math
 import os
 import platform
 import pty
@@ -55,6 +58,12 @@ logger = logging.getLogger("brainsos_telemetry.system")
 
 # Active CSRF tokens store (token -> creation_timestamp)
 CSRF_TOKENS: Dict[str, float] = {}
+
+WIZARD_SESSION_COOKIE = "brainsos_wizard_session"
+WIZARD_SESSION_TTL_SECONDS = 1800  # 30 minutes
+BOOTSTRAP_MAX_FAILURES = 5
+BOOTSTRAP_BASE_LOCKOUT_SECONDS = 60
+BOOTSTRAP_MAX_LOCKOUT_SECONDS = 3600
 
 ALLOWED_SERVICES = {
     "litellm",
@@ -556,10 +565,6 @@ def _resolve_console_user(su_username: str = "") -> str:
 
 def _query_imds_metadata() -> Dict[str, str]:
     """Query EC2 IMDSv2 for instance-id, public-ipv4, local-ipv4, and public-hostname (cached 60s)."""
-    now = time.time()
-    if now - _IMDS_CACHE["ts"] < 60.0 and _IMDS_CACHE["data"]:
-        return _IMDS_CACHE["data"]
-
     if os.environ.get("BRAINSOS_STAGE") == "test":
         return {
             "instance_id": os.environ.get("BRAINSOS_TEST_INSTANCE_ID", ""),
@@ -567,6 +572,10 @@ def _query_imds_metadata() -> Dict[str, str]:
             "local_ipv4": os.environ.get("BRAINSOS_TEST_LOCAL_IPV4", "127.0.0.1"),
             "public_hostname": os.environ.get("BRAINSOS_TEST_PUBLIC_HOSTNAME", ""),
         }
+
+    now = time.time()
+    if now - _IMDS_CACHE["ts"] < 60.0 and _IMDS_CACHE["data"]:
+        return _IMDS_CACHE["data"]
 
     result = {"instance_id": "", "public_ipv4": "", "local_ipv4": "", "public_hostname": ""}
     try:
@@ -1320,7 +1329,10 @@ def _resolve_authenticated_identity(request: Request) -> Optional[str]:
 
 
 def _is_authorized_admin(headers: Any, username: str, repo_root: str) -> bool:
-    """Verify the authenticated user belongs to 'authentik Admins' (or configured superuser when group header omitted)."""
+    """Verify the authenticated user belongs to 'authentik Admins'.
+
+    Fails closed when X-Authentik-Groups is missing (None), except when BRAINSOS_STAGE == 'test'.
+    """
     if not username or not username.strip():
         return False
 
@@ -1334,18 +1346,10 @@ def _is_authorized_admin(headers: Any, username: str, repo_root: str) -> bool:
         }
         return bool(parsed_groups & ADMIN_GROUP_NAMES)
 
-    ident = get_appliance_identity(repo_root)
-    allowed_users = {
-        "admin",
-        "akadmin",
-        "operator",
-        str(ident.get("superuser_username") or "").strip().lower(),
-        str(ident.get("admin_username") or "").strip().lower(),
-    }
-    allowed_users.discard("")
-    if username.strip().lower() in allowed_users:
+    if os.environ.get("BRAINSOS_STAGE") == "test":
         return True
-    return os.environ.get("BRAINSOS_STAGE") == "test"
+
+    return False
 
 
 def _is_allowed_origin(origin: Optional[str], repo_root: str) -> bool:
@@ -1386,29 +1390,6 @@ def verify_admin_read_security(request: Request):
             status_code=403,
             detail="Forbidden: administrator group ('authentik Admins') required",
         )
-
-
-def _require_system_auth(request: Request, repo_root: str) -> Optional[str]:
-    """Require authenticated admin identity once firstboot_wizard_completed is True."""
-    ident = get_appliance_identity(repo_root)
-    username = _resolve_authenticated_identity(request)
-    if ident.get("firstboot_wizard_completed", True):
-        if not username:
-            raise HTTPException(
-                status_code=403,
-                detail="Forbidden: authentication required",
-            )
-        if not _is_authorized_admin(request.headers, username, repo_root):
-            raise HTTPException(
-                status_code=403,
-                detail="Forbidden: administrator group ('authentik Admins') required",
-            )
-    elif username and not _is_authorized_admin(request.headers, username, repo_root):
-        raise HTTPException(
-            status_code=403,
-            detail="Forbidden: administrator group ('authentik Admins') required",
-        )
-    return username
 
 
 def verify_state_change_security(request: Request):
@@ -1487,16 +1468,224 @@ def verify_setup_security(request: Request):
         )
 
 
+def _extract_client_ip(request: Request) -> str:
+    """Resolve client IP for bootstrap rate limiting (use rightmost Caddy-appended XFF, else client.host)."""
+    xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        parts = [p.strip() for p in xff.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
+    if request.client and request.client.host:
+        return str(request.client.host)
+    return "unknown"
+
+
+class _BootstrapRateLimiter:
+    """Per-IP brute-force lockout with exponential backoff after 5 failed bootstrap attempts."""
+
+    def __init__(self, max_entries: int = 4096) -> None:
+        self._lock = threading.Lock()
+        self._records: Dict[str, Dict[str, Any]] = {}
+        self._max_entries = max_entries
+
+    def check_allowed(self, ip: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            rec = self._records.get(ip)
+            if rec and now < rec["lockout_until"]:
+                retry_after = max(1, int(math.ceil(rec["lockout_until"] - now)))
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many failed bootstrap verification attempts. Retry in {retry_after} seconds.",
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+    def record_failure(self, ip: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if ip not in self._records and len(self._records) >= self._max_entries:
+                expired = [
+                    k
+                    for k, v in self._records.items()
+                    if v["lockout_until"] <= now and (now - v["last_failure"]) > BOOTSTRAP_MAX_LOCKOUT_SECONDS
+                ]
+                for k in expired:
+                    self._records.pop(k, None)
+                if len(self._records) >= self._max_entries:
+                    oldest = min(self._records.items(), key=lambda item: item[1]["last_failure"])[0]
+                    self._records.pop(oldest, None)
+            rec = self._records.setdefault(
+                ip,
+                {"failures": 0, "lockout_until": 0.0, "last_failure": now},
+            )
+            rec["failures"] += 1
+            rec["last_failure"] = now
+            if rec["failures"] >= BOOTSTRAP_MAX_FAILURES:
+                exponent = min(rec["failures"] - BOOTSTRAP_MAX_FAILURES, 6)
+                lockout_seconds = min(
+                    BOOTSTRAP_MAX_LOCKOUT_SECONDS,
+                    BOOTSTRAP_BASE_LOCKOUT_SECONDS * (2**exponent),
+                )
+                rec["lockout_until"] = now + lockout_seconds
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many failed bootstrap verification attempts. Locked for {lockout_seconds} seconds.",
+                    headers={"Retry-After": str(lockout_seconds)},
+                )
+
+    def reset(self, ip: str) -> None:
+        with self._lock:
+            self._records.pop(ip, None)
+
+
+def _resolve_expected_bootstrap_tokens(repo_root: str) -> list[str]:
+    """Return valid one-time bootstrap tokens strictly when pre-wizard (firstboot_wizard_completed is False)."""
+    ident = get_appliance_identity(repo_root)
+    if ident.get("firstboot_wizard_completed", True):
+        return []
+
+    file_env = parse_env_file_only(repo_root)
+    env = parse_env_file(repo_root)
+    imds = _query_imds_metadata()
+    candidates: list[str] = [
+        str(imds.get("instance_id") or "").strip(),
+        str(file_env.get("BRAINSOS_INSTANCE_ID") or "").strip(),
+        str(env.get("BRAINSOS_INSTANCE_ID") or "").strip(),
+        str(file_env.get("BRAINSOS_BOOTSTRAP_TOKEN") or "").strip(),
+        str(env.get("BRAINSOS_BOOTSTRAP_TOKEN") or "").strip(),
+        str(file_env.get("BRAINSOS_ADMIN_PASSWORD") or "").strip(),
+    ]
+
+    data_dir = str(ident.get("data_dir") or os.path.join(repo_root, "data"))
+    bt_file = os.path.join(data_dir, "control_plane", "bootstrap-token")
+    if os.path.isfile(bt_file):
+        try:
+            with open(bt_file, "r", encoding="utf-8", errors="ignore") as f:
+                candidates.append(f.read().strip())
+        except Exception:
+            pass
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for tok in candidates:
+        if tok and tok not in seen:
+            seen.add(tok)
+            unique.append(tok)
+    return unique
+
+
+def _validate_breakglass_secret(secret: str, instance_id: str = "") -> Optional[str]:
+    """Validate custom high-entropy break-glass admin secret (min 16 chars, complex, != instance_id)."""
+    clean = (secret or "").strip()
+    if len(clean) < 16:
+        return "Break-glass admin secret must be at least 16 characters long."
+    try:
+        sanitize_env_value(clean)
+    except ValueError as exc:
+        return str(exc)
+    pw_err = validate_password_complexity(clean, username="admin", instance_id=instance_id)
+    if pw_err:
+        return pw_err
+    if instance_id and clean.lower() == instance_id.strip().lower():
+        return "Break-glass admin secret must not equal the EC2 Instance ID."
+    return None
+
+
+def _mint_wizard_session_token(wizard_hmac_key: bytes, ttl_seconds: int = WIZARD_SESSION_TTL_SECONDS) -> str:
+    exp = int(time.time()) + ttl_seconds
+    nonce = secrets.token_hex(16)
+    payload = f"{exp}.{nonce}"
+    sig = hmac.new(wizard_hmac_key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+
+def _set_wizard_session_cookie(response: Any, token: str) -> None:
+    response.set_cookie(
+        key=WIZARD_SESSION_COOKIE,
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        path="/",
+        max_age=WIZARD_SESSION_TTL_SECONDS,
+    )
+
+
+def _clear_wizard_session_cookie(response: Any) -> None:
+    response.delete_cookie(
+        key=WIZARD_SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        secure=True,
+        samesite="strict",
+    )
+
+
+def _verify_wizard_session_cookie(request: Request, repo_root: str, wizard_hmac_key: bytes) -> bool:
+    ident = get_appliance_identity(repo_root)
+    if ident.get("firstboot_wizard_completed", True):
+        return False
+    raw = (request.cookies.get(WIZARD_SESSION_COOKIE) or "").strip()
+    parts = raw.split(".")
+    if len(parts) != 3:
+        return False
+    exp_str, nonce, sig = parts
+    if not exp_str.isdigit() or len(nonce) < 16 or not sig:
+        return False
+    if int(exp_str) < int(time.time()):
+        return False
+    expected_sig = hmac.new(
+        wizard_hmac_key,
+        f"{exp_str}.{nonce}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return secrets.compare_digest(sig, expected_sig)
+
+
+def _minimal_prewizard_metadata(ident: Dict[str, Any]) -> Dict[str, Any]:
+    """Return strictly non-sensitive pre-wizard metadata for unauthenticated wizard bootstrap."""
+    return {
+        "firstboot_wizard_completed": False,
+        "unit_name": ident["unit_name"],
+        "url": ident["url"],
+        "tls_mode": ident["tls_mode"],
+    }
+
+
 def create_system_api_app():
     """Create a hardened FastAPI application exposing system telemetry & update management endpoints."""
     repo_root = get_repo_root()
     job_manager = JobManager(repo_root)
+    bootstrap_limiter = _BootstrapRateLimiter()
+    wizard_hmac_key = secrets.token_bytes(32)
 
     app = FastAPI(
         title="brainsOS System Management & Telemetry API",
         version="0.1.0",
         description="Universal status, version inspection, and live update management API for brainsOS appliances.",
     )
+    app.state.bootstrap_limiter = bootstrap_limiter
+
+    def _is_admin_or_wizard_session(request: Request) -> tuple[bool, bool]:
+        ident = get_appliance_identity(repo_root)
+        completed = bool(ident.get("firstboot_wizard_completed", True))
+        username = _resolve_authenticated_identity(request)
+        if username and _is_authorized_admin(request.headers, username, repo_root):
+            return completed, True
+        if not completed and _verify_wizard_session_cookie(request, repo_root, wizard_hmac_key):
+            return completed, True
+        return completed, False
+
+    def _require_wizard_or_admin_read(request: Request) -> None:
+        completed, authorized = _is_admin_or_wizard_session(request)
+        if completed:
+            verify_admin_read_security(request)
+            return
+        if not authorized:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: valid wizard session or administrator identity required",
+            )
 
     class UpdateRequest(BaseModel):
         service: Optional[str] = Field(None, description="Optional targeted service name (e.g. litellm, langfuse)")
@@ -1515,6 +1704,9 @@ def create_system_api_app():
     class DnsCheckRequest(BaseModel):
         domain: str = Field(..., description="Domain or URL to verify DNS resolution against this appliance")
 
+    class FirstbootSessionRequest(BaseModel):
+        bootstrap_token: str = Field(..., min_length=1, description="One-time EC2 Instance ID / host bootstrap token")
+
     class SetupRequest(BaseModel):
         bootstrap_token: Optional[str] = Field(None, description="EC2 Instance ID / initial bootstrap password for pre-login first-boot verification")
         unit_name: Optional[str] = Field(default=None, description="Logical unit display name for this appliance")
@@ -1531,7 +1723,8 @@ def create_system_api_app():
         dismiss_only: bool = Field(False, description="Only dismiss the First-Boot Setup Wizard without reconfiguring")
         dry_run: bool = Field(False, description="Simulate configuration without modifying disk or restarting services")
         force: bool = Field(True, description="Proceed even if DNS pre-flight check warns")
-        breakglass_enabled: Optional[bool] = Field(None, description="Keep EC2 Instance-ID Break-Glass enabled (true/false)")
+        breakglass_enabled: Optional[bool] = Field(None, description="Enable/disable custom break-glass admin login (true/false)")
+        breakglass_secret: Optional[str] = Field(None, description="Custom high-entropy break-glass admin secret (min 16 chars, distinct from Instance ID)")
         cognito_enabled: Optional[bool] = Field(None, description="Enable optional AWS Cognito OIDC federation during setup")
         cognito_region: Optional[str] = Field(None, description="AWS Cognito region")
         cognito_user_pool_id: Optional[str] = Field(None, description="AWS Cognito User Pool ID")
@@ -1568,7 +1761,8 @@ def create_system_api_app():
         cwd: Optional[str] = Field(None, description="Working directory (defaults to REPO_ROOT)")
 
     class BreakglassConfigRequest(BaseModel):
-        enabled: bool = Field(..., description="Enable or disable EC2 Instance-ID Break-Glass admin login")
+        enabled: bool = Field(..., description="Enable or disable custom Break-Glass admin login")
+        admin_secret: Optional[str] = Field(None, description="Custom high-entropy break-glass admin secret (min 16 chars, distinct from EC2 Instance ID)")
         apply_now: bool = Field(True, description="Synchronize OS & Authentik account lock state asynchronously")
 
     class CognitoConfigRequest(BaseModel):
@@ -1606,8 +1800,14 @@ def create_system_api_app():
         return response
 
     @app.get("/api/v1/system/status", dependencies=[Depends(verify_internal_auth)])
-    async def status():
-        return JSONResponse(content=await get_system_status_async())
+    async def status(request: Request):
+        completed, authorized = _is_admin_or_wizard_session(request)
+        if completed:
+            verify_admin_read_security(request)
+            return JSONResponse(content=await get_system_status_async())
+        if authorized:
+            return JSONResponse(content=await get_system_status_async())
+        return JSONResponse(content=_minimal_prewizard_metadata(get_appliance_identity(repo_root)))
 
     @app.get("/api/v1/system/identity", dependencies=[Depends(verify_internal_auth)])
     async def identity(request: Request):
@@ -1622,6 +1822,10 @@ def create_system_api_app():
                         "auth_cognito_enabled": bool(ident.get("cognito_enabled", False)),
                     }
                 )
+            return JSONResponse(content=ident)
+        _, authorized = _is_admin_or_wizard_session(request)
+        if not authorized:
+            return JSONResponse(content=_minimal_prewizard_metadata(ident))
         return JSONResponse(content=ident)
 
     @app.get(
@@ -1648,15 +1852,16 @@ def create_system_api_app():
     @app.get("/api/v1/system/me", dependencies=[Depends(verify_internal_auth)])
     async def current_user_me(request: Request):
         ident = get_appliance_identity(repo_root)
-        hdr_username = (
-            request.headers.get("X-Authentik-Username")
-            or request.headers.get("Remote-User")
-            or ""
-        ).strip()
+        resolved_user = _resolve_authenticated_identity(request)
+        if not resolved_user and os.environ.get("BRAINSOS_STAGE") != "test":
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: missing authenticated identity header (X-Authentik-Username)",
+            )
         hdr_name = (request.headers.get("X-Authentik-Name") or "").strip()
         hdr_email = (request.headers.get("X-Authentik-Email") or "").strip()
 
-        username = str(hdr_username or ident.get("superuser_username") or ident.get("admin_username") or "admin")
+        username = str(resolved_user or ident.get("superuser_username") or ident.get("admin_username") or "admin")
         if hdr_name:
             name = hdr_name
         elif username == ident.get("superuser_username") and ident.get("superuser_name"):
@@ -1747,14 +1952,31 @@ def create_system_api_app():
 
         env_file = os.path.join(repo_root, ".env")
         val_str = "true" if req.enabled else "false"
-        _upsert_env_keys(
-            repo_root,
-            env_file,
-            {
-                "BRAINSOS_BREAKGLASS_ENABLED": val_str,
-                "BRAINSOS_BREAKGLASS_EXPLICIT": "true" if req.enabled else "false",
-            },
-        )
+        updates: Dict[str, str] = {
+            "BRAINSOS_BREAKGLASS_ENABLED": val_str,
+            "BRAINSOS_BREAKGLASS_EXPLICIT": "true" if req.enabled else "false",
+        }
+        proc_extra_env = dict(os.environ)
+
+        if req.enabled:
+            raw_imds = _query_imds_metadata()
+            inst_id = (raw_imds.get("instance_id") or merged_env.get("BRAINSOS_INSTANCE_ID") or "").strip()
+            raw_secret = (req.admin_secret or "").strip()
+            if raw_secret:
+                sec_err = _validate_breakglass_secret(raw_secret, inst_id)
+                if sec_err:
+                    raise HTTPException(status_code=400, detail=sec_err)
+                updates["BRAINSOS_INSTANCE_ADMIN_PASSWORD"] = raw_secret
+                proc_extra_env["BRAINSOS_NEW_BREAKGLASS_SECRET"] = raw_secret
+            else:
+                existing_bg_pw = (merged_env.get("BRAINSOS_INSTANCE_ADMIN_PASSWORD") or "").strip()
+                if _validate_breakglass_secret(existing_bg_pw, inst_id) is not None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Enabling break-glass requires a custom high-entropy admin_secret (min 16 characters, distinct from EC2 Instance ID).",
+                    )
+
+        _upsert_env_keys(repo_root, env_file, updates)
 
         if req.apply_now and os.environ.get("BRAINSOS_STAGE") != "test":
             set_domain_script = os.path.join(repo_root, "scripts/control/set-domain.sh")
@@ -1763,6 +1985,7 @@ def create_system_api_app():
                 subprocess.Popen(
                     ["bash", set_domain_script, "--internal", "--skip-dns-check", flag],
                     cwd=repo_root,
+                    env=proc_extra_env,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -1902,7 +2125,8 @@ def create_system_api_app():
         )
 
     @app.post("/api/v1/system/dns-check", dependencies=[Depends(verify_internal_auth)])
-    async def dns_check(req: DnsCheckRequest):
+    async def dns_check(req: DnsCheckRequest, request: Request):
+        _require_wizard_or_admin_read(request)
         host = normalize_url_host(req.domain)
         fqdn_re = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
         valid_syntax = bool(fqdn_re.match(host))
@@ -1959,6 +2183,46 @@ def create_system_api_app():
             }
         )
 
+    def _verify_bootstrap_token(provided_token: str, client_ip: str) -> None:
+        bootstrap_limiter.check_allowed(client_ip)
+        expected_tokens = _resolve_expected_bootstrap_tokens(repo_root)
+        clean_tok = (provided_token or "").strip()
+        matched = bool(
+            clean_tok
+            and expected_tokens
+            and any(secrets.compare_digest(clean_tok, tok) for tok in expected_tokens)
+        )
+        if not matched:
+            bootstrap_limiter.record_failure(client_ip)
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid EC2 Instance ID / bootstrap token. Enter the exact Instance ID or host bootstrap token to authorize initial setup.",
+            )
+        bootstrap_limiter.reset(client_ip)
+
+    @app.post(
+        "/api/v1/system/firstboot/session",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_setup_security)],
+    )
+    async def create_firstboot_session(req: FirstbootSessionRequest, request: Request):
+        ident = get_appliance_identity(repo_root)
+        if ident.get("firstboot_wizard_completed", True):
+            raise HTTPException(
+                status_code=403,
+                detail="First-boot wizard already completed; bootstrap session disabled.",
+            )
+        _verify_bootstrap_token(req.bootstrap_token, _extract_client_ip(request))
+        session_tok = _mint_wizard_session_token(wizard_hmac_key)
+        resp = JSONResponse(
+            content={
+                "authenticated": True,
+                "wizard_session": True,
+                "identity": ident,
+            }
+        )
+        _set_wizard_session_cookie(resp, session_tok)
+        return resp
+
     @app.post(
         "/api/v1/system/setup",
         dependencies=[Depends(verify_internal_auth), Depends(verify_setup_security)],
@@ -1974,37 +2238,43 @@ def create_system_api_app():
     async def trigger_setup(req: SetupRequest, request: Request):
         ident = get_appliance_identity(repo_root)
         env = parse_env_file(repo_root)
-        has_sso = bool(_resolve_authenticated_identity(request))
+        completed = bool(ident.get("firstboot_wizard_completed", True))
+        resolved_user = _resolve_authenticated_identity(request)
+        has_sso = bool(resolved_user and _is_authorized_admin(request.headers, resolved_user, repo_root))
+        mint_wizard_cookie = False
 
-        # In pre-login First-Boot Setup Wizard mode (or whenever bootstrap_token is provided),
-        # verify the EC2 Instance ID / initial bootstrap password before allowing any changes.
-        if not has_sso or (req.bootstrap_token is not None and req.bootstrap_token.strip() != ""):
-            provided_token = (req.bootstrap_token or "").strip()
-            expected_pw = env.get("BRAINSOS_ADMIN_PASSWORD", "").strip()
-            raw_imds = _query_imds_metadata()
-            expected_iid = (raw_imds.get("instance_id") or "").strip()
-            matched = bool(
-                provided_token
-                and (
-                    (expected_pw and secrets.compare_digest(provided_token, expected_pw))
-                    or (expected_iid and secrets.compare_digest(provided_token, expected_iid))
-                )
+        # Pre-wizard: require either a valid brainsos_wizard_session cookie or a valid one-time bootstrap_token.
+        # Post-wizard: INSTANCE_ID bootstrap is permanently disabled; verify_setup_security already requires SSO admin.
+        if not completed:
+            has_wizard_cookie = _verify_wizard_session_cookie(request, repo_root, wizard_hmac_key)
+            has_token_arg = req.bootstrap_token is not None and req.bootstrap_token.strip() != ""
+            if (not has_sso and not has_wizard_cookie) or has_token_arg:
+                _verify_bootstrap_token(req.bootstrap_token or "", _extract_client_ip(request))
+                mint_wizard_cookie = True
+        elif not has_sso:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden: bootstrap token disabled after wizard completion; administrator SSO required.",
             )
-            if not matched:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Invalid EC2 Instance ID bootstrap token. Enter the exact Instance ID (i-...) of this EC2 appliance to authorize initial setup.",
-                )
 
         if req.dismiss_only:
             wizard_flag = os.path.join(repo_root, ".brainsos-wizard-completed")
             try:
                 with open(wizard_flag, "w", encoding="utf-8") as f:
                     f.write(datetime.now(timezone.utc).isoformat() + "\n")
-                env_upsert = os.path.join(repo_root, "scripts/control/env-upsert.sh")
                 env_file = os.path.join(repo_root, ".env")
-                if os.path.isfile(env_upsert) and os.path.isfile(env_file):
-                    subprocess.run([env_upsert, "--file", env_file, "BRAINSOS_WIZARD_COMPLETED=true"], check=False, timeout=5)
+                dismiss_updates: Dict[str, str] = {"BRAINSOS_WIZARD_COMPLETED": "true"}
+                raw_imds = _query_imds_metadata()
+                inst_id = (raw_imds.get("instance_id") or env.get("BRAINSOS_INSTANCE_ID") or "").strip()
+                existing_bg_pw = (env.get("BRAINSOS_INSTANCE_ADMIN_PASSWORD") or "").strip()
+                if not (
+                    is_truthy(env.get("BRAINSOS_BREAKGLASS_EXPLICIT"), default=False)
+                    and _validate_breakglass_secret(existing_bg_pw, inst_id) is None
+                ):
+                    dismiss_updates["BRAINSOS_BREAKGLASS_ENABLED"] = "false"
+                    dismiss_updates["BRAINSOS_BREAKGLASS_EXPLICIT"] = "false"
+                if os.path.isfile(env_file):
+                    _upsert_env_keys(repo_root, env_file, dismiss_updates)
                 if os.environ.get("BRAINSOS_STAGE") != "test":
                     subprocess.Popen(
                         ["docker", "compose", "up", "-d", "caddy"],
@@ -2014,7 +2284,9 @@ def create_system_api_app():
                     )
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed writing wizard completion flag: {e}")
-            return JSONResponse(content={"status": "dismissed", "firstboot_wizard_completed": True})
+            resp = JSONResponse(content={"status": "dismissed", "firstboot_wizard_completed": True})
+            _clear_wizard_session_cookie(resp)
+            return resp
 
         fqdn_re = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
         ipv4_re = re.compile(r"^(\d{1,3}\.){3}\d{1,3}$")
@@ -2042,6 +2314,7 @@ def create_system_api_app():
             and not (req.alb_signer_arn and req.alb_signer_arn.strip())
             and not (req.alb_issuer and req.alb_issuer.strip())
             and req.breakglass_enabled is None
+            and not (req.breakglass_secret and req.breakglass_secret.strip())
         )
         if is_unit_name_only and unit_name is not None:
             env_file = os.path.join(repo_root, ".env")
@@ -2061,13 +2334,13 @@ def create_system_api_app():
         superuser_name: Optional[str] = None
         if req.superuser_name is not None and req.superuser_name.strip():
             superuser_name = req.superuser_name.strip()
-            if "\n" in superuser_name or "\r" in superuser_name or len(superuser_name) > 128:
+            if "\n" in superuser_name or "\r" in superuser_name or "'" in superuser_name or len(superuser_name) > 128:
                 raise HTTPException(status_code=400, detail="Invalid superuser_name.")
 
         if req.superuser_username is not None and req.superuser_username.strip().lower() == "admin":
             raise HTTPException(
                 status_code=400,
-                detail="Superuser username cannot be 'admin' (the 'admin' account is permanently bound to the EC2 Instance ID).",
+                detail="Superuser username cannot be 'admin' ('admin' is reserved for system break-glass only).",
             )
 
         raw_username = req.superuser_username if (req.superuser_username and req.superuser_username.strip()) else req.admin_username
@@ -2199,10 +2472,29 @@ def create_system_api_app():
             or (eff_sub and (eff_cog or eff_alb_enabled))
         )
         env_file_path = os.path.join(repo_root, ".env")
+        breakglass_secret_val = ""
         if req.breakglass_enabled is True:
+            raw_imds_bg = _query_imds_metadata()
+            bg_inst_id = (raw_imds_bg.get("instance_id") or env.get("BRAINSOS_INSTANCE_ID") or "").strip()
+            raw_bg_secret = (req.breakglass_secret or "").strip()
+            if raw_bg_secret:
+                sec_err = _validate_breakglass_secret(raw_bg_secret, bg_inst_id)
+                if sec_err:
+                    raise HTTPException(status_code=400, detail=sec_err)
+                breakglass_secret_val = raw_bg_secret
+            else:
+                existing_bg_pw = (env.get("BRAINSOS_INSTANCE_ADMIN_PASSWORD") or "").strip()
+                if _validate_breakglass_secret(existing_bg_pw, bg_inst_id) is not None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Enabling break-glass requires a custom high-entropy breakglass_secret (min 16 characters, distinct from EC2 Instance ID).",
+                    )
             cmd.append("--breakglass")
             if not req.dry_run and os.path.isfile(env_file_path):
-                _upsert_env_keys(repo_root, env_file_path, {"BRAINSOS_BREAKGLASS_EXPLICIT": "true"})
+                bg_updates = {"BRAINSOS_BREAKGLASS_EXPLICIT": "true"}
+                if breakglass_secret_val:
+                    bg_updates["BRAINSOS_INSTANCE_ADMIN_PASSWORD"] = breakglass_secret_val
+                _upsert_env_keys(repo_root, env_file_path, bg_updates)
         elif req.breakglass_enabled is False:
             err = validate_breakglass_toggle(False, next_setup_env)
             if err:
@@ -2263,6 +2555,8 @@ def create_system_api_app():
         if raw_password:
             extra_env["BRAINSOS_NEW_ADMIN_PASSWORD"] = raw_password
             extra_env["BRAINSOS_NEW_SUPERUSER_PASSWORD"] = raw_password
+        if breakglass_secret_val:
+            extra_env["BRAINSOS_NEW_BREAKGLASS_SECRET"] = breakglass_secret_val
         if req.cognito_client_secret and req.cognito_client_secret.strip():
             extra_env["BRAINSOS_NEW_COGNITO_CLIENT_SECRET"] = sanitize_env_value(req.cognito_client_secret)
         if superuser_name:
@@ -2281,7 +2575,7 @@ def create_system_api_app():
                 },
             )
 
-        return StreamingResponse(
+        resp = StreamingResponse(
             stream_job_logs(job),
             media_type="text/event-stream",
             headers={
@@ -2291,11 +2585,13 @@ def create_system_api_app():
                 "X-Job-ID": job["id"],
             },
         )
+        if mint_wizard_cookie:
+            _set_wizard_session_cookie(resp, _mint_wizard_session_token(wizard_hmac_key))
+        return resp
 
     @app.get("/api/v1/system/jobs/{job_id}", dependencies=[Depends(verify_internal_auth)])
     async def get_job_status(job_id: str, request: Request):
-        if job_id in ("latest", "active"):
-            _require_system_auth(request, repo_root)
+        _require_wizard_or_admin_read(request)
         job = job_manager.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -2303,8 +2599,7 @@ def create_system_api_app():
 
     @app.get("/api/v1/system/jobs/{job_id}/stream", dependencies=[Depends(verify_internal_auth)])
     async def stream_job_reattach(job_id: str, request: Request):
-        if job_id in ("latest", "active"):
-            _require_system_auth(request, repo_root)
+        _require_wizard_or_admin_read(request)
         job = job_manager.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -2438,7 +2733,10 @@ def create_system_api_app():
             },
         )
 
-    @app.get("/api/v1/system/runners", dependencies=[Depends(verify_internal_auth)])
+    @app.get(
+        "/api/v1/system/runners",
+        dependencies=[Depends(verify_internal_auth), Depends(verify_admin_read_security)],
+    )
     async def list_runners():
         return JSONResponse(content=get_runners_status(repo_root))
 

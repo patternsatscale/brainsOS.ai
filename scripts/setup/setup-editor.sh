@@ -102,29 +102,67 @@ fi
 # ------------------------------------------------------------------------------
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
-OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-sk-brainsos-operator-virtual-key}"
+OPERATOR_LITELLM_KEY="${OPERATOR_LITELLM_KEY:-}"
 OPERATOR_KEY_ALIAS="brainsOs.console"
 
-if [ -n "${LITELLM_MASTER_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
+if [ -n "${LITELLM_MASTER_KEY}" ] && [ -n "${OPERATOR_LITELLM_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LITELLM_PORT}/health/liveness" | grep -qE '^(200|401|405)'; then
   log_info "Checking operator virtual key '${OPERATOR_KEY_ALIAS}' in LiteLLM DB..."
-  KEY_INFO=$(curl -s -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?key=${OPERATOR_LITELLM_KEY}" \
+  KEY_QS="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlencode({"key": sys.argv[1]}))' "${OPERATOR_LITELLM_KEY}")"
+  KEY_INFO=$(curl -s -X GET "http://127.0.0.1:${LITELLM_PORT}/key/info?${KEY_QS}" \
     -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "")
 
-  if ! echo "${KEY_INFO}" | grep -q "\"key_alias\"[[:space:]]*:[[:space:]]*\"${OPERATOR_KEY_ALIAS}\"" || echo "${KEY_INFO}" | grep -q "\"status\"[[:space:]]*:[[:space:]]*\"deleted\""; then
+  if ! printf '%s' "${KEY_INFO}" | python3 -c '
+import json, sys
+target_alias = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+info = data.get("info") if isinstance(data.get("info"), dict) else data
+if not isinstance(info, dict):
+    sys.exit(1)
+if info.get("key_alias") == target_alias and info.get("status") != "deleted":
+    sys.exit(0)
+sys.exit(1)
+' "${OPERATOR_KEY_ALIAS}" 2>/dev/null; then
     log_info "Provisioning dedicated operator virtual key '${OPERATOR_KEY_ALIAS}' in LiteLLM DB..."
-    curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
+    OP_KEY_VAL="${OPERATOR_LITELLM_KEY}" python3 - << 'PYEOF' | curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"keys\": [\"${OPERATOR_LITELLM_KEY}\"]}" || true
-    curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
+      --data-binary @- || true
+import json, os
+print(json.dumps({"keys": [os.environ["OP_KEY_VAL"]]}))
+PYEOF
+    OP_ALIAS="${OPERATOR_KEY_ALIAS}" OP_DOMAIN="${BRAINSOS_DOMAIN:-local.brainsos.ai}" python3 - << 'PYEOF' | curl -s -o /dev/null -X POST "http://127.0.0.1:${LITELLM_PORT}/key/delete" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"key_aliases\": [\"${OPERATOR_KEY_ALIAS}\", \"brainsOS.console\", \"brainsos-operator\", \"${BRAINSOS_DOMAIN:-local.brainsos.ai}/editor/\", \"local.brainsos.ai/editor/\"]}" || true
-    local_res=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+      --data-binary @- || true
+import json, os
+print(json.dumps({
+    "key_aliases": [
+        os.environ["OP_ALIAS"],
+        "brainsOS.console",
+        "brainsos-operator",
+        f"{os.environ['OP_DOMAIN']}/editor/",
+        "local.brainsos.ai/editor/",
+    ]
+}))
+PYEOF
+    local_res=$(OP_KEY_VAL="${OPERATOR_LITELLM_KEY}" OP_ALIAS="${OPERATOR_KEY_ALIAS}" OP_BUDGET="${LITELLM_DEFAULT_MAX_BUDGET:-25.0}" python3 - << 'PYEOF' | curl -s -w "\nHTTP_STATUS:%{http_code}" \
       -X POST "http://127.0.0.1:${LITELLM_PORT}/key/generate" \
       -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
       -H "Content-Type: application/json" \
-      -d "{\"key\": \"${OPERATOR_LITELLM_KEY}\", \"key_alias\": \"${OPERATOR_KEY_ALIAS}\", \"user_id\": \"admin\", \"max_budget\": ${LITELLM_DEFAULT_MAX_BUDGET:-25.0}, \"models\": []}")
+      --data-binary @-
+import json, os
+print(json.dumps({
+    "key": os.environ["OP_KEY_VAL"],
+    "key_alias": os.environ["OP_ALIAS"],
+    "user_id": "admin",
+    "max_budget": float(os.environ["OP_BUDGET"]),
+    "models": [],
+}))
+PYEOF
+)
     if echo "${local_res}" | grep -q "HTTP_STATUS:200"; then
       log_success "Operator virtual key '${OPERATOR_KEY_ALIAS}' provisioned in LiteLLM control plane."
     else
@@ -134,7 +172,7 @@ if [ -n "${LITELLM_MASTER_KEY}" ] && curl -s -o /dev/null -w "%{http_code}" "htt
     log_info "Operator virtual key '${OPERATOR_KEY_ALIAS}' is already registered in LiteLLM control plane."
   fi
 else
-  log_info "LiteLLM control plane standby or master key unset; skipping live key provisioning."
+  log_info "LiteLLM control plane standby or required keys unset; skipping live key provisioning."
 fi
 
 # ------------------------------------------------------------------------------
@@ -157,6 +195,9 @@ log_success "  - Ingress:      http://editor.localhost (or http://editor.brainso
 log_success "  - Alternate:    http://code.localhost   (or http://code.brainsos.local)"
 log_success "  - Direct Port:  http://127.0.0.1:${CODE_SERVER_PORT:-8443}"
 log_success "Credentials:"
-log_success "  - HTTP Basic Auth: ${OPERATOR_USER:-operator} / ${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}"
-log_success "  - IDE Password:    ${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_secret}}"
+if [ -n "${CODE_SERVER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}" ]; then
+  log_success "  - Operator User: ${OPERATOR_USER:-operator} (password configured in .env; run 'make urls' to inspect)"
+else
+  log_success "  - Operator User: ${OPERATOR_USER:-operator} (<unset>)"
+fi
 log_success "======================================================================"

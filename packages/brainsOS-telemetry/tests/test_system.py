@@ -81,7 +81,17 @@ def test_valid_internal_header_allows_access():
     app = create_system_api_app()
     client = TestClient(app)
 
-    headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
+    unauth_res = client.get(
+        "/api/v1/system/status",
+        headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+    )
+    assert unauth_res.status_code == 403
+
+    headers = {
+        "X-BrainsOS-Internal": "test-secret-token-12345",
+        "X-Authentik-Username": "su",
+        "X-Authentik-Groups": "authentik Admins",
+    }
     res = client.get("/api/v1/system/status", headers=headers)
     assert res.status_code == 200
     data = res.json()
@@ -245,8 +255,18 @@ def test_get_job_endpoint(tmp_path):
         app = create_system_api_app()
         client = TestClient(app)
 
-        headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
-        res = client.get("/api/v1/system/jobs/nonexistent-id", headers=headers)
+        unauth_res = client.get(
+            "/api/v1/system/jobs/nonexistent-id",
+            headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert unauth_res.status_code == 403
+
+        admin_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-Authentik-Username": "su",
+            "X-Authentik-Groups": "authentik Admins",
+        }
+        res = client.get("/api/v1/system/jobs/nonexistent-id", headers=admin_headers)
         assert res.status_code == 404
 
 
@@ -315,27 +335,50 @@ def test_identity_and_firstboot_wizard_status(tmp_path):
         "BRAINSOS_URL=ec2-32-192-215-107.compute-1.amazonaws.com\n"
         "BRAINSOS_LOCAL_DOMAIN=jsm.cloud.aws.brainsos.ai\n"
         "BRAINSOS_ADMIN_USERNAME=jsm\n"
-        "BRAINSOS_TLS_MODE=internal\n",
+        "BRAINSOS_TLS_MODE=internal\n"
+        "BRAINSOS_BOOTSTRAP_TOKEN=bt-test-bootstrap-123456\n",
         encoding="utf-8",
     )
     (tmp_path / ".brainsos-initialized").write_text("2026-11-06T00:00:00Z\n", encoding="utf-8")
 
     with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
         app = create_system_api_app()
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
         headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
 
+        # Unauthenticated pre-wizard /identity returns strictly 4 minimal keys
         res = client.get("/api/v1/system/identity", headers=headers)
         assert res.status_code == 200
         ident = res.json()
+        assert set(ident.keys()) == {
+            "firstboot_wizard_completed",
+            "unit_name",
+            "url",
+            "tls_mode",
+        }
         assert ident["firstboot_wizard_completed"] is False
         assert ident["url"] == "ec2-32-192-215-107.compute-1.amazonaws.com"
-        assert ident["local_domain"] == "jsm.cloud.aws.brainsos.ai"
-        assert ident["admin_username"] == "jsm"
-        assert ident["admin_email"] == "jsm@jsm.cloud.aws.brainsos.ai"
+
+        # Mint wizard session cookie via /firstboot/session -> full pre-wizard /identity unlocked
+        csrf_tok = issue_csrf_token()
+        sess_res = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": "bt-test-bootstrap-123456"},
+            headers={
+                **headers,
+                "X-CSRF-Token": csrf_tok,
+                "Origin": "http://localhost",
+            },
+        )
+        assert sess_res.status_code == 200
+        res_full = client.get("/api/v1/system/identity", headers=headers)
+        assert res_full.status_code == 200
+        full_ident = res_full.json()
+        assert full_ident["local_domain"] == "jsm.cloud.aws.brainsos.ai"
+        assert full_ident["admin_username"] == "jsm"
+        assert full_ident["admin_email"] == "jsm@jsm.cloud.aws.brainsos.ai"
 
         # Dismiss wizard via POST /api/v1/system/setup
-        csrf_tok = issue_csrf_token()
         post_headers = {
             **headers,
             "X-Authentik-Username": "jsm",
@@ -445,11 +488,17 @@ def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, mo
             "Origin": "http://localhost",
         }
 
-        # 1. GET /api/v1/system/identity masks instance_id before wizard completion
+        # 1. GET /api/v1/system/identity returns strictly 4 minimal keys before wizard session auth
         ident_res = client.get("/api/v1/system/identity", headers=prelogin_headers)
         assert ident_res.status_code == 200
+        assert set(ident_res.json().keys()) == {
+            "firstboot_wizard_completed",
+            "unit_name",
+            "url",
+            "tls_mode",
+        }
         assert ident_res.json()["firstboot_wizard_completed"] is False
-        assert ident_res.json()["instance_id"] == ""
+        assert "instance_id" not in ident_res.json()
 
         # 2. Missing or wrong bootstrap_token is rejected with HTTP 403
         bad_token_res = client.post(
@@ -467,7 +516,7 @@ def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, mo
         assert bad_token_res.status_code == 403
         assert "Instance ID" in bad_token_res.json().get("detail", "")
 
-        # 3. Valid EC2 Instance ID bootstrap_token succeeds pre-login
+        # 3. Valid EC2 Instance ID bootstrap_token succeeds pre-login and sets wizard cookie
         ok_token_res = client.post(
             "/api/v1/system/setup",
             json={
@@ -483,6 +532,7 @@ def test_prelogin_firstboot_wizard_requires_valid_instance_id_token(tmp_path, mo
         assert ok_token_res.status_code == 200
         assert "PRELOGIN_SETUP_OK:" in ok_token_res.text
         assert "--admin-username jsm" in ok_token_res.text
+        assert "brainsos_wizard_session" in ok_token_res.cookies
 
 
 def test_superuser_setup_and_password_complexity(tmp_path, monkeypatch):
@@ -535,7 +585,7 @@ def test_superuser_setup_and_password_complexity(tmp_path, monkeypatch):
             headers=headers,
         )
         assert admin_res.status_code == 400
-        assert "permanently bound" in admin_res.json().get("detail", "")
+        assert "reserved for system break-glass" in admin_res.json().get("detail", "")
 
         # Reject weak superuser_password
         weak_res = client.post(
@@ -726,7 +776,7 @@ async def test_job_status_and_stream_reattach_require_system_auth_for_latest_and
 
     with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
         app = create_system_api_app()
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
 
         internal_headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
         viewer_headers = {
@@ -743,31 +793,59 @@ async def test_job_status_and_stream_reattach_require_system_auth_for_latest_and
         for endpoint in (
             "/api/v1/system/jobs/latest",
             "/api/v1/system/jobs/active",
+            f"/api/v1/system/jobs/{job['id']}",
             "/api/v1/system/jobs/latest/stream",
             "/api/v1/system/jobs/active/stream",
+            f"/api/v1/system/jobs/{job['id']}/stream",
         ):
             assert client.get(endpoint, headers=internal_headers).status_code == 403
             assert client.get(endpoint, headers=viewer_headers).status_code == 403
 
-        # Admin can access /jobs/latest and stream /jobs/latest/stream
+        # Admin can access /jobs/latest, /jobs/{id}, and streams
         latest_res = client.get("/api/v1/system/jobs/latest", headers=admin_headers)
         assert latest_res.status_code == 200
         assert latest_res.json()["id"] == job["id"]
+
+        id_res = client.get(f"/api/v1/system/jobs/{job['id']}", headers=admin_headers)
+        assert id_res.status_code == 200
+        assert id_res.json()["id"] == job["id"]
 
         stream_res = client.get("/api/v1/system/jobs/latest/stream", headers=admin_headers)
         assert stream_res.status_code == 200
         assert "reattach-ok" in stream_res.text
 
-        # Pre-wizard mode allows unauthenticated access for First-Boot Wizard
+        # Pre-wizard mode still blocks raw unauthenticated /jobs/* access (#405),
+        # requiring a short-lived brainsos_wizard_session cookie minted via /firstboot/session.
         (tmp_path / ".brainsos-wizard-completed").unlink()
         (tmp_path / ".env").write_text(
-            "BRAINSOS_DOMAIN=box.brainsos.ai\nBRAINSOS_WIZARD_COMPLETED=false\n",
+            "BRAINSOS_DOMAIN=box.brainsos.ai\n"
+            "BRAINSOS_WIZARD_COMPLETED=false\n"
+            "BRAINSOS_BOOTSTRAP_TOKEN=i-wizard-job-token-123\n",
             encoding="utf-8",
         )
+        for endpoint in (
+            "/api/v1/system/jobs/latest",
+            f"/api/v1/system/jobs/{job['id']}",
+            "/api/v1/system/jobs/latest/stream",
+            f"/api/v1/system/jobs/{job['id']}/stream",
+        ):
+            assert client.get(endpoint, headers=internal_headers).status_code == 403
+
+        csrf_tok = issue_csrf_token()
+        sess_res = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": "i-wizard-job-token-123"},
+            headers={**internal_headers, "X-CSRF-Token": csrf_tok, "Origin": "http://localhost"},
+        )
+        assert sess_res.status_code == 200
         pre_res = client.get("/api/v1/system/jobs/latest", headers=internal_headers)
         assert pre_res.status_code == 200
+        pre_id_res = client.get(f"/api/v1/system/jobs/{job['id']}", headers=internal_headers)
+        assert pre_id_res.status_code == 200
         pre_stream = client.get("/api/v1/system/jobs/latest/stream", headers=internal_headers)
         assert pre_stream.status_code == 200
+        pre_id_stream = client.get(f"/api/v1/system/jobs/{job['id']}/stream", headers=internal_headers)
+        assert pre_id_stream.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -856,6 +934,304 @@ async def test_get_system_status_120s_ttl_cache_and_bounds(tmp_path):
     sys_mod.clear_update_check_cache()
 
 
+def test_prewizard_redaction_status_and_identity_expose_only_4_keys(tmp_path, monkeypatch):
+    """Verify unauthenticated pre-wizard /status and /identity return only the 4 minimal keys (#405)."""
+    mock_iid = "bt-0123456789abcdef0123456789abcdef"
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", mock_iid)
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_STAGE=test\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n"
+        "BRAINSOS_UNIT_NAME=My Unit\n"
+        "BRAINSOS_URL=alice.brainsos.ai\n"
+        "BRAINSOS_LOCAL_DOMAIN=alice.brainsos.ai\n"
+        "BRAINSOS_TLS_MODE=acme\n"
+        "BRAINSOS_ADMIN_EMAIL=secret-admin@example.com\n"
+        "BRAINSOS_USER_SUB=sub-secret-123\n"
+        "BRAINSOS_ROUTE53_ZONE_ID=Z123SECRET\n"
+        "BRAINSOS_USERDATA_ROUTING=true\n"
+        f"BRAINSOS_BOOTSTRAP_TOKEN={mock_iid}\n"
+        f"BRAINSOS_INSTANCE_ID={mock_iid}\n",
+        encoding="utf-8",
+    )
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
+
+        for path in ("/api/v1/system/identity", "/api/v1/system/status"):
+            res = client.get(path, headers=headers)
+            assert res.status_code == 200
+            data = res.json()
+            assert set(data.keys()) == {"firstboot_wizard_completed", "unit_name", "url", "tls_mode"}
+            assert data["firstboot_wizard_completed"] is False
+            assert data["unit_name"] == "My Unit"
+            assert data["url"] == "alice.brainsos.ai"
+            assert data["tls_mode"] == "acme"
+            for forbidden_key in (
+                "os",
+                "disk",
+                "runners",
+                "admin_email",
+                "user_sub",
+                "local_domain",
+                "instance_id",
+                "route53_zone_id",
+                "userdata_routing_configured",
+            ):
+                assert forbidden_key not in data
+            for forbidden_val in ("secret-admin@example.com", "sub-secret-123", "Z123SECRET", mock_iid):
+                assert forbidden_val not in res.text
 
 
+def test_firstboot_session_lockout_and_cookie_enables_pre_sso_polling(tmp_path, monkeypatch):
+    """Verify 5-attempt 429 lockout, Retry-After, HttpOnly/Secure/SameSite=Strict cookie, and pre-SSO polling (#405)."""
+    boot_tok = "bt-" + ("a" * 32)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_STAGE=test\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n"
+        "BRAINSOS_LOCAL_DOMAIN=alice.brainsos.ai\n"
+        "BRAINSOS_URL=alice.brainsos.ai\n"
+        f"BRAINSOS_BOOTSTRAP_TOKEN={boot_tok}\n",
+        encoding="utf-8",
+    )
 
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app, base_url="https://testserver")
+        csrf_tok = issue_csrf_token()
+        attacker_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+            "X-Forwarded-For": "1.2.3.4, 198.51.100.10",
+        }
+
+        # Attempts 1-4 fail with 403; attempt 5 locks IP out with 429 + Retry-After
+        for attempt in range(4):
+            r = client.post(
+                "/api/v1/system/firstboot/session",
+                json={"bootstrap_token": f"wrong-token-{attempt}"},
+                headers=attacker_headers,
+            )
+            assert r.status_code == 403
+
+        r5 = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": "wrong-token-4"},
+            headers=attacker_headers,
+        )
+        assert r5.status_code == 429
+        assert int(r5.headers.get("Retry-After", "0")) >= 1
+
+        # Even valid bootstrap_token is blocked during lockout (and leftmost spoofed XFF cannot bypass)
+        r_locked = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": boot_tok},
+            headers={**attacker_headers, "X-Forwarded-For": "9.9.9.9, 198.51.100.10"},
+        )
+        assert r_locked.status_code == 429
+
+        # Independent client IP succeeds, sets hardened cookie, and enables pre-SSO polling
+        legit_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+            "X-Real-IP": "203.0.113.55",
+        }
+        ok_res = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": boot_tok},
+            headers=legit_headers,
+        )
+        assert ok_res.status_code == 200
+        set_cookie = ok_res.headers.get("set-cookie", "")
+        assert "brainsos_wizard_session=" in set_cookie
+        assert "httponly" in set_cookie.lower()
+        assert "secure" in set_cookie.lower()
+        assert "samesite=strict" in set_cookie.lower()
+
+        st_res = client.get("/api/v1/system/status", headers={"X-BrainsOS-Internal": "test-secret-token-12345"})
+        assert st_res.status_code == 200
+        assert "disk" in st_res.json()
+        assert "os" in st_res.json()
+
+        dns_res = client.post(
+            "/api/v1/system/dns-check",
+            json={"domain": "localhost"},
+            headers=legit_headers,
+        )
+        assert dns_res.status_code == 200
+
+
+def test_dismiss_only_and_post_wizard_disable_bootstrap_and_enforce_viewer_rbac(tmp_path, monkeypatch):
+    """Verify dismiss_only disables bootstrap & breakglass, clears wizard cookie, and post-wizard viewer RBAC holds (#405)."""
+    boot_tok = "bt-" + ("b" * 32)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "i-09998887776665554")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_STAGE=test\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n"
+        "BRAINSOS_BREAKGLASS_ENABLED=true\n"
+        "BRAINSOS_SUPERUSER_USERNAME=alice\n"
+        "BRAINSOS_DOMAIN=alice.brainsos.ai\n"
+        f"BRAINSOS_BOOTSTRAP_TOKEN={boot_tok}\n"
+        "BRAINSOS_INSTANCE_ID=i-09998887776665554\n",
+        encoding="utf-8",
+    )
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app, base_url="https://testserver")
+        csrf_tok = issue_csrf_token()
+        internal_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+        }
+
+        sess_res = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": boot_tok},
+            headers=internal_headers,
+        )
+        assert sess_res.status_code == 200
+
+        dismiss_res = client.post(
+            "/api/v1/system/setup",
+            json={"bootstrap_token": boot_tok, "dismiss_only": True},
+            headers=internal_headers,
+        )
+        assert dismiss_res.status_code == 200
+        env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+        assert "BRAINSOS_WIZARD_COMPLETED=true" in env_text
+        assert "BRAINSOS_BREAKGLASS_ENABLED=false" in env_text
+
+        # Bootstrap token and wizard cookie are permanently rejected post-wizard
+        retry_sess = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": boot_tok},
+            headers=internal_headers,
+        )
+        assert retry_sess.status_code == 403
+        retry_setup = client.post(
+            "/api/v1/system/setup",
+            json={"bootstrap_token": "i-09998887776665554", "local_domain": "evil.example.com", "url": "evil.example.com"},
+            headers=internal_headers,
+        )
+        assert retry_setup.status_code == 403
+        assert client.get("/api/v1/system/status", headers={"X-BrainsOS-Internal": "test-secret-token-12345"}).status_code == 403
+
+        # Non-admin brainsos-viewers can access /me (is_superuser=False) & minimal /identity, blocked on admin routes
+        viewer_headers = {
+            **internal_headers,
+            "X-Authentik-Username": "bob",
+            "X-Authentik-Groups": "brainsos-viewers",
+        }
+        me_res = client.get("/api/v1/system/me", headers=viewer_headers)
+        assert me_res.status_code == 200
+        assert me_res.json()["is_superuser"] is False
+
+        id_res = client.get("/api/v1/system/identity", headers=viewer_headers)
+        assert id_res.status_code == 200
+        assert set(id_res.json().keys()) == {"firstboot_wizard_completed", "unit_name", "auth_cognito_enabled"}
+
+        for blocked_get in ("/api/v1/system/status", "/api/v1/system/runners", "/api/v1/system/jobs/nonexistent"):
+            assert client.get(blocked_get, headers=viewer_headers).status_code == 403
+        assert (
+            client.post("/api/v1/system/dns-check", json={"domain": "localhost"}, headers=viewer_headers).status_code
+            == 403
+        )
+
+
+def test_is_authorized_admin_and_me_fail_closed_when_groups_missing_in_prod(tmp_path, monkeypatch):
+    """Verify _is_authorized_admin and /me fail closed outside BRAINSOS_STAGE=test when groups/username missing (#405)."""
+    from brainsos_telemetry import system as sys_mod
+
+    monkeypatch.setenv("BRAINSOS_STAGE", "production")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_STAGE=production\n"
+        "BRAINSOS_WIZARD_COMPLETED=true\n"
+        "BRAINSOS_SUPERUSER_USERNAME=alice\n"
+        "BRAINSOS_DOMAIN=alice.brainsos.ai\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".brainsos-wizard-completed").write_text("2026-11-27T00:00:00Z\n", encoding="utf-8")
+
+    assert sys_mod._is_authorized_admin({"X-Authentik-Username": "alice"}, "alice", str(tmp_path)) is False
+    assert (
+        sys_mod._is_authorized_admin(
+            {"X-Authentik-Username": "alice", "X-Authentik-Groups": "authentik Admins"},
+            "alice",
+            str(tmp_path),
+        )
+        is True
+    )
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app)
+        internal_headers = {"X-BrainsOS-Internal": "test-secret-token-12345"}
+
+        assert client.get("/api/v1/system/me", headers=internal_headers).status_code == 403
+        assert (
+            client.get(
+                "/api/v1/system/status",
+                headers={**internal_headers, "X-Authentik-Username": "alice"},
+            ).status_code
+            == 403
+        )
+        assert (
+            client.get(
+                "/api/v1/system/status",
+                headers={
+                    **internal_headers,
+                    "X-Authentik-Username": "alice",
+                    "X-Authentik-Groups": "authentik Admins",
+                },
+            ).status_code
+            == 200
+        )
+
+
+def test_firstboot_session_x_real_ip_spoofing_cannot_bypass_lockout(tmp_path, monkeypatch):
+    """Verify rotating spoofed X-Real-IP with constant X-Forwarded-For still triggers 429 lockout (#405)."""
+    boot_tok = "bt-" + ("c" * 32)
+    monkeypatch.setenv("BRAINSOS_TEST_INSTANCE_ID", "")
+    (tmp_path / ".env").write_text(
+        "BRAINSOS_STAGE=test\n"
+        "BRAINSOS_WIZARD_COMPLETED=false\n"
+        "BRAINSOS_LOCAL_DOMAIN=alice.brainsos.ai\n"
+        "BRAINSOS_URL=alice.brainsos.ai\n"
+        f"BRAINSOS_BOOTSTRAP_TOKEN={boot_tok}\n",
+        encoding="utf-8",
+    )
+
+    with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
+        app = create_system_api_app()
+        client = TestClient(app, base_url="https://testserver")
+        csrf_tok = issue_csrf_token()
+        base_headers = {
+            "X-BrainsOS-Internal": "test-secret-token-12345",
+            "X-CSRF-Token": csrf_tok,
+            "Origin": "http://localhost",
+            "X-Forwarded-For": "203.0.113.99",
+        }
+
+        statuses = []
+        for idx in range(1, 6):
+            res = client.post(
+                "/api/v1/system/firstboot/session",
+                json={"bootstrap_token": f"wrong-token-{idx}"},
+                headers={**base_headers, "X-Real-IP": f"10.0.0.{idx}"},
+            )
+            statuses.append(res.status_code)
+
+        assert statuses == [403, 403, 403, 403, 429]
+
+        valid_res = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": boot_tok},
+            headers={**base_headers, "X-Real-IP": "10.0.0.250"},
+        )
+        assert valid_res.status_code == 429

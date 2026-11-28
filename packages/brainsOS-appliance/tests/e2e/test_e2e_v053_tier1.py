@@ -349,8 +349,8 @@ def test_f4_03_pre_wizard_unauth_identity_allows_initial_setup_metadata(isolated
     res = bundle["client"].get("/api/v1/system/identity", headers=bundle["internal_headers"])
     assert res.status_code == 200
     data = res.json()
+    assert set(data.keys()) == {"firstboot_wizard_completed", "unit_name", "url", "tls_mode"}
     assert data["firstboot_wizard_completed"] is False
-    assert "suggested_local_domain" in data
 
 
 def test_f4_04_breakglass_auto_disables_after_wizard_setup(isolated_repo, system_api_client_factory, monkeypatch):

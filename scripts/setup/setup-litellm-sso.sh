@@ -145,40 +145,52 @@ provision_user() {
   local uemail="$2"
   log_info "Evaluating user: ${BOLD}${uid}${NC} (email: ${uemail})..."
 
-  local check_resp
-  check_resp=$(curl -s -X GET "${LITELLM_API_BASE}/user/info?user_id=${uid}" \
+  local query_qs check_resp
+  query_qs="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlencode({"user_id": sys.argv[1]}))' "${uid}")"
+  check_resp=$(curl -s -X GET "${LITELLM_API_BASE}/user/info?${query_qs}" \
     -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" || echo "")
 
   local exists=false
-  if echo "${check_resp}" | grep -q "\"user_id\":\"${uid}\""; then
+  if printf '%s' "${check_resp}" | python3 -c '
+import json, sys
+uid = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if isinstance(data, dict) and (
+    data.get("user_id") == uid
+    or (isinstance(data.get("user_info"), dict) and data["user_info"].get("user_id") == uid)
+):
+    sys.exit(0)
+sys.exit(1)
+' "${uid}" 2>/dev/null; then
     exists=true
   fi
 
+  local endpoint="/user/new"
+  local action_msg="Provisioned"
   if [ "${exists}" = true ]; then
-    curl -s -X POST "${LITELLM_API_BASE}/user/update" \
-      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"user_id\": \"${uid}\",
-        \"user_email\": \"${uemail}\",
-        \"user_role\": \"proxy_admin\",
-        \"models\": [\"all-proxy-models\"],
-        \"password\": \"${ADMIN_COMPLIANT_PASS}\"
-      }" >/dev/null 2>&1 || true
-    log_success "Elevated '${uid}' to proxy_admin (all-proxy-models)."
-  else
-    curl -s -X POST "${LITELLM_API_BASE}/user/new" \
-      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"user_id\": \"${uid}\",
-        \"user_email\": \"${uemail}\",
-        \"user_role\": \"proxy_admin\",
-        \"models\": [\"all-proxy-models\"],
-        \"password\": \"${ADMIN_COMPLIANT_PASS}\"
-      }" >/dev/null 2>&1 || true
-    log_success "Provisioned '${uid}' as proxy_admin (all-proxy-models)."
+    endpoint="/user/update"
+    action_msg="Elevated"
   fi
+
+  LITELLM_UID="${uid}" LITELLM_UEMAIL="${uemail}" LITELLM_UPASS="${ADMIN_COMPLIANT_PASS}" \
+    python3 - << 'PYEOF' | curl -s -X POST "${LITELLM_API_BASE}${endpoint}" \
+      -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
+      -H "Content-Type: application/json" \
+      --data-binary @- >/dev/null 2>&1 || true
+import json
+import os
+print(json.dumps({
+    "user_id": os.environ["LITELLM_UID"],
+    "user_email": os.environ["LITELLM_UEMAIL"],
+    "user_role": "proxy_admin",
+    "models": ["all-proxy-models"],
+    "password": os.environ["LITELLM_UPASS"],
+}))
+PYEOF
+  log_success "${action_msg} '${uid}' as proxy_admin (all-proxy-models)."
 }
 
 for user_id in "${UNIQUE_ADMIN_USERS[@]}"; do
@@ -306,39 +318,54 @@ if [ -z "${AUTH_CLIENT_SECRET}" ]; then
 fi
 AUTH_BASE_URL="https://${EXTERNAL_HOST}"
 
-SSO_PAYLOAD=$(cat <<EOF
-{
-  "user_email": "${PRIMARY_ADMIN_EMAIL}",
-  "proxy_base_url": "${AUTH_BASE_URL}",
-  "generic_client_id": "${AUTH_CLIENT_ID}",
-  "generic_client_secret": "${AUTH_CLIENT_SECRET}",
-  "generic_authorization_endpoint": "${AUTH_BASE_URL}/application/o/authorize/",
-  "generic_token_endpoint": "http://authentik-server:9000/application/o/token/",
-  "generic_userinfo_endpoint": "http://authentik-server:9000/application/o/userinfo/",
-  "default_role": "${LITELLM_DEFAULT_ROLE}",
-  "role_mappings": {
-    "provider": "generic",
-    "group_claim": "groups",
-    "default_role": "${LITELLM_DEFAULT_ROLE}",
-    "roles": {
-      "proxy_admin": ["authentik Admins", "admins", "admin", "appliance-admins"]
-    }
-  }
+SSO_TMP="$(mktemp)"
+chmod 600 "${SSO_TMP}"
+trap 'rm -f "${SSO_TMP}"' EXIT
+SSO_USER_EMAIL="${PRIMARY_ADMIN_EMAIL}" \
+SSO_PROXY_BASE_URL="${AUTH_BASE_URL}" \
+SSO_CLIENT_ID="${AUTH_CLIENT_ID}" \
+SSO_CLIENT_SECRET="${AUTH_CLIENT_SECRET}" \
+SSO_DEFAULT_ROLE="${LITELLM_DEFAULT_ROLE}" \
+python3 - << 'PYEOF' > "${SSO_TMP}"
+import json
+import os
+
+default_role = os.environ["SSO_DEFAULT_ROLE"]
+base_url = os.environ["SSO_PROXY_BASE_URL"]
+payload = {
+    "user_email": os.environ["SSO_USER_EMAIL"],
+    "proxy_base_url": base_url,
+    "generic_client_id": os.environ["SSO_CLIENT_ID"],
+    "generic_client_secret": os.environ["SSO_CLIENT_SECRET"],
+    "generic_authorization_endpoint": f"{base_url}/application/o/authorize/",
+    "generic_token_endpoint": "http://authentik-server:9000/application/o/token/",
+    "generic_userinfo_endpoint": "http://authentik-server:9000/application/o/userinfo/",
+    "default_role": default_role,
+    "role_mappings": {
+        "provider": "generic",
+        "group_claim": "groups",
+        "default_role": default_role,
+        "roles": {
+            "proxy_admin": ["authentik Admins", "admins", "admin", "appliance-admins"],
+        },
+    },
 }
-EOF
-)
+print(json.dumps(payload))
+PYEOF
 
 curl -s -X PUT "${LITELLM_API_BASE}/litellm/.well-known/litellm-ui-config" \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \
-  -d "${SSO_PAYLOAD}" >/dev/null 2>&1 || true
+  --data-binary "@${SSO_TMP}" >/dev/null 2>&1 || true
 
 SSO_UPDATE_RES=$(curl -s -X PATCH "${LITELLM_API_BASE}/update/sso_settings" \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \
-  -d "${SSO_PAYLOAD}" || echo "")
+  --data-binary "@${SSO_TMP}" || echo "")
+rm -f "${SSO_TMP}"
+trap - EXIT
 
-if echo "${SSO_UPDATE_RES}" | grep -q "\"status\":\"success\""; then
+if printf '%s' "${SSO_UPDATE_RES}" | python3 -c 'import json, sys; d = json.load(sys.stdin); sys.exit(0 if isinstance(d, dict) and d.get("status") == "success" else 1)' 2>/dev/null; then
   log_success "LiteLLM SSO settings & role mappings successfully updated."
 else
   log_info "SSO settings applied."
@@ -413,21 +440,27 @@ USERS_JSON=$(curl -s -X GET "${LITELLM_API_BASE}/user/list" \
 
 echo ""
 echo -e "${BOLD}Current Active LiteLLM Proxy Administrators:${NC}"
-printf '%s' "${USERS_JSON}" | python3 -c '
-import json, sys
+USERS_JSON="${USERS_JSON}" python3 - << 'PYEOF'
+import json
+import os
+
 try:
-    data = json.load(sys.stdin)
+    data = json.loads(os.environ.get("USERS_JSON", "{}") or "{}")
     users = data.get("users", [])
-    print(f"{\"USER ID\":<32} {\"ROLE\":<20} {\"MODELS\":<25}")
+    if not isinstance(users, list):
+        users = []
+    print(f"{'USER ID':<32} {'ROLE':<20} {'MODELS':<25}")
     print("-" * 77)
     for u in users:
+        if not isinstance(u, dict):
+            continue
         uid = str(u.get("user_id", ""))
         role = str(u.get("user_role", ""))
         models = str(u.get("models", []))
         print(f"{uid:<32} {role:<20} {models:<25}")
 except Exception:
     pass
-'
+PYEOF
 
 log_success "======================================================================"
 log_success "LiteLLM SSO & Administrator Role Setup Completed Successfully."

@@ -80,6 +80,7 @@ SLUG_PREFIX="user"
 ROSTER_OUT=""
 EMIT_SCRIPT=""
 HIBERNATION_CAPABLE=false
+ENCRYPT_VOLUMES=true
 ENSURE_IAM_DDNS=true
 CONFIRM_YES=false
 
@@ -106,6 +107,7 @@ Launch Template & Compute Options:
   --security-group SG_ID      Security Group ID in Direct AMI mode
   --subnet-id SUBNET_ID       Explicit VPC Subnet ID
   --hibernation-capable       Enable encrypted root EBS + EC2 Hibernation
+  --no-encrypt                Disable default EBS root volume encryption (ignored if --hibernation-capable)
 
 Instance Naming & Sizing Options:
   --count N                   Create N numbered instances (<prefix>01 .. <prefix>N)
@@ -165,6 +167,7 @@ while [ $# -gt 0 ]; do
     --security-group)     require_arg "$1" "${2:-}"; SECURITY_GROUP_ID="$2"; shift 2 ;;
     --subnet-id)          require_arg "$1" "${2:-}"; SUBNET_ID="$2"; shift 2 ;;
     --hibernation-capable) HIBERNATION_CAPABLE=true; shift ;;
+    --no-encrypt)           ENCRYPT_VOLUMES=false; shift ;;
     --no-ensure-iam-ddns) ENSURE_IAM_DDNS=false; shift ;;
     --dry-run)            MODE="dry-run"; shift ;;
     --apply)              MODE="apply"; shift ;;
@@ -819,8 +822,14 @@ print(json.dumps([{"ResourceType": "instance", "Tags": [{"Key": k, "Value": v} f
       [ -n "${SUBNET_ID}" ] && run_args+=(--subnet-id "${SUBNET_ID}")
     else
       local eff_type="${INSTANCE_TYPE:-${INSTANCE_TYPE_DEFAULT}}"
-      local enc_flag="false"
-      [ "${HIBERNATION_CAPABLE}" = true ] && enc_flag="true"
+      local enc_flag="true"
+      if [ "${ENCRYPT_VOLUMES}" = false ]; then
+        if [ "${HIBERNATION_CAPABLE}" = true ]; then
+          log_warn "--no-encrypt ignored because --hibernation-capable requires an encrypted root EBS volume."
+        else
+          enc_flag="false"
+        fi
+      fi
       run_args+=(
         --image-id "${AMI_ID}"
         --instance-type "${eff_type}"
@@ -1268,6 +1277,9 @@ if [ "${MODE}" = "dry-run" ]; then
     echo "- **IAM Instance Profile**: \`${IAM_PROFILE}\`"
   fi
   echo "- **Route 53 Zone ID**: \`${ZONE_ID:-<auto-discover from ${BASE_DOMAIN}>}\`"
+  eff_encrypt="${ENCRYPT_VOLUMES}"
+  [ "${HIBERNATION_CAPABLE}" = true ] && eff_encrypt=true
+  echo "- **Encrypted Root EBS**: \`${eff_encrypt}\`"
   echo "- **Hibernation Capable**: \`${HIBERNATION_CAPABLE}\`"
   echo ""
   echo "| # | Participant / Label | EC2 Name Tag | Permanent Appliance URL | Onboarding Flow |"
@@ -1295,7 +1307,7 @@ if [ "${MODE}" = "emit-script" ]; then
 # Fleet ID: ${FLEET_ID} | Domain: *.${BASE_DOMAIN} | Count: ${#ROSTER_LINES[@]}
 # ==============================================================================
 set -euo pipefail
-TMP_UTIL="\$(mktemp "\${TMPDIR:-/tmp}/brainsos-fleet-util.XXXXXX.sh")"
+TMP_UTIL="\$(mktemp "\${TMPDIR:-/tmp}/brainsos-fleet-util.XXXXXX")"
 trap 'rm -f "\${TMP_UTIL}"' EXIT
 printf '%s' '${SELF_B64}' | (base64 -d 2>/dev/null || base64 -D) > "\${TMP_UTIL}"
 chmod +x "\${TMP_UTIL}"
@@ -1309,7 +1321,7 @@ EOF
 ROSTER_EOF
 )
 
-exec bash "\${TMP_UTIL}" \\
+bash "\${TMP_UTIL}" \\
   --participants "\${PARTICIPANTS_PAYLOAD}" \\
   --base-domain $(printf '%q' "${BASE_DOMAIN}") \\
   ${ZONE_ID:+--zone-id $(printf '%q' "${ZONE_ID}")} \\
@@ -1324,8 +1336,10 @@ exec bash "\${TMP_UTIL}" \\
   ${SECURITY_GROUP_ID:+--security-group $(printf '%q' "${SECURITY_GROUP_ID}")} \\
   ${SUBNET_ID:+--subnet-id $(printf '%q' "${SUBNET_ID}")} \\
   $([ "${HIBERNATION_CAPABLE}" = true ] && echo "--hibernation-capable") \\
+  $([ "${ENCRYPT_VOLUMES}" = false ] && [ "${HIBERNATION_CAPABLE}" != true ] && echo "--no-encrypt") \\
   $([ "${ENSURE_IAM_DDNS}" = false ] && echo "--no-ensure-iam-ddns") \\
   --apply "\$@"
+exit \$?
 EOF
   }
 

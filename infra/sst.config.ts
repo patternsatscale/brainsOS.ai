@@ -55,11 +55,16 @@ export default $config({
       zoneName,
     });
 
+    const { caddyAcmeSecretAccessKey: _caddySecret, ...publicRedirectOutputs } = redirectFlow.outputs;
+    const { mailWorkerSecretAccessKey: _mailWorkerSecret, ...publicEmailIngressOutputs } = emailIngressFlow.outputs;
+
     return {
       stage,
       sesDomains,
-      ...redirectFlow.outputs,
-      ...emailIngressFlow.outputs,
+      ...publicRedirectOutputs,
+      caddyAcmeSecretAccessKey: $util.secret("[REDACTED — retrieve from Pulumi state or rotate IAM AccessKey]"),
+      ...publicEmailIngressOutputs,
+      mailWorkerSecretAccessKey: $util.secret("[REDACTED — retrieve from Pulumi state or rotate IAM AccessKey]"),
     };
   },
 });

@@ -40,7 +40,27 @@ echo "[3/6] Running shell syntax checks (bash -n)..."
 find "${REPO_ROOT}/scripts" "${REPO_ROOT}/packages/brainsOS-appliance" -type f -name "*.sh" -exec bash -n {} +
 
 echo "[4/6] Validating Docker Compose appliance configuration..."
-docker compose -f "${REPO_ROOT}/docker-compose.yml" -f "${REPO_ROOT}/docker/compose/compose.appliance.yml" config -q
+TMP_COMPOSE_ENV=""
+COMPOSE_ENV_ARGS=()
+if [ ! -f "${REPO_ROOT}/.env" ] && [ -f "${REPO_ROOT}/.env.example" ]; then
+  TMP_COMPOSE_ENV="$(mktemp)"
+  trap 'rm -f "${TMP_COMPOSE_ENV}"' EXIT
+  while IFS= read -r _line || [ -n "${_line}" ]; do
+    case "${_line}" in
+      ""|\#*) continue ;;
+      *=*)
+        _k="${_line%%=*}"
+        _v="${_line#*=}"
+        _k="${_k#"${_k%%[![:space:]]*}"}"
+        _k="${_k%"${_k##*[![:space:]]}"}"
+        [ -z "${_v}" ] && _v="verify-dummy-${_k}"
+        printf '%s=%s\n' "${_k}" "${_v}" >> "${TMP_COMPOSE_ENV}"
+        ;;
+    esac
+  done < "${REPO_ROOT}/.env.example"
+  COMPOSE_ENV_ARGS=("--env-file" "${TMP_COMPOSE_ENV}")
+fi
+docker compose "${COMPOSE_ENV_ARGS[@]}" -f "${REPO_ROOT}/docker-compose.yml" -f "${REPO_ROOT}/docker/compose/compose.appliance.yml" config -q
 
 echo "[5/6] Running private fleet reference audit..."
 "${REPO_ROOT}/scripts/verify/verify-no-private-refs.sh"

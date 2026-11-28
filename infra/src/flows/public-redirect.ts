@@ -42,7 +42,7 @@ export function setupPublicRedirectFlow(input: PublicRedirectFlowInput) {
       redirectUrl,
       publicDistribution: cdn.distributionDomain,
       caddyAcmeAccessKeyId: caddyAcme.accessKeyId,
-      caddyAcmeSecretAccessKey: caddyAcme.secretAccessKey,
+      caddyAcmeSecretAccessKey: $util.secret(caddyAcme.secretAccessKey),
     },
   };
 }

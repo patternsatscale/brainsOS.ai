@@ -125,7 +125,7 @@ def is_blocked_destination(
     host: str,
     *,
     allow_private_hosts: Optional[Iterable[str]] = None,
-    resolver=socket.getaddrinfo,
+    resolver: Optional[Any] = None,
 ) -> Optional[str]:
     """Check whether destination `host` is an SSRF-forbidden internal or metadata address."""
     clean_host = (host or "").strip().lower().strip("[]")
@@ -148,11 +148,15 @@ def is_blocked_destination(
     except ValueError:
         pass
 
-    # DNS resolution check (all A/AAAA records)
+    # DNS resolution check (all A/AAAA records; fail closed on DNS errors)
+    lookup = resolver if resolver is not None else socket.getaddrinfo
     try:
-        infos = resolver(clean_host, None, proto=socket.IPPROTO_TCP)
-    except OSError:
-        return None
+        infos = lookup(clean_host, None, proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        return f"DNS resolution failed for '{clean_host}': {exc}"
+
+    if not infos:
+        return f"DNS resolution returned no records for '{clean_host}'"
 
     for info in infos:
         sockaddr = info[4]
@@ -598,16 +602,21 @@ class OpenBaoEgressAddon:
 
         allowed_set: Optional[Set[str]]
         if token_repos is not None and env_repos is not None:
-            allowed_set = token_repos & env_repos
+            if "*" in token_repos and "*" in env_repos:
+                allowed_set = {"*"}
+            elif "*" in token_repos:
+                allowed_set = env_repos
+            elif "*" in env_repos:
+                allowed_set = token_repos
+            else:
+                allowed_set = token_repos & env_repos
         elif token_repos is not None:
             allowed_set = token_repos
         else:
             allowed_set = env_repos
 
-        if allowed_set is None:
-            return None
         if not allowed_set:
-            return "GitHub repository access is disabled for this tenant (empty GITHUB_ALLOWED_REPOS)"
+            return "GitHub repository access is disabled for this tenant (empty or unset GITHUB_ALLOWED_REPOS)"
 
         raw_path = getattr(flow.request, "path", None)
         if not raw_path:
@@ -626,6 +635,9 @@ class OpenBaoEgressAddon:
         norm_path = posixpath.normpath(decoded if decoded.startswith("/") else f"/{decoded}")
         if not norm_path.startswith("/") or ".." in norm_path.split("/"):
             return f"Blocked normalized GitHub path '{norm_path}'"
+
+        if "*" in allowed_set:
+            return None
 
         repo_slug = ""
         if host == "api.github.com":
@@ -700,6 +712,36 @@ class OpenBaoEgressAddon:
             )
         if reason:
             logger.warning("[SSRF-BLOCK] server_connect %s", reason)
+            server.error = reason
+            kill_fn = getattr(data, "kill", None)
+            if callable(kill_fn):
+                kill_fn()
+
+    def server_connected(self, data: Any) -> None:
+        server = getattr(data, "server", None) or getattr(data, "server_conn", None)
+        if server is None:
+            return
+        peername = getattr(server, "peername", None)
+        address = getattr(server, "address", None)
+        sni_host = str(getattr(server, "sni", "") or "").strip().lower()
+        addr_host = (
+            str(address[0]).strip().lower()
+            if (address and isinstance(address, (tuple, list)) and address[0])
+            else ""
+        )
+        target_host = sni_host or addr_host
+        peer_ip = (
+            str(peername[0]).strip()
+            if (peername and isinstance(peername, (tuple, list)) and peername[0])
+            else ""
+        )
+        reason = _is_forbidden_peer_ip(
+            peer_ip,
+            host=target_host,
+            allow_private_hosts=self.allow_private_hosts,
+        )
+        if reason:
+            logger.warning("[SSRF-BLOCK] server_connected %s", reason)
             server.error = reason
             kill_fn = getattr(data, "kill", None)
             if callable(kill_fn):

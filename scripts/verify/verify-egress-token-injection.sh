@@ -127,12 +127,22 @@ if not proxy:
     raise SystemExit("Missing tool-egress-proxy service in compose.agents.yml")
 
 proxy_nets = proxy.get("networks") or {}
-for required_net in ("brainsos-internal-net", "brainsos-secrets-net"):
+for required_net in ("brainsos-internal-net", "brainsos-secrets-net", "brainsos-sandbox-net"):
     if required_net not in proxy_nets:
         raise SystemExit(f"tool-egress-proxy missing network '{required_net}'")
 
+proxy_cmd = str(proxy.get("command") or "")
+if "web_password=" in proxy_cmd:
+    raise SystemExit("tool-egress-proxy command must NOT pass web_password= via CLI argv")
+
 proxy_env = [str(x) for x in (proxy.get("environment") or [])]
-for required_proxy_env in ("TOOL_EGRESS_PROXY_TOKENS=", "TOOL_EGRESS_PROXY_SECRET=", "GITHUB_ALLOWED_REPOS=", "OPENBAO_CACERT="):
+for required_proxy_env in (
+    "TOOL_EGRESS_REQUIRE_PROXY_AUTH=",
+    "TOOL_EGRESS_PROXY_TOKENS=",
+    "TOOL_EGRESS_PROXY_SECRET=",
+    "GITHUB_ALLOWED_REPOS=",
+    "OPENBAO_CACERT=",
+):
     if not any(item.startswith(required_proxy_env) for item in proxy_env):
         raise SystemExit(f"tool-egress-proxy missing '{required_proxy_env}' env wiring")
 
@@ -190,6 +200,7 @@ for required in (
     "_verify_tls_and_sni",
     "def http_connect(",
     "def server_connect(",
+    "def server_connected(",
     "api.tavily.com",
     "Authorization",
 ):
