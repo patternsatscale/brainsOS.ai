@@ -30,7 +30,7 @@ To solve this, brainsOS uses **ACME DNS-01 Challenges via AWS Route 53**.
 │                                          │       │                            │
 │  [ Caddy Reverse Proxy Container ]       │◄──────┤ 4. Issues signed public    │
 │    • Built with 'dns.providers.route53'  │       │    Wildcard SSL Cert       │
-│    • Mounts ~/.aws for AWS credentials   │       │    (Green Padlock)         │
+│    • Uses explicit env vars or IAM role  │       │    (Green Padlock)         │
 │    • Serves all reverse proxies:         │       └────────────────────────────┘
 │      *.brainsos.local.example.com        │
 └──────────────────────────────────────────┘
@@ -72,12 +72,7 @@ The verification happens **once**. Once issued, Caddy stores the wildcard certif
    ```
 
 2. **Credential Resolution**:
-   In `docker-compose.yml`, the host's AWS CLI directory is mounted into the container read-only:
-   ```yaml
-   volumes:
-     - ${HOME}/.aws:/root/.aws:ro
-   ```
-   Caddy's Route 53 plugin natively reads credentials from `/root/.aws/credentials` (or environment variables if explicitly configured).
+   `docker/compose/compose.ingress.yml` does **not** bind-mount `~/.aws` into the edge container. Instead, Caddy's Route 53 plugin resolves credentials from explicit environment variables (`BRAINSOS_INFRA_AWS_ACCESS_KEY_ID`, `BRAINSOS_INFRA_AWS_SECRET_ACCESS_KEY`, `BRAINSOS_INFRA_AWS_REGION` mapped to `AWS_*` in `compose.ingress.yml`) or the EC2 instance IAM role via IMDSv2 on appliance deployments.
 
 3. **Dynamic TLS Policy Compilation (`sync-agents.sh`)**:
    When `ACME_DNS_PROVIDER=route53` is enabled in `.env`, `./scripts/control/sync-agents.sh` generates `config/caddy/tls_policy.caddy`:

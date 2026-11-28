@@ -123,15 +123,54 @@ EOF
 # 2. Scaffolding default code-server configuration
 # When running behind Caddy HTTP Basic Auth gate, auth defaults to 'none' to avoid redundant double-login.
 CODE_SERVER_AUTH="${CODE_SERVER_AUTH:-none}"
+CODE_SERVER_PASSWORD_EFFECTIVE="${PASSWORD:-${CODE_SERVER_PASSWORD:-}}"
+if [ "${CODE_SERVER_AUTH}" = "password" ] && [ -z "${CODE_SERVER_PASSWORD_EFFECTIVE}" ]; then
+  echo "[BRAINSOS-EDITOR] ERROR: CODE_SERVER_AUTH=password requires PASSWORD or CODE_SERVER_PASSWORD to be set." >&2
+  exit 1
+fi
 mkdir -p /home/coder/.config/code-server
-cat << EOF > /home/coder/.config/code-server/config.yaml
-bind-addr: 0.0.0.0:8443
-auth: ${CODE_SERVER_AUTH}
-password: ${PASSWORD:-brainsos_operator_secret}
-cert: false
-disable-telemetry: true
-disable-update-check: true
-EOF
+{
+  echo "bind-addr: 0.0.0.0:8443"
+  echo "auth: ${CODE_SERVER_AUTH}"
+  if [ -n "${CODE_SERVER_PASSWORD_EFFECTIVE}" ]; then
+    echo "password: ${CODE_SERVER_PASSWORD_EFFECTIVE}"
+  fi
+  echo "cert: false"
+  echo "disable-telemetry: true"
+  echo "disable-update-check: true"
+} > /home/coder/.config/code-server/config.yaml
+chmod 600 /home/coder/.config/code-server/config.yaml
+
+# 2b. Internal CA Trust Assembly (non-root user-writable bundle; resets safely if caddy_root.crt is 0-byte)
+SYSTEM_CA_BUNDLE="/etc/ssl/certs/ca-certificates.crt"
+CADDY_ROOT_CA="/etc/ssl/caddy/root.crt"
+OPENBAO_ROOT_CA="/etc/ssl/openbao/ca.crt"
+COMBINED_CA_BUNDLE="/home/coder/.local/share/code-server/brainsos-ca-bundle.crt"
+mkdir -p "$(dirname "${COMBINED_CA_BUNDLE}")"
+if [ -s "${CADDY_ROOT_CA}" ]; then
+  TMP_CA_BUNDLE="$(mktemp "${COMBINED_CA_BUNDLE}.XXXXXX")"
+  cat "${SYSTEM_CA_BUNDLE}" > "${TMP_CA_BUNDLE}"
+  printf '\n' >> "${TMP_CA_BUNDLE}"
+  cat "${CADDY_ROOT_CA}" >> "${TMP_CA_BUNDLE}"
+  if [ -s "${OPENBAO_ROOT_CA}" ]; then
+    printf '\n' >> "${TMP_CA_BUNDLE}"
+    cat "${OPENBAO_ROOT_CA}" >> "${TMP_CA_BUNDLE}"
+  fi
+  chmod 0644 "${TMP_CA_BUNDLE}"
+  mv -f "${TMP_CA_BUNDLE}" "${COMBINED_CA_BUNDLE}"
+  export NODE_EXTRA_CA_CERTS="${CADDY_ROOT_CA}"
+  export SSL_CERT_FILE="${COMBINED_CA_BUNDLE}"
+  export REQUESTS_CA_BUNDLE="${COMBINED_CA_BUNDLE}"
+  export CURL_CA_BUNDLE="${COMBINED_CA_BUNDLE}"
+  export GIT_SSL_CAINFO="${COMBINED_CA_BUNDLE}"
+else
+  rm -f "${COMBINED_CA_BUNDLE}" 2>/dev/null || true
+  unset NODE_EXTRA_CA_CERTS
+  export SSL_CERT_FILE="${SYSTEM_CA_BUNDLE}"
+  export REQUESTS_CA_BUNDLE="${SYSTEM_CA_BUNDLE}"
+  export CURL_CA_BUNDLE="${SYSTEM_CA_BUNDLE}"
+  export GIT_SSL_CAINFO="${SYSTEM_CA_BUNDLE}"
+fi
 
 # 3. Dynamic Configuration of VS Code User settings.json and chatLanguageModels.json
 mkdir -p /home/coder/.local/share/code-server/User
@@ -308,7 +347,7 @@ def write_configs(active_key):
     d.pop("security.workspace.trust.startupPrompt", None)
     d["extensions.autoUpdate"] = False
     d["extensions.autoCheckUpdates"] = False
-    d["http.proxyStrictSSL"] = False
+    d["http.proxyStrictSSL"] = True
     d["telemetry.telemetryLevel"] = "off"
     d["workbench.startupEditor"] = "none"
     d["workbench.editor.restoreViewState"] = True
@@ -405,6 +444,7 @@ def write_configs(active_key):
             with open(ws_settings_path, "r", encoding="utf-8") as f:
                 ws_d = json.load(f)
             if isinstance(ws_d, dict):
+                ws_d["http.proxyStrictSSL"] = True
                 ws_d["chat.allowAnonymousAccess"] = True
                 ws_d["github.copilot.chat.backgroundAgent.enabled"] = False
                 ws_d["github.copilot.chat.cloudAgent.enabled"] = False
@@ -443,8 +483,12 @@ def write_configs(active_key):
         json.dump(chat_lm, f, indent=2)
 
     try:
+        aider_lines = ["openai-api-base: http://litellm:4000/v1\n"]
+        if active_key:
+            aider_lines.append(f"openai-api-key: {active_key}\n")
+        aider_lines.append("model: openai/brainsos-core\n")
         with open(aider_path, "w", encoding="utf-8") as f:
-            f.write(f"openai-api-base: http://litellm:4000/v1\nopenai-api-key: {active_key}\nmodel: openai/brainsos-core\n")
+            f.writelines(aider_lines)
     except Exception:
         pass
 
@@ -567,21 +611,35 @@ fi
 
 # 4. Scaffolding Aider CLI configuration
 if [ ! -f /home/coder/.aider.conf.yml ]; then
-  cat << EOF > /home/coder/.aider.conf.yml
-openai-api-base: http://litellm:4000/v1
-openai-api-key: ${OPENAI_API_KEY:-sk-brainsos-operator-virtual-key}
-model: openai/brainsos-core
-EOF
+  {
+    echo "openai-api-base: http://litellm:4000/v1"
+    if [ -n "${OPENAI_API_KEY:-}" ]; then
+      echo "openai-api-key: ${OPENAI_API_KEY}"
+    fi
+    echo "model: openai/brainsos-core"
+  } > /home/coder/.aider.conf.yml
 fi
 
-# 6. Export CA environment variables into user shell
-CADDY_ROOT_CA="/etc/ssl/caddy/root.crt"
+# 6. Export CA environment variables into user shell (combined CA bundle when caddy_root.crt is non-empty, else system CAs)
+if [ -f /home/coder/.bashrc ]; then
+  grep -v -E '^(export (NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|REQUESTS_CA_BUNDLE|CURL_CA_BUNDLE|GIT_SSL_CAINFO)=|unset NODE_EXTRA_CA_CERTS)' /home/coder/.bashrc > /tmp/bashrc.clean 2>/dev/null || true
+  mv -f /tmp/bashrc.clean /home/coder/.bashrc 2>/dev/null || true
+fi
 if [ -s "${CADDY_ROOT_CA}" ]; then
-  grep -q "NODE_EXTRA_CA_CERTS" /home/coder/.bashrc 2>/dev/null || cat << EOF >> /home/coder/.bashrc
+  cat << EOF >> /home/coder/.bashrc
 export NODE_EXTRA_CA_CERTS="${CADDY_ROOT_CA}"
-export SSL_CERT_FILE="${CADDY_ROOT_CA}"
-export REQUESTS_CA_BUNDLE="${CADDY_ROOT_CA}"
-export CURL_CA_BUNDLE="${CADDY_ROOT_CA}"
+export SSL_CERT_FILE="${COMBINED_CA_BUNDLE}"
+export REQUESTS_CA_BUNDLE="${COMBINED_CA_BUNDLE}"
+export CURL_CA_BUNDLE="${COMBINED_CA_BUNDLE}"
+export GIT_SSL_CAINFO="${COMBINED_CA_BUNDLE}"
+EOF
+else
+  cat << EOF >> /home/coder/.bashrc
+unset NODE_EXTRA_CA_CERTS
+export SSL_CERT_FILE="${SYSTEM_CA_BUNDLE}"
+export REQUESTS_CA_BUNDLE="${SYSTEM_CA_BUNDLE}"
+export CURL_CA_BUNDLE="${SYSTEM_CA_BUNDLE}"
+export GIT_SSL_CAINFO="${SYSTEM_CA_BUNDLE}"
 EOF
 fi
 

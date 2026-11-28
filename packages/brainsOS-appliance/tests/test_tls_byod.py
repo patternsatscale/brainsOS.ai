@@ -373,3 +373,64 @@ def test_set_domain_breakglass_toggle_lockout_and_cognito_dry_run(tmp_path: Path
     )
     assert bg_on.returncode == 0
     assert "BRAINSOS_BREAKGLASS_ENABLED=true" in bg_on.stdout
+
+
+def test_set_domain_never_binds_admin_or_authentik_to_instance_id_and_locks_os_admin(tmp_path: Path):
+    """Verify set-domain.sh locks OS admin and keeps Authentik/break-glass secrets independent of Instance ID (#405)."""
+    dummy_env = tmp_path / ".env"
+    dummy_env.write_text(
+        'BRAINSOS_DOMAIN="local.brainsos.ai"\n'
+        'BRAINSOS_INSTANCE_ID="i-0123456789abcdef0"\n',
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["BRAINSOS_ENV_FILE"] = str(dummy_env)
+    env["BRAINSOS_NEW_ADMIN_PASSWORD"] = "SuperSecretPass123!"
+
+    proc = subprocess.run(
+        [
+            str(SET_DOMAIN),
+            "--local-domain",
+            "alice.aws.cloud.brainsos.ai",
+            "--superuser-username",
+            "alice",
+            "--internal",
+            "--mark-wizard-completed",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "i-0123456789abcdef0" not in proc.stdout.split("BRAINSOS_INSTANCE_ADMIN_PASSWORD=", 1)[-1].splitlines()[0]
+    assert "BRAINSOS_INSTANCE_ADMIN_PASSWORD=[REDACTED]" in proc.stdout
+
+    # Verify custom break-glass secret works cleanly and script locks admin via passwd -l
+    env["BRAINSOS_NEW_BREAKGLASS_SECRET"] = "CustomBreakGlassSecret99!@"
+    proc2 = subprocess.run(
+        [
+            str(SET_DOMAIN),
+            "--local-domain",
+            "alice.aws.cloud.brainsos.ai",
+            "--superuser-username",
+            "alice",
+            "--breakglass",
+            "--internal",
+            "--mark-wizard-completed",
+            "--dry-run",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    assert proc2.returncode == 0, proc2.stdout + proc2.stderr
+    assert "CustomBreakGlassSecret99!@" not in proc2.stdout
+
+    src = SET_DOMAIN.read_text(encoding="utf-8")
+    assert "passwd -l admin" in src
+    assert 'chpasswd <<< "admin:' not in src
+    assert 'echo "admin:' not in src
+

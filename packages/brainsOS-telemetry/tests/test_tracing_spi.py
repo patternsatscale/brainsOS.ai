@@ -302,7 +302,20 @@ def test_system_status_exposes_telemetry_backend_and_allowed_services(tmp_path: 
     (tmp_path / ".env").write_text("BRAINSOS_DOMAIN=appliance.brainsos.local\n", encoding="utf-8")
     with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
         client = TestClient(create_system_api_app())
-        res = client.get("/api/v1/system/status", headers={"X-BrainsOS-Internal": "test-secret-token-382"})
+        unauth_res = client.get(
+            "/api/v1/system/status",
+            headers={"X-BrainsOS-Internal": "test-secret-token-382"},
+        )
+        assert unauth_res.status_code == 403
+
+        res = client.get(
+            "/api/v1/system/status",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-382",
+                "X-Authentik-Username": "admin",
+                "X-Authentik-Groups": "authentik Admins",
+            },
+        )
         assert res.status_code == 200
         body = res.json()
         assert body["telemetry_backend"] == "lens"

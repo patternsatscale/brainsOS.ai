@@ -19,7 +19,7 @@ services:
     environment:
       POSTGRES_DB: ${LITELLM_DB_NAME:-litellm}
       POSTGRES_USER: ${LITELLM_DB_USER:-litellm}
-      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD must be set}
     volumes:
       - ${LITELLM_DB_DATA_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/litellm_db}:/var/lib/postgresql/data
     networks:
@@ -58,8 +58,8 @@ services:
       - ../../docker/litellm/patches/langfuse_otel.py:/app/.venv/lib/python3.13/site-packages/litellm/integrations/langfuse/langfuse_otel.py:ro
     environment:
       - PORT=4000
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-brainsos-master-key}
-      - DATABASE_URL=postgresql://${LITELLM_DB_USER:-litellm}:${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}@litellm-db:5432/${LITELLM_DB_NAME:-litellm}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set}
+      - DATABASE_URL=postgresql://${LITELLM_DB_USER:-litellm}:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD must be set}@litellm-db:5432/${LITELLM_DB_NAME:-litellm}
       - STORE_MODEL_IN_DB=True
       - BRAINSOS_CORE_MODEL=${BRAINSOS_CORE_MODEL:-ollama_chat/llama3.2:3b}
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
@@ -70,7 +70,7 @@ services:
       - LITELLM_PROXY_ADMIN_NAME=${BRAINSOS_SUPERUSER_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@${BRAINSOS_DOMAIN:-brainsos.local}}}
       - PROXY_ADMIN_EMAILS=admin@${BRAINSOS_LOCAL_DOMAIN:-dgx.local.brainsos.ai},admin@brainsos.ai,operator@${BRAINSOS_LOCAL_DOMAIN:-dgx.local.brainsos.ai},${BRAINSOS_SUPERUSER_EMAIL:-admin@brainsos.ai}
       - GENERIC_CLIENT_ID=${AUTH_LITELLM_CLIENT_ID:-litellm-proxy}
-      - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
+      - GENERIC_CLIENT_SECRET=${AUTH_LITELLM_CLIENT_SECRET:?AUTH_LITELLM_CLIENT_SECRET must be set}
       - GENERIC_AUTHORIZATION_ENDPOINT=https://${BRAINSOS_DOMAIN:-brainsos.local}/application/o/authorize/
       - GENERIC_TOKEN_ENDPOINT=http://authentik-server:9000/application/o/token/
       - GENERIC_USERINFO_ENDPOINT=http://authentik-server:9000/application/o/userinfo/
@@ -90,21 +90,19 @@ services:
       # First-Class LiteLLM Lens Observability Integration (#375)
       - LITELLM_LENS_URL=${LITELLM_LENS_URL:-http://lens:4318}
       - LITELLM_LENS_PUBLIC_URL=${LITELLM_LENS_PUBLIC_URL:-https://${BRAINSOS_DOMAIN:-brainsos.local}/lens-ingest}
-      - LITELLM_LENS_SERVICE_TOKEN=${LITELLM_LENS_SERVICE_TOKEN:-brainsos_lens_service_token_must_be_32_chars_min}
-      - LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:-brainsos_lens_gateway_secret_must_be_32_chars_min}
+      - LITELLM_LENS_SERVICE_TOKEN=${LITELLM_LENS_SERVICE_TOKEN:?LITELLM_LENS_SERVICE_TOKEN must be set}
+      - LENS_GATEWAY_SECRET=${LENS_GATEWAY_SECRET:?LENS_GATEWAY_SECRET must be set}
     networks:
       brainsos-control-net:
         ipv4_address: ${LITELLM_CONTROL_IP:-172.28.2.10}
         gw_priority: 100
-      brainsos-internal-net:
-        ipv4_address: ${LITELLM_INTERNAL_IP:-172.28.1.11}
+      brainsos-ingress-net:
+        ipv4_address: ${LITELLM_INGRESS_IP:-172.28.0.11}
         aliases:
           - litellm
           - brainsos-litellm
           - brainsos-infra-litellm
           - brainsos-control-litellm
-      brainsos-ingress-net:
-        ipv4_address: ${LITELLM_INGRESS_IP:-172.28.0.11}
     logging: *default-logging
     depends_on:
       litellm-db:
@@ -116,6 +114,59 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  # Minimal Zero-Secret Read-Only L7 Sandbox Inference & OTLP Gateway (#406 HIGH-4)
+  # Mediates brainsos-sandbox-net (and warm runners on brainsos-internal-net) -> litellm:4000 / lens:4318
+  sandbox-gateway:
+    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    container_name: brainsos-sandbox-gateway
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    pids_limit: 128
+    security_opt:
+      - "no-new-privileges:true"
+    volumes:
+      - ../../config/sandbox-gateway:/etc/caddy:ro
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    networks:
+      brainsos-sandbox-net:
+        ipv4_address: ${SANDBOX_GATEWAY_SANDBOX_IP:-172.28.8.10}
+        aliases:
+          - sandbox-gateway
+          - brainsos-sandbox-gateway
+          - litellm
+          - brainsos-litellm
+          - brainsos-infra-litellm
+          - brainsos-control-litellm
+          - lens
+          - brainsos-lens
+          - brainsos-telemetry-lens
+      brainsos-ingress-net:
+        ipv4_address: ${SANDBOX_GATEWAY_INGRESS_IP:-172.28.0.19}
+        aliases:
+          - sandbox-gateway
+          - brainsos-sandbox-gateway
+      brainsos-internal-net:
+        ipv4_address: ${SANDBOX_GATEWAY_INTERNAL_IP:-172.28.1.14}
+        aliases:
+          - sandbox-gateway
+          - brainsos-sandbox-gateway
+          - litellm
+          - brainsos-litellm
+          - brainsos-infra-litellm
+          - brainsos-control-litellm
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 4000 && nc -z 127.0.0.1 4318"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   # Segregated OpenBao Secret Manager (Integrated Raft Storage, Zero Host Ports - #387)
   openbao:

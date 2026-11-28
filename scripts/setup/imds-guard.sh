@@ -245,6 +245,69 @@ check_docker_user_order() {
   return 0
 }
 
+is_valid_bridge_name() {
+  [[ "$1" =~ ^(br-[a-zA-Z0-9_-]{1,28}|docker0)$ ]]
+}
+
+append_unique_bridge() {
+  local candidate="$1"
+  local arr_name="$2"
+  is_valid_bridge_name "${candidate}" || return 0
+  if [ "${candidate}" = "${INTERNAL_BRIDGE:-}" ]; then
+    return 0
+  fi
+  local existing
+  eval "for existing in \"\${${arr_name}[@]+\"\${${arr_name}[@]}\"}\"; do
+    if [ \"\${existing}\" = \"\${candidate}\" ]; then
+      return 0
+    fi
+  done"
+  eval "${arr_name}+=(\"\${candidate}\")"
+}
+
+linklocal_jump_is_valid() {
+  local br="$1"
+  local expected="-A DOCKER-USER -i ${br} -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL"
+  local rules count jump_line ret_line
+
+  iptables -C DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL 2>/dev/null || return 1
+  rules="$(iptables -S DOCKER-USER 2>/dev/null | grep '^-A DOCKER-USER ' || true)"
+  if [ -z "${rules}" ]; then
+    # Stateless test shim (-C passed but -S unimplemented)
+    return 0
+  fi
+  count="$(printf '%s\n' "${rules}" | grep -Fx -- "${expected}" | wc -l | tr -d ' ')"
+  [ "${count}" -eq 1 ] || return 1
+  jump_line="$(printf '%s\n' "${rules}" | grep -nxF -- "${expected}" | head -n 1 | cut -d: -f1 || true)"
+  [ -n "${jump_line}" ] && [ "${jump_line}" -ge 3 ] || return 1
+  ret_line="$(printf '%s\n' "${rules}" | grep -nxF -- "-A DOCKER-USER -j RETURN" | head -n 1 | cut -d: -f1 || true)"
+  if [ -n "${ret_line}" ] && [ "${jump_line}" -ge "${ret_line}" ]; then
+    return 1
+  fi
+  return 0
+}
+
+ensure_linklocal_jumps() {
+  local br
+  for br in "${LINKLOCAL_BRIDGES[@]+"${LINKLOCAL_BRIDGES[@]}"}"; do
+    [ -n "${br}" ] || continue
+    if linklocal_jump_is_valid "${br}"; then
+      continue
+    fi
+    if [ "${DRY_RUN}" = true ]; then
+      if iptables -C DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL 2>/dev/null; then
+        run_ipt -D DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL
+      fi
+      run_ipt -I DOCKER-USER 3 -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL
+    else
+      while iptables -C DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL 2>/dev/null; do
+        iptables -D DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL 2>/dev/null || break
+      done
+      iptables -I DOCKER-USER 3 -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL
+    fi
+  done
+}
+
 # 1. Collect IMDS-authorized container IPs (LiteLLM + Caddy only when Route 53 DNS-01 TLS is active)
 RAW_LITELLM_IPS="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' brainsos-control-litellm 2>/dev/null || true)"
 LITELLM_IPS=()
@@ -285,6 +348,38 @@ if [[ ! "${INTERNAL_BRIDGE}" =~ ^(br-[a-zA-Z0-9_-]{1,12}|docker0)$ ]]; then
   INTERNAL_BRIDGE="${BRAINSOS_INTERNAL_BRIDGE:-br-internal}"
 fi
 
+LINKLOCAL_BRIDGES=()
+for _net_spec in \
+  "brainsos-ingress-net:${BRAINSOS_INGRESS_BRIDGE:-br-ingress}" \
+  "brainsos-control-net:${BRAINSOS_CONTROL_BRIDGE:-br-control}" \
+  "brainsos-auth-net:${BRAINSOS_AUTH_BRIDGE:-br-auth}" \
+  "brainsos-secrets-net:${BRAINSOS_SECRETS_BRIDGE:-br-secrets}" \
+  "brainsos-mail-net:${BRAINSOS_MAIL_BRIDGE:-br-mail}" \
+  "brainsos-ide-net:${BRAINSOS_IDE_BRIDGE:-br-ide}" \
+  "brainsos-telemetry-net:${BRAINSOS_TELEMETRY_BRIDGE:-br-telemetry}" \
+  "brainsos-sandbox-net:${BRAINSOS_SANDBOX_BRIDGE:-br-sandbox}"
+do
+  _n_name="${_net_spec%%:*}"
+  _n_fallback="${_net_spec#*:}"
+  _n_br="$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "${_n_name}" 2>/dev/null || true)"
+  _n_br="$(printf '%s' "${_n_br}" | awk '{print $1}')"
+  if ! is_valid_bridge_name "${_n_br}"; then
+    _n_br="${_n_fallback}"
+  fi
+  append_unique_bridge "${_n_br}" LINKLOCAL_BRIDGES
+done
+
+while IFS= read -r _dyn_net; do
+  _dyn_net="$(printf '%s' "${_dyn_net}" | tr -d '\r' | awk '{print $1}')"
+  if [[ "${_dyn_net}" =~ ^brainsos-[a-zA-Z0-9_-]+-net$ ]]; then
+    _dyn_br="$(docker network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "${_dyn_net}" 2>/dev/null || true)"
+    _dyn_br="$(printf '%s' "${_dyn_br}" | awk '{print $1}')"
+    append_unique_bridge "${_dyn_br}" LINKLOCAL_BRIDGES
+  fi
+done < <(docker network ls --format '{{.Name}}' 2>/dev/null || true)
+
+append_unique_bridge "docker0" LINKLOCAL_BRIDGES
+
 PROXY_IP="$(inspect_container_internal_ip brainsos-agent-egress-proxy)"
 if [ -z "${PROXY_IP}" ]; then
   PROXY_IP="${BRAINSOS_EGRESS_PROXY_STATIC_IP:-${TOOL_EGRESS_INTERNAL_IP:-172.28.1.2}}"
@@ -296,14 +391,13 @@ if [ -z "${CADDY_INTERNAL_ADDR}" ]; then
 fi
 
 LITELLM_INTERNAL_ADDR="$(inspect_container_internal_ip brainsos-control-litellm)"
-if [ -z "${LITELLM_INTERNAL_ADDR}" ]; then
-  LITELLM_INTERNAL_ADDR="${LITELLM_INTERNAL_IP:-172.28.1.11}"
-fi
 
 EGRESS_ALLOWED_IPS=()
 append_unique_ip "${PROXY_IP}" EGRESS_ALLOWED_IPS
 append_unique_ip "${CADDY_INTERNAL_ADDR}" EGRESS_ALLOWED_IPS
-append_unique_ip "${LITELLM_INTERNAL_ADDR}" EGRESS_ALLOWED_IPS
+if [ -n "${LITELLM_INTERNAL_ADDR}" ]; then
+  append_unique_ip "${LITELLM_INTERNAL_ADDR}" EGRESS_ALLOWED_IPS
+fi
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qw "brainsos-agent-mail-ingress"; then
   MAIL_INGRESS_IP="$(inspect_container_internal_ip brainsos-agent-mail-ingress)"
@@ -312,7 +406,7 @@ fi
 
 case "${ACTION}" in
   apply)
-    log_info "Applying IMDS & internal-net WAN egress isolation guards (BRAINSOS-IMDS, BRAINSOS-EGRESS)..."
+    log_info "Applying IMDS & link-local/WAN egress container isolation guards (BRAINSOS-IMDS, BRAINSOS-EGRESS, BRAINSOS-LINKLOCAL)..."
     if [ "${DRY_RUN}" = true ]; then
       run_ipt -N BRAINSOS-IMDS
       run_ipt -F BRAINSOS-IMDS
@@ -323,7 +417,7 @@ case "${ACTION}" in
       done
       run_ipt -A BRAINSOS-IMDS -j DROP
 
-      # Restrict brainsos-internal-net WAN egress exclusively to tool-egress-proxy:8082 (+ caddy/litellm/active mail-ingress)
+      # Restrict brainsos-internal-net WAN egress exclusively to tool-egress-proxy:8082 (+ caddy/active mail-ingress)
       run_ipt -N BRAINSOS-EGRESS
       run_ipt -F BRAINSOS-EGRESS
       run_ipt -A BRAINSOS-EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
@@ -341,7 +435,18 @@ case "${ACTION}" in
       done
       run_ipt -A BRAINSOS-EGRESS -j DROP
 
+      # Drop 169.254.0.0/16 (IMDSv4, ECS task metadata 169.254.170.2, link-local) across all other Docker bridges
+      run_ipt -N BRAINSOS-LINKLOCAL
+      run_ipt -F BRAINSOS-LINKLOCAL
+      for ip in "${ALLOWED_IMDS_IPS[@]+"${ALLOWED_IMDS_IPS[@]}"}"; do
+        if [ -n "${ip}" ]; then
+          run_ipt -A BRAINSOS-LINKLOCAL -s "${ip}/32" -d 169.254.169.254/32 -j RETURN
+        fi
+      done
+      run_ipt -A BRAINSOS-LINKLOCAL -d 169.254.0.0/16 -j DROP
+
       ensure_docker_user_order iptables "169.254.169.254/32" BRAINSOS-IMDS BRAINSOS-EGRESS
+      ensure_linklocal_jumps
 
       # IPv6 EC2 IMDS (fd00:ec2::254/128) & internal-net WAN egress DROP
       run_ip6t -N BRAINSOS-IMDS6
@@ -384,7 +489,17 @@ case "${ACTION}" in
       done
       iptables -A BRAINSOS-EGRESS -j DROP
 
+      iptables -N BRAINSOS-LINKLOCAL 2>/dev/null || true
+      iptables -F BRAINSOS-LINKLOCAL
+      for ip in "${ALLOWED_IMDS_IPS[@]+"${ALLOWED_IMDS_IPS[@]}"}"; do
+        if [ -n "${ip}" ]; then
+          iptables -A BRAINSOS-LINKLOCAL -s "${ip}/32" -d 169.254.169.254/32 -j RETURN
+        fi
+      done
+      iptables -A BRAINSOS-LINKLOCAL -d 169.254.0.0/16 -j DROP
+
       ensure_docker_user_order iptables "169.254.169.254/32" BRAINSOS-IMDS BRAINSOS-EGRESS
+      ensure_linklocal_jumps
 
       if command -v ip6tables >/dev/null 2>&1; then
         ip6tables -N BRAINSOS-IMDS6 2>/dev/null || true
@@ -401,8 +516,10 @@ case "${ACTION}" in
       iptables -S BRAINSOS-IMDS
       log_info "Active BRAINSOS-EGRESS rules:"
       iptables -S BRAINSOS-EGRESS
+      log_info "Active BRAINSOS-LINKLOCAL rules:"
+      iptables -S BRAINSOS-LINKLOCAL
     fi
-    log_success "IMDS & WAN egress guards applied (${#ALLOWED_IMDS_IPS[@]} IMDS IP(s) allowed; ${INTERNAL_BRIDGE} WAN egress gated via tool-egress-proxy:8082)."
+    log_success "IMDS & WAN egress guards applied (${#ALLOWED_IMDS_IPS[@]} IMDS IP(s) allowed; ${INTERNAL_BRIDGE} WAN egress gated via tool-egress-proxy:8082; ${#LINKLOCAL_BRIDGES[@]} bridge(s) protected by BRAINSOS-LINKLOCAL)."
     ;;
 
   check)
@@ -412,10 +529,15 @@ case "${ACTION}" in
       run_ipt -S DOCKER-USER
       run_ipt -S BRAINSOS-IMDS
       run_ipt -S BRAINSOS-EGRESS
+      run_ipt -S BRAINSOS-LINKLOCAL
       for ip in "${ALLOWED_IMDS_IPS[@]+"${ALLOWED_IMDS_IPS[@]}"}"; do
         if [ -n "${ip}" ]; then
           run_ipt -C BRAINSOS-EGRESS -s "${ip}/32" -d 169.254.169.254/32 -j RETURN
+          run_ipt -C BRAINSOS-LINKLOCAL -s "${ip}/32" -d 169.254.169.254/32 -j RETURN
         fi
+      done
+      for br in "${LINKLOCAL_BRIDGES[@]+"${LINKLOCAL_BRIDGES[@]}"}"; do
+        [ -n "${br}" ] && run_ipt -C DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL
       done
       run_ip6t -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6
       run_ip6t -C DOCKER-USER -i "${INTERNAL_BRIDGE}" -j BRAINSOS-EGRESS6
@@ -492,6 +614,32 @@ case "${ACTION}" in
       exit 1
     fi
 
+    LINKLOCAL_RULES="$(iptables -S BRAINSOS-LINKLOCAL 2>/dev/null || true)"
+    if [ -z "${LINKLOCAL_RULES}" ]; then
+      log_error "Chain BRAINSOS-LINKLOCAL does not exist or is empty."
+      exit 1
+    fi
+    LINKLOCAL_LAST="$(printf '%s\n' "${LINKLOCAL_RULES}" | tail -n 1)"
+    if [ "${LINKLOCAL_LAST}" != "-A BRAINSOS-LINKLOCAL -d 169.254.0.0/16 -j DROP" ]; then
+      log_error "Chain BRAINSOS-LINKLOCAL must end with -d 169.254.0.0/16 -j DROP (last rule: ${LINKLOCAL_LAST})."
+      exit 1
+    fi
+    for ip in "${ALLOWED_IMDS_IPS[@]+"${ALLOWED_IMDS_IPS[@]}"}"; do
+      if [ -n "${ip}" ]; then
+        if ! iptables -C BRAINSOS-LINKLOCAL -s "${ip}/32" -d 169.254.169.254/32 -j RETURN 2>/dev/null; then
+          log_error "Chain BRAINSOS-LINKLOCAL missing IMDS RETURN rule for authorized IP ${ip}/32."
+          exit 1
+        fi
+      fi
+    done
+    for br in "${LINKLOCAL_BRIDGES[@]+"${LINKLOCAL_BRIDGES[@]}"}"; do
+      [ -n "${br}" ] || continue
+      if ! linklocal_jump_is_valid "${br}"; then
+        log_error "DOCKER-USER missing or misordered BRAINSOS-LINKLOCAL jump for bridge '${br}'."
+        exit 1
+      fi
+    done
+
     if command -v ip6tables >/dev/null 2>&1 && ip6tables -L DOCKER-USER >/dev/null 2>&1; then
       if ! ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null; then
         log_error "DOCKER-USER IPv6 jump to BRAINSOS-IMDS6 is missing."
@@ -547,7 +695,7 @@ case "${ACTION}" in
         exit 1
       fi
     fi
-    log_success "IMDS & WAN egress guards verified (${#ALLOWED_IMDS_IPS[@]} IMDS IP(s), ${INTERNAL_BRIDGE} gated via tool-egress-proxy:8082)."
+    log_success "IMDS & WAN egress guards verified (${#ALLOWED_IMDS_IPS[@]} IMDS IP(s), ${INTERNAL_BRIDGE} gated via tool-egress-proxy:8082, ${#LINKLOCAL_BRIDGES[@]} bridge(s) protected by BRAINSOS-LINKLOCAL)."
     ;;
 
   remove)
@@ -559,6 +707,11 @@ case "${ACTION}" in
       run_ipt -D DOCKER-USER -i "${INTERNAL_BRIDGE}" -j BRAINSOS-EGRESS
       run_ipt -F BRAINSOS-EGRESS
       run_ipt -X BRAINSOS-EGRESS
+      for br in "${LINKLOCAL_BRIDGES[@]+"${LINKLOCAL_BRIDGES[@]}"}"; do
+        [ -n "${br}" ] && run_ipt -D DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL
+      done
+      run_ipt -F BRAINSOS-LINKLOCAL
+      run_ipt -X BRAINSOS-LINKLOCAL
       run_ip6t -D DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6
       run_ip6t -F BRAINSOS-IMDS6
       run_ip6t -X BRAINSOS-IMDS6
@@ -576,6 +729,14 @@ case "${ACTION}" in
       done
       iptables -F BRAINSOS-EGRESS 2>/dev/null || true
       iptables -X BRAINSOS-EGRESS 2>/dev/null || true
+      for br in "${LINKLOCAL_BRIDGES[@]+"${LINKLOCAL_BRIDGES[@]}"}"; do
+        [ -n "${br}" ] || continue
+        while iptables -C DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL 2>/dev/null; do
+          iptables -D DOCKER-USER -i "${br}" -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL 2>/dev/null || break
+        done
+      done
+      iptables -F BRAINSOS-LINKLOCAL 2>/dev/null || true
+      iptables -X BRAINSOS-LINKLOCAL 2>/dev/null || true
       if command -v ip6tables >/dev/null 2>&1; then
         while ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null; do
           ip6tables -D DOCKER-USER -d fd00:ec2::254/128 -j BRAINSOS-IMDS6 2>/dev/null || break

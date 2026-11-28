@@ -62,7 +62,10 @@ fi
 # Ensure authentik database exists if auth-db container is active
 AUTH_DB_C="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(app-)?auth-db$' | head -n 1 || true)"
 if [ -n "${AUTH_DB_C}" ]; then
-  if ! docker exec "${AUTH_DB_C}" psql -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${AUTHENTIK_POSTGRESQL__NAME:-authentik}'" 2>/dev/null | grep -q 1; then
+  if ! docker exec -i "${AUTH_DB_C}" psql -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" -d postgres -tA \
+    -v db_name="${AUTHENTIK_POSTGRESQL__NAME:-authentik}" <<'EOSQL' 2>/dev/null | grep -qx '1'; then
+SELECT 1 FROM pg_database WHERE datname = :'db_name';
+EOSQL
     docker exec "${AUTH_DB_C}" createdb -U "${AUTHENTIK_POSTGRESQL__USER:-authentik}" "${AUTHENTIK_POSTGRESQL__NAME:-authentik}" 2>/dev/null || true
   fi
 fi

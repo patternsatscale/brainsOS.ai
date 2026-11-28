@@ -125,3 +125,22 @@ def test_sogo_compose_and_nginx_contract() -> None:
     assert 'if ($http_x_caddy_ingress_token = "")' in nginx_txt
     assert 'if ($http_x_caddy_ingress_token != "__CADDY_INGRESS_TOKEN__")' in nginx_txt
     assert "return 403;" in nginx_txt
+    assert "location ^~ /WebServerResources/" in nginx_txt
+    assert "alias /usr/lib/GNUstep/SOGo/WebServerResources/;" in nginx_txt
+
+
+def test_sogo_static_routes_do_not_inject_ingress_token() -> None:
+    """Unauthenticated @mail_static and @sogo_static handlers must not inject X-Caddy-Ingress-Token."""
+    for rel in ("config/caddy/Caddyfile", "config/caddy/Caddyfile.appliance"):
+        txt = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        for static_blk in ("handle @mail_static {", "handle @sogo_static {"):
+            start = txt.index(static_blk)
+            end = txt.index("\n\t}", start)
+            block = txt[start:end]
+            assert "X-Caddy-Ingress-Token" not in block, f"{static_blk} leaked token in {rel}"
+        for auth_blk in ("handle @mail_host {", "handle /SOGo* {"):
+            start = txt.index(auth_blk)
+            end = txt.index("\n\t}", start)
+            block = txt[start:end]
+            assert "X-Caddy-Ingress-Token" in block, f"{auth_blk} missing token in {rel}"
+

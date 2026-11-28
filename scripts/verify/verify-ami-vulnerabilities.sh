@@ -105,7 +105,7 @@ else
     log_error "AWS CLI v2 is required to query ec2:GetImageFindings."
     exit 1
   fi
-  TMP_JSON="$(mktemp "${TMPDIR:-/tmp}/brainsos-ami-findings.XXXXXX.json")"
+  TMP_JSON="$(mktemp "${TMPDIR:-/tmp}/brainsos-ami-findings.XXXXXX")"
   log_info "Querying ec2:GetImageFindings for ${AMI_ID} in ${AWS_REGION}..."
   if ! aws ec2 get-image-findings --region "${AWS_REGION}" --image-id "${AMI_ID}" --output json > "${TMP_JSON}" 2>/dev/null; then
     if ! python3 - "${AMI_ID}" "${AWS_REGION}" "${TMP_JSON}" <<'PY_FETCH'

@@ -1005,6 +1005,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   const [wizardAutoOpened, setWizardAutoOpened] = useState<boolean>(false);
   const [setupBootstrapToken, setSetupBootstrapToken] = useState<string>('');
   const [showBootstrapToken, setShowBootstrapToken] = useState<boolean>(false);
+  const [wizardSessionVerifying, setWizardSessionVerifying] = useState<boolean>(false);
+  const [wizardSessionVerified, setWizardSessionVerified] = useState<boolean>(false);
   const [setupSuperuserName, setSetupSuperuserName] = useState<string>('');
   const [setupAdminUsername, setSetupAdminUsername] = useState<string>('');
   const [wizardUsernameTouched, setWizardUsernameTouched] = useState<boolean>(false);
@@ -1033,13 +1035,15 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   const [dnsCheckResult, setDnsCheckResult] = useState<DnsCheckResult | null>(null);
   const [newConfiguredUrl, setNewConfiguredUrl] = useState<string | null>(null);
 
-  // Security & Identity Hardening Controls (#365 / #385 / #386)
+  // Security & Identity Hardening Controls (#365 / #385 / #386 / #405)
   const [showInstanceId, setShowInstanceId] = useState<boolean>(false);
   const [revealedInstanceId, setRevealedInstanceId] = useState<string>('');
   const [revealInstanceLoading, setRevealInstanceLoading] = useState<boolean>(false);
   const [wizardBreakglassEnabled, setWizardBreakglassEnabled] = useState<boolean>(true);
   const [wizardBreakglassTouched, setWizardBreakglassTouched] = useState<boolean>(false);
+  const [wizardBreakglassSecret, setWizardBreakglassSecret] = useState<string>('');
   const wizardBreakglassTouchedRef = useRef<boolean>(false);
+  const [breakglassAdminSecret, setBreakglassAdminSecret] = useState<string>('');
   const [breakglassToggling, setBreakglassToggling] = useState<boolean>(false);
   const [breakglassBanner, setBreakglassBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -1117,25 +1121,27 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
   }, [logs, consoleEntries, autoScroll]);
 
   // Fetch CSRF token on mount
-  const fetchCsrfToken = useCallback(async () => {
+  const fetchCsrfToken = useCallback(async (): Promise<string | null> => {
     try {
-      const res = await fetch('/api/v1/system/csrf');
+      const res = await fetch('/api/v1/system/csrf', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         if (data && data.csrf_token) {
           setCsrfToken(data.csrf_token);
+          return String(data.csrf_token);
         }
       }
     } catch {
       // Ignore CSRF pre-fetch failure in offline preview
     }
+    return null;
   }, []);
 
   // Fetch live system status
   const fetchStatus = useCallback(async () => {
     setIsChecking(true);
     try {
-      const res = await fetch('/api/v1/system/status');
+      const res = await fetch('/api/v1/system/status', { credentials: 'include' });
       if (res.ok) {
         const rawData = await res.json();
         const data = normalizeStatusPayload(rawData);
@@ -1333,6 +1339,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       try {
         const res = await fetch('/api/v1/system/terminal/exec', {
           method: 'POST',
+          credentials: 'include',
           headers,
           body: JSON.stringify({ command: cmd }),
         });
@@ -1650,7 +1657,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       await new Promise((r) => setTimeout(r, 2000));
       let jobStillRunningOrUnreachable = false;
       try {
-        const res = await fetch(`/api/v1/system/jobs/${jobId}`);
+        const res = await fetch(`/api/v1/system/jobs/${jobId}`, { credentials: 'include' });
         if (!res.ok) {
           jobStillRunningOrUnreachable = true;
         } else {
@@ -1687,7 +1694,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       // If firstboot_wizard_completed === true, treat the setup job as 'success' immediately!
       if (wizardActive && attempt >= 3 && jobStillRunningOrUnreachable) {
         try {
-          const idRes = await fetch('/api/v1/system/identity');
+          const idRes = await fetch('/api/v1/system/identity', { credentials: 'include' });
           if (idRes.ok) {
             const idData = await idRes.json();
             const completed =
@@ -1701,7 +1708,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               return 'success';
             }
           } else {
-            const stRes = await fetch('/api/v1/system/status');
+            const stRes = await fetch('/api/v1/system/status', { credentials: 'include' });
             if (stRes.ok) {
               const stData = await stRes.json();
               const completed =
@@ -1974,6 +1981,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     try {
       const res = await fetch('/api/v1/system/runners/hermes/config', {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify({ keys: payload, restart_runner: true }),
       });
@@ -2034,6 +2042,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     try {
       const res = await fetch('/api/v1/system/identity', {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify({ unit_name: cleanUnitName }),
       });
@@ -2091,7 +2100,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     }
     setRevealInstanceLoading(true);
     try {
-      const res = await fetch('/api/v1/system/identity/instance-id');
+      const res = await fetch('/api/v1/system/identity/instance-id', { credentials: 'include' });
       if (res.ok) {
         const d = await res.json();
         if (d?.instance_id) {
@@ -2132,7 +2141,16 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     if (!nextEnabled && !hasNamedSu && !hasOwnerSso) {
       setBreakglassBanner({
         type: 'error',
-        text: 'Lockout prevention: provision a named Superuser (Wizard) or bind BRAINSOS_USER_SUB with Cognito/ALB SSO before disabling Instance-ID Break-Glass.',
+        text: 'Lockout prevention: provision a named Superuser (Wizard) or bind BRAINSOS_USER_SUB with Cognito/ALB SSO before disabling Break-Glass.',
+      });
+      return;
+    }
+
+    const customSecret = breakglassAdminSecret.trim();
+    if (nextEnabled && (!customSecret || customSecret.length < 16)) {
+      setBreakglassBanner({
+        type: 'error',
+        text: 'Enabling Break-Glass requires a custom high-entropy admin secret (minimum 16 characters, distinct from EC2 Instance ID).',
       });
       return;
     }
@@ -2144,8 +2162,13 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     try {
       const res = await fetch('/api/v1/system/security/breakglass', {
         method: 'POST',
+        credentials: 'include',
         headers,
-        body: JSON.stringify({ enabled: nextEnabled, apply_now: true }),
+        body: JSON.stringify({
+          enabled: nextEnabled,
+          apply_now: true,
+          ...(nextEnabled ? { admin_secret: customSecret } : {}),
+        }),
       });
       if (!res.ok) {
         let detail = res.statusText;
@@ -2155,18 +2178,21 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         } catch {}
         throw new Error(detail);
       }
+      if (nextEnabled) {
+        setBreakglassAdminSecret('');
+      }
       setWizardBreakglassEnabled(nextEnabled);
       setStatus((prev) =>
         prev
           ? {
               ...prev,
               breakglass_enabled: nextEnabled,
-              admin_bound_to_instance_id: nextEnabled,
-              admin_instance_bound: nextEnabled,
+              admin_bound_to_instance_id: false,
+              admin_instance_bound: false,
               identity: {
                 ...(prev.identity || {}),
                 breakglass_enabled: nextEnabled,
-                admin_bound_to_instance_id: nextEnabled,
+                admin_bound_to_instance_id: false,
               },
             }
           : prev
@@ -2174,8 +2200,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       setBreakglassBanner({
         type: 'success',
         text: nextEnabled
-          ? 'EC2 Instance-ID Break-Glass (admin) re-enabled and synchronized.'
-          : 'EC2 Instance-ID Break-Glass (admin) disabled and locked cleanly.',
+          ? 'Custom Break-Glass (admin) enabled and synchronized with high-entropy secret.'
+          : 'Break-Glass (admin) disabled and locked cleanly.',
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2186,8 +2212,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             ? {
                 ...prev,
                 breakglass_enabled: nextEnabled,
-                admin_bound_to_instance_id: nextEnabled,
-                admin_instance_bound: nextEnabled,
+                admin_bound_to_instance_id: false,
+                admin_instance_bound: false,
               }
             : prev
         );
@@ -2248,6 +2274,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     try {
       const res = await fetch('/api/v1/system/sso/cognito', {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify(payload),
       });
@@ -2343,6 +2370,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     try {
       await fetch('/api/v1/system/reboot', {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify({ confirm: true, delay_seconds: 3 }),
       });
@@ -2485,23 +2513,35 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     if (!setupUrl.trim()) return;
     setDnsChecking(true);
     setDnsCheckResult(null);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let effectiveCsrf = csrfToken;
+    if (!effectiveCsrf) {
+      effectiveCsrf = await fetchCsrfToken();
+    }
+    if (effectiveCsrf) headers['X-CSRF-Token'] = effectiveCsrf;
     try {
       const res = await fetch('/api/v1/system/dns-check', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({ domain: setupUrl.trim() }),
       });
       if (res.ok) {
         const data: DnsCheckResult = await res.json();
         setDnsCheckResult(data);
       } else {
+        let detail = `DNS check failed (HTTP ${res.status})`;
+        try {
+          const errData = await res.json();
+          if (errData?.detail) detail = errData.detail;
+        } catch {}
         setDnsCheckResult({
           domain: setupUrl.trim(),
           valid_syntax: false,
           resolved_ip: null,
           public_ipv4: status?.public_ipv4 || '',
           matches_appliance: false,
-          message: `DNS check failed (HTTP ${res.status})`,
+          message: detail,
         });
       }
     } catch (err: unknown) {
@@ -2521,16 +2561,21 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
 
   const handleDismissWizard = async () => {
     setSetupError(null);
-    if (status?.firstboot_wizard_completed === false && !setupBootstrapToken.trim()) {
-      setSetupError('Please enter your EC2 Instance ID (i-...) in Step 1 to verify ownership before skipping first-boot setup.');
+    if (status?.firstboot_wizard_completed === false && !setupBootstrapToken.trim() && !wizardSessionVerified) {
+      setSetupError('Please enter your EC2 Instance ID or Host Bootstrap Token in Step 1 to verify ownership before skipping first-boot setup.');
       setWizardStep(1);
       return;
     }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    let effectiveCsrf = csrfToken;
+    if (!effectiveCsrf) {
+      effectiveCsrf = await fetchCsrfToken();
+    }
+    if (effectiveCsrf) headers['X-CSRF-Token'] = effectiveCsrf;
     try {
       const res = await fetch('/api/v1/system/setup', {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify({
           dismiss_only: true,
@@ -2544,7 +2589,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           if (errData && errData.detail) errorDetail = errData.detail;
         } catch {}
         setSetupError(errorDetail);
-        if (res.status === 403) setWizardStep(1);
+        if (res.status === 403 || res.status === 429) setWizardStep(1);
         return;
       }
     } catch {}
@@ -2565,8 +2610,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     const cleanUrl = setupUrl.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     const isInitialBoot = Boolean(standaloneWizard || status?.firstboot_wizard_completed === false);
 
-    if (isInitialBoot && !setupBootstrapToken.trim()) {
-      setSetupError('Please enter the EC2 Instance ID (i-...) of this appliance to authorize first-boot setup.');
+    if (isInitialBoot && !setupBootstrapToken.trim() && !wizardSessionVerified) {
+      setSetupError('Please enter the EC2 Instance ID or Host Bootstrap Token of this appliance to authorize first-boot setup.');
       setWizardStep(1);
       return;
     }
@@ -2576,7 +2621,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
       return;
     }
     if (cleanUser.toLowerCase() === 'admin' || cleanUser.toLowerCase() === 'akadmin') {
-      setSetupError('The "admin" account is permanently reserved and bound to the EC2 Instance ID. Please choose a personal Superuser username (e.g. alex or jdoe).');
+      setSetupError('The "admin" account is reserved for system break-glass only. Please choose a personal Superuser username (e.g. alex or jdoe).');
       setWizardStep(1);
       return;
     }
@@ -2591,6 +2636,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         setWizardStep(1);
         return;
       }
+    }
+    if (wizardBreakglassTouched && wizardBreakglassEnabled && wizardBreakglassSecret.trim().length < 16) {
+      setSetupError('Enabling custom Break-Glass requires a high-entropy admin secret (minimum 16 characters, distinct from EC2 Instance ID).');
+      setWizardStep(1);
+      return;
     }
     if (cleanUnitName.includes("'") || cleanUnitName.includes('"')) {
       setSetupError('Unit Name cannot contain single or double quotes (e.g. use "Alex Agent Box").');
@@ -2621,12 +2671,17 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
     const previousUrl = status?.url || '';
     const wasFirstBoot = isInitialBoot;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    let effectiveCsrf = csrfToken;
+    if (!effectiveCsrf) {
+      effectiveCsrf = await fetchCsrfToken();
+    }
+    if (effectiveCsrf) headers['X-CSRF-Token'] = effectiveCsrf;
 
     let res: Response;
     try {
       res = await fetch('/api/v1/system/setup', {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify({
           bootstrap_token: setupBootstrapToken.trim() || undefined,
@@ -2643,6 +2698,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           mark_wizard_completed: true,
           force: true,
           breakglass_enabled: wizardBreakglassTouched ? wizardBreakglassEnabled : undefined,
+          breakglass_secret: wizardBreakglassTouched && wizardBreakglassEnabled && wizardBreakglassSecret.trim() ? wizardBreakglassSecret.trim() : undefined,
           cognito_enabled: wizardCognitoExpanded ? cognitoEnabled : undefined,
           cognito_region: wizardCognitoExpanded && cognitoEnabled ? cognitoRegion.trim() : undefined,
           cognito_user_pool_id: wizardCognitoExpanded && cognitoEnabled ? cognitoPoolId.trim() : undefined,
@@ -2670,7 +2726,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
         if (errData && errData.detail) errorDetail = errData.detail;
       } catch {}
       setSetupError(errorDetail);
-      if (res.status === 403) {
+      if (res.status === 403 || res.status === 429) {
         setWizardStep(1);
       }
       return;
@@ -2904,17 +2960,17 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
           </div>
         )}
 
-        {/* STEP 1: Create Superuser Account & Verify Instance ID */}
+        {/* STEP 1: Create Superuser Account & Verify One-Time Bootstrap Key */}
         {wizardStep === 1 && (
           <div className="space-y-4 font-mono text-xs">
-            {/* Callout explaining Instance Admin vs Personal Superuser */}
+            {/* Callout explaining One-Time Bootstrap Token vs Personal Superuser */}
             <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-[11px] text-slate-300 space-y-1">
               <div className="text-[#00f2fe] font-bold flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5" />
-                <span>Instance Admin Account (<code className="text-white">admin</code>) is permanently bound to your EC2 Instance ID (<code className="text-white">i-...</code>)</span>
+                <span>One-Time Pre-Wizard Verification (<code className="text-white">i-...</code> / Host Bootstrap Token)</span>
               </div>
               <p className="font-sans text-slate-300 leading-relaxed">
-                For break-glass recovery, <code className="font-mono text-white">admin</code> always authenticates using your AWS EC2 Instance ID. Below, create your personal <strong>Superuser</strong> account for day-to-day SSO, Kurrier Workspace, Gitea Source Control, and Operator IDE.
+                Your EC2 Instance ID (or host bootstrap token) is a <strong>one-time pre-wizard verification key</strong> that is permanently disabled once setup completes. Linux OS <code className="font-mono text-white">admin</code> password login is locked (<code className="font-mono text-white">passwd -l admin</code>; SSH/SSM only). Below, create your personal <strong>Superuser</strong> account for day-to-day SSO, Kurrier Workspace, Gitea Source Control, and Operator IDE.
               </p>
             </div>
 
@@ -2923,7 +2979,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <label className="block text-purple-200 font-semibold flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <KeyRound className="w-3.5 h-3.5 text-[#00f2fe]" />
-                    <span>EC2 Instance ID Verification Key (Required for First-Boot Authorization)</span>
+                    <span>EC2 Instance ID / Host Bootstrap Token (One-Time Authorization)</span>
                   </span>
                   <button
                     type="button"
@@ -2937,8 +2993,11 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                 <input
                   type={showBootstrapToken ? 'text' : 'password'}
                   value={setupBootstrapToken}
-                  onChange={(e) => setSetupBootstrapToken(e.target.value)}
-                  placeholder="e.g. i-0123456789abcdef0"
+                  onChange={(e) => {
+                    setSetupBootstrapToken(e.target.value);
+                    setWizardSessionVerified(false);
+                  }}
+                  placeholder="e.g. i-0123456789abcdef0 or bt-..."
                   className="w-full px-3.5 py-2 rounded-xl bg-[#07090E] border border-purple-500/40 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-sm"
                 />
               </div>
@@ -3079,20 +3138,20 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               </div>
             </div>
 
-            {/* Instance-ID Break-Glass Recovery Toggle (#385 / #386) */}
+            {/* Custom Break-Glass Recovery Toggle (#385 / #386 / #405) */}
             <div className="p-3.5 rounded-xl bg-[#07090E] border border-amber-500/25 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-amber-400 shrink-0" />
                   <span className="text-slate-200 font-semibold">
-                    Instance-ID Break-Glass Recovery (<code className="text-amber-300">admin</code>)
+                    Custom Break-Glass Recovery (<code className="text-amber-300">admin</code>)
                   </span>
                 </div>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={wizardBreakglassEnabled}
-                  aria-label="Toggle Instance-ID Break-Glass Recovery"
+                  aria-label="Toggle Custom Break-Glass Recovery"
                   onClick={() => {
                     const nextVal = !wizardBreakglassEnabled;
                     if (!nextVal && !setupAdminUsername.trim() && !userSub.trim()) {
@@ -3109,14 +3168,23 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                       : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200'
                   }`}
                 >
-                  {wizardBreakglassEnabled ? 'Enabled (Instance-ID Bound)' : 'Disabled After Setup (Hardened)'}
+                  {wizardBreakglassEnabled ? 'Enabled (Custom Secret)' : 'Disabled After Setup (Hardened)'}
                 </button>
               </div>
               <p className="text-[11px] text-slate-400 font-sans">
                 {wizardBreakglassEnabled
-                  ? 'Emergency admin / akadmin login stays bound to the EC2 Instance ID. Disable once your named Superuser is verified.'
-                  : 'Break-glass admin / akadmin recovery will be locked (unusable password + passwd -l) immediately after Superuser setup completes.'}
+                  ? 'Requires a custom high-entropy break-glass secret (min 16 chars, distinct from EC2 Instance ID). OS admin password login remains locked (SSH/SSM only).'
+                  : 'Break-glass admin / akadmin SSO recovery will be locked (unusable password + passwd -l admin) immediately after Superuser setup completes.'}
               </p>
+              {wizardBreakglassEnabled && wizardBreakglassTouched && (
+                <input
+                  type="password"
+                  value={wizardBreakglassSecret}
+                  onChange={(e) => setWizardBreakglassSecret(e.target.value)}
+                  placeholder="Custom break-glass admin secret (min 16 chars, upper/lower/num/symbol)"
+                  className="w-full px-3 py-1.5 rounded-lg bg-[#0B0E14] border border-amber-500/30 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-xs"
+                />
+              )}
             </div>
 
             {/* Optional: Federate with AWS Cognito User Pool (#385 / #386) */}
@@ -3607,10 +3675,54 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             {wizardStep < totalWizardSteps ? (
               <button
                 type="button"
-                onClick={() => {
+                disabled={wizardSessionVerifying}
+                onClick={async () => {
                   if (wizardStep === 1 && (setupSuperuserName.includes("'") || setupSuperuserName.includes('"'))) {
                     setSetupError('Superuser Display Name cannot contain single or double quotes.');
                     return;
+                  }
+                  if (wizardStep === 1 && (standalone || status?.firstboot_wizard_completed === false)) {
+                    const tok = setupBootstrapToken.trim();
+                    if (!tok) {
+                      setSetupError('Please enter your EC2 Instance ID or Host Bootstrap Token to authorize first-boot setup.');
+                      return;
+                    }
+                    if (!wizardSessionVerified) {
+                      setWizardSessionVerifying(true);
+                      try {
+                        let effectiveCsrf = csrfToken;
+                        if (!effectiveCsrf) {
+                          effectiveCsrf = await fetchCsrfToken();
+                        }
+                        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                        if (effectiveCsrf) headers['X-CSRF-Token'] = effectiveCsrf;
+                        const res = await fetch('/api/v1/system/firstboot/session', {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers,
+                          body: JSON.stringify({ bootstrap_token: tok }),
+                        });
+                        if (!res.ok) {
+                          let detail = res.statusText || `HTTP ${res.status}`;
+                          try {
+                            const errData = await res.json();
+                            if (errData?.detail) detail = errData.detail;
+                          } catch {}
+                          setSetupError(detail);
+                          return;
+                        }
+                        setWizardSessionVerified(true);
+                        await fetchStatus();
+                      } catch (err: unknown) {
+                        if (!import.meta.env.DEV) {
+                          const msg = err instanceof Error ? err.message : String(err);
+                          setSetupError(`Failed verifying bootstrap token: ${msg}`);
+                          return;
+                        }
+                      } finally {
+                        setWizardSessionVerifying(false);
+                      }
+                    }
                   }
                   if (wizardStep === 2 && (setupUnitName.includes("'") || setupUnitName.includes('"'))) {
                     setSetupError('Unit Name cannot contain single or double quotes (e.g. use "Alex Agent Box").');
@@ -3619,9 +3731,9 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                   setSetupError(null);
                   setWizardStep((prev) => (prev === 1 ? 2 : 3));
                 }}
-                className="px-5 py-2 rounded-xl bg-[#00f2fe]/20 hover:bg-[#00f2fe]/30 border border-[#00f2fe]/50 text-[#00f2fe] font-mono text-xs font-bold transition-all"
+                className="px-5 py-2 rounded-xl bg-[#00f2fe]/20 hover:bg-[#00f2fe]/30 border border-[#00f2fe]/50 text-[#00f2fe] font-mono text-xs font-bold transition-all disabled:opacity-50"
               >
-                Next Step →
+                {wizardSessionVerifying ? 'Verifying...' : 'Next Step →'}
               </button>
             ) : (
               <button
@@ -3718,7 +3830,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
             {executionStatus === 'success' && (
               <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="text-xs font-mono text-emerald-200">
-                  Sign in with Superuser <strong className="text-white">{setupAdminUsername.trim()}</strong> (or <code className="text-slate-300">admin</code> with your EC2 Instance ID).
+                  Sign in with Superuser <strong className="text-white">{setupAdminUsername.trim()}</strong> via Authentik SSO. One-time bootstrap verification is now disabled.
                 </div>
                 <a
                   href={newConfiguredUrl || '/'}
@@ -3912,8 +4024,8 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
               </span>
             </div>
             <div className="flex items-center justify-between text-slate-400">
-              <span>Instance Admin:</span>
-              <span className="text-slate-200">admin (EC2 ID)</span>
+              <span>OS Admin:</span>
+              <span className="text-slate-200">admin (SSH/SSM locked)</span>
             </div>
             <div className="flex items-center justify-between text-slate-400">
               <span>Superuser:</span>
@@ -4228,7 +4340,7 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                         }`}
                       >
                         {status?.breakglass_enabled !== false
-                          ? 'ACTIVE (Bound to EC2 Instance ID)'
+                          ? 'ACTIVE (Custom Break-Glass Secret)'
                           : 'LOCKED (Disabled via Security Policy)'}
                       </span>
                       <button
@@ -4248,8 +4360,17 @@ const SystemManagerInner: React.FC<SystemManagerProps> = ({ standaloneWizard = f
                           : 'Enable Break-Glass'}
                       </button>
                     </div>
+                    {status?.breakglass_enabled === false && (
+                      <input
+                        type="password"
+                        value={breakglassAdminSecret}
+                        onChange={(e) => setBreakglassAdminSecret(e.target.value)}
+                        placeholder="Custom break-glass admin secret (min 16 chars, upper/lower/num/symbol)"
+                        className="w-full px-3 py-1.5 rounded-lg bg-[#07090E] border border-amber-500/30 focus:border-[#00f2fe] focus:outline-none text-white font-mono text-xs"
+                      />
+                    )}
                     <p className="text-slate-300 font-sans text-xs leading-relaxed">
-                      Bound to EC2 Instance ID on AWS (or local admin password). Disabling locks Authentik <code className="font-mono text-white">admin</code>/<code className="font-mono text-white">akadmin</code> and OS <code className="font-mono text-white">passwd -l admin</code>; requires a named Superuser or <code className="font-mono text-[#00f2fe]">BRAINSOS_USER_SUB</code> SSO to prevent lockout.
+                      OS <code className="font-mono text-white">admin</code> password login is locked (<code className="font-mono text-white">passwd -l admin</code>; SSH/SSM only) and EC2 Instance ID is strictly a one-time pre-wizard token. Enabling Authentik break-glass requires a custom high-entropy <code className="font-mono text-white">admin_secret</code> (min 16 chars); disabling requires a named Superuser or <code className="font-mono text-[#00f2fe]">BRAINSOS_USER_SUB</code> SSO.
                     </p>
                     {breakglassBanner && (
                       <div

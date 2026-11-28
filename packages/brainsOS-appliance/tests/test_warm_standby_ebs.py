@@ -403,6 +403,7 @@ def test_claim_and_release_lifecycle_across_two_hosts(tmp_path: Path):
         "CODE_SERVER_PASSWORD",
         "BRAINSOS_ADMIN_PASSWORD",
         "AUTHENTIK_BOOTSTRAP_PASSWORD",
+        "TOOL_EGRESS_PROXY_SECRET",
         "DATABASE_URL",
     )
     for k in secret_keys:

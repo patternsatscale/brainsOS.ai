@@ -18,7 +18,7 @@
 
 ---
 
-**brainsOS** is the open-source operating system and governance runtime for the **Balanced Reasoning & Agent Inference Node System (BRAINS)**—packaging **18 enterprise open-source services** across **5 isolated Docker bridge networks** into a turnkey, single-tenant **"Enterprise Agent in a Box" appliance**.
+**brainsOS** is the open-source operating system and governance runtime for the **Balanced Reasoning & Agent Inference Node System (BRAINS)**—packaging **19 enterprise open-source services** across **9 isolated Docker bridge networks** into a turnkey, single-tenant **"Enterprise Agent in a Box" appliance**.
 
 Whether deployed as a hardened **Ubuntu 24.04 ARM64 (AWS Graviton) Golden AMI** inside your own AWS account (powered by keyless **Amazon Bedrock** over IMDSv2) or run locally on **bare-metal ARM64 silicon** (**ASUS Ascent GX10 / NVIDIA GB10** and **Apple Silicon** workstations with loopback **Ollama / vLLM**), brainsOS gives you total ownership of your agents, memories, source control, network perimeter, and deterministic kill switches.
 
@@ -32,7 +32,7 @@ Governed by physics. Accountable down to the millijoule. Zero SaaS rent.
    - [Sovereign brainsOS Appliance vs. Cloud-Rentier SaaS Platforms](#sovereign-brainsos-appliance-vs-cloud-rentier-saas-platforms)
    - [The Patterns at Scale Philosophy](#the-patterns-at-scale-philosophy)
 2. [Core Architectural Capabilities](#2-core-architectural-capabilities)
-3. [Out-of-the-Box Governance Stack (18 Embedded Services)](#3-out-of-the-box-governance-stack-18-embedded-services)
+3. [Out-of-the-Box Governance Stack (19 Embedded Services)](#3-out-of-the-box-governance-stack-19-embedded-services)
 4. [The BRAINS Reference Architecture (L1–L7 Model)](#4-the-brains-reference-architecture-l1l7-model)
    - [Interactive HTML Reference Architecture Blueprints](#interactive-html-reference-architecture-blueprints)
 5. [COHUMAIN ACSG Conformance Roadmap & Community PR Drive](#5-cohumain-acsg-conformance-roadmap--community-pr-drive)
@@ -138,18 +138,18 @@ Exposes agent tools across all domain packages dynamically via the Model Context
 
 ---
 
-## 3. Out-of-the-Box Governance Stack (18 Embedded Services)
+## 3. Out-of-the-Box Governance Stack (19 Embedded Services)
 
-brainsOS unifies 18 enterprise-grade open-source components into a single, pre-wired appliance across isolated bridge networks:
+brainsOS unifies 19 enterprise-grade open-source components into a single, pre-wired appliance across isolated bridge networks:
 
 | Component | Role in brainsOS Appliance | Governance & Security Boundary |
 |---|---|---|
 | **Thin-Spine Portal & OS Control Center** | Unified full-bleed workspace (`/`) + appliance administration (`/#system`) | Built-in First-Boot Superuser Wizard, interactive **XTerm.js** host PTY, APT security patch manager, runner/tool key manager, and universal update/rollback. |
 | **[Authentik](https://goauthentik.io) & [Caddy](https://caddyserver.com)** | Single-origin TLS (`:443`) reverse proxy & Zero-Trust Forward-Auth IdP | Enforces single sign-on across every appliance UI (`authentik Admins` RBAC on `/editor/*`, `/efw/*`, `/runner*`, `/git/*`, OpenBao); supports internal Root CA, Let's Encrypt HTTP-01, and keyless Route 53 DNS-01 ACME. |
-| **[LiteLLM](https://github.com/BerriAI/litellm) (`v1.109.1`)** | Token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1` local / `2` Bedrock) for unified memory buses; routes to **Ambient AWS Bedrock (IMDSv2)** or loopback **Ollama/vLLM**. |
-| **IMDSv2 & Egress Firewall (`imds-guard.sh`)** | Kernel-level EC2 metadata & WAN egress isolation (`packages/brainsOS-appliance`) | `DOCKER-USER` → `BRAINSOS-IMDS` allows LiteLLM (and Route 53 Caddy when active) to reach `169.254.169.254/32` while `BRAINSOS-EGRESS` routes `brainsos-internal-net` WAN egress strictly via `tool-egress-proxy:8082`. |
+| **[LiteLLM](https://github.com/BerriAI/litellm) (`v1.109.1`)** | Token governance, virtual quotas, model routing, and fallback pathways | Serializes requests (`max_parallel_requests: 1` local / `2` Bedrock) for unified memory buses; strictly detached onto `brainsos-control-net` + `brainsos-ingress-net`, mediated for agents via the zero-secret read-only L7 **`sandbox-gateway`** (`:4000` inference allowlist, `:4318` write-only OTLP, `403` on admin/UI/key endpoints). |
+| **IMDSv2 & Egress Firewall (`imds-guard.sh`)** | Kernel-level EC2 metadata & WAN egress isolation (`packages/brainsOS-appliance`) | `DOCKER-USER` → `BRAINSOS-IMDS` allows LiteLLM (and Route 53 Caddy when active) to reach `169.254.169.254/32`, `BRAINSOS-EGRESS` routes `brainsos-internal-net` WAN egress strictly via `tool-egress-proxy:8082`, and `BRAINSOS-LINKLOCAL` drops `169.254.0.0/16` (incl. `169.254.170.2`) across all `brainsos-*-net` bridges (incl. `brainsos-sandbox-net`) and `docker0`. |
 | **[LiteLLM Lens](https://github.com/BerriAI/lens) & [Langfuse v4](https://langfuse.com)** | Dual OpenTelemetry GenAI tracing & spend correlation (shared ClickHouse `26.2` + `KeeperMap`) | First-class embedded Lens UI (`/proxy/ui/?page=lens`, rootless `65532:65532` `:4318`) correlating agent/tool spans 1:1 with gateway spend via W3C `traceparent` (`LANGFUSE_SECRET_KEY` stripped from agent sandboxes). |
-| **In-Transit Egress Proxy ([mitmproxy](https://mitmproxy.org))** | Outbound L7 firewall & multi-tenant credential injection (`:8081`/`:8082`) | Containers hold **zero ambient secrets**; `OpenBaoEgressAddon` fetches keys via internal-TLS OpenBao AppRole, enforces SNI/Host/peer-IP SSRF checks, validates per-run `Proxy-Authorization` + `GITHUB_ALLOWED_REPOS`, scrubs Tavily `api_key`, and masks headers as `[INJECTED_OPENBAO_SECRET]`. |
+| **In-Transit Egress Proxy ([mitmproxy](https://mitmproxy.org))** | Outbound L7 firewall & multi-tenant credential injection (`:8081`/`:8082`) | Containers hold **zero ambient secrets**; `OpenBaoEgressAddon` fetches keys via internal-TLS OpenBao AppRole, enforces SNI/Host/DNS/post-connect `server_connected` peer-IP SSRF checks, mandates `v2.` HMAC `Proxy-Authorization` + fail-closed `GITHUB_ALLOWED_REPOS`, binds `mitmweb:8081` off `brainsos-sandbox-net`, and masks headers as `[INJECTED_OPENBAO_SECRET]`. |
 | **[Postfix](https://www.postfix.org), [Dovecot](https://www.dovecot.org) & [SOGo](https://sogo.nu)** | Decoupled, auditable asynchronous email & CalDAV groupware backbone | Every inbound email triggers one checkpointed run and returns one reply—with `smtpd_sender_login_maps` anti-spoofing, `{SHA512-CRYPT}` sync, and `X-Caddy-Ingress-Token` protection. |
 | **Operator IDE ([code-server](https://github.com/coder/code-server))** | Browser-based VS Code workspace (`/editor/`) behind `authentik Admins` RBAC | Pre-wired to `/data` (`operator/agent-box`) with workspace trust enabled and `/data/control_plane` + `/data/backups` masked via read-only `tmpfs`. |
 | **Source Control ([Gitea](https://about.gitea.com))** | Embedded self-hosted Git server (`/git/`) with `authentik Admins` reverse-proxy SSO | Automatically seeded with `operator/agent-box` (`main` & `initial-setup` branches) with random secrets and Caddy-only `REVERSE_PROXY_TRUSTED_PROXIES`. |
@@ -160,12 +160,12 @@ brainsOS unifies 18 enterprise-grade open-source components into a single, pre-w
 
 ### Interactive HTML Reference Architecture Blueprints
 
-Explore the complete appliance architecture, 5 isolated Docker bridge networks, and 18 embedded services in our self-contained, zero-dependency interactive HTML engineering blueprints located in [`docs/`](docs/):
+Explore the complete appliance architecture, 9 isolated Docker bridge networks, and embedded services in our self-contained, zero-dependency interactive HTML engineering blueprints located in [`docs/`](docs/):
 
 | Interactive Blueprint | Views & Engineering Schematics Included | Launch / Inspect |
 |---|---|---|
-| **1. [Appliance Reference Architecture & Network Topology](docs/brainsos-reference-architecture.html)**<br/>*(`docs/brainsos-reference-architecture.html`)* | **5-Tab Keynote & Audit Deck**:<br/>• `01` **SVG-Wired Network Topology**: Animated, filterable live traffic flows across `ingress-net`, `internal-net`, `control-net`, `ide-net`, `telemetry-net` & host loopback<br/>• `02` **Clean Reference Blueprint**: L1–L7 security zones & appliance perimeter<br/>• `03` **Embedded Product Stack (18)**: Deep-dive wiring cards for every service<br/>• `04` **Zero-Trust Reachability Matrix**: Interactive container-to-container allow/mediate/block firewall grid<br/>• `05` **Storage & Silicon Physics**: Two-Repository Architecture, Gitea `/data` tracking & LPDDR5x serialization | **[🌐 Launch Interactive Deck in Browser](https://htmlpreview.github.io/?https://github.com/patternsatscale/brainsOS.ai/blob/main/docs/brainsos-reference-architecture.html)**<br/>• [View HTML Source in Repo](docs/brainsos-reference-architecture.html) |
-| **2. [Enterprise Network Bus & NIC Matrix Schematics](docs/brainsos-network-architecture-diagram.html)**<br/>*(`docs/brainsos-network-architecture-diagram.html`)* | **3-Mode Orthogonal Vector Schematics**:<br/>• `01` **Reference Architecture Schematic**: Enterprise "AI in a Box" security zones & orthogonal data paths<br/>• `02` **Network Bus & NIC Matrix Diagram**: L2/L3 switch-fabric & container virtual NIC attachment matrix across all 5 bridge subnets + loopback<br/>• `03` **Side-by-Side / Print Both**: Poster & architecture review mode | **[🌐 Launch Network Schematic in Browser](https://htmlpreview.github.io/?https://github.com/patternsatscale/brainsOS.ai/blob/main/docs/brainsos-network-architecture-diagram.html)**<br/>• [View HTML Source in Repo](docs/brainsos-network-architecture-diagram.html) |
+| **1. [Appliance Reference Architecture & Network Topology](docs/brainsos-reference-architecture.html)**<br/>*(`docs/brainsos-reference-architecture.html`)* | **5-Tab Keynote & Audit Deck**:<br/>• `01` **SVG-Wired Network Topology**: Animated, filterable live traffic flows across `ingress-net`, `internal-net`, `sandbox-net`, `control-net`, `ide-net`, `telemetry-net` & host loopback<br/>• `02` **Clean Reference Blueprint**: L1–L7 security zones & appliance perimeter<br/>• `03` **Embedded Product Stack (18)**: Deep-dive wiring cards for every service<br/>• `04` **Zero-Trust Reachability Matrix**: Interactive container-to-container allow/mediate/block firewall grid<br/>• `05` **Storage & Silicon Physics**: Two-Repository Architecture, Gitea `/data` tracking & LPDDR5x serialization | **[🌐 Launch Interactive Deck in Browser](https://htmlpreview.github.io/?https://github.com/patternsatscale/brainsOS.ai/blob/main/docs/brainsos-reference-architecture.html)**<br/>• [View HTML Source in Repo](docs/brainsos-reference-architecture.html) |
+| **2. [Enterprise Network Bus & NIC Matrix Schematics](docs/brainsos-network-architecture-diagram.html)**<br/>*(`docs/brainsos-network-architecture-diagram.html`)* | **3-Mode Orthogonal Vector Schematics**:<br/>• `01` **Reference Architecture Schematic**: Enterprise "AI in a Box" security zones & orthogonal data paths<br/>• `02` **Network Bus & NIC Matrix Diagram**: L2/L3 switch-fabric & container virtual NIC attachment matrix across all isolated bridge subnets + loopback<br/>• `03` **Side-by-Side / Print Both**: Poster & architecture review mode | **[🌐 Launch Network Schematic in Browser](https://htmlpreview.github.io/?https://github.com/patternsatscale/brainsOS.ai/blob/main/docs/brainsos-network-architecture-diagram.html)**<br/>• [View HTML Source in Repo](docs/brainsos-network-architecture-diagram.html) |
 
 ```mermaid
 graph TD
@@ -184,8 +184,8 @@ graph TD
         SOGO["SOGo / Postfix / Dovecot<br/>(/mail/ :20000)"]:::l7
     end
 
-    subgraph "L6: Autonomous Agent Execution Plane (Hermes Runner & Dynamic Fleet)"
-        RUNNER["Stateless Hermes Runner<br/>(:8642 /v1/runs, max_concurrent_runs: 1)"]:::l6
+    subgraph "L6: Autonomous Agent Execution Plane (Ephemeral Sandboxes & Warm Runners)"
+        RUNNER["Ephemeral Per-Tenant Sandboxes (brainsos-sandbox-net)<br/>(docker run --rm, 10001:10001, --read-only)"]:::l6
         CINDY["Cindy Pawford<br/>(site/ & pipeline/ :9122)"]:::l6
         TERRA["Terra Stella Operations<br/>(:8642 / :9119)"]:::l6
         MARVIN["Marvin Sports Analytics<br/>(:8643 / :9120)"]:::l6
@@ -199,7 +199,8 @@ graph TD
     end
 
     subgraph "L4: Routing, Security & ACSG Control Plane"
-        LITELLM["LiteLLM Gateway (:4000)<br/>(Virtual Keys & Spend Limits)"]:::l4
+        SGW["L7 Sandbox Gateway (:4000 / :4318)<br/>(Zero-Secret Read-Only Allowlist)"]:::l4
+        LITELLM["LiteLLM Gateway (:4000)<br/>(Control + Ingress Nets Only)"]:::l4
         MITM["Tool Egress Gateway (:8082)<br/>(In-Transit Credential Injection)"]:::l4
         DB["Control DB<br/>(PostgreSQL - Isolated)"]:::l4
     end
@@ -208,9 +209,10 @@ graph TD
         OLLAMA["Host Ollama / vLLM (127.0.0.1:11434)<br/>or Ambient AWS Bedrock (IMDSv2 + BRAINSOS-IMDS Guard)"]:::l3
     end
 
-    subgraph "L2: Virtualization & 8 Isolated Bridge Networks"
+    subgraph "L2: Virtualization & 9 Isolated Bridge Networks"
         NET_INGRESS["brainsos-ingress-net"]:::l2
         NET_INTERNAL["brainsos-internal-net"]:::l2
+        NET_SANDBOX["brainsos-sandbox-net (internal: true)"]:::l2
         NET_CONTROL["brainsos-control-net"]:::l2
         NET_SECRETS["brainsos-secrets-net"]:::l2
         NET_AUTH["brainsos-auth-net"]:::l2
@@ -231,7 +233,8 @@ graph TD
     RUNNER -->|executes via| QUEUE
     QUEUE -->|emits mJ & OTel spans| TEL
     RUNNER -->|loads notes from| MEM
-    RUNNER -->|LLM completions| LITELLM
+    RUNNER -->|L7 inference/OTLP| SGW
+    SGW -->|allowlisted paths| LITELLM
     RUNNER -->|outbound internet| MITM
 
     LITELLM -->|serializes requests| OLLAMA
@@ -260,20 +263,24 @@ graph TD
 │     - Local Git Versioning: Gitea operator/agent-box tracks /data state     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L4: Routing, Secrets & ACSG Control Plane                                   │
-│     - LiteLLM Gateway (:4000) with dynamic virtual keys & spend limits      │
+│     - L7 Sandbox Gateway (`sandbox-gateway`): zero-secret read-only Caddy   │
+│       allowlisting /v1/{chat/completions,completions,responses,embeddings,    │
+│       models} (:4000) & write-only OTLP POST /v1/{traces,logs} (:4318)      │
+│     - LiteLLM Gateway (:4000): strictly on control + ingress nets (detached)│
 │     - Hardware Serialization: max_parallel_requests: 1 (GX10) / 2 (Bedrock) │
 │     - OpenBao Secret Manager: internal TLS (:8200), seal outside /data      │
-│     - Tool Egress Proxy: OpenBaoEgressAddon (Proxy-Auth + SSRF + SNI)       │
+│     - Tool Egress Proxy: OpenBaoEgressAddon (Proxy-Auth + SSRF + SNI/peer)  │
 │     - Control Plane DB: brainsos-control-litellm-db (PostgreSQL, isolated)  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ L3: Inference Plane (Dual Sovereign Modes)                                  │
 │     - Bare-Metal Mode: Host Ollama / vLLM bound to loopback (127.0.0.1:11434)│
 │     - AWS Appliance Mode: Ambient Amazon Bedrock via EC2 IMDSv2 IAM Role    │
-│     - Kernel Guard: BRAINSOS-IMDS + BRAINSOS-EGRESS (DOCKER-USER)           │
+│     - Kernel Guard: BRAINSOS-IMDS + BRAINSOS-EGRESS + BRAINSOS-LINKLOCAL    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ L2: Virtualization & 8 Isolated Bridge Networks                             │
+│ L2: Virtualization & 9 Isolated Bridge Networks                             │
 │     - brainsos-ingress-net (Caddy -> Service ports & Authentik SSO gates)   │
-│     - brainsos-internal-net (Agent runners & egress proxy only; no SSO/IDE) │
+│     - brainsos-internal-net (Warm runners & egress proxy; no LiteLLM/SSO)   │
+│     - brainsos-sandbox-net (internal: true; ephemeral sandboxes -> gateway) │
 │     - brainsos-control-net (Isolates LiteLLM DB & OpenBao Raft control bus) │
 │     - brainsos-secrets-net (Isolates OpenBao <-> tool-egress-proxy AppRole) │
 │     - brainsos-auth-net (Isolates Authentik server, worker, DB & Redis)     │
@@ -386,9 +393,9 @@ To run brainsOS as a hardened, single-tenant cloud appliance in your own AWS VPC
 
 1. **Attach the Least-Privilege Instance Role**:
    Launch our Ubuntu 24.04 ARM64 Golden AMI (or build your own via `make build-ami ARGS="--ref v0.5.1"` for a clean-room baseline, or `make build-ami ARGS="--incremental --ref v0.5.1"` for ~5 min delta builds) with an EC2 IAM Instance Profile attached to [`packages/brainsOS-appliance/iam/instance-policy.json`](packages/brainsOS-appliance/iam/instance-policy.json) (grants keyless **Amazon Bedrock** invoke + **AWS SSM Session Manager** with zero inbound SSH port `22`).
-2. **First-Boot Identity Wizard & Break-Glass Login**:
+2. **First-Boot Identity Wizard (One-Time Bootstrap Token)**:
    - Open `https://<public-ip-or-dns>/` in your browser.
-   - Sign in with the break-glass `admin` account using your **EC2 Instance ID** (`i-0123456789abcdef0`) as the initial password.
+   - Enter your **EC2 Instance ID** (`i-0123456789abcdef0`) as the one-time pre-wizard **Bootstrap Token** to unlock the First-Boot Identity Wizard (permanently disabled once the wizard completes or is dismissed; Linux OS `admin` password login is locked via `passwd -l admin` and Authentik's `admin` bootstrap password is independently randomized in `.env`).
    - Complete the **First-Boot Identity Wizard** to set your Appliance Unit Name, external domain/FQDN (e.g., `<username>.aws.cloud.brainsos.ai`), and provision your named **Superuser** across Authentik SSO, SOGo Webmail, Gitea (`/git/`), and LiteLLM.
 3. **Optional — Dynamic Fleet DNS via EC2 User Data (`30+` Instances, Zero Elastic IPs) or Post-Boot BYOD**:
    ```ini
@@ -506,7 +513,7 @@ Once running, all appliance services are unified behind single-origin HTTPS (`:4
 |---|---|---|---|---|
 | **Thin-Spine Portal** | [https://local.brainsos.ai/](https://local.brainsos.ai/) | `80` / `443` | *Public / SSO* | Bespoke Thin-Spine React shell (<4% rail, 96%+ full-bleed viewport) |
 | **OS Control Center (System API)** | [https://local.brainsos.ai/#system](https://local.brainsos.ai/#system) | `8010` *(ingress-net)* | `Authentik Admins` / Wizard | Superuser Wizard, XTerm.js Host PTY, APT patching, Runner & Tool Keys, Updates |
-| **Authentik SSO Ingress** | [https://local.brainsos.ai/auth/](https://local.brainsos.ai/auth/) | `9000` | Superuser / `admin` (`EC2 ID`) | Centralized Zero-Trust SSO & Forward-Auth identity gateway |
+| **Authentik SSO Ingress** | [https://local.brainsos.ai/auth/](https://local.brainsos.ai/auth/) | `9000` | Superuser / `admin` (randomized in `.env`) | Centralized Zero-Trust SSO & Forward-Auth identity gateway |
 | **Operator IDE (VS Code)** | [https://local.brainsos.ai/editor/](https://local.brainsos.ai/editor/) | `8443` | `Authentik Admins` (`CODE_SERVER_AUTH=none`) | Containerized VS Code (`code-server`) pre-wired to `/data` (excludes `/data/control_plane` & `/data/backups`) |
 | **Gitea Source Control** | [https://local.brainsos.ai/git/](https://local.brainsos.ai/git/) | `3000` | `Authentik Admins` (Reverse-Proxy Auth) | Self-hosted Git server tracking `operator/agent-box` (`SOUL.md`, skills, memories) |
 | **SOGo Webmail & Groupware** | [https://local.brainsos.ai/mail/](https://local.brainsos.ai/mail/) | `20000` | Authentik SSO (`X-Caddy-Ingress-Token`) | Webmail, agent mailboxes & CalDAV calendars |

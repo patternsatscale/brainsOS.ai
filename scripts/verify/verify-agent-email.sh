@@ -47,7 +47,7 @@ set +a
 
 SMTP_PORT="${MAIL_SMTP_PORT:-10025}"
 IMAP_PORT="${MAIL_IMAP_PORT:-10143}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-brainsos_operator_mail_secret_change_me}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:?OPERATOR_MAIL_PASSWORD must be set in .env}"
 
 # ------------------------------------------------------------------------------
 # 1. Container Status & Health Check

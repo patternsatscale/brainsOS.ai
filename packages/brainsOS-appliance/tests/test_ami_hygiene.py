@@ -134,7 +134,7 @@ def test_firstboot_secrets_differ_between_instances(firstboot_tree: Path, tmp_pa
     assert _run_firstboot(firstboot_tree).returncode == 0
     assert _run_firstboot(second).returncode == 0
     a, b = _parse_env(firstboot_tree / ".env"), _parse_env(second / ".env")
-    for var in ("LITELLM_MASTER_KEY", "CLICKHOUSE_PASSWORD", "CODE_SERVER_PASSWORD"):
+    for var in ("LITELLM_MASTER_KEY", "CLICKHOUSE_PASSWORD", "CODE_SERVER_PASSWORD", "TOOL_EGRESS_PROXY_SECRET"):
         if var in a:
             assert a[var] != b[var], f"{var} identical across instances"
 

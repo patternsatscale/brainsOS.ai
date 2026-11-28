@@ -68,9 +68,9 @@ services:
       - OPENAI_API_KEY=${OPERATOR_LITELLM_KEY:-}
       - OPERATOR_LITELLM_KEY=${OPERATOR_LITELLM_KEY:-}
       - NODE_EXTRA_CA_CERTS=/etc/ssl/caddy/root.crt
-      - SSL_CERT_FILE=/etc/ssl/caddy/root.crt
-      - REQUESTS_CA_BUNDLE=/etc/ssl/caddy/root.crt
-      - CURL_CA_BUNDLE=/etc/ssl/caddy/root.crt
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      - CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
     networks:
       brainsos-ide-net:
         ipv4_address: ${CODE_SERVER_IDE_IP:-172.28.6.12}
@@ -84,7 +84,7 @@ services:
       - "no-new-privileges:true"
     environment:
       POSTGRES_USER: ${SOGO_DB_USER:-sogo}
-      POSTGRES_PASSWORD: ${SOGO_DB_PASSWORD:-sogo_secret_pass}
+      POSTGRES_PASSWORD: ${SOGO_DB_PASSWORD:?SOGO_DB_PASSWORD must be set}
       POSTGRES_DB: ${SOGO_DB_NAME:-sogo}
     volumes:
       - ${BRAINSOS_COMMS_DIR:-${BRAINSOS_DATA_DIR:-../../data}/comms}/sogo/db:/var/lib/postgresql/data
@@ -146,17 +146,17 @@ services:
       - SOGO_DB_HOST=sogo-db
       - SOGO_DB_PORT=5432
       - SOGO_DB_USER=${SOGO_DB_USER:-sogo}
-      - SOGO_DB_PASSWORD=${SOGO_DB_PASSWORD:-sogo_secret_pass}
+      - SOGO_DB_PASSWORD=${SOGO_DB_PASSWORD:?SOGO_DB_PASSWORD must be set}
       - SOGO_DB_NAME=${SOGO_DB_NAME:-sogo}
       - CADDY_INGRESS_TOKEN=${CADDY_INGRESS_TOKEN:-}
-      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
-      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
-      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
-      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
-      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
-      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
-      - CLAUDE_MAIL_PASSWORD=${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}
-      - GPT_MAIL_PASSWORD=${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:?ADMIN_MAIL_PASSWORD must be set}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:?OPERATOR_MAIL_PASSWORD must be set}
+      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:?TERRASTELLA_MAIL_PASSWORD must be set}
+      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:?BAWTFORD_MAIL_PASSWORD must be set}
+      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:?MARVIN_MAIL_PASSWORD must be set}
+      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:?PING_MAIL_PASSWORD must be set}
+      - CLAUDE_MAIL_PASSWORD=${CLAUDE_MAIL_PASSWORD:?CLAUDE_MAIL_PASSWORD must be set}
+      - GPT_MAIL_PASSWORD=${GPT_MAIL_PASSWORD:?GPT_MAIL_PASSWORD must be set}
       - BRAINSOS_DOMAIN=${BRAINSOS_DOMAIN:-brainsos.local}
       - BRAINSOS_LOCAL_DOMAIN=${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
       - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
@@ -191,14 +191,14 @@ services:
       - BRAINSOS_MAIL_DOMAIN=${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}
       - BRAINSOS_EMAIL_DOMAIN=${BRAINSOS_EMAIL_DOMAIN:-}
       - BRAINSOS_ADMIN_USERNAME=${BRAINSOS_ADMIN_USERNAME:-admin}
-      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}
-      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}
-      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}
-      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}
-      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}
-      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}
-      - CLAUDE_MAIL_PASSWORD=${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}
-      - GPT_MAIL_PASSWORD=${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}
+      - ADMIN_MAIL_PASSWORD=${ADMIN_MAIL_PASSWORD:?ADMIN_MAIL_PASSWORD must be set}
+      - OPERATOR_MAIL_PASSWORD=${OPERATOR_MAIL_PASSWORD:?OPERATOR_MAIL_PASSWORD must be set}
+      - TERRASTELLA_MAIL_PASSWORD=${TERRASTELLA_MAIL_PASSWORD:?TERRASTELLA_MAIL_PASSWORD must be set}
+      - BAWTFORD_MAIL_PASSWORD=${BAWTFORD_MAIL_PASSWORD:?BAWTFORD_MAIL_PASSWORD must be set}
+      - MARVIN_MAIL_PASSWORD=${MARVIN_MAIL_PASSWORD:?MARVIN_MAIL_PASSWORD must be set}
+      - PING_MAIL_PASSWORD=${PING_MAIL_PASSWORD:?PING_MAIL_PASSWORD must be set}
+      - CLAUDE_MAIL_PASSWORD=${CLAUDE_MAIL_PASSWORD:?CLAUDE_MAIL_PASSWORD must be set}
+      - GPT_MAIL_PASSWORD=${GPT_MAIL_PASSWORD:?GPT_MAIL_PASSWORD must be set}
       - HERMES_API_TERRASTELLA_KEY=${HERMES_API_TERRASTELLA_KEY:-}
       - HERMES_API_MARVIN_KEY=${HERMES_API_MARVIN_KEY:-}
       - HERMES_API_BAWTFORD_KEY=${HERMES_API_BAWTFORD_KEY:-}
@@ -231,7 +231,7 @@ services:
     environment:
       POSTGRES_DB: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
       POSTGRES_USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
-      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:?AUTHENTIK_POSTGRESQL__PASSWORD must be set}
     volumes:
       - ${BRAINSOS_AUTHENTIK_DB_DIR:-${BRAINSOS_DATA_DIR:-../../data}/control_plane/authentik_db}:/var/lib/postgresql/data
     networks:
@@ -259,7 +259,7 @@ services:
     restart: unless-stopped
     security_opt:
       - "no-new-privileges:true"
-    command: ["redis-server", "--requirepass", "${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}"]
+    command: ["redis-server", "--requirepass", "${AUTHENTIK_REDIS_PASSWORD:?AUTHENTIK_REDIS_PASSWORD must be set}"]
     networks:
       brainsos-auth-net:
         ipv4_address: ${AUTHENTIK_REDIS_AUTH_IP:-172.28.3.21}
@@ -268,7 +268,7 @@ services:
           - brainsos-auth-redis
           - brainsos-app-auth-redis
     healthcheck:
-      test: [ "CMD-SHELL", "redis-cli -a \"${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}\" ping | grep -q PONG" ]
+      test: [ "CMD-SHELL", "redis-cli -a \"${AUTHENTIK_REDIS_PASSWORD:?AUTHENTIK_REDIS_PASSWORD must be set}\" ping | grep -q PONG" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -283,15 +283,15 @@ services:
       - "no-new-privileges:true"
     environment:
       AUTHENTIK_REDIS__HOST: authentik-redis
-      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:?AUTHENTIK_REDIS_PASSWORD must be set}
       AUTHENTIK_POSTGRESQL__HOST: authentik-db
       AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-brainsos_authentik_secret_change_me}
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:?AUTHENTIK_POSTGRESQL__PASSWORD must be set}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?AUTHENTIK_SECRET_KEY must be set}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:?BRAINSOS_ADMIN_PASSWORD or AUTHENTIK_BOOTSTRAP_PASSWORD must be set}}
       AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.local}}
-      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-brainsos_authentik_api_token}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:?AUTHENTIK_BOOTSTRAP_TOKEN must be set}
       AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
@@ -299,8 +299,9 @@ services:
       AUTHENTIK_HOST: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
       AUTHENTIK_HOST_BROWSER: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
       BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
-      AUTH_LITELLM_CLIENT_SECRET: ${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
-      AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
+      AUTH_LITELLM_CLIENT_SECRET: ${AUTH_LITELLM_CLIENT_SECRET:?AUTH_LITELLM_CLIENT_SECRET must be set}
+      AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:?AUTH_LANGFUSE_CLIENT_SECRET must be set}
+      AUTH_OPENBAO_CLIENT_SECRET: ${AUTH_OPENBAO_CLIENT_SECRET:?AUTH_OPENBAO_CLIENT_SECRET must be set}
     volumes:
       - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ../../config/authentik/themes/brainsos/login.css:/web/dist/login.css:ro
@@ -336,15 +337,15 @@ services:
       - "no-new-privileges:true"
     environment:
       AUTHENTIK_REDIS__HOST: authentik-redis
-      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_secret_change_me}
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:?AUTHENTIK_REDIS_PASSWORD must be set}
       AUTHENTIK_POSTGRESQL__HOST: authentik-db
       AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRESQL__USER:-authentik}
       AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRESQL__NAME:-authentik}
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}
-      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-brainsos_authentik_secret_change_me}
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRESQL__PASSWORD:?AUTHENTIK_POSTGRESQL__PASSWORD must be set}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?AUTHENTIK_SECRET_KEY must be set}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:?BRAINSOS_ADMIN_PASSWORD or AUTHENTIK_BOOTSTRAP_PASSWORD must be set}}
       AUTHENTIK_BOOTSTRAP_EMAIL: ${AUTHENTIK_BOOTSTRAP_EMAIL:-${BRAINSOS_ADMIN_EMAIL:-admin@brainsos.local}}
-      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:-brainsos_authentik_api_token}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:?AUTHENTIK_BOOTSTRAP_TOKEN must be set}
       AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
       AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
       AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
@@ -352,8 +353,9 @@ services:
       AUTHENTIK_HOST: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
       AUTHENTIK_HOST_BROWSER: https://${BRAINSOS_DOMAIN:-local.brainsos.ai}
       BRAINSOS_DOMAIN: ${BRAINSOS_DOMAIN:-local.brainsos.ai}
-      AUTH_LITELLM_CLIENT_SECRET: ${AUTH_LITELLM_CLIENT_SECRET:-brainsos_litellm_secret}
-      AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:-brainsos_langfuse_secret}
+      AUTH_LITELLM_CLIENT_SECRET: ${AUTH_LITELLM_CLIENT_SECRET:?AUTH_LITELLM_CLIENT_SECRET must be set}
+      AUTH_LANGFUSE_CLIENT_SECRET: ${AUTH_LANGFUSE_CLIENT_SECRET:?AUTH_LANGFUSE_CLIENT_SECRET must be set}
+      AUTH_OPENBAO_CLIENT_SECRET: ${AUTH_OPENBAO_CLIENT_SECRET:?AUTH_OPENBAO_CLIENT_SECRET must be set}
     volumes:
       - ../../config/authentik/themes/brainsos/theme.css:/web/dist/custom.css:ro
       - ../../config/authentik/themes/brainsos/login.css:/web/dist/login.css:ro

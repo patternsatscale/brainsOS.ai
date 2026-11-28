@@ -99,7 +99,9 @@ async def test_successful_turn_structured_json(sample_request: AgentTurnRequest)
         call_args = mock_exec.call_args[0]
         cmd_str = " ".join(call_args)
 
+        assert client.network == "brainsos-sandbox-net"
         assert "docker run --rm -i" in cmd_str
+        assert "--network brainsos-sandbox-net" in cmd_str
         assert "--memory=1g" in cmd_str
         assert "--cpus=1.0" in cmd_str
         assert "--security-opt no-new-privileges:true" in cmd_str

@@ -22,6 +22,7 @@ import tls_policy.caddy
 	request_header -Remote-Email
 	request_header -X-Authentik-Outpost-Fallback
 	request_header -X-BrainsOS-Owner
+	request_header -X-Real-IP
 }
 
 (portal_auth_gate_false) {
@@ -49,17 +50,17 @@ import tls_policy.caddy
 (portal_auth_gate_true) {
 	route {
 		@untrusted_alb_oidc {
-			not remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
+			not remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16}
 			header X-Amzn-Oidc-Data *
 		}
 		request_header @untrusted_alb_oidc -X-Amzn-Oidc-Data
 		@has_alb_oidc {
-			remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
+			remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16}
 			header X-Amzn-Oidc-Data *
 		}
 		@no_alb_oidc {
 			not {
-				remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
+				remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16}
 				header X-Amzn-Oidc-Data *
 			}
 		}
@@ -117,17 +118,17 @@ import tls_policy.caddy
 (system_auth_gate_true) {
 	route {
 		@sys_untrusted_alb_oidc {
-			not remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
+			not remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16}
 			header X-Amzn-Oidc-Data *
 		}
 		request_header @sys_untrusted_alb_oidc -X-Amzn-Oidc-Data
 		@sys_has_alb_oidc {
-			remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
+			remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16}
 			header X-Amzn-Oidc-Data *
 		}
 		@sys_no_alb_oidc {
 			not {
-				remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/12 192.168.0.0/16}
+				remote_ip {$AUTH_ALB_TRUSTED_CIDRS:10.0.0.0/8 172.16.0.0/13 172.24.0.0/14 172.29.0.0/16 172.30.0.0/15 192.168.0.0/16}
 				header X-Amzn-Oidc-Data *
 			}
 		}
@@ -207,6 +208,7 @@ import tls_policy.caddy
 		output stdout
 		format console
 	}
+	request_header -X-Real-IP
 	reverse_proxy authentik-server:9000 {
 		flush_interval -1
 	}
@@ -223,10 +225,13 @@ import tls_policy.caddy
 }
 
 (langfuse_proxy) {
-	reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
-		header_down -x-frame-options
-		header_down -content-security-policy
-		flush_interval -1
+	route {
+		import authentik_admin_forward_auth
+		reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
 	}
 }
 
@@ -251,6 +256,7 @@ import tls_policy.caddy
 		?Referrer-Policy "strict-origin-when-cross-origin"
 		?Content-Security-Policy "frame-ancestors 'self'"
 	}
+	request_header -X-Real-IP
 
 	# --------------------------------------------------------------------------
 	# PLANE 2: Programmatic LiteLLM API Gateway (Direct Token Auth, No SSO)
@@ -288,7 +294,6 @@ import tls_policy.caddy
 	}
 	handle @mail_static {
 		reverse_proxy sogo:20000 {
-			header_up X-Caddy-Ingress-Token {$CADDY_INGRESS_TOKEN:}
 			header_down -x-frame-options
 			flush_interval -1
 		}
@@ -322,10 +327,33 @@ import tls_policy.caddy
 	# --------------------------------------------------------------------------
 	@langfuse_host header_regexp Host (?i)^langfuse\.
 	handle @langfuse_host {
-		reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		@langfuse_host_blocked path /auth/sign-up* /auth/reset-password*
+		handle @langfuse_host_blocked {
+			respond "Forbidden: self-service sign-up and password reset are disabled" 403
+		}
+		@langfuse_host_outpost path /outpost.goauthentik.io/*
+		handle @langfuse_host_outpost {
+			reverse_proxy authentik-server:9000 {
+				header_down Location "^https?://0\.0\.0\.0(:[0-9]+)?(/.*)$" "https://{host}$2"
+			}
+		}
+		@langfuse_host_oidc_callback path /api/auth/callback/*
+		handle @langfuse_host_oidc_callback {
+			reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
+		}
+		handle {
+			route {
+				import authentik_admin_forward_auth
+				reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
+					header_down -x-frame-options
+					header_down -content-security-policy
+					flush_interval -1
+				}
+			}
 		}
 	}
 
@@ -339,7 +367,11 @@ import tls_policy.caddy
 			header_down Location "^https?://0\.0\.0\.0(:[0-9]+)?(/.*)$" "https://{host}$2"
 		}
 	}
-	handle /auth/* {
+	@authentik_auth_paths {
+		path /auth/*
+		not path /auth/sign-in* /auth/error* /auth/sso-initiate* /auth/reset-password* /auth/setup-password* /auth/sign-up* /auth/enterprise-sso-required*
+	}
+	handle @authentik_auth_paths {
 		uri strip_prefix /auth
 		reverse_proxy authentik-server:9000 {
 			header_down -x-frame-options
@@ -389,6 +421,7 @@ import tls_policy.caddy
 				header_up -X-Authentik-Outpost-Fallback
 				header_up -X-BrainsOS-Prelogin-Wizard
 				header_up -X-Amzn-Oidc-Data
+				header_up -X-Real-IP
 				header_up X-Forwarded-Proto https
 				header_up X-Forwarded-Host {host}
 				flush_interval -1
@@ -421,7 +454,11 @@ import tls_policy.caddy
 		}
 	}
 
-	handle /api/* {
+	@authentik_api_paths {
+		path /api/*
+		not path /api/v1/system/* /api/plugins /api/plugins/* /api/event_logging/* /api/trpc/* /api/auth/* /api/public/* /api/project/* /api/traces/* /api/dashboard/* /api/chatCompletion* /api/admin/* /api/internal/*
+	}
+	handle @authentik_api_paths {
 		reverse_proxy authentik-server:9000
 	}
 	handle /application/* {
@@ -473,7 +510,6 @@ import tls_policy.caddy
 	@sogo_static path /SOGo.woa/WebServerResources/* /SOGo/WebServerResources/* /WebServerResources/*
 	handle @sogo_static {
 		reverse_proxy sogo:20000 {
-			header_up X-Caddy-Ingress-Token {$CADDY_INGRESS_TOKEN:}
 			header_down -x-frame-options
 			flush_interval -1
 		}
@@ -728,7 +764,11 @@ import tls_policy.caddy
 			flush_interval -1
 		}
 	}
-	handle /proxy/* {
+	@litellm_proxy_fallback {
+		path /proxy/*
+		not path /proxy/ /proxy/v1/* /proxy/ui /proxy/ui/* /proxy/sso/* /proxy/.well-known/litellm-ui-config /proxy/litellm/.well-known/litellm-ui-config
+	}
+	handle @litellm_proxy_fallback {
 		uri strip_prefix /proxy
 		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
 			header_down -x-frame-options
@@ -747,13 +787,16 @@ import tls_policy.caddy
 	# Future-proof catch-all for any new endpoint called by the LiteLLM Admin UI (/ui/*)
 	@litellm_ui_referer {
 		header_regexp Referer ^https?://[^/]+/(proxy/)?ui(/|$|\?)
-		not path /ui/* /proxy/* /lens-ingest/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /secrets* /v1/sys/* /v1/auth/* /v1/secret/* /v1/identity/* /v1/cubbyhole/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/*
+		not path /ui/* /proxy/* /lens-ingest/* /sso/* /litellm-asset-prefix/* /.well-known/* /litellm/* /application/* /flows/* /if/* /outpost.goauthentik.io/* /auth/* /static/* /media/* /-/* /ws/* /api/v1/system/* /editor/* /git/* /SOGo* /efw/* /secrets* /v1/sys/* /v1/auth/* /v1/secret/* /v1/identity/* /v1/cubbyhole/* /runner* /dgx* /_next/* /project/brainsos* /project/~* /organization/brainsos* /trace/* /api/trpc/* /api/auth/* /api/public/* /api/project/* /api/traces/* /api/dashboard/* /api/chatCompletion* /api/admin/* /api/internal/* /account/settings* /langfuse* /icon.svg /icon256.png /icon512.png /wordart-black.svg /wordart-white.svg /fonts/* /generated/* /healthz /api/plugins /api/plugins/* /api/event_logging/* /WebServerResources/* /docs /docs/* /system /system/*
 	}
 	handle @litellm_ui_referer {
-		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
-			header_down -x-frame-options
-			header_down -content-security-policy
-			flush_interval -1
+		route {
+			import authentik_admin_forward_auth
+			reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+				header_down -x-frame-options
+				header_down -content-security-policy
+				flush_interval -1
+			}
 		}
 	}
 
@@ -764,8 +807,8 @@ import tls_policy.caddy
 		route {
 			import authentik_admin_forward_auth
 			uri strip_prefix /efw
-			reverse_proxy tool-egress-proxy:8081 {
-				header_up Authorization "Bearer {$TOOL_EGRESS_WEB_PASSWORD:brainsos_tool_egress_secret}"
+			reverse_proxy tool-egress-web:8081 {
+				header_up Authorization "Bearer {$TOOL_EGRESS_WEB_PASSWORD:}"
 				header_down -x-frame-options
 				header_down -content-security-policy
 				flush_interval -1
@@ -776,12 +819,18 @@ import tls_policy.caddy
 	# F. Subsystem 5: Observability Plane (Langfuse Single-Origin & Subdomain Ingress)
 	@langfuse_root path /langfuse /langfuse/
 	handle @langfuse_root {
-		redir /project/brainsos/sessions 302
+		route {
+			import authentik_admin_forward_auth
+			redir /project/brainsos/sessions 302
+		}
 	}
 	@langfuse_subpath path /langfuse/*
 	handle @langfuse_subpath {
-		uri strip_prefix /langfuse
-		redir {uri} 302
+		route {
+			import authentik_admin_forward_auth
+			uri strip_prefix /langfuse
+			redir {uri} 302
+		}
 	}
 	handle /_next/* {
 		import langfuse_proxy
@@ -822,6 +871,13 @@ import tls_policy.caddy
 	handle /api/trpc/* {
 		import langfuse_proxy
 	}
+	handle /api/auth/callback/* {
+		reverse_proxy {$LANGFUSE_UPSTREAM:langfuse-web:3000} {
+			header_down -x-frame-options
+			header_down -content-security-policy
+			flush_interval -1
+		}
+	}
 	handle /api/auth/* {
 		import langfuse_proxy
 	}
@@ -856,13 +912,13 @@ import tls_policy.caddy
 		import langfuse_proxy
 	}
 	handle /auth/reset-password* {
-		import langfuse_proxy
+		respond "Forbidden: password reset is disabled" 403
 	}
 	handle /auth/setup-password* {
 		import langfuse_proxy
 	}
 	handle /auth/sign-up* {
-		import langfuse_proxy
+		respond "Forbidden: self-service sign-up is disabled" 403
 	}
 	handle /auth/enterprise-sso-required* {
 		import langfuse_proxy

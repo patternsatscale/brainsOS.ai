@@ -7,12 +7,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="${BRAINSOS_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+ENV_FILE="${BRAINSOS_ENV_FILE:-$REPO_ROOT/.env}"
 
 # Source host environment if present
-if [[ -f "$REPO_ROOT/.env" ]]; then
-    # shellcheck disable=SC1091
-    source "$REPO_ROOT/.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
 fi
 
 ACCOUNTS_ONLY=false
@@ -39,15 +42,89 @@ mkdir -p "$VMAIL_DIR" "$CONFIG_DIR" "$SNAPPY_DIR"
 chown 5000:5000 "$MAIL_DIR" 2>/dev/null || true
 chmod 0750 "$MAIL_DIR" 2>/dev/null || true
 
-# 1. Seed Accounts and Credentials
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_terrastella_mail_secret_change_me}}"
-BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_bawtford_mail_secret_change_me}}"
-MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_marvin_mail_secret_change_me}}"
-PING_PASS="${PING_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_ping_mail_secret_change_me}}"
-CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_claude_mail_secret_change_me}}"
-GPT_PASS="${GPT_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_gpt_mail_secret_change_me}}"
+# 1. Seed Accounts and Credentials (independent per-account passwords; never fall back to BRAINSOS_ADMIN_PASSWORD or static strings)
+is_mail_placeholder() {
+    local v="${1:-}"
+    [ -z "$v" ] && return 0
+    case "$v" in
+        *change_me*|*change-me*|brainsos_*_secret*|admin_mail_pass|operator_mail_pass)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+resolve_mail_password() {
+    local var_name="$1"
+    local cur_val=""
+    eval "cur_val=\"\${${var_name}:-}\""
+    if ! is_mail_placeholder "$cur_val"; then
+        printf '%s' "$cur_val"
+        return 0
+    fi
+    if [[ ! -f "$ENV_FILE" ]]; then
+        echo "[ERROR] ${var_name} must be set (and ${ENV_FILE} does not exist to persist a generated secret)." >&2
+        return 1
+    fi
+    local new_pw=""
+    if command -v openssl >/dev/null 2>&1; then
+        new_pw="$(openssl rand -hex 16 2>/dev/null || true)"
+    fi
+    if [[ -z "$new_pw" ]] && command -v python3 >/dev/null 2>&1; then
+        new_pw="$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+    fi
+    if [[ -z "$new_pw" ]]; then
+        echo "[ERROR] Unable to generate random password for ${var_name}." >&2
+        return 1
+    fi
+    if [[ -x "$REPO_ROOT/scripts/control/env-upsert.sh" ]]; then
+        "$REPO_ROOT/scripts/control/env-upsert.sh" --file "$ENV_FILE" "${var_name}=${new_pw}" >/dev/null
+    else
+        MAIL_ENV_FILE="$ENV_FILE" MAIL_VAR_NAME="$var_name" MAIL_VAR_VAL="$new_pw" python3 - << 'PYEOF'
+import os, tempfile
+env_file = os.environ["MAIL_ENV_FILE"]
+key = os.environ["MAIL_VAR_NAME"]
+val = os.environ["MAIL_VAR_VAL"]
+with open(env_file, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+out = []
+found = False
+for line in lines:
+    if line.startswith(f"{key}="):
+        out.append(f"{key}={val}\n")
+        found = True
+    else:
+        out.append(line)
+if not found:
+    out.append(f"{key}={val}\n")
+fd, tmp_path = tempfile.mkstemp(prefix=".env.", dir=os.path.dirname(os.path.abspath(env_file)))
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.writelines(out)
+    os.chmod(tmp_path, 0o600)
+    os.replace(tmp_path, env_file)
+except Exception:
+    if os.path.exists(tmp_path):
+        os.unlink(tmp_path)
+    raise
+PYEOF
+    fi
+    chmod 600 "$ENV_FILE" 2>/dev/null || true
+    printf '%s' "$new_pw"
+}
+
+ADMIN_PASS="$(resolve_mail_password ADMIN_MAIL_PASSWORD)"
+OPERATOR_PASS="$(resolve_mail_password OPERATOR_MAIL_PASSWORD)"
+TERRASTELLA_PASS="$(resolve_mail_password TERRASTELLA_MAIL_PASSWORD)"
+BAWTFORD_PASS="$(resolve_mail_password BAWTFORD_MAIL_PASSWORD)"
+MARVIN_PASS="$(resolve_mail_password MARVIN_MAIL_PASSWORD)"
+PING_PASS="$(resolve_mail_password PING_MAIL_PASSWORD)"
+CLAUDE_PASS="$(resolve_mail_password CLAUDE_MAIL_PASSWORD)"
+GPT_PASS="$(resolve_mail_password GPT_MAIL_PASSWORD)"
+export ADMIN_MAIL_PASSWORD="$ADMIN_PASS" OPERATOR_MAIL_PASSWORD="$OPERATOR_PASS" \
+    TERRASTELLA_MAIL_PASSWORD="$TERRASTELLA_PASS" BAWTFORD_MAIL_PASSWORD="$BAWTFORD_PASS" \
+    MARVIN_MAIL_PASSWORD="$MARVIN_PASS" PING_MAIL_PASSWORD="$PING_PASS" \
+    CLAUDE_MAIL_PASSWORD="$CLAUDE_PASS" GPT_MAIL_PASSWORD="$GPT_PASS"
 
 hash_mail_password() {
     local raw_pw="$1"

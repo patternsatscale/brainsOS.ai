@@ -318,14 +318,14 @@ sync_sogo_users() {
     printf '%s' "${hashed}"
   }
 
-  local admin_mail_pass="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  local operator_mail_pass="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}}"
-  local terrastella_pass="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
-  local bawtford_pass="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
-  local marvin_pass="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
-  local ping_pass="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
-  local claude_pass="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
-  local gpt_pass="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+  local admin_mail_pass="${ADMIN_MAIL_PASSWORD:?ADMIN_MAIL_PASSWORD must be set}"
+  local operator_mail_pass="${OPERATOR_MAIL_PASSWORD:?OPERATOR_MAIL_PASSWORD must be set}"
+  local terrastella_pass="${TERRASTELLA_MAIL_PASSWORD:?TERRASTELLA_MAIL_PASSWORD must be set}"
+  local bawtford_pass="${BAWTFORD_MAIL_PASSWORD:?BAWTFORD_MAIL_PASSWORD must be set}"
+  local marvin_pass="${MARVIN_MAIL_PASSWORD:?MARVIN_MAIL_PASSWORD must be set}"
+  local ping_pass="${PING_MAIL_PASSWORD:?PING_MAIL_PASSWORD must be set}"
+  local claude_pass="${CLAUDE_MAIL_PASSWORD:?CLAUDE_MAIL_PASSWORD must be set}"
+  local gpt_pass="${GPT_MAIL_PASSWORD:?GPT_MAIL_PASSWORD must be set}"
 
   local admin_mail_hash operator_mail_hash terrastella_hash bawtford_hash marvin_hash ping_hash claude_hash gpt_hash
   admin_mail_hash="$(_hash_sogo_pw "${admin_mail_pass}")"
@@ -404,6 +404,21 @@ sync_sogo_users() {
 EOSQL
 }
 
+# Ensure CLICKHOUSE_PASSWORD and per-account mail passwords exist in .env before any DB/service sync
+if [ -z "${CLICKHOUSE_PASSWORD:-}" ] || [ "${CLICKHOUSE_PASSWORD}" = "clickhouse" ] || [[ "${CLICKHOUSE_PASSWORD}" == *change_me* ]]; then
+  CLICKHOUSE_PASSWORD="$(openssl rand -hex 20 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(20))')"
+  "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}" >/dev/null 2>&1 || true
+  export CLICKHOUSE_PASSWORD
+fi
+for _mail_key in ADMIN_MAIL_PASSWORD OPERATOR_MAIL_PASSWORD TERRASTELLA_MAIL_PASSWORD BAWTFORD_MAIL_PASSWORD MARVIN_MAIL_PASSWORD PING_MAIL_PASSWORD CLAUDE_MAIL_PASSWORD GPT_MAIL_PASSWORD; do
+  eval "_cur_mail_val=\"\${${_mail_key}:-}\""
+  if [ -z "${_cur_mail_val}" ] || [[ "${_cur_mail_val}" == *change_me* ]] || [[ "${_cur_mail_val}" == brainsos_* ]]; then
+    _gen_mail_val="$(openssl rand -hex 16 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(16))')"
+    "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "${_mail_key}=${_gen_mail_val}" >/dev/null 2>&1 || true
+    eval "export ${_mail_key}=\"\${_gen_mail_val}\""
+  fi
+done
+
 # ------------------------------------------------------------------------------
 # 1. Synchronize LiteLLM PostgreSQL Database Password (Zero Data Loss)
 # ------------------------------------------------------------------------------
@@ -413,7 +428,7 @@ DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(control-|i
 if [ -n "${DB_CONTAINER}" ]; then
   LITELLM_DB_USER="${LITELLM_DB_USER:-litellm}"
   LITELLM_DB_NAME="${LITELLM_DB_NAME:-litellm}"
-  LITELLM_DB_PASSWORD="${LITELLM_DB_PASSWORD:-brainsos_litellm_secret_change_me}"
+  LITELLM_DB_PASSWORD="${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD must be set}"
 
   log_info "Synchronizing database password for user '${LITELLM_DB_USER}' in ${DB_CONTAINER}..."
   if alter_pg_password "${DB_CONTAINER}" "${LITELLM_DB_USER}" "${LITELLM_DB_NAME}" "${LITELLM_DB_USER}" "${LITELLM_DB_PASSWORD}"; then
@@ -440,7 +455,7 @@ SOGO_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)
 if [ -n "${SOGO_DB_CONTAINER}" ]; then
   SOGO_DB_USER="${SOGO_DB_USER:-sogo}"
   SOGO_DB_NAME="${SOGO_DB_NAME:-sogo}"
-  SOGO_DB_PASSWORD="${SOGO_DB_PASSWORD:-sogo_secret_pass}"
+  SOGO_DB_PASSWORD="${SOGO_DB_PASSWORD:?SOGO_DB_PASSWORD must be set}"
 
   log_info "Synchronizing database password for user '${SOGO_DB_USER}' in ${SOGO_DB_CONTAINER}..."
   if alter_pg_password "${SOGO_DB_CONTAINER}" "${SOGO_DB_USER}" "${SOGO_DB_NAME}" "${SOGO_DB_USER}" "${SOGO_DB_PASSWORD}"; then
@@ -477,7 +492,7 @@ AUTH_DB_CONTAINER="$(docker ps --format '{{.Names}}' | grep -E '^brainsos-(app-)
 if [ -n "${AUTH_DB_CONTAINER}" ]; then
   AUTH_DB_USER="${AUTHENTIK_POSTGRESQL__USER:-authentik}"
   AUTH_DB_NAME="${AUTHENTIK_POSTGRESQL__NAME:-authentik}"
-  AUTH_DB_PASSWORD="${AUTHENTIK_POSTGRESQL__PASSWORD:-authentik_db_secret}"
+  AUTH_DB_PASSWORD="${AUTHENTIK_POSTGRESQL__PASSWORD:?AUTHENTIK_POSTGRESQL__PASSWORD must be set}"
 
   log_info "Synchronizing database password for user '${AUTH_DB_USER}' in ${AUTH_DB_CONTAINER}..."
   if alter_pg_password "${AUTH_DB_CONTAINER}" "${AUTH_DB_USER}" "${AUTH_DB_NAME}" "${AUTH_DB_USER}" "${AUTH_DB_PASSWORD}"; then
@@ -556,11 +571,12 @@ if [ -z "${SYSTEM_API_TOKEN:-}" ]; then
   "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "SYSTEM_API_TOKEN=${SYSTEM_API_TOKEN}" >/dev/null 2>&1 || true
   export SYSTEM_API_TOKEN
 fi
-for _sec_key in CADDY_INGRESS_TOKEN GITEA_SECRET_KEY GITEA_INTERNAL_TOKEN; do
+for _sec_key in CADDY_INGRESS_TOKEN GITEA_SECRET_KEY GITEA_INTERNAL_TOKEN TOOL_EGRESS_PROXY_SECRET AUTH_OPENBAO_CLIENT_SECRET AUTH_LITELLM_CLIENT_SECRET AUTH_LANGFUSE_CLIENT_SECRET; do
   eval "_cur_sec_val=\"\${${_sec_key}:-}\""
-  if [ -z "${_cur_sec_val}" ] || [[ "${_cur_sec_val}" == brainsos_gitea_* ]]; then
+  if [ -z "${_cur_sec_val}" ] || [[ "${_cur_sec_val}" == brainsos_gitea_* ]] || [[ "${_cur_sec_val}" == tool_egress_proxy_secret* ]] || [[ "${_cur_sec_val}" == brainsos_openbao_secret* ]] || [[ "${_cur_sec_val}" == brainsos_litellm_secret* ]] || [[ "${_cur_sec_val}" == brainsos_langfuse_secret* ]] || [[ "${_cur_sec_val}" == auth_*_client_secret* ]] || [[ "${_cur_sec_val}" == *change_me* ]] || [[ "${_cur_sec_val}" == *change-me* ]]; then
     _gen_sec_val="$(openssl rand -hex 32 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(32))')"
     "${REPO_ROOT}/scripts/control/env-upsert.sh" --file "${ENV_FILE}" "${_sec_key}=${_gen_sec_val}" >/dev/null 2>&1 || true
+    chmod 600 "${ENV_FILE}" 2>/dev/null || true
     eval "export ${_sec_key}=\"\${_gen_sec_val}\""
   fi
 done
@@ -741,19 +757,22 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
   fi
   SUPERUSER_PASS="${BRAINSOS_SUPERUSER_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-}}"
 
-  # Resolve EC2 Instance ID so 'admin' / 'akadmin' stay bound to the Instance ID (#332)
-  INSTANCE_ADMIN_PASS=""
-  if command -v curl >/dev/null 2>&1; then
+  # Never bind Authentik 'admin' / 'akadmin' to EC2 Instance ID (#405 HIGH-3);
+  # only accept an explicit custom high-entropy BRAINSOS_INSTANCE_ADMIN_PASSWORD (>= 16 chars, != INSTANCE_ID).
+  DETECTED_INSTANCE_ID="${BRAINSOS_INSTANCE_ID:-}"
+  if [ -z "${DETECTED_INSTANCE_ID}" ] && command -v curl >/dev/null 2>&1; then
     _IMDS_TOK="$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
     if [ -n "${_IMDS_TOK}" ]; then
-      INSTANCE_ADMIN_PASS="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" "http://169.254.169.254/latest/meta-data/instance-id" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
+      DETECTED_INSTANCE_ID="$(curl -s -f -H "X-aws-ec2-metadata-token: ${_IMDS_TOK}" "http://169.254.169.254/latest/meta-data/instance-id" --connect-timeout 1 --max-time 1 2>/dev/null || true)"
     fi
   fi
-  if [ -z "${INSTANCE_ADMIN_PASS}" ]; then
-    INSTANCE_ADMIN_PASS="${BRAINSOS_INSTANCE_ID:-${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-${AUTHENTIK_BOOTSTRAP_PASSWORD:-${SUPERUSER_PASS}}}}"
+  INSTANCE_ADMIN_PASS=""
+  if [ -n "${BRAINSOS_INSTANCE_ADMIN_PASSWORD:-}" ] && [ "${#BRAINSOS_INSTANCE_ADMIN_PASSWORD}" -ge 16 ] && [ "${BRAINSOS_INSTANCE_ADMIN_PASSWORD}" != "${DETECTED_INSTANCE_ID}" ]; then
+    INSTANCE_ADMIN_PASS="${BRAINSOS_INSTANCE_ADMIN_PASSWORD}"
   fi
 
   BREAKGLASS_ENABLED="${BRAINSOS_BREAKGLASS_ENABLED:-true}"
+  WIZARD_COMPLETED="${BRAINSOS_WIZARD_COMPLETED:-true}"
   USER_SUB="${BRAINSOS_USER_SUB:-}"
   OWNER_ONLY="${BRAINSOS_OWNER_ONLY:-true}"
   COGNITO_ENABLED="${AUTH_COGNITO_ENABLED:-false}"
@@ -767,6 +786,8 @@ sys.exit(0 if Outpost.objects.filter(providers__isnull=False).exists() else 1)
 
   docker exec -i \
     -e AK_BREAKGLASS_ENABLED="${BREAKGLASS_ENABLED}" \
+    -e AK_WIZARD_COMPLETED="${WIZARD_COMPLETED}" \
+    -e AK_DETECTED_INSTANCE_ID="${DETECTED_INSTANCE_ID}" \
     -e AK_BREAKGLASS_EMAIL="${BREAKGLASS_ADMIN_EMAIL}" \
     -e AK_INSTANCE_PASS="${INSTANCE_ADMIN_PASS}" \
     -e AK_SUPERUSER_USER="${SUPERUSER_USER}" \
@@ -783,6 +804,8 @@ from authentik.core.models import User, Group
 
 admin_group = Group.objects.filter(name="authentik Admins").first()
 breakglass_enabled = os.environ.get("AK_BREAKGLASS_ENABLED", "true").strip().lower() not in ("false", "0", "no")
+wizard_completed = os.environ.get("AK_WIZARD_COMPLETED", "true").strip().lower() not in ("false", "0", "no")
+detected_iid = os.environ.get("AK_DETECTED_INSTANCE_ID", "").strip()
 su_user = os.environ.get("AK_SUPERUSER_USER", "").strip()
 su_name = os.environ.get("AK_SUPERUSER_NAME", "").strip() or su_user
 admin_email = os.environ.get("AK_ADMIN_EMAIL", "").strip()
@@ -794,6 +817,10 @@ user_sub = os.environ.get("AK_USER_SUB", "").strip()
 cognito_on = os.environ.get("AK_COGNITO_ENABLED", "false").strip().lower() == "true"
 alb_on = os.environ.get("AK_ALB_OIDC_ENABLED", "false").strip().lower() == "true"
 
+valid_custom_bg = bool(inst_pass and len(inst_pass) >= 16 and (not detected_iid or inst_pass != detected_iid))
+if not valid_custom_bg:
+    inst_pass = ""
+
 has_named_su = bool(su_user and su_user not in ("admin", "akadmin"))
 has_owner_sso = bool(user_sub and (cognito_on or alb_on))
 lock_breakglass = (not breakglass_enabled) and (has_named_su or has_owner_sso)
@@ -803,12 +830,11 @@ admin_u, _ = User.objects.get_or_create(
     defaults={"name": "Appliance Administrator", "email": bg_email},
 )
 admin_u.email = bg_email
-if lock_breakglass:
+if lock_breakglass or not valid_custom_bg:
     admin_u.set_unusable_password()
-    admin_u.is_active = False
+    admin_u.is_active = False if lock_breakglass else True
 else:
-    if inst_pass:
-        admin_u.set_password(inst_pass)
+    admin_u.set_password(inst_pass)
     admin_u.is_active = True
     if admin_group:
         admin_u.ak_groups.add(admin_group)
@@ -835,12 +861,11 @@ if has_named_su:
 ak_u = User.objects.filter(username="akadmin").first()
 if ak_u:
     ak_u.email = f"akadmin@{dom}"
-    if lock_breakglass:
+    if lock_breakglass or not valid_custom_bg:
         ak_u.set_unusable_password()
-        ak_u.is_active = False
+        ak_u.is_active = False if lock_breakglass else True
     else:
-        if inst_pass:
-            ak_u.set_password(inst_pass)
+        ak_u.set_password(inst_pass)
         ak_u.is_active = True
     ak_u.save()
 
@@ -857,6 +882,15 @@ if admin_group:
     op_u.ak_groups.add(admin_group)
 op_u.save()
 ' >/dev/null 2>&1 || true
+
+  # Always lock Linux OS 'admin' password authentication (#405 HIGH-3; SSH keys / SSM only)
+  if [ "$(uname -s)" = "Linux" ] && command -v passwd >/dev/null 2>&1; then
+    if [ "$(id -u)" -eq 0 ]; then
+      passwd -l admin 2>/dev/null || true
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+      sudo -n passwd -l admin 2>/dev/null || true
+    fi
+  fi
   log_success "Authentik accounts (${SUPERUSER_USER}, admin [breakglass=${BREAKGLASS_ENABLED}], akadmin, operator) synchronized."
 
   # Synchronize Authentik Outpost, Proxy Provider, OAuth2 OIDC secrets/domains, and Cognito OAuthSource

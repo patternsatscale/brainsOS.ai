@@ -338,9 +338,29 @@ def test_instance_id_redacted_in_public_status_and_revealed_only_to_admin(tmp_pa
         assert admin_id_res.json()["instance_id_masked"] is True
         assert raw_iid not in admin_id_res.text
 
-        st_res = client.get(
+        unauth_res = client.get(
             "/api/v1/system/status",
             headers={"X-BrainsOS-Internal": "test-secret-token-12345"},
+        )
+        assert unauth_res.status_code == 403
+
+        viewer_res = client.get(
+            "/api/v1/system/status",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "viewer",
+                "X-Authentik-Groups": "brainsos-viewers",
+            },
+        )
+        assert viewer_res.status_code == 403
+
+        st_res = client.get(
+            "/api/v1/system/status",
+            headers={
+                "X-BrainsOS-Internal": "test-secret-token-12345",
+                "X-Authentik-Username": "su",
+                "X-Authentik-Groups": "authentik Admins",
+            },
         )
         assert st_res.status_code == 200
         assert st_res.json()["instance_id"] == "i-••••••••••••32d4"
@@ -498,13 +518,29 @@ def test_userdata_routing_preserved_during_wizard_setup(tmp_path, monkeypatch):
 
     with patch("brainsos_telemetry.system.get_repo_root", return_value=str(tmp_path)):
         app = create_system_api_app()
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
         csrf_tok = issue_csrf_token()
         headers = {
             "X-BrainsOS-Internal": "test-secret-token-12345",
             "X-CSRF-Token": csrf_tok,
             "Origin": "http://localhost",
         }
+
+        unauth_id_res = client.get("/api/v1/system/identity", headers=headers)
+        assert unauth_id_res.status_code == 200
+        assert set(unauth_id_res.json().keys()) == {
+            "firstboot_wizard_completed",
+            "unit_name",
+            "url",
+            "tls_mode",
+        }
+
+        sess_res = client.post(
+            "/api/v1/system/firstboot/session",
+            json={"bootstrap_token": mock_iid},
+            headers=headers,
+        )
+        assert sess_res.status_code == 200
 
         id_res = client.get("/api/v1/system/identity", headers=headers)
         assert id_res.status_code == 200
@@ -534,3 +570,17 @@ def test_userdata_routing_preserved_during_wizard_setup(tmp_path, monkeypatch):
         assert "--email ops@infotechlabs.io" in setup_res.text
         assert "--internal" not in setup_res.text
         assert "aws.cloud.brainsos.ai" not in setup_res.text
+
+        bad_su_res = client.post(
+            "/api/v1/system/setup",
+            json={
+                "bootstrap_token": mock_iid,
+                "unit_name": "Alice Demo Box",
+                "superuser_name": "Jane O'Brien",
+                "superuser_username": "alice",
+                "superuser_password": "StrongUserPass99!",
+            },
+            headers=headers,
+        )
+        assert bad_su_res.status_code == 400
+        assert "superuser_name" in bad_su_res.text

@@ -100,7 +100,7 @@ export function setupEmailIngressFlow(input: EmailIngressFlowInput) {
       mailSanitizerLambdaArn: sanitizerLambda.arn,
       mailWorkerPolicyArn: workerCreds.policyArn,
       mailWorkerAccessKeyId: workerCreds.accessKeyId,
-      mailWorkerSecretAccessKey: workerCreds.secretAccessKey,
+      mailWorkerSecretAccessKey: $util.secret(workerCreds.secretAccessKey),
       sesSenderPolicyArn: sesSenderPolicy.arn,
     },
   };

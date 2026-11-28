@@ -270,7 +270,7 @@ class EphemeralDockerRunnerClient(RunnerClient):
         default_timeout_sec: int = 120,
         memory_limit: Optional[str] = "2g",
         cpu_limit: Optional[str] = "2.0",
-        network: Optional[str] = "brainsos-internal-net",
+        network: Optional[str] = "brainsos-sandbox-net",
         docker_cmd: str = "docker",
         command: Optional[list[str]] = None,
     ) -> None:
@@ -278,7 +278,7 @@ class EphemeralDockerRunnerClient(RunnerClient):
         self.default_timeout_sec = default_timeout_sec
         self.memory_limit = memory_limit or "2g"
         self.cpu_limit = cpu_limit or "2.0"
-        self.network = network or "brainsos-internal-net"
+        self.network = network or "brainsos-sandbox-net"
         self.docker_cmd = docker_cmd
         self.command = list(command) if command else None
 
@@ -585,7 +585,7 @@ class EphemeralDockerRunnerClient(RunnerClient):
 
         no_proxy = os.getenv(
             "NO_PROXY",
-            "localhost,127.0.0.1,host.docker.internal,litellm,brainsos-control-litellm,lens,brainsos-lens,brainsos-telemetry-lens",
+            "localhost,127.0.0.1,host.docker.internal,litellm,brainsos-litellm,brainsos-control-litellm,sandbox-gateway,brainsos-sandbox-gateway,lens,brainsos-lens,brainsos-telemetry-lens",
         )
 
         cmd = [
@@ -600,7 +600,8 @@ class EphemeralDockerRunnerClient(RunnerClient):
             f"--memory={self.memory_limit}",
             f"--cpus={self.cpu_limit}",
             "--pids-limit=256",
-            f"--network={self.network}",
+            "--network",
+            self.network,
             "--cap-drop=ALL",
             "--security-opt",
             "no-new-privileges:true",

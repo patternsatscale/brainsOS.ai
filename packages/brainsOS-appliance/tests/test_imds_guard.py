@@ -424,10 +424,15 @@ def test_upgrade_host_preexisting_imds_only_orders_imds_before_egress(tmp_path: 
 
     v4_state = json.loads((state_dir / "iptables.json").read_text(encoding="utf-8"))
     v6_state = json.loads((state_dir / "ip6tables.json").read_text(encoding="utf-8"))
-    assert v4_state["DOCKER-USER"] == [
+    assert v4_state["DOCKER-USER"][:2] == [
         "-d 169.254.169.254/32 -j BRAINSOS-IMDS",
         "-i br-internal -j BRAINSOS-EGRESS",
-        "-j RETURN",
+    ]
+    assert "-i docker0 -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL" in v4_state["DOCKER-USER"]
+    assert v4_state["DOCKER-USER"][-1] == "-j RETURN"
+    assert v4_state["BRAINSOS-LINKLOCAL"] == [
+        "-s 172.28.2.10/32 -d 169.254.169.254/32 -j RETURN",
+        "-d 169.254.0.0/16 -j DROP",
     ]
     assert v6_state["DOCKER-USER"] == [
         "-d fd00:ec2::254/128 -j BRAINSOS-IMDS6",
@@ -511,10 +516,11 @@ def test_check_fails_and_apply_heals_misordered_docker_user_rules(tmp_path: Path
 
     v4_state = json.loads((state_dir / "iptables.json").read_text(encoding="utf-8"))
     v6_state = json.loads((state_dir / "ip6tables.json").read_text(encoding="utf-8"))
-    assert v4_state["DOCKER-USER"] == [
+    assert v4_state["DOCKER-USER"][:2] == [
         "-d 169.254.169.254/32 -j BRAINSOS-IMDS",
         "-i br-internal -j BRAINSOS-EGRESS",
     ]
+    assert "-i docker0 -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL" in v4_state["DOCKER-USER"]
     assert v6_state["DOCKER-USER"] == [
         "-d fd00:ec2::254/128 -j BRAINSOS-IMDS6",
         "-i br-internal -j BRAINSOS-EGRESS6",
@@ -775,5 +781,57 @@ def test_check_rejects_tampered_ipv6_imds_and_egress_chains(tmp_path: Path) -> N
     # Re-applying heals tampered IPv6 chains
     assert subprocess.run(["bash", str(IMDS_GUARD), "--apply", "--force"], env=env, check=False).returncode == 0
     assert subprocess.run(["bash", str(IMDS_GUARD), "--check", "--force"], env=env, check=False).returncode == 0
+
+
+def test_linklocal_guard_protects_sandbox_and_docker0_bridges(tmp_path: Path) -> None:
+    """#406 INFO-1: BRAINSOS-LINKLOCAL drops 169.254.0.0/16 (incl. 169.254.170.2) across br-sandbox, brainsos-*-net, and docker0."""
+    import json
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "BRAINSOS_APPLIANCE=true\n"
+        "BRAINSOS_LITELLM_STATIC_IP=172.28.2.10\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    state_dir = tmp_path / "state"
+    cmd_log = tmp_path / "ipt.log"
+    _make_stateful_shims(bin_dir, state_dir, cmd_log)
+
+    # Override docker shim to report distinct bridge names per network
+    (bin_dir / "docker").write_text(
+        """#!/usr/bin/env bash
+case "$*" in
+  *"network ls"*) printf 'brainsos-internal-net\\nbrainsos-sandbox-net\\nbrainsos-ingress-net\\n' ;;
+  *"network inspect"*brainsos-internal-net*) echo "br-internal" ;;
+  *"network inspect"*brainsos-sandbox-net*) echo "br-sandbox" ;;
+  *"network inspect"*brainsos-ingress-net*) echo "br-ingress" ;;
+  *"brainsos-control-litellm"*) echo "172.28.2.10" ;;
+  *"brainsos-agent-egress-proxy"*) echo "172.28.1.2" ;;
+  *"brainsos-ingress-caddy"*) echo "172.28.1.10" ;;
+  *) echo "" ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (bin_dir / "docker").chmod(0o755)
+
+    env = {
+        **os.environ,
+        "BRAINSOS_ENV_FILE": str(env_file),
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+    }
+    res = subprocess.run(["bash", str(IMDS_GUARD), "--apply", "--force"], env=env, capture_output=True, text=True, check=False)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+    v4_state = json.loads((state_dir / "iptables.json").read_text(encoding="utf-8"))
+    assert v4_state["BRAINSOS-LINKLOCAL"] == [
+        "-s 172.28.2.10/32 -d 169.254.169.254/32 -j RETURN",
+        "-d 169.254.0.0/16 -j DROP",
+    ]
+    for br in ("br-sandbox", "br-ingress", "docker0"):
+        assert f"-i {br} -d 169.254.0.0/16 -j BRAINSOS-LINKLOCAL" in v4_state["DOCKER-USER"]
+    assert subprocess.run(["bash", str(IMDS_GUARD), "--check", "--force"], env=env, capture_output=True, text=True, check=False).returncode == 0
+
 
 

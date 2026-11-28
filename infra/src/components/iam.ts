@@ -101,14 +101,16 @@ export function createMailWorkerCredentials(
     policyArn: workerPolicy.arn,
   });
 
-  const workerKey = new aws.iam.AccessKey(`BrainsOSMailWorkerKey-${cleanStage}`, {
-    user: workerUser.name,
-  });
+  const workerKey = new aws.iam.AccessKey(
+    `BrainsOSMailWorkerKey-${cleanStage}`,
+    { user: workerUser.name },
+    { additionalSecretOutputs: ["secret", "sesSmtpPasswordV4"] }
+  );
 
   return {
     policyArn: workerPolicy.arn,
     accessKeyId: workerKey.id,
-    secretAccessKey: workerKey.secret,
+    secretAccessKey: $util.secret(workerKey.secret),
   };
 }
 
@@ -177,13 +179,15 @@ export function createCaddyAcmeCredentials(subdomain: string, zoneId: any) {
     policyArn: caddyAcmePolicy.arn,
   });
 
-  const caddyAcmeAccessKey = new aws.iam.AccessKey("BrainsOSCaddyAcmeKey", {
-    user: caddyAcmeUser.name,
-  });
+  const caddyAcmeAccessKey = new aws.iam.AccessKey(
+    "BrainsOSCaddyAcmeKey",
+    { user: caddyAcmeUser.name },
+    { additionalSecretOutputs: ["secret", "sesSmtpPasswordV4"] }
+  );
 
   return {
     policyArn: caddyAcmePolicy.arn,
     accessKeyId: caddyAcmeAccessKey.id,
-    secretAccessKey: caddyAcmeAccessKey.secret,
+    secretAccessKey: $util.secret(caddyAcmeAccessKey.secret),
   };
 }

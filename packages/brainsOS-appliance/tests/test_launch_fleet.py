@@ -363,3 +363,199 @@ def test_launch_fleet_day2_terminate_requires_yes_confirmation(tmp_path):
     )
     assert proc_ok.returncode == 0, proc_ok.stderr
     assert "Terminated 2 instance(s)" in proc_ok.stderr
+
+
+def test_direct_ami_encrypts_root_ebs_by_default_and_honors_no_encrypt_and_hibernation(tmp_path):
+    """Verify Direct AMI mode defaults to Encrypted=true, honors --no-encrypt, and forces true with --hibernation-capable (#408)."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    counter = tmp_path / "counter"
+    counter.write_text("0")
+    calls = tmp_path / "aws_calls.log"
+    calls.write_text("")
+    _write_mock_aws(fake_bin, counter, calls)
+
+    standalone = tmp_path / "launch-fleet.sh"
+    shutil.copy2(LAUNCH_FLEET_SH, standalone)
+    env = {**os.environ, "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"}
+
+    base_args = [
+        str(standalone),
+        "--ami",
+        "ami-03941c398c47dabb1",
+        "--count",
+        "1",
+        "--base-domain",
+        "demo.infotechlabs.io",
+        "--zone-id",
+        "Z1234567890MOCK",
+        "--security-group",
+        "sg-0123456789",
+        "--fleet",
+        "enc-default",
+        "--roster-out",
+        str(tmp_path / "r1"),
+        "--apply",
+    ]
+    proc_default = subprocess.run(base_args, cwd=str(tmp_path), env=env, capture_output=True, text=True, check=False)
+    assert proc_default.returncode == 0, proc_default.stderr or proc_default.stdout
+
+    calls_default = [ln for ln in calls.read_text().splitlines() if "run-instances" in ln]
+    assert len(calls_default) == 1
+    assert "Encrypted=true" in calls_default[0]
+
+    calls.write_text("")
+    proc_no_enc = subprocess.run(
+        [*base_args[:-1], "--no-encrypt", "--roster-out", str(tmp_path / "r2"), "--apply"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc_no_enc.returncode == 0, proc_no_enc.stderr or proc_no_enc.stdout
+    calls_no_enc = [ln for ln in calls.read_text().splitlines() if "run-instances" in ln]
+    assert len(calls_no_enc) == 1
+    assert "Encrypted=false" in calls_no_enc[0]
+
+    calls.write_text("")
+    proc_hib = subprocess.run(
+        [
+            *base_args[:-1],
+            "--hibernation-capable",
+            "--no-encrypt",
+            "--roster-out",
+            str(tmp_path / "r3"),
+            "--apply",
+        ],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc_hib.returncode == 0, proc_hib.stderr or proc_hib.stdout
+    calls_hib = [ln for ln in calls.read_text().splitlines() if "run-instances" in ln]
+    assert len(calls_hib) == 1
+    assert "Encrypted=true" in calls_hib[0]
+    assert "Configured=true" in calls_hib[0]
+    assert "--no-encrypt ignored" in proc_hib.stderr
+
+
+def test_dry_run_and_emit_script_reflect_ebs_encryption_state(tmp_path):
+    """Verify --dry-run shows effective Encrypted Root EBS and --emit-script forwards --no-encrypt appropriately (#408)."""
+    dry_default = subprocess.run(
+        [
+            str(LAUNCH_FLEET_SH),
+            "--ami",
+            "ami-03941c398c47dabb1",
+            "--count",
+            "1",
+            "--base-domain",
+            "demo.infotechlabs.io",
+            "--dry-run",
+        ],
+        cwd=str(tmp_path),
+        env={**os.environ, "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert dry_default.returncode == 0, dry_default.stderr
+    assert "**Encrypted Root EBS**: `true`" in dry_default.stdout
+
+    dry_no_enc = subprocess.run(
+        [
+            str(LAUNCH_FLEET_SH),
+            "--ami",
+            "ami-03941c398c47dabb1",
+            "--count",
+            "1",
+            "--base-domain",
+            "demo.infotechlabs.io",
+            "--no-encrypt",
+            "--dry-run",
+        ],
+        cwd=str(tmp_path),
+        env={**os.environ, "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert dry_no_enc.returncode == 0, dry_no_enc.stderr
+    assert "**Encrypted Root EBS**: `false`" in dry_no_enc.stdout
+
+    dry_hib_override = subprocess.run(
+        [
+            str(LAUNCH_FLEET_SH),
+            "--ami",
+            "ami-03941c398c47dabb1",
+            "--count",
+            "1",
+            "--base-domain",
+            "demo.infotechlabs.io",
+            "--hibernation-capable",
+            "--no-encrypt",
+            "--dry-run",
+        ],
+        cwd=str(tmp_path),
+        env={**os.environ, "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert dry_hib_override.returncode == 0, dry_hib_override.stderr
+    assert "**Encrypted Root EBS**: `true`" in dry_hib_override.stdout
+
+    bundle_no_enc = tmp_path / "bundle_no_enc.sh"
+    emit_no_enc = subprocess.run(
+        [
+            str(LAUNCH_FLEET_SH),
+            "--ami",
+            "ami-03941c398c47dabb1",
+            "--count",
+            "1",
+            "--base-domain",
+            "demo.infotechlabs.io",
+            "--zone-id",
+            "Z1234567890MOCK",
+            "--no-encrypt",
+            "--emit-script",
+            str(bundle_no_enc),
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert emit_no_enc.returncode == 0, emit_no_enc.stderr
+    assert "--no-encrypt" in bundle_no_enc.read_text()
+
+    bundle_hib = tmp_path / "bundle_hib.sh"
+    emit_hib = subprocess.run(
+        [
+            str(LAUNCH_FLEET_SH),
+            "--ami",
+            "ami-03941c398c47dabb1",
+            "--count",
+            "1",
+            "--base-domain",
+            "demo.infotechlabs.io",
+            "--zone-id",
+            "Z1234567890MOCK",
+            "--hibernation-capable",
+            "--no-encrypt",
+            "--emit-script",
+            str(bundle_hib),
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert emit_hib.returncode == 0, emit_hib.stderr
+    hib_body = bundle_hib.read_text()
+    assert "--hibernation-capable" in hib_body
+    exec_tail = hib_body.split('bash "${TMP_UTIL}"', 1)[1]
+    assert "--no-encrypt" not in exec_tail
+

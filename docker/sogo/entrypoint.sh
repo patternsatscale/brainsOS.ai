@@ -70,19 +70,19 @@ chmod 775 /var/spool/sogo 2>/dev/null || true
 DB_HOST="${SOGO_DB_HOST:-brainsos-sogo-db}"
 DB_PORT="${SOGO_DB_PORT:-5432}"
 DB_USER="${SOGO_DB_USER:-sogo}"
-DB_PASS="${SOGO_DB_PASSWORD:-sogo_secret_pass}"
+DB_PASS="${SOGO_DB_PASSWORD:?SOGO_DB_PASSWORD must be set}"
 DB_NAME="${SOGO_DB_NAME:-sogo}"
 
 export PGPASSWORD="${DB_PASS}"
 
-ADMIN_PASS="${ADMIN_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_mail_secret_change_me}}"
-OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:-${BRAINSOS_ADMIN_PASSWORD:-brainsos_operator_mail_secret_change_me}}"
-TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:-brainsos_terrastella_mail_secret_change_me}"
-BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:-brainsos_bawtford_mail_secret_change_me}"
-MARVIN_PASS="${MARVIN_MAIL_PASSWORD:-brainsos_marvin_mail_secret_change_me}"
-PING_PASS="${PING_MAIL_PASSWORD:-brainsos_ping_mail_secret_change_me}"
-CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:-brainsos_claude_mail_secret_change_me}"
-GPT_PASS="${GPT_MAIL_PASSWORD:-brainsos_gpt_mail_secret_change_me}"
+ADMIN_PASS="${ADMIN_MAIL_PASSWORD:?ADMIN_MAIL_PASSWORD must be set}"
+OPERATOR_PASS="${OPERATOR_MAIL_PASSWORD:?OPERATOR_MAIL_PASSWORD must be set}"
+TERRASTELLA_PASS="${TERRASTELLA_MAIL_PASSWORD:?TERRASTELLA_MAIL_PASSWORD must be set}"
+BAWTFORD_PASS="${BAWTFORD_MAIL_PASSWORD:?BAWTFORD_MAIL_PASSWORD must be set}"
+MARVIN_PASS="${MARVIN_MAIL_PASSWORD:?MARVIN_MAIL_PASSWORD must be set}"
+PING_PASS="${PING_MAIL_PASSWORD:?PING_MAIL_PASSWORD must be set}"
+CLAUDE_PASS="${CLAUDE_MAIL_PASSWORD:?CLAUDE_MAIL_PASSWORD must be set}"
+GPT_PASS="${GPT_MAIL_PASSWORD:?GPT_MAIL_PASSWORD must be set}"
 
 # Hash SOGo mailbox credentials using SHA512-CRYPT instead of plaintext (#388)
 sogo_hash_pw() {
@@ -102,8 +102,7 @@ sogo_hash_pw() {
         echo "[BRAINSOS-SOGO] ERROR: unable to generate SHA512-CRYPT password hash" >&2
         exit 1
     fi
-    # Escape single quotes for SQL literal safety
-    printf '%s' "${hashed//\'/\'\'}"
+    printf '%s' "${hashed}"
 }
 
 ADMIN_PASS="$(sogo_hash_pw "${ADMIN_PASS}")"
@@ -133,15 +132,40 @@ if [ "${AUTH_READY}" != "true" ]; then
 fi
 
 echo "[BRAINSOS-SOGO] Database server reachable and authenticated. Ensuring database '${DB_NAME}' exists..."
-psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" 2>/dev/null | grep -q 1 || \
-psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || true
+if ! psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -tA \
+    -v db_name="${DB_NAME}" <<'EOSQL' 2>/dev/null | grep -qx '1'; then
+SELECT 1 FROM pg_database WHERE datname = :'db_name';
+EOSQL
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres \
+        -v db_name="${DB_NAME}" -v db_user="${DB_USER}" <<'EOSQL' >/dev/null 2>&1 || true
+CREATE DATABASE :"db_name" OWNER :"db_user";
+EOSQL
+fi
 
 MAIL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-brainsos.local}}}"
 ADMIN_USER="${BRAINSOS_ADMIN_USERNAME:-admin}"
+ADMIN_EMAIL="${ADMIN_USER}@${MAIL_DOMAIN}"
+OP_EMAIL="operator@${MAIL_DOMAIN}"
+ADMIN_DOM_UID="admin@${MAIL_DOMAIN}"
+AKADMIN_DOM_UID="akadmin@${MAIL_DOMAIN}"
+SU_LEGACY_UID="${ADMIN_USER}@brainsos.local"
+SU_DOM_UID="${ADMIN_USER}@${MAIL_DOMAIN}"
 
 # 2. Initialize sogo_users table and seed fleet accounts if missing
 echo "[BRAINSOS-SOGO] Ensuring sogo_users schema and seeding accounts..."
-psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || echo "[BRAINSOS-SOGO] WARNING: Primary sogo_users seed returned non-zero; continuing..."
+psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+    -v admin_pass="${ADMIN_PASS}" \
+    -v operator_pass="${OPERATOR_PASS}" \
+    -v terrastella_pass="${TERRASTELLA_PASS}" \
+    -v bawtford_pass="${BAWTFORD_PASS}" \
+    -v marvin_pass="${MARVIN_PASS}" \
+    -v ping_pass="${PING_PASS}" \
+    -v claude_pass="${CLAUDE_PASS}" \
+    -v gpt_pass="${GPT_PASS}" \
+    -v admin_user="${ADMIN_USER}" \
+    -v mail_domain="${MAIL_DOMAIN}" \
+    -v admin_email="${ADMIN_EMAIL}" \
+    -v op_email="${OP_EMAIL}" <<'EOSQL' || echo "[BRAINSOS-SOGO] WARNING: Primary sogo_users seed returned non-zero; continuing..."
     CREATE TABLE IF NOT EXISTS sogo_users (
         c_uid VARCHAR(128) PRIMARY KEY,
         c_name VARCHAR(128) NOT NULL,
@@ -151,67 +175,88 @@ psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL ||
     );
 
     INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-        ('admin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-        ('operator@brainsos.local', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
-        ('terrastella@brainsos.local', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
-        ('bawtford@brainsos.local', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
-        ('marvin@brainsos.local', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
-        ('ping@brainsos.local', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
-        ('claude@brainsos.local', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
-        ('gpt@brainsos.local', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
-        ('akadmin@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-        ('admin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-        ('akadmin', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-        ('operator', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
-        ('terrastella', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
-        ('bawtford', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
-        ('marvin', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
-        ('ping', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
-        ('claude', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
-        ('gpt', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}')
+        ('admin@brainsos.local', 'admin', :'admin_pass', 'System Administrator', :'admin_email'),
+        ('operator@brainsos.local', 'operator', :'operator_pass', 'Human Operator', :'op_email'),
+        ('terrastella@brainsos.local', 'terrastella', :'terrastella_pass', 'Terrastella Agent', 'terrastella@' || :'mail_domain'),
+        ('bawtford@brainsos.local', 'bawtford', :'bawtford_pass', 'Bawtford Agent', 'bawtford@' || :'mail_domain'),
+        ('marvin@brainsos.local', 'marvin', :'marvin_pass', 'Marvin Agent', 'marvin@' || :'mail_domain'),
+        ('ping@brainsos.local', 'ping', :'ping_pass', 'Ping Autoresponder Agent', 'ping@' || :'mail_domain'),
+        ('claude@brainsos.local', 'claude', :'claude_pass', 'Claude Demo Agent', 'claude@' || :'mail_domain'),
+        ('gpt@brainsos.local', 'gpt', :'gpt_pass', 'GPT Demo Agent', 'gpt@' || :'mail_domain'),
+        ('akadmin@brainsos.local', 'admin', :'admin_pass', 'System Administrator', :'admin_email'),
+        ('admin', 'admin', :'admin_pass', 'System Administrator', :'admin_email'),
+        ('akadmin', 'admin', :'admin_pass', 'System Administrator', :'admin_email'),
+        ('operator', 'operator', :'operator_pass', 'Human Operator', :'op_email'),
+        ('terrastella', 'terrastella', :'terrastella_pass', 'Terrastella Agent', 'terrastella@' || :'mail_domain'),
+        ('bawtford', 'bawtford', :'bawtford_pass', 'Bawtford Agent', 'bawtford@' || :'mail_domain'),
+        ('marvin', 'marvin', :'marvin_pass', 'Marvin Agent', 'marvin@' || :'mail_domain'),
+        ('ping', 'ping', :'ping_pass', 'Ping Autoresponder Agent', 'ping@' || :'mail_domain'),
+        ('claude', 'claude', :'claude_pass', 'Claude Demo Agent', 'claude@' || :'mail_domain'),
+        ('gpt', 'gpt', :'gpt_pass', 'GPT Demo Agent', 'gpt@' || :'mail_domain')
     ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 
-    UPDATE sogo_users SET mail = '${ADMIN_USER}@${MAIL_DOMAIN}' WHERE c_name = 'admin';
-    UPDATE sogo_users SET mail = c_name || '@${MAIL_DOMAIN}' WHERE c_name IN ('operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+    UPDATE sogo_users SET mail = :'admin_email' WHERE c_name = 'admin';
+    UPDATE sogo_users SET mail = c_name || '@' || :'mail_domain' WHERE c_name IN ('operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
 EOSQL
 
 if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
-    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+        -v admin_user="${ADMIN_USER}" \
+        -v su_legacy_uid="${SU_LEGACY_UID}" \
+        -v admin_pass="${ADMIN_PASS}" \
+        -v admin_email="${ADMIN_EMAIL}" <<'EOSQL' || true
         INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-            ('${ADMIN_USER}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-            ('${ADMIN_USER}@brainsos.local', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
+            (:'admin_user', 'admin', :'admin_pass', 'System Administrator', :'admin_email'),
+            (:'su_legacy_uid', 'admin', :'admin_pass', 'System Administrator', :'admin_email')
         ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
 fi
 
 if [ "${MAIL_DOMAIN}" != "brainsos.local" ]; then
-    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+        -v admin_dom_uid="${ADMIN_DOM_UID}" \
+        -v op_email="${OP_EMAIL}" \
+        -v akadmin_dom_uid="${AKADMIN_DOM_UID}" \
+        -v admin_pass="${ADMIN_PASS}" \
+        -v operator_pass="${OPERATOR_PASS}" \
+        -v terrastella_pass="${TERRASTELLA_PASS}" \
+        -v bawtford_pass="${BAWTFORD_PASS}" \
+        -v marvin_pass="${MARVIN_PASS}" \
+        -v ping_pass="${PING_PASS}" \
+        -v claude_pass="${CLAUDE_PASS}" \
+        -v gpt_pass="${GPT_PASS}" \
+        -v mail_domain="${MAIL_DOMAIN}" \
+        -v admin_email="${ADMIN_EMAIL}" <<'EOSQL' || true
         INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-            ('admin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}'),
-            ('operator@${MAIL_DOMAIN}', 'operator', '${OPERATOR_PASS}', 'Human Operator', 'operator@${MAIL_DOMAIN}'),
-            ('terrastella@${MAIL_DOMAIN}', 'terrastella', '${TERRASTELLA_PASS}', 'Terrastella Agent', 'terrastella@${MAIL_DOMAIN}'),
-            ('bawtford@${MAIL_DOMAIN}', 'bawtford', '${BAWTFORD_PASS}', 'Bawtford Agent', 'bawtford@${MAIL_DOMAIN}'),
-            ('marvin@${MAIL_DOMAIN}', 'marvin', '${MARVIN_PASS}', 'Marvin Agent', 'marvin@${MAIL_DOMAIN}'),
-            ('ping@${MAIL_DOMAIN}', 'ping', '${PING_PASS}', 'Ping Autoresponder Agent', 'ping@${MAIL_DOMAIN}'),
-            ('claude@${MAIL_DOMAIN}', 'claude', '${CLAUDE_PASS}', 'Claude Demo Agent', 'claude@${MAIL_DOMAIN}'),
-            ('gpt@${MAIL_DOMAIN}', 'gpt', '${GPT_PASS}', 'GPT Demo Agent', 'gpt@${MAIL_DOMAIN}'),
-            ('akadmin@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
+            (:'admin_dom_uid', 'admin', :'admin_pass', 'System Administrator', :'admin_email'),
+            (:'op_email', 'operator', :'operator_pass', 'Human Operator', :'op_email'),
+            ('terrastella@' || :'mail_domain', 'terrastella', :'terrastella_pass', 'Terrastella Agent', 'terrastella@' || :'mail_domain'),
+            ('bawtford@' || :'mail_domain', 'bawtford', :'bawtford_pass', 'Bawtford Agent', 'bawtford@' || :'mail_domain'),
+            ('marvin@' || :'mail_domain', 'marvin', :'marvin_pass', 'Marvin Agent', 'marvin@' || :'mail_domain'),
+            ('ping@' || :'mail_domain', 'ping', :'ping_pass', 'Ping Autoresponder Agent', 'ping@' || :'mail_domain'),
+            ('claude@' || :'mail_domain', 'claude', :'claude_pass', 'Claude Demo Agent', 'claude@' || :'mail_domain'),
+            ('gpt@' || :'mail_domain', 'gpt', :'gpt_pass', 'GPT Demo Agent', 'gpt@' || :'mail_domain'),
+            (:'akadmin_dom_uid', 'admin', :'admin_pass', 'System Administrator', :'admin_email')
         ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
     if [ -n "${ADMIN_USER}" ] && [ "${ADMIN_USER}" != "admin" ] && [ "${ADMIN_USER}" != "akadmin" ]; then
-        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+            -v su_dom_uid="${SU_DOM_UID}" \
+            -v admin_pass="${ADMIN_PASS}" \
+            -v admin_email="${ADMIN_EMAIL}" <<'EOSQL' || true
             INSERT INTO sogo_users (c_uid, c_name, c_password, c_cn, mail) VALUES
-                ('${ADMIN_USER}@${MAIL_DOMAIN}', 'admin', '${ADMIN_PASS}', 'System Administrator', '${ADMIN_USER}@${MAIL_DOMAIN}')
+                (:'su_dom_uid', 'admin', :'admin_pass', 'System Administrator', :'admin_email')
             ON CONFLICT (c_uid) DO UPDATE SET c_password = EXCLUDED.c_password, mail = EXCLUDED.mail;
 EOSQL
     fi
 fi
 
-psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" <<-EOSQL || true
+psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+    -v admin_user="${ADMIN_USER}" <<'EOSQL' || true
     CREATE OR REPLACE VIEW sogo_addressbook AS
     SELECT c_uid, c_name, c_cn, mail
     FROM sogo_users
-    WHERE c_uid IN ('${ADMIN_USER}', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
+    WHERE c_uid IN (:'admin_user', 'operator', 'terrastella', 'bawtford', 'marvin', 'ping', 'claude', 'gpt');
 EOSQL
 echo "[BRAINSOS-SOGO] sogo_users verification complete."
 
@@ -238,14 +283,67 @@ render_sogo_nginx_conf
 nginx -t
 service nginx start
 
-# 5b. Render dynamic sogo.conf with live credentials if template exists
+# 5b. Render dynamic sogo.conf with live credentials atomically via Python (no sed)
 if [ -f /etc/sogo/sogo.conf.template ]; then
     echo "[BRAINSOS-SOGO] Generating /etc/sogo/sogo.conf from template..."
-    sed -e "s|sogo_secret_pass|${DB_PASS}|g" \
-        -e "s|brainsos.local|${MAIL_DOMAIN}|g" \
-        /etc/sogo/sogo.conf.template > /etc/sogo/sogo.conf
-    chown sogo:sogo /etc/sogo/sogo.conf
-    chmod 600 /etc/sogo/sogo.conf
+    SOGO_CONF_TEMPLATE="/etc/sogo/sogo.conf.template" \
+    SOGO_CONF_OUT="/etc/sogo/sogo.conf" \
+    SOGO_RENDER_HOST="${DB_HOST}" \
+    SOGO_RENDER_PORT="${DB_PORT}" \
+    SOGO_RENDER_USER="${DB_USER}" \
+    SOGO_RENDER_PASS="${DB_PASS}" \
+    SOGO_RENDER_NAME="${DB_NAME}" \
+    SOGO_RENDER_DOMAIN="${MAIL_DOMAIN}" \
+    python3 - << 'PYEOF'
+import os
+import pwd
+import re
+import tempfile
+import urllib.parse
+
+template_path = os.environ["SOGO_CONF_TEMPLATE"]
+output_path = os.environ["SOGO_CONF_OUT"]
+db_host = os.environ["SOGO_RENDER_HOST"]
+db_port = os.environ["SOGO_RENDER_PORT"]
+db_user = urllib.parse.quote(os.environ["SOGO_RENDER_USER"], safe="")
+db_pass = urllib.parse.quote(os.environ["SOGO_RENDER_PASS"], safe="")
+db_name = urllib.parse.quote(os.environ["SOGO_RENDER_NAME"], safe="")
+mail_domain = os.environ["SOGO_RENDER_DOMAIN"].strip()
+if not re.fullmatch(r"[A-Za-z0-9.-]+", mail_domain):
+    raise ValueError(f"Invalid SOGO mail domain: {mail_domain!r}")
+
+with open(template_path, "r", encoding="utf-8") as f:
+    rendered = f.read()
+
+replacements = {
+    "__SOGO_DB_USER__": db_user,
+    "__SOGO_DB_PASSWORD__": db_pass,
+    "__SOGO_DB_HOST__": db_host,
+    "__SOGO_DB_PORT__": db_port,
+    "__SOGO_DB_NAME__": db_name,
+    "__SOGO_MAIL_DOMAIN__": mail_domain,
+}
+for ph, val in replacements.items():
+    rendered = rendered.replace(ph, val)
+
+out_dir = os.path.dirname(output_path)
+fd, tmp_path = tempfile.mkstemp(prefix=".sogo.conf.", dir=out_dir)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(rendered)
+    os.chmod(tmp_path, 0o600)
+    if os.geteuid() == 0:
+        try:
+            pw = pwd.getpwnam("sogo")
+            os.chown(tmp_path, pw.pw_uid, pw.pw_gid)
+        except KeyError:
+            pass
+    os.replace(tmp_path, output_path)
+except Exception:
+    if os.path.exists(tmp_path):
+        os.unlink(tmp_path)
+    raise
+PYEOF
 fi
 
 # 6. Start main sogod process in foreground on loopback port 20001

@@ -117,7 +117,7 @@ snapshot_scan() {
     while IFS= read -r f; do
       log_error "SCAN: credential material present: ${f}"
       findings=$((findings + 1))
-    done < <(find "${home_root}/root" "${home_root}/home" \( -name "authorized_keys" -o -name ".*history" -o -name ".python_history" -o -path "*/.aws/credentials" -o -name "id_rsa" -o -name "id_ed25519" \) -type f -print 2>/dev/null)
+    done < <(find "${home_root}/root" "${home_root}/home" \( -name "authorized_keys" -o -name "authorized_keys2" -o -name ".*history" -o -name ".python_history" -o -path "*/.aws/credentials" -o -name "id_rsa" -o -name "id_ed25519" \) -type f -print 2>/dev/null)
 
     while IFS= read -r f; do
       log_error "SCAN: SSH host key present (must be regenerated per instance): ${f}"
@@ -134,8 +134,8 @@ snapshot_scan() {
 }
 
 if [ "${SCAN_ONLY}" = true ]; then
-  SCAN_HOME_ROOT=""
-  [ "${APP_DIR}" = "/opt/brainsos" ] && SCAN_HOME_ROOT="/"
+  SCAN_HOME_ROOT="${BRAINSOS_SCAN_HOME_ROOT:-}"
+  [ "${APP_DIR}" = "/opt/brainsos" ] && [ -z "${SCAN_HOME_ROOT}" ] && SCAN_HOME_ROOT="/"
   snapshot_scan "${APP_DIR}" "${SCAN_HOME_ROOT}"
   exit $?
 fi
@@ -378,8 +378,25 @@ log_success "Host hardening complete."
 log_info "6. Pre-building all platform images and the portal bundle..."
 cd "${APP_DIR}"
 PROVISION_ENV="${APP_DIR}/.env"
-cat > "${PROVISION_ENV}" <<EOF
-# Temporary provisioning environment (removed before snapshot)
+: > "${PROVISION_ENV}"
+chmod 600 "${PROVISION_ENV}"
+if [ -f "${APP_DIR}/.env.example" ]; then
+  while IFS= read -r _line || [ -n "${_line}" ]; do
+    case "${_line}" in
+      ""|\#*) continue ;;
+      *=*)
+        _k="${_line%%=*}"
+        _v="${_line#*=}"
+        _k="${_k#"${_k%%[![:space:]]*}"}"
+        _k="${_k%"${_k##*[![:space:]]}"}"
+        [ -z "${_v}" ] && _v="provision-dummy-${_k}"
+        printf '%s=%s\n' "${_k}" "${_v}" >> "${PROVISION_ENV}"
+        ;;
+    esac
+  done < "${APP_DIR}/.env.example"
+fi
+cat >> "${PROVISION_ENV}" <<EOF
+# Temporary provisioning overrides (removed before snapshot)
 BRAINSOS_DOMAIN=localhost
 BRAINSOS_DATA_DIR=${APP_DIR}/data
 COMPOSE_FILE=${APP_DIR}/docker-compose.yml:${APP_DIR}/docker/compose/compose.appliance.yml
@@ -449,7 +466,9 @@ find "${APP_DIR}/data" -depth -mindepth 1 -type d -empty -delete 2>/dev/null || 
 git -C "${APP_DIR}" checkout -- data/ 2>/dev/null || true
 
 # SSH: remove Packer's temporary key and host keys (cloud-init regenerates host keys)
-rm -f /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys
+rm -f /home/admin/.ssh/authorized_keys /home/admin/.ssh/authorized_keys2 \
+      /home/ubuntu/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys2 \
+      /root/.ssh/authorized_keys /root/.ssh/authorized_keys2
 rm -f /etc/ssh/ssh_host_*
 
 # AWS / tool credentials and build caches that must never persist

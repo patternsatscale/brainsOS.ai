@@ -1,0 +1,53 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:4000 {
+	log {
+		output stdout
+		format console
+	}
+
+	@inference_post {
+		method POST
+		path /v1/chat/completions /v1/completions /v1/responses /v1/embeddings
+	}
+	handle @inference_post {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000} {
+			flush_interval -1
+		}
+	}
+
+	@inference_get {
+		method GET
+		path /v1/models
+	}
+	handle @inference_get {
+		reverse_proxy {$LITELLM_UPSTREAM:litellm:4000}
+	}
+
+	handle {
+		respond "403 Forbidden: endpoint not allowlisted on sandbox-gateway" 403
+	}
+}
+
+:4318 {
+	log {
+		output stdout
+		format console
+	}
+
+	@otlp_ingest {
+		method POST
+		path /v1/traces /v1/logs
+	}
+	handle @otlp_ingest {
+		reverse_proxy {$LENS_UPSTREAM:lens:4318}
+	}
+
+	handle {
+		respond "403 Forbidden: write-only OTLP ingestion only (POST /v1/traces, POST /v1/logs)" 403
+	}
+}

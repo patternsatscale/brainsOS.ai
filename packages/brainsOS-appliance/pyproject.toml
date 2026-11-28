@@ -31,3 +31,11 @@ include = ["brainsos_appliance*"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
+markers = [
+    "e2e: End-to-end verification tests",
+    "tier1: Feature-level functional and security contract tests",
+    "tier2: Boundary value analysis and negative corner-case tests",
+    "tier3: Cross-feature pairwise interaction tests",
+    "tier4: End-to-end real-world scenario tests",
+    "docker_runtime: Local Docker daemon runtime verification tests",
+]

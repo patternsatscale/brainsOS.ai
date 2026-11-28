@@ -41,7 +41,7 @@ RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv -e /opt/hermes/pack
 # Install Langfuse SDK for native observability plugin and bake brainsOS Hermes plugins
 # into the image so they remain present even across upstream nousresearch/hermes-agent
 # left-core migrations (Ticket #320).
-RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv langfuse
+RUN /usr/local/bin/uv pip install --python /opt/hermes/.venv "langfuse==5.1.0"
 COPY docker/hermes/plugins/model-providers /opt/data/plugins/model-providers
 COPY docker/hermes/plugins/model-providers /opt/hermes/plugins/model-providers
 COPY docker/hermes/plugins/observability/langfuse /opt/hermes/plugins/observability/langfuse
@@ -50,7 +50,9 @@ COPY docker/hermes/plugins/observability/langfuse /opt/hermes/plugins/observabil
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends gh git ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
-    git config --system --add safe.directory '*' && \
+    git config --system --add safe.directory /workspace && \
+    git config --system --add safe.directory /data && \
+    git config --system --add safe.directory /opt/data && \
     git config --system core.askPass "" && \
     usermod -u 10001 hermes && groupmod -g 10001 hermes && \
     chown -R hermes:hermes /home/hermes

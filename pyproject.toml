@@ -12,6 +12,14 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+markers = [
+    "e2e: End-to-end verification tests",
+    "tier1: Feature-level functional and security contract tests",
+    "tier2: Boundary value analysis and negative corner-case tests",
+    "tier3: Cross-feature pairwise interaction tests",
+    "tier4: End-to-end real-world scenario tests",
+    "docker_runtime: Local Docker daemon runtime verification tests",
+]
 
 [tool.mypy]
 python_version = "3.10"

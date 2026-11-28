@@ -107,7 +107,7 @@ PUBLIC_HOST="${PUBLIC_HOST%/}"
 
 LOCAL_DOMAIN="${BRAINSOS_LOCAL_DOMAIN:-${BRAINSOS_MAIL_DOMAIN:-${BRAINSOS_DOMAIN:-local.brainsos.ai}}}"
 ADMIN_USER="operator"
-ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-brainsos_admin_secret}"
+ADMIN_PASS="${BRAINSOS_ADMIN_PASSWORD:-}"
 ADMIN_EMAIL="${BRAINSOS_ADMIN_EMAIL:-operator@${LOCAL_DOMAIN}}"
 
 SUPERUSER_USER="${BRAINSOS_SUPERUSER_USERNAME:-}"
@@ -256,13 +256,8 @@ if ! git -C "${DATA_ROOT}" show-ref --verify --quiet refs/heads/initial-setup; t
 fi
 
 # Configure origin remote, credential store & upstream tracking refs in /data/.git
-URL_ENCODED_USER="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PRIMARY_USER}")"
-URL_ENCODED_PASS="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PRIMARY_PASS}")"
-
 GIT_CREDENTIALS_FILE="/data/.git/credentials"
 CRED_FILE="${DATA_ROOT}/.git/credentials"
-printf "http://%s:%s@gitea:3000\n" "${URL_ENCODED_USER}" "${URL_ENCODED_PASS}" > "${CRED_FILE}"
-chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 if git -C "${DATA_ROOT}" remote get-url origin >/dev/null 2>&1; then
   git -C "${DATA_ROOT}" remote set-url origin "${REMOTE_URL}"
@@ -282,7 +277,6 @@ git -C "${DATA_ROOT}" config branch.initial-setup.merge refs/heads/initial-setup
 git -C "${DATA_ROOT}" config push.default simple
 git -C "${DATA_ROOT}" config credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
 chown -R "${PUID:-1000}:${PGID:-1000}" "${DATA_ROOT}/.git" 2>/dev/null || true
-chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # 3. Start Gitea Container (unless --seed-only)
@@ -290,6 +284,11 @@ chmod 600 "${CRED_FILE}" 2>/dev/null || true
 if [ "${SEED_ONLY}" = "true" ]; then
   log_success "Local Git repository seeded at ${DATA_ROOT} (--seed-only); skipping live Gitea container provisioning."
   exit 0
+fi
+
+if [ -z "${PRIMARY_PASS}" ]; then
+  log_error "BRAINSOS_ADMIN_PASSWORD or BRAINSOS_SUPERUSER_PASSWORD must be set for live Gitea provisioning."
+  exit 1
 fi
 
 GITEA_CONTAINER="brainsos-app-git"
@@ -323,7 +322,7 @@ if [ "${READY}" != "true" ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Provision Gitea Admin & Superuser Accounts
+# 4. Provision Gitea Admin & Superuser Accounts + Scoped Repository Token
 # ------------------------------------------------------------------------------
 GITEA_EXEC_USER="${PUID:-1000}:${PGID:-1000}"
 
@@ -335,7 +334,7 @@ provision_gitea_user() {
 
   if docker exec -u "${GITEA_EXEC_USER}" "${GITEA_CONTAINER}" gitea admin user list 2>/dev/null | awk '{print $2}' | grep -Fxq "${username}"; then
     log_info "Updating password for existing Gitea admin user '${username}'..."
-    docker exec -u "${GITEA_EXEC_USER}" "${GITEA_CONTAINER}" gitea admin user change-password \
+    docker exec -i -u "${GITEA_EXEC_USER}" "${GITEA_CONTAINER}" gitea admin user change-password \
       --username "${username}" \
       --password "${password}" \
       --must-change-password=false >/dev/null 2>&1 || true
@@ -354,55 +353,145 @@ provision_gitea_user() {
   fi
 }
 
-provision_gitea_user "${ADMIN_USER}" "${ADMIN_PASS}" "${ADMIN_EMAIL}"
-if [ "${PRIMARY_USER}" != "${ADMIN_USER}" ]; then
+if [ -n "${ADMIN_PASS}" ]; then
+  provision_gitea_user "${ADMIN_USER}" "${ADMIN_PASS}" "${ADMIN_EMAIL}"
+fi
+if [ "${PRIMARY_USER}" != "${ADMIN_USER}" ] || [ -z "${ADMIN_PASS}" ]; then
   provision_gitea_user "${PRIMARY_USER}" "${PRIMARY_PASS}" "${PRIMARY_EMAIL}"
 fi
+
+# Mint least-privilege scoped Gitea PAT (write:repository) for SCM & initial push
+GITEA_TOKEN_NAME="brainsos-editor-scm"
+BASIC_B64="$(
+  GITEA_U="${PRIMARY_USER}" GITEA_P="${PRIMARY_PASS}" python3 - << 'PYEOF'
+import base64
+import os
+
+creds = f"{os.environ['GITEA_U']}:{os.environ['GITEA_P']}".encode("utf-8")
+print(base64.b64encode(creds).decode("ascii"))
+PYEOF
+)"
+URL_ENCODED_USER="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PRIMARY_USER}")"
+
+docker exec -i \
+  -e GITEA_BASIC_B64="${BASIC_B64}" \
+  -e GITEA_USER_ENC="${URL_ENCODED_USER}" \
+  -e GITEA_TOKEN_NAME="${GITEA_TOKEN_NAME}" \
+  "${GITEA_CONTAINER}" sh -c '
+    printf "header = \"Authorization: Basic %s\"\n" "${GITEA_BASIC_B64}" | \
+      curl -s -X DELETE -K - "http://127.0.0.1:3000/api/v1/users/${GITEA_USER_ENC}/tokens/${GITEA_TOKEN_NAME}" >/dev/null 2>&1 || true
+  ' || true
+
+GITEA_TOKEN="$(docker exec -u "${GITEA_EXEC_USER}" "${GITEA_CONTAINER}" gitea admin user generate-access-token \
+  --username "${PRIMARY_USER}" \
+  --token-name "${GITEA_TOKEN_NAME}" \
+  --scopes "write:repository" \
+  --raw 2>/dev/null | tail -n 1 | tr -d '[:space:]' || true)"
+
+if [ -z "${GITEA_TOKEN}" ]; then
+  GITEA_TOKEN_JSON="$(GITEA_TOKEN_NAME="${GITEA_TOKEN_NAME}" python3 -c 'import json, os; print(json.dumps({"name": os.environ["GITEA_TOKEN_NAME"], "scopes": ["write:repository"]}))')"
+  GITEA_TOKEN="$(docker exec -i \
+    -e GITEA_BASIC_B64="${BASIC_B64}" \
+    -e GITEA_USER_ENC="${URL_ENCODED_USER}" \
+    -e GITEA_TOKEN_JSON="${GITEA_TOKEN_JSON}" \
+    "${GITEA_CONTAINER}" sh -c '
+      printf "header = \"Authorization: Basic %s\"\n" "${GITEA_BASIC_B64}" | \
+        curl -sf -X POST -K - -H "Content-Type: application/json" -d "${GITEA_TOKEN_JSON}" "http://127.0.0.1:3000/api/v1/users/${GITEA_USER_ENC}/tokens"
+    ' | python3 -c 'import json, sys; print((json.load(sys.stdin) or {}).get("sha1", ""))' 2>/dev/null || true)"
+fi
+
+if [ -z "${GITEA_TOKEN}" ]; then
+  log_error "Failed to mint scoped Gitea access token (${GITEA_TOKEN_NAME}) for '${PRIMARY_USER}'."
+  exit 1
+fi
+
+# Atomically write scoped token (never raw password) to ${DATA_ROOT}/.git/credentials at 0600
+CRED_USER="${PRIMARY_USER}" CRED_SECRET="${GITEA_TOKEN}" CRED_DEST="${CRED_FILE}" \
+python3 - << 'PYEOF'
+import os
+import tempfile
+import urllib.parse
+
+u = urllib.parse.quote(os.environ["CRED_USER"], safe="")
+s = urllib.parse.quote(os.environ["CRED_SECRET"], safe="")
+dest = os.environ["CRED_DEST"]
+dest_dir = os.path.dirname(os.path.abspath(dest))
+os.makedirs(dest_dir, exist_ok=True)
+fd, tmp_path = tempfile.mkstemp(prefix=".credentials.", dir=dest_dir)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(f"http://{u}:{s}@gitea:3000\n")
+    os.chmod(tmp_path, 0o600)
+    os.replace(tmp_path, dest)
+except Exception:
+    if os.path.exists(tmp_path):
+        os.unlink(tmp_path)
+    raise
+PYEOF
+chown "${PUID:-1000}:${PGID:-1000}" "${CRED_FILE}" 2>/dev/null || true
+chmod 600 "${CRED_FILE}" 2>/dev/null || true
 
 # ------------------------------------------------------------------------------
 # 5. Create Default Repository ('agent-box') & Push Initial Commit
 # ------------------------------------------------------------------------------
 log_info "Ensuring default repository '${PRIMARY_USER}/${DEFAULT_REPO}' exists in Gitea..."
-docker exec \
-  -e GITEA_USER="${PRIMARY_USER}" \
-  -e GITEA_PASS="${PRIMARY_PASS}" \
+CREATE_REPO_JSON="$(GITEA_REPO_NAME="${DEFAULT_REPO}" python3 -c 'import json, os; print(json.dumps({"name": os.environ["GITEA_REPO_NAME"], "description": "brainsOS Appliance Prompts, Souls, Skills & OKF Memories", "private": True, "auto_init": False, "default_branch": "main"}))')"
+docker exec -i \
+  -e GITEA_USER_ENC="${URL_ENCODED_USER}" \
   -e GITEA_REPO="${DEFAULT_REPO}" \
+  -e GITEA_TOKEN="${GITEA_TOKEN}" \
+  -e CREATE_REPO_JSON="${CREATE_REPO_JSON}" \
   "${GITEA_CONTAINER}" sh -c '
-    status=$(curl -s -o /dev/null -w "%{http_code}" -u "${GITEA_USER}:${GITEA_PASS}" "http://127.0.0.1:3000/api/v1/repos/${GITEA_USER}/${GITEA_REPO}")
+    REPO_ENC=$(printf "%s" "${GITEA_REPO}" | sed "s/ /%20/g")
+    status=$(printf "header = \"Authorization: token %s\"\n" "${GITEA_TOKEN}" | curl -s -o /dev/null -w "%{http_code}" -K - "http://127.0.0.1:3000/api/v1/repos/${GITEA_USER_ENC}/${REPO_ENC}")
     if [ "${status}" != "200" ]; then
-      curl -sf -X POST "http://127.0.0.1:3000/api/v1/user/repos" \
-        -u "${GITEA_USER}:${GITEA_PASS}" \
-        -H "Content-Type: application/json" \
-        -d "{\"name\": \"${GITEA_REPO}\", \"description\": \"brainsOS Appliance Prompts, Souls, Skills & OKF Memories\", \"private\": true, \"auto_init\": false, \"default_branch\": \"main\"}" >/dev/null 2>&1 || true
+      printf "header = \"Authorization: token %s\"\n" "${GITEA_TOKEN}" | \
+        curl -sf -X POST -K - -H "Content-Type: application/json" -d "${CREATE_REPO_JSON}" "http://127.0.0.1:3000/api/v1/user/repos" >/dev/null 2>&1 || true
     fi
   ' || true
 
-# Push main and initial-setup branches to Gitea (via code-server container if running, else via Gitea container IP / localhost)
+# Push main and initial-setup branches using credential helper files (never credentials in CLI URLs)
 PUSHED=false
 if docker inspect -f '{{.State.Running}}' brainsos-app-code-server 2>/dev/null | grep -q "true"; then
-  PUSH_URL="http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@gitea:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git"
-  docker exec brainsos-app-code-server sh -c "
+  CLEAN_GITEA_URL="http://gitea:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git"
+  docker exec -e CLEAN_GITEA_URL="${CLEAN_GITEA_URL}" brainsos-app-code-server sh -c '
+    rm -f /home/coder/.git-credentials
     git config --global --add safe.directory /data 2>/dev/null || true
-    printf 'http://%s:%s@gitea:3000\n' '${URL_ENCODED_USER}' '${URL_ENCODED_PASS}' > /home/coder/.git-credentials
-    chmod 600 /home/coder/.git-credentials 2>/dev/null || true
-    git config --global credential.helper 'store --file=/data/.git/credentials' 2>/dev/null || true
+    git config --global credential.helper "store --file=/data/.git/credentials" 2>/dev/null || true
     git config --global push.default simple 2>/dev/null || true
-    git -C /data push -u '${PUSH_URL}' refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1
-  " && PUSHED=true || true
+    git -C /data push -u "${CLEAN_GITEA_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1
+  ' && PUSHED=true || true
 fi
 
 if [ "${PUSHED}" != "true" ]; then
+  TMP_PUSH_CRED="$(mktemp)"
+  chmod 600 "${TMP_PUSH_CRED}"
+  trap 'rm -f "${TMP_PUSH_CRED}"' EXIT
   GITEA_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "${GITEA_CONTAINER}" 2>/dev/null | awk '{print $1}')"
-  if [ -n "${GITEA_IP}" ]; then
-    PUSH_URL="http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@${GITEA_IP}:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git"
-    git -C "${DATA_ROOT}" push -u "${PUSH_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1 && PUSHED=true || true
-  fi
-fi
-
-if [ "${PUSHED}" != "true" ]; then
   GITEA_HOST_PORT="${GITEA_HTTP_PORT:-3002}"
-  PUSH_URL="http://${URL_ENCODED_USER}:${URL_ENCODED_PASS}@127.0.0.1:${GITEA_HOST_PORT}/${PRIMARY_USER}/${DEFAULT_REPO}.git"
-  git -C "${DATA_ROOT}" push -u "${PUSH_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1 && PUSHED=true || true
+  CRED_USER="${PRIMARY_USER}" CRED_SECRET="${GITEA_TOKEN}" CRED_DEST="${TMP_PUSH_CRED}" \
+  GITEA_IP_VAL="${GITEA_IP}" GITEA_PORT_VAL="${GITEA_HOST_PORT}" \
+  python3 - << 'PYEOF'
+import os, urllib.parse
+u = urllib.parse.quote(os.environ["CRED_USER"], safe="")
+s = urllib.parse.quote(os.environ["CRED_SECRET"], safe="")
+lines = [f"http://{u}:{s}@127.0.0.1:{os.environ['GITEA_PORT_VAL']}\n"]
+if os.environ.get("GITEA_IP_VAL"):
+    lines.append(f"http://{u}:{s}@{os.environ['GITEA_IP_VAL']}:3000\n")
+with open(os.environ["CRED_DEST"], "w", encoding="utf-8") as f:
+    f.writelines(lines)
+PYEOF
+
+  if [ -n "${GITEA_IP}" ]; then
+    CLEAN_IP_URL="http://${GITEA_IP}:3000/${PRIMARY_USER}/${DEFAULT_REPO}.git"
+    git -C "${DATA_ROOT}" -c "credential.helper=store --file=${TMP_PUSH_CRED}" push -u "${CLEAN_IP_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1 && PUSHED=true || true
+  fi
+  if [ "${PUSHED}" != "true" ]; then
+    CLEAN_LOCAL_URL="http://127.0.0.1:${GITEA_HOST_PORT}/${PRIMARY_USER}/${DEFAULT_REPO}.git"
+    git -C "${DATA_ROOT}" -c "credential.helper=store --file=${TMP_PUSH_CRED}" push -u "${CLEAN_LOCAL_URL}" refs/heads/main:refs/heads/main refs/heads/initial-setup:refs/heads/initial-setup >/dev/null 2>&1 && PUSHED=true || true
+  fi
+  rm -f "${TMP_PUSH_CRED}"
+  trap - EXIT
 fi
 
 # Refresh remote tracking refs, upstream config, and permissions so VS Code sees main as published

@@ -103,14 +103,53 @@ setup_langfuse() {
     fi
   fi
 
-  # Generate cryptographically secure keys
+  # Generate cryptographically secure keys (replacing empty or placeholder template values)
   log_info "Verifying secure cryptographic keys and auto-initialization credentials..."
-  SEC_NEXTAUTH="${NEXTAUTH_SECRET:-$(openssl rand -base64 32)}"
-  SEC_SALT="${SALT:-$(openssl rand -base64 32)}"
-  SEC_ENCRYPT="${ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
-  SEC_DB_PASS="${LANGFUSE_DB_PASSWORD:-$(openssl rand -hex 16)}"
-  SEC_REDIS="${REDIS_AUTH:-$(openssl rand -hex 16)}"
-  SEC_MINIO="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
+  _is_lf_placeholder() {
+    local v="${1:-}"
+    [ -z "${v}" ] && return 0
+    case "${v}" in
+      clickhouse|myredissecret|miniosecret|brainsos_langfuse_secret|brainsos_admin_secret|*change_me*|*change-me*|0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef)
+        return 0
+        ;;
+    esac
+    return 1
+  }
+  if _is_lf_placeholder "${NEXTAUTH_SECRET:-}"; then
+    SEC_NEXTAUTH="$(openssl rand -base64 32)"
+  else
+    SEC_NEXTAUTH="${NEXTAUTH_SECRET}"
+  fi
+  if _is_lf_placeholder "${SALT:-}"; then
+    SEC_SALT="$(openssl rand -base64 32)"
+  else
+    SEC_SALT="${SALT}"
+  fi
+  if _is_lf_placeholder "${ENCRYPTION_KEY:-}"; then
+    SEC_ENCRYPT="$(openssl rand -hex 32)"
+  else
+    SEC_ENCRYPT="${ENCRYPTION_KEY}"
+  fi
+  if _is_lf_placeholder "${LANGFUSE_DB_PASSWORD:-}"; then
+    SEC_DB_PASS="$(openssl rand -hex 16)"
+  else
+    SEC_DB_PASS="${LANGFUSE_DB_PASSWORD}"
+  fi
+  if _is_lf_placeholder "${REDIS_AUTH:-}"; then
+    SEC_REDIS="$(openssl rand -hex 16)"
+  else
+    SEC_REDIS="${REDIS_AUTH}"
+  fi
+  if _is_lf_placeholder "${MINIO_ROOT_PASSWORD:-}"; then
+    SEC_MINIO="$(openssl rand -hex 16)"
+  else
+    SEC_MINIO="${MINIO_ROOT_PASSWORD}"
+  fi
+  if _is_lf_placeholder "${CLICKHOUSE_PASSWORD:-}"; then
+    SEC_CLICKHOUSE="$(openssl rand -hex 20)"
+  else
+    SEC_CLICKHOUSE="${CLICKHOUSE_PASSWORD}"
+  fi
 
   # Ensure API Keys exist (or auto-generate for zero-click fleet setup)
   SEC_PUBLIC_KEY="${LANGFUSE_PUBLIC_KEY:-pk-lf-$(openssl rand -hex 16)}"
@@ -122,27 +161,27 @@ setup_langfuse() {
     local key="$1"
     local val="$2"
     local file="$3"
-    python3 -c "
+    python3 -c '
 import sys
 key, val, file_path = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         lines = f.readlines()
 except FileNotFoundError:
     lines = []
 found = False
 new_lines = []
 for line in lines:
-    if line.startswith(f'{key}='):
-        new_lines.append(f'{key}={val}\n')
+    if line.startswith(f"{key}="):
+        new_lines.append(f"{key}={val}\n")
         found = True
     else:
         new_lines.append(line)
 if not found:
-    new_lines.append(f'{key}={val}\n')
-with open(file_path, 'w') as f:
+    new_lines.append(f"{key}={val}\n")
+with open(file_path, "w") as f:
     f.writelines(new_lines)
-" "${key}" "${val}" "${file}"
+' "${key}" "${val}" "${file}"
   }
 
   # Write keys to Langfuse .env
@@ -152,12 +191,15 @@ with open(file_path, 'w') as f:
   update_env_var "LANGFUSE_DB_PASSWORD" "${SEC_DB_PASS}" "${LANGFUSE_ENV_FILE}"
   update_env_var "REDIS_AUTH" "${SEC_REDIS}" "${LANGFUSE_ENV_FILE}"
   update_env_var "MINIO_ROOT_PASSWORD" "${SEC_MINIO}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "CLICKHOUSE_USER" "${CLICKHOUSE_USER:-clickhouse}" "${LANGFUSE_ENV_FILE}"
+  update_env_var "CLICKHOUSE_PASSWORD" "${SEC_CLICKHOUSE}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_SECRET_KEY" "${SEC_SECRET_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_ORG_ID" "${LANGFUSE_INIT_ORG_ID:-brainsos}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_ORG_NAME" "\"${LANGFUSE_INIT_ORG_NAME:-brainsOS}\"" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_PROJECT_ID" "${LANGFUSE_INIT_PROJECT_ID:-brainsos}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_PROJECT_NAME" "\"${LANGFUSE_INIT_PROJECT_NAME:-brainsOS Fleet}\"" "${LANGFUSE_ENV_FILE}"
+  chmod 600 "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_PROJECT_PUBLIC_KEY" "${SEC_PUBLIC_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_INIT_PROJECT_SECRET_KEY" "${SEC_SECRET_KEY}" "${LANGFUSE_ENV_FILE}"
   update_env_var "LANGFUSE_DB_DATA_DIR" "${LANGFUSE_DB_DATA_DIR}" "${LANGFUSE_ENV_FILE}"
@@ -201,12 +243,14 @@ with open(file_path, 'w') as f:
   AUTH_CUSTOM_ISSUER="${AUTH_LANGFUSE_ISSUER:-https://${DOMAIN}/application/o/langfuse}"
   update_env_var "NEXTAUTH_URL" "${NEXTAUTH_URL}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_CLIENT_ID" "${AUTH_LANGFUSE_CLIENT_ID:-langfuse-trace}" "${LANGFUSE_ENV_FILE}"
-  if [ -n "${AUTH_LANGFUSE_CLIENT_SECRET:-}" ]; then
+  if ! _is_lf_placeholder "${AUTH_LANGFUSE_CLIENT_SECRET:-}"; then
     update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "${AUTH_LANGFUSE_CLIENT_SECRET}" "${LANGFUSE_ENV_FILE}"
+  elif _is_lf_placeholder "${AUTH_CUSTOM_CLIENT_SECRET:-}"; then
+    update_env_var "AUTH_CUSTOM_CLIENT_SECRET" "$(openssl rand -hex 24)" "${LANGFUSE_ENV_FILE}"
   fi
   update_env_var "AUTH_CUSTOM_ISSUER" "${AUTH_CUSTOM_ISSUER}" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_NAME" "\"brainsOS SSO\"" "${LANGFUSE_ENV_FILE}"
-  update_env_var "AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING" "true" "${LANGFUSE_ENV_FILE}"
+  update_env_var "AUTH_CUSTOM_ALLOW_ACCOUNT_LINKING" "false" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_CUSTOM_FETCH_USERINFO" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "AUTH_DISABLE_USERNAME_PASSWORD" "true" "${LANGFUSE_ENV_FILE}"
   update_env_var "BRAINSOS_DOMAIN" "${DOMAIN}" "${LANGFUSE_ENV_FILE}"
@@ -452,20 +496,24 @@ sync_llm_connection() {
   lf_db_c="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^brainsos-(telemetry-langfuse-|telemetry-|langfuse-)?db$' | head -n 1 || true)"
   if [ -n "${lf_web_c}" ] && [ -n "${lf_db_c}" ]; then
     log_info "Synchronizing preconfigured LLM & Agent connections in Langfuse project 'brainsos'..."
-    local litellm_key="${LITELLM_MASTER_KEY:-sk-supergr00vyd00d!!!}"
+    local litellm_key="${LITELLM_MASTER_KEY:-}"
     if [ -f "${REPO_ROOT}/.env" ]; then
       local _k
       _k=$(grep '^LITELLM_MASTER_KEY=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
       [ -n "${_k}" ] && litellm_key="${_k}"
     fi
+    if [ -z "${litellm_key}" ]; then
+      log_warn "LITELLM_MASTER_KEY is unset; skipping Langfuse LLM connection sync."
+      return 0
+    fi
 
-    local agent_key="${API_SERVER_KEY:-}"
+    local agent_key="${API_SERVER_KEY:-${RUNNER_AUTH_TOKEN:-}}"
     if [ -f "${REPO_ROOT}/.env" ]; then
       local _ak
       _ak=$(grep '^API_SERVER_KEY=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
+      [ -z "${_ak}" ] && _ak=$(grep '^RUNNER_AUTH_TOKEN=' "${REPO_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\"' || true)
       [ -n "${_ak}" ] && agent_key="${_ak}"
     fi
-    [ -z "${agent_key}" ] && agent_key="sk-brainsos-agent-key"
 
     local manifest="${BRAINSOS_DATA_DIR:-${REPO_ROOT}/data}/settings/agents.yaml"
     if [ ! -f "${manifest}" ]; then
@@ -518,9 +566,9 @@ EOF
       const displayLiteLLMKey = '...' + litellmKey.slice(-4);
       const encLiteLLMKey = encrypt(litellmKey);
 
-      const agentKey = process.argv[2];
-      const displayAgentKey = '...' + agentKey.slice(-4);
-      const encAgentKey = encrypt(agentKey);
+      const agentKey = process.argv[2] || '';
+      const displayAgentKey = agentKey ? ('...' + agentKey.slice(-4)) : '';
+      const encAgentKey = agentKey ? encrypt(agentKey) : '';
 
       const agents = JSON.parse(process.argv[3] || '[]');
 
@@ -575,36 +623,38 @@ EOF
         });
 
         // 2. Dynamic Fleet Agent Connections (Agent-as-an-API via Caddy)
-        for (const a of agents) {
-          const cleanId = a.id.replace(/-/g, '_');
-          await prisma.llmApiKeys.upsert({
-            where: {
-              projectId_provider: {
+        if (agentKey) {
+          for (const a of agents) {
+            const cleanId = a.id.replace(/-/g, '_');
+            await prisma.llmApiKeys.upsert({
+              where: {
+                projectId_provider: {
+                  projectId: 'brainsos',
+                  provider: a.id
+                }
+              },
+              create: {
+                id: \`cl_brainsos_\${cleanId}_connection\`,
                 projectId: 'brainsos',
-                provider: a.id
+                provider: a.id,
+                adapter: 'openai',
+                displaySecretKey: displayAgentKey,
+                secretKey: encAgentKey,
+                baseURL: \`http://api.\${a.subdomain}/v1\`,
+                customModels: ['hermes-agent', a.id],
+                withDefaultModels: false,
+                extraHeaderKeys: []
+              },
+              update: {
+                adapter: 'openai',
+                displaySecretKey: displayAgentKey,
+                secretKey: encAgentKey,
+                baseURL: \`http://api.\${a.subdomain}/v1\`,
+                customModels: ['hermes-agent', a.id],
+                withDefaultModels: false
               }
-            },
-            create: {
-              id: \`cl_brainsos_\${cleanId}_connection\`,
-              projectId: 'brainsos',
-              provider: a.id,
-              adapter: 'openai',
-              displaySecretKey: displayAgentKey,
-              secretKey: encAgentKey,
-              baseURL: \`http://api.\${a.subdomain}/v1\`,
-              customModels: ['hermes-agent', a.id],
-              withDefaultModels: false,
-              extraHeaderKeys: []
-            },
-            update: {
-              adapter: 'openai',
-              displaySecretKey: displayAgentKey,
-              secretKey: encAgentKey,
-              baseURL: \`http://api.\${a.subdomain}/v1\`,
-              customModels: ['hermes-agent', a.id],
-              withDefaultModels: false
-            }
-          });
+            });
+          }
         }
       }
 

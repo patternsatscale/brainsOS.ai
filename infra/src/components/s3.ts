@@ -79,6 +79,14 @@ export function createDummyOriginBucket(subdomain: string, zoneName: string) {
     forceDestroy: true,
   });
 
+  new aws.s3.BucketPublicAccessBlock("BrainsOSDummyOriginPAB", {
+    bucket: dummyBucket.id,
+    blockPublicAcls: true,
+    blockPublicPolicy: true,
+    ignorePublicAcls: true,
+    restrictPublicBuckets: true,
+  });
+
   return {
     bucket: dummyBucket,
     bucketRegionalDomainName: dummyBucket.bucketRegionalDomainName,
